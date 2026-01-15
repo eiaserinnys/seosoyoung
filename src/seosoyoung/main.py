@@ -36,21 +36,35 @@ logger = setup_logging()
 app = App(token=Config.SLACK_BOT_TOKEN, logger=logger)
 
 # Claude Code 연동
-claude_runner = ClaudeRunner()
 session_manager = SessionManager()
 
-# 인스턴트 답변용 러너 (조회만 허용, 수정/커밋/웹서핑 금지)
-instant_runner = ClaudeRunner(
-    allowed_tools=["Read", "Glob", "Grep"],
-    disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"]
-)
+# 실행 중인 세션 락 (스레드별 동시 실행 방지)
+_session_locks: dict[str, threading.Lock] = {}
+_locks_lock = threading.Lock()
 
-# 인스턴트 답변 동시 실행 제한
-_instant_answer_lock = threading.Lock()
+
+def get_session_lock(thread_ts: str) -> threading.Lock:
+    """스레드별 락 반환 (없으면 생성)"""
+    with _locks_lock:
+        if thread_ts not in _session_locks:
+            _session_locks[thread_ts] = threading.Lock()
+        return _session_locks[thread_ts]
+
+
+def get_runner_for_role(role: str) -> ClaudeRunner:
+    """역할에 맞는 ClaudeRunner 반환"""
+    allowed_tools = Config.ROLE_TOOLS.get(role, Config.ROLE_TOOLS["viewer"])
+    # viewer는 수정/실행 도구 명시적 차단
+    if role == "viewer":
+        return ClaudeRunner(
+            allowed_tools=allowed_tools,
+            disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"]
+        )
+    return ClaudeRunner(allowed_tools=allowed_tools)
 
 
 def check_permission(user_id: str, client) -> bool:
-    """사용자 권한 확인"""
+    """사용자 권한 확인 (관리자 명령어용)"""
     try:
         result = client.users_info(user=user_id)
         username = result["user"]["name"]
@@ -60,6 +74,27 @@ def check_permission(user_id: str, client) -> bool:
     except Exception as e:
         logger.error(f"권한 체크 실패: user_id={user_id}, error={e}")
         return False
+
+
+def get_user_role(user_id: str, client) -> dict | None:
+    """사용자 역할 정보 반환
+
+    Returns:
+        dict: {"user_id", "username", "role", "allowed_tools"} 또는 실패 시 None
+    """
+    try:
+        result = client.users_info(user=user_id)
+        username = result["user"]["name"]
+        role = "admin" if username in Config.ADMIN_USERS else "viewer"
+        return {
+            "user_id": user_id,
+            "username": username,
+            "role": role,
+            "allowed_tools": Config.ROLE_TOOLS[role]
+        }
+    except Exception as e:
+        logger.error(f"사용자 역할 조회 실패: user_id={user_id}, error={e}")
+        return None
 
 
 def extract_command(text: str) -> str:
@@ -92,7 +127,13 @@ def get_channel_history(client, channel: str, limit: int = 20) -> str:
 
 @app.event("app_mention")
 def handle_mention(event, say, client):
-    """@seosoyoung 멘션 처리"""
+    """@seosoyoung 멘션 처리
+
+    - 채널에서 멘션: 세션 생성 + Claude 실행
+    - 스레드에서 멘션 (세션 있음): handle_message에서 처리
+    - 스레드에서 멘션 (세션 없음): 원샷 답변
+    - help/status/update/restart: 관리자 명령어
+    """
     user_id = event["user"]
     text = event.get("text", "")
     channel = event["channel"]
@@ -101,112 +142,149 @@ def handle_mention(event, say, client):
 
     logger.info(f"멘션 수신: user={user_id}, channel={channel}, text={text[:50]}")
 
+    # 스레드에서 멘션된 경우
+    if thread_ts:
+        # 기존 세션이 있으면 handle_message에서 처리
+        if session_manager.exists(thread_ts):
+            logger.debug("스레드에서 멘션됨 (세션 있음) - handle_message에서 처리")
+            return
+        # 세션이 없으면 원샷 답변 (아래에서 처리)
+        logger.debug("스레드에서 멘션됨 (세션 없음) - 원샷 답변")
+
     command = extract_command(text)
     logger.info(f"명령어 처리: command={command}")
 
-    # 권한 확인 (인스턴트 답변은 권한 제한 없음)
-    if command in ["cc", "help", "status", "update", "restart"]:
-        if not check_permission(user_id, client):
-            logger.warning(f"권한 없음: user={user_id}")
-            say(text="권한이 없습니다.", thread_ts=ts)
-            return
-
-    if command == "cc":
-        # Claude Code 세션 시작
-        say(
-            text="소영이 작업을 시작합니다. 스레드 안에서 대화해주세요.",
-            thread_ts=ts
-        )
-        # 세션 생성
-        session_manager.create(thread_ts=ts, channel_id=channel)
-        logger.info(f"세션 생성: thread_ts={ts}, channel={channel}")
-
-    elif command == "help":
+    # 관리자 명령어 처리
+    if command == "help":
         say(
             text=(
                 "📖 *사용법*\n"
-                "• `@seosoyoung cc` - 작업 세션 시작\n"
+                "• `@seosoyoung <질문>` - 질문하기 (세션 생성 + 응답)\n"
                 "• `@seosoyoung help` - 도움말\n"
                 "• `@seosoyoung status` - 상태 확인\n"
-                "• `@seosoyoung update` - 봇 업데이트\n"
-                "• `@seosoyoung restart` - 봇 재시작"
+                "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
+                "• `@seosoyoung restart` - 봇 재시작 (관리자)"
             ),
             thread_ts=ts
         )
+        return
 
-    elif command == "status":
+    if command == "status":
         say(
             text=(
                 f"📊 *상태*\n"
                 f"• eb_renpy 경로: `{Config.EB_RENPY_PATH}`\n"
-                f"• 허용 사용자: {', '.join(Config.ALLOWED_USERS)}\n"
+                f"• 관리자: {', '.join(Config.ADMIN_USERS)}\n"
                 f"• 활성 세션: {session_manager.count()}개\n"
                 f"• 디버그 모드: {Config.DEBUG}"
             ),
             thread_ts=ts
         )
-
-    elif command == "update":
-        say(text="업데이트합니다. 잠시만요...", thread_ts=ts)
-        logger.info("업데이트 요청 - 프로세스 종료")
-        os._exit(42)
-
-    elif command == "restart":
-        say(text="재시작합니다. 잠시만요...", thread_ts=ts)
-        logger.info("재시작 요청 - 프로세스 종료")
-        os._exit(43)
-
-    else:
-        # 인스턴트 답변: 명령이 아니면 바로 Claude에 전달
-        # 채널에서 호출되었으면 채널에, 스레드에서 호출되었으면 스레드에 응답
-        handle_instant_answer(text, channel, ts, thread_ts, say, client)
-
-
-def handle_instant_answer(text: str, channel: str, ts: str, thread_ts: str | None, say, client):
-    """인스턴트 답변 처리 - 세션 없이 바로 Claude에 전달
-
-    Args:
-        thread_ts: 스레드에서 호출되었으면 스레드 ts, 채널에서 호출되었으면 None
-    """
-    # 응답 위치: 항상 스레드에 응답
-    # - 채널에서 호출 → 원본 메시지(ts)의 스레드로 답변
-    # - 스레드에서 호출 → 해당 스레드에 답변
-    reply_ts = thread_ts or ts
-
-    # 동시 실행 제한
-    if not _instant_answer_lock.acquire(blocking=False):
-        say(text="죄송합니다. 이전에 받은 요청을 처리 중이예요.", thread_ts=reply_ts)
         return
 
-    try:
-        # 이전 대화 20개를 컨텍스트로 포함
-        context = get_channel_history(client, channel, limit=20)
+    if command in ["update", "restart"]:
+        if not check_permission(user_id, client):
+            logger.warning(f"권한 없음: user={user_id}")
+            say(text="관리자 권한이 필요합니다.", thread_ts=ts)
+            return
 
-        prompt = f"""아래는 Slack 채널의 최근 대화입니다:
+        if command == "update":
+            say(text="업데이트합니다. 잠시만요...", thread_ts=ts)
+            logger.info("업데이트 요청 - 프로세스 종료")
+            os._exit(42)
+        else:
+            say(text="재시작합니다. 잠시만요...", thread_ts=ts)
+            logger.info("재시작 요청 - 프로세스 종료")
+            os._exit(43)
+        return
+
+    # 일반 질문: 세션 생성 + Claude 실행
+    # 사용자 역할 조회
+    user_info = get_user_role(user_id, client)
+    if not user_info:
+        say(text="사용자 정보를 확인할 수 없습니다.", thread_ts=thread_ts or ts)
+        return
+
+    # 세션 생성 위치 결정
+    # - 채널에서 호출: ts가 스레드 시작점
+    # - 스레드에서 호출 (세션 없음): thread_ts가 스레드 시작점
+    session_thread_ts = thread_ts or ts
+    is_oneshot = thread_ts is not None  # 스레드 내 원샷 호출
+
+    # 세션 생성 (역할 정보 포함)
+    session = session_manager.create(
+        thread_ts=session_thread_ts,
+        channel_id=channel,
+        user_id=user_id,
+        username=user_info["username"],
+        role=user_info["role"]
+    )
+
+    # 스레드 시작 메시지 (원샷이 아닌 경우에만)
+    if not is_oneshot:
+        role_msg = "(관리자)" if user_info["role"] == "admin" else "(조회 전용)"
+        say(
+            text=f"소영이 작업을 시작합니다 {role_msg}. 스레드 안에서 대화해주세요.",
+            thread_ts=session_thread_ts
+        )
+
+    # 멘션 텍스트에서 질문 추출 (멘션 제거)
+    clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+    if not clean_text:
+        logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")
+        return
+
+    # 채널 컨텍스트 가져오기
+    context = get_channel_history(client, channel, limit=20)
+
+    # 프롬프트 구성
+    prompt = f"""아래는 Slack 채널의 최근 대화입니다:
 
 {context}
 
-사용자의 질문: {text}
+사용자의 질문: {clean_text}
 
-위 컨텍스트를 참고하여 질문에 답변해주세요.
+위 컨텍스트를 참고하여 질문에 답변해주세요."""
 
-중요: 마크다운 형식을 사용하지 마세요. 사용자가 읽고 이해하기 쉬운 평이한 말투로 풀어서 설명해주세요."""
+    # Claude 실행 (스레드 락으로 동시 실행 방지)
+    _run_claude_in_session(session, prompt, ts, channel, say, client)
 
+
+def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say, client):
+    """세션 내에서 Claude Code 실행 (공통 로직)
+
+    Args:
+        session: Session 객체
+        prompt: Claude에 전달할 프롬프트
+        msg_ts: 원본 메시지 타임스탬프 (이모지 추가용)
+        channel: Slack 채널 ID
+        say: Slack say 함수
+        client: Slack client
+    """
+    thread_ts = session.thread_ts
+
+    # 스레드별 락으로 동시 실행 방지
+    lock = get_session_lock(thread_ts)
+    if not lock.acquire(blocking=False):
+        say(text="이전 요청을 처리 중이에요. 잠시 후 다시 시도해주세요.", thread_ts=thread_ts)
+        return
+
+    try:
         # 작업 중 이모지
         try:
-            client.reactions_add(channel=channel, timestamp=ts, name="eyes")
+            client.reactions_add(channel=channel, timestamp=msg_ts, name="eyes")
         except Exception:
             pass
 
-        # "생각하고 있어요..." 메시지 먼저 전송
+        # "생각하고 있어요..." 메시지
         thinking_msg = client.chat_postMessage(
             channel=channel,
-            thread_ts=reply_ts,
+            thread_ts=thread_ts,
             text="_생각하고 있어요..._"
         )
         thinking_ts = thinking_msg["ts"]
 
-        # 스트리밍 콜백 (사고 과정 업데이트)
+        # 스트리밍 콜백
         async def on_progress(current_text: str):
             try:
                 display_text = current_text
@@ -220,30 +298,54 @@ def handle_instant_answer(text: str, channel: str, ts: str, thread_ts: str | Non
             except Exception as e:
                 logger.warning(f"사고 과정 업데이트 실패: {e}")
 
-        # Claude Code 실행 (스트리밍, 읽기 전용)
+        # 역할에 맞는 runner 생성
+        runner = get_runner_for_role(session.role)
+
+        # Claude Code 실행
         try:
-            result = asyncio.run(instant_runner.run(prompt=prompt, on_progress=on_progress))
+            result = asyncio.run(runner.run(
+                prompt=prompt,
+                session_id=session.session_id,
+                on_progress=on_progress
+            ))
+
+            # 세션 ID 업데이트
+            if result.session_id and result.session_id != session.session_id:
+                session_manager.update_session_id(thread_ts, result.session_id)
+
+            # 메시지 카운트 증가
+            session_manager.increment_message_count(thread_ts)
 
             if result.success:
                 response = result.output or "(응답 없음)"
-                # "생각하고 있어요..." 메시지를 최종 응답으로 교체
                 try:
                     if len(response) <= 3900:
                         client.chat_update(channel=channel, ts=thinking_ts, text=response)
                     else:
                         client.chat_update(channel=channel, ts=thinking_ts, text=f"(1/?) {response[:3900]}")
                         remaining = response[3900:]
-                        send_long_message(say, remaining, reply_ts)
+                        send_long_message(say, remaining, thread_ts)
                 except Exception:
-                    send_long_message(say, response, reply_ts)
+                    send_long_message(say, response, thread_ts)
+
+                # 완료 이모지
+                try:
+                    client.reactions_add(channel=channel, timestamp=msg_ts, name="white_check_mark")
+                except Exception:
+                    pass
             else:
                 client.chat_update(
                     channel=channel,
                     ts=thinking_ts,
                     text=f"오류가 발생했습니다: {result.error}"
                 )
+                try:
+                    client.reactions_add(channel=channel, timestamp=msg_ts, name="x")
+                except Exception:
+                    pass
+
         except Exception as e:
-            logger.exception(f"인스턴트 답변 오류: {e}")
+            logger.exception(f"Claude 실행 오류: {e}")
             try:
                 client.chat_update(
                     channel=channel,
@@ -251,21 +353,24 @@ def handle_instant_answer(text: str, channel: str, ts: str, thread_ts: str | Non
                     text=f"오류가 발생했습니다: {str(e)}"
                 )
             except Exception:
-                say(text=f"오류가 발생했습니다: {str(e)}", thread_ts=reply_ts)
+                say(text=f"오류가 발생했습니다: {str(e)}", thread_ts=thread_ts)
 
-        # 이모지 제거/추가
+        # 작업 중 이모지 제거
         try:
-            client.reactions_remove(channel=channel, timestamp=ts, name="eyes")
-            client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
+            client.reactions_remove(channel=channel, timestamp=msg_ts, name="eyes")
         except Exception:
             pass
     finally:
-        _instant_answer_lock.release()
+        lock.release()
 
 
 @app.event("message")
 def handle_message(event, say, client):
-    """스레드 메시지 처리"""
+    """스레드 메시지 처리
+
+    세션이 있는 스레드 내 일반 메시지를 처리합니다.
+    (멘션 없이 스레드에 작성된 메시지)
+    """
     # 봇 자신의 메시지는 무시
     if event.get("bot_id"):
         return
@@ -275,135 +380,30 @@ def handle_message(event, say, client):
     if not thread_ts:
         return
 
-    user_id = event["user"]
+    # 멘션이 포함된 경우 handle_mention에서 처리 (중복 방지)
     text = event.get("text", "")
-    channel = event["channel"]
-
-    # 권한 확인
-    if not check_permission(user_id, client):
+    if "<@" in text:
         return
+
+    user_id = event["user"]
+    channel = event["channel"]
+    ts = event["ts"]
 
     # 세션 확인
     session = session_manager.get(thread_ts)
     if not session:
-        # 세션이 없으면 무시 (cc 명령으로 시작한 스레드만 처리)
+        # 세션이 없으면 무시
         return
 
-    # 멘션 제거 (스레드 내에서도 멘션할 수 있으므로)
+    # 멘션 제거 (혹시 모를 경우 대비)
     clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
     if not clean_text:
         return
 
     logger.info(f"메시지 처리: thread_ts={thread_ts}, text={clean_text[:50]}")
 
-    # 작업 중 이모지 추가
-    try:
-        client.reactions_add(channel=channel, timestamp=event["ts"], name="eyes")
-    except Exception:
-        pass
-
-    # 마지막 메시지 ts 추적
-    last_message_ts = None
-
-    # 스트리밍 콜백 (새 메시지 추가)
-    async def on_progress(text: str):
-        nonlocal last_message_ts
-        try:
-            # 텍스트가 너무 길면 마지막 부분만
-            display_text = text
-            if len(display_text) > 3800:
-                display_text = "...\n" + display_text[-3800:]
-            # 새 메시지 추가
-            msg = client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=f"_작업 중..._\n```\n{display_text}\n```"
-            )
-            last_message_ts = msg["ts"]
-        except Exception as e:
-            logger.warning(f"진행 상황 메시지 전송 실패: {e}")
-
-    # Claude Code 실행
-    try:
-        result = asyncio.run(claude_runner.run(
-            prompt=clean_text,
-            session_id=session.session_id,
-            on_progress=on_progress
-        ))
-
-        # 세션 ID 업데이트 (첫 응답에서 받음)
-        if result.session_id and result.session_id != session.session_id:
-            session_manager.update_session_id(thread_ts, result.session_id)
-
-        # 메시지 카운트 증가
-        session_manager.increment_message_count(thread_ts)
-
-        if result.success:
-            response = result.output or "(응답 없음)"
-
-            if last_message_ts:
-                # 마지막 메시지를 최종 응답으로 교체
-                try:
-                    # 응답이 길면 첫 부분만 교체하고 나머지는 새 메시지로
-                    if len(response) <= 3900:
-                        client.chat_update(
-                            channel=channel,
-                            ts=last_message_ts,
-                            text=f"{response}"
-                        )
-                    else:
-                        # 첫 부분 교체
-                        client.chat_update(
-                            channel=channel,
-                            ts=last_message_ts,
-                            text=f"(1/?) {response[:3900]}"
-                        )
-                        # 나머지는 send_long_message로 처리
-                        remaining = response[3900:]
-                        send_long_message(say, remaining, thread_ts)
-                except Exception:
-                    send_long_message(say, response, thread_ts)
-            else:
-                # 진행 메시지가 없으면 새로 전송
-                send_long_message(say, response, thread_ts)
-
-            # 완료 이모지
-            try:
-                client.reactions_add(channel=channel, timestamp=event["ts"], name="white_check_mark")
-            except Exception:
-                pass
-        else:
-            # 마지막 메시지를 오류 메시지로 교체
-            error_msg = f"오류가 발생했습니다: {result.error}"
-            if last_message_ts:
-                try:
-                    client.chat_update(channel=channel, ts=last_message_ts, text=error_msg)
-                except Exception:
-                    say(text=error_msg, thread_ts=thread_ts)
-            else:
-                say(text=error_msg, thread_ts=thread_ts)
-
-            try:
-                client.reactions_add(channel=channel, timestamp=event["ts"], name="x")
-            except Exception:
-                pass
-
-    except Exception as e:
-        logger.exception(f"Claude Code 실행 오류: {e}")
-        error_msg = f"오류가 발생했습니다: {str(e)}"
-        if last_message_ts:
-            try:
-                client.chat_update(channel=channel, ts=last_message_ts, text=error_msg)
-            except Exception:
-                say(text=error_msg, thread_ts=thread_ts)
-        else:
-            say(text=error_msg, thread_ts=thread_ts)
-
-    # 작업 중 이모지 제거
-    try:
-        client.reactions_remove(channel=channel, timestamp=event["ts"], name="eyes")
-    except Exception:
-        pass
+    # _run_claude_in_session 사용 (역할 기반 runner)
+    _run_claude_in_session(session, clean_text, ts, channel, say, client)
 
 
 def send_long_message(say, text: str, thread_ts: str | None, max_length: int = 3900):
@@ -457,6 +457,7 @@ def notify_startup():
 if __name__ == "__main__":
     logger.info("SeoSoyoung 봇을 시작합니다...")
     logger.info(f"LOG_PATH: {Config.LOG_PATH}")
+    logger.info(f"ADMIN_USERS: {Config.ADMIN_USERS}")
     logger.info(f"ALLOWED_USERS: {Config.ALLOWED_USERS}")
     logger.info(f"DEBUG: {Config.DEBUG}")
     notify_startup()

@@ -21,6 +21,13 @@ class Config:
 
     # Permissions
     ALLOWED_USERS = os.getenv("ALLOWED_USERS", "").split(",")
+    ADMIN_USERS = [u.strip() for u in os.getenv("ADMIN_USERS", "eias").split(",") if u.strip()]
+
+    # 역할별 도구 권한
+    ROLE_TOOLS = {
+        "admin": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
+        "viewer": ["Read", "Glob", "Grep"],
+    }
 
     # Debug
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"

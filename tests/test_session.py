@@ -35,6 +35,28 @@ class TestSession:
 
         assert session.session_id == "abc-123"
 
+    def test_session_with_role(self):
+        """역할 정보 포함 세션 생성"""
+        session = Session(
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+            user_id="U12345",
+            username="testuser",
+            role="admin"
+        )
+
+        assert session.user_id == "U12345"
+        assert session.username == "testuser"
+        assert session.role == "admin"
+
+    def test_session_default_role(self):
+        """기본 역할은 viewer"""
+        session = Session(thread_ts="1234567890.123456", channel_id="C12345")
+
+        assert session.role == "viewer"
+        assert session.user_id == ""
+        assert session.username == ""
+
 
 class TestSessionManager:
     """SessionManager 테스트"""
@@ -60,6 +82,26 @@ class TestSessionManager:
         assert session.thread_ts == "1234567890.123456"
         assert session.channel_id == "C12345"
         assert manager.exists("1234567890.123456")
+
+    def test_create_session_with_role(self, manager):
+        """역할 정보 포함 세션 생성 테스트"""
+        session = manager.create(
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+            user_id="U12345",
+            username="testuser",
+            role="admin"
+        )
+
+        assert session.user_id == "U12345"
+        assert session.username == "testuser"
+        assert session.role == "admin"
+
+        # 파일에서 다시 로드해도 역할 정보 유지
+        manager._cache.clear()
+        reloaded = manager.get("1234567890.123456")
+        assert reloaded.role == "admin"
+        assert reloaded.username == "testuser"
 
     def test_get_session(self, manager):
         """세션 조회 테스트"""

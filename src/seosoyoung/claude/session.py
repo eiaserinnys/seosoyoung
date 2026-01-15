@@ -20,6 +20,9 @@ class Session:
     """Claude Code 세션 정보"""
     thread_ts: str          # Slack 스레드 타임스탬프
     channel_id: str         # Slack 채널 ID
+    user_id: str = ""       # 세션 생성자 Slack ID
+    username: str = ""      # 세션 생성자 username
+    role: str = "viewer"    # 역할: "admin" | "viewer"
     session_id: Optional[str] = None  # Claude Code 세션 ID
     created_at: str = ""    # 생성 시각
     updated_at: str = ""    # 마지막 업데이트 시각
@@ -70,12 +73,25 @@ class SessionManager:
 
         return None
 
-    def create(self, thread_ts: str, channel_id: str) -> Session:
+    def create(
+        self,
+        thread_ts: str,
+        channel_id: str,
+        user_id: str = "",
+        username: str = "",
+        role: str = "viewer"
+    ) -> Session:
         """새 세션 생성"""
-        session = Session(thread_ts=thread_ts, channel_id=channel_id)
+        session = Session(
+            thread_ts=thread_ts,
+            channel_id=channel_id,
+            user_id=user_id,
+            username=username,
+            role=role
+        )
         self._save(session)
         self._cache[thread_ts] = session
-        logger.info(f"세션 생성: thread_ts={thread_ts}")
+        logger.info(f"세션 생성: thread_ts={thread_ts}, user={username}, role={role}")
         return session
 
     def update_session_id(self, thread_ts: str, session_id: str) -> Optional[Session]:

@@ -4,7 +4,13 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 # conftest.py에서 환경 변수가 설정되므로 import 가능
-from seosoyoung.main import extract_command, send_long_message, check_permission
+from seosoyoung.main import (
+    extract_command,
+    send_long_message,
+    check_permission,
+    get_user_role,
+    get_runner_for_role,
+)
 
 
 class TestExtractCommand:
@@ -22,8 +28,8 @@ class TestExtractCommand:
 
     def test_extract_command_with_extra_spaces(self):
         """공백이 있는 명령어"""
-        result = extract_command("<@U12345>   cc  ")
-        assert result == "cc"
+        result = extract_command("<@U12345>   status  ")
+        assert result == "status"
 
     def test_extract_command_empty(self):
         """빈 명령어"""
@@ -34,6 +40,11 @@ class TestExtractCommand:
         """여러 멘션이 있는 경우"""
         result = extract_command("<@U12345> <@U67890> status")
         assert result == "status"
+
+    def test_extract_command_question(self):
+        """일반 질문 (명령어 아님)"""
+        result = extract_command("<@U12345> 오늘 날씨 어때?")
+        assert result == "오늘 날씨 어때?"
 
 
 class TestSendLongMessage:
@@ -112,36 +123,99 @@ class TestCheckPermission:
         assert result is False
 
 
+class TestGetUserRole:
+    """get_user_role 함수 테스트"""
+
+    @patch("seosoyoung.main.Config")
+    def test_get_user_role_admin(self, mock_config):
+        """관리자 사용자 역할"""
+        mock_config.ADMIN_USERS = ["admin_user"]
+        mock_config.ROLE_TOOLS = {
+            "admin": ["Read", "Write", "Edit"],
+            "viewer": ["Read"]
+        }
+
+        mock_client = MagicMock()
+        mock_client.users_info.return_value = {"user": {"name": "admin_user"}}
+
+        result = get_user_role("U12345", mock_client)
+
+        assert result is not None
+        assert result["role"] == "admin"
+        assert result["username"] == "admin_user"
+        assert result["user_id"] == "U12345"
+        assert result["allowed_tools"] == ["Read", "Write", "Edit"]
+
+    @patch("seosoyoung.main.Config")
+    def test_get_user_role_viewer(self, mock_config):
+        """일반 사용자 역할 (viewer)"""
+        mock_config.ADMIN_USERS = ["admin_user"]
+        mock_config.ROLE_TOOLS = {
+            "admin": ["Read", "Write", "Edit"],
+            "viewer": ["Read"]
+        }
+
+        mock_client = MagicMock()
+        mock_client.users_info.return_value = {"user": {"name": "regular_user"}}
+
+        result = get_user_role("U12345", mock_client)
+
+        assert result is not None
+        assert result["role"] == "viewer"
+        assert result["username"] == "regular_user"
+        assert result["allowed_tools"] == ["Read"]
+
+    def test_get_user_role_api_error(self):
+        """API 오류 시 None 반환"""
+        mock_client = MagicMock()
+        mock_client.users_info.side_effect = Exception("API Error")
+
+        result = get_user_role("U12345", mock_client)
+
+        assert result is None
+
+
+class TestGetRunnerForRole:
+    """get_runner_for_role 함수 테스트"""
+
+    @patch("seosoyoung.main.Config")
+    @patch("seosoyoung.main.ClaudeRunner")
+    def test_get_runner_for_admin(self, mock_runner_class, mock_config):
+        """관리자 역할용 runner"""
+        mock_config.ROLE_TOOLS = {
+            "admin": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
+            "viewer": ["Read", "Glob", "Grep"]
+        }
+
+        get_runner_for_role("admin")
+
+        # admin은 disallowed_tools 없이 생성
+        mock_runner_class.assert_called_once_with(
+            allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"]
+        )
+
+    @patch("seosoyoung.main.Config")
+    @patch("seosoyoung.main.ClaudeRunner")
+    def test_get_runner_for_viewer(self, mock_runner_class, mock_config):
+        """일반 사용자 역할용 runner"""
+        mock_config.ROLE_TOOLS = {
+            "admin": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
+            "viewer": ["Read", "Glob", "Grep"]
+        }
+
+        get_runner_for_role("viewer")
+
+        # viewer는 수정 도구들이 차단됨
+        mock_runner_class.assert_called_once_with(
+            allowed_tools=["Read", "Glob", "Grep"],
+            disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"]
+        )
+
+
 class TestHandleMention:
     """handle_mention 이벤트 핸들러 테스트"""
 
-    @patch("seosoyoung.main.session_manager")
-    @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_handle_mention_cc_command(self, mock_check_perm, mock_session_manager):
-        """cc 명령어 처리"""
-        from seosoyoung.main import handle_mention
-
-        event = {
-            "user": "U12345",
-            "text": "<@UBOT> cc",
-            "channel": "C12345",
-            "ts": "1234567890.123456"
-        }
-        mock_say = MagicMock()
-        mock_client = MagicMock()
-
-        handle_mention(event, mock_say, mock_client)
-
-        # say가 호출되어야 함
-        mock_say.assert_called()
-        # 세션 생성 확인
-        mock_session_manager.create.assert_called_once_with(
-            thread_ts="1234567890.123456",
-            channel_id="C12345"
-        )
-
-    @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_handle_mention_help_command(self, mock_check_perm):
+    def test_handle_mention_help_command(self):
         """help 명령어 처리"""
         from seosoyoung.main import handle_mention
 
@@ -162,11 +236,10 @@ class TestHandleMention:
 
     @patch("seosoyoung.main.Config")
     @patch("seosoyoung.main.session_manager")
-    @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_handle_mention_status_command(self, mock_check_perm, mock_session_manager, mock_config):
+    def test_handle_mention_status_command(self, mock_session_manager, mock_config):
         """status 명령어 처리"""
         mock_config.EB_RENPY_PATH = "/path/to/eb_renpy"
-        mock_config.ALLOWED_USERS = ["user1", "user2"]
+        mock_config.ADMIN_USERS = ["user1", "user2"]
         mock_config.DEBUG = True
         mock_session_manager.count.return_value = 3
 
@@ -187,34 +260,14 @@ class TestHandleMention:
         call_text = mock_say.call_args.kwargs["text"]
         assert "상태" in call_text
 
-    @patch("seosoyoung.main.handle_instant_answer")
-    @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_handle_mention_unknown_command(self, mock_check_perm, mock_instant):
-        """알 수 없는 명령어는 인스턴트 답변으로 처리"""
-        from seosoyoung.main import handle_mention
-
-        event = {
-            "user": "U12345",
-            "text": "<@UBOT> unknown_command",
-            "channel": "C12345",
-            "ts": "1234567890.123456"
-        }
-        mock_say = MagicMock()
-        mock_client = MagicMock()
-
-        handle_mention(event, mock_say, mock_client)
-
-        # 인스턴트 답변이 호출되어야 함
-        mock_instant.assert_called_once()
-
     @patch("seosoyoung.main.check_permission", return_value=False)
-    def test_handle_mention_no_permission(self, mock_check_perm):
-        """권한 없는 사용자"""
+    def test_handle_mention_update_no_permission(self, mock_check_perm):
+        """update 명령어 - 권한 없음"""
         from seosoyoung.main import handle_mention
 
         event = {
             "user": "U12345",
-            "text": "<@UBOT> cc",
+            "text": "<@UBOT> update",
             "channel": "C12345",
             "ts": "1234567890.123456"
         }
@@ -225,7 +278,109 @@ class TestHandleMention:
 
         mock_say.assert_called()
         call_text = mock_say.call_args.kwargs["text"]
-        assert "권한이 없습니다" in call_text
+        assert "관리자 권한" in call_text
+
+    @patch("seosoyoung.main._run_claude_in_session")
+    @patch("seosoyoung.main.get_channel_history", return_value="<U123>: 이전 대화")
+    @patch("seosoyoung.main.session_manager")
+    @patch("seosoyoung.main.get_user_role")
+    def test_handle_mention_question_creates_session(
+        self, mock_get_role, mock_session_manager, mock_history, mock_run_claude
+    ):
+        """일반 질문은 세션 생성 후 Claude 실행"""
+        mock_get_role.return_value = {
+            "user_id": "U12345",
+            "username": "testuser",
+            "role": "viewer",
+            "allowed_tools": ["Read", "Glob", "Grep"]
+        }
+        mock_session = MagicMock()
+        mock_session_manager.create.return_value = mock_session
+
+        from seosoyoung.main import handle_mention
+
+        event = {
+            "user": "U12345",
+            "text": "<@UBOT> rev1의 대사 구조를 설명해줘",
+            "channel": "C12345",
+            "ts": "1234567890.123456"
+        }
+        mock_say = MagicMock()
+        mock_client = MagicMock()
+
+        handle_mention(event, mock_say, mock_client)
+
+        # 세션 생성 확인
+        mock_session_manager.create.assert_called_once()
+        call_kwargs = mock_session_manager.create.call_args.kwargs
+        assert call_kwargs["thread_ts"] == "1234567890.123456"
+        assert call_kwargs["role"] == "viewer"
+        assert call_kwargs["username"] == "testuser"
+
+        # Claude 실행 확인
+        mock_run_claude.assert_called_once()
+
+    @patch("seosoyoung.main.session_manager")
+    def test_handle_mention_in_thread_with_session_ignored(self, mock_session_manager):
+        """세션이 있는 스레드에서 멘션은 무시 (handle_message에서 처리)"""
+        mock_session_manager.exists.return_value = True
+
+        from seosoyoung.main import handle_mention
+
+        event = {
+            "user": "U12345",
+            "text": "<@UBOT> 추가 질문입니다",
+            "channel": "C12345",
+            "ts": "1234567890.123457",
+            "thread_ts": "1234567890.123456"  # 스레드 내 멘션
+        }
+        mock_say = MagicMock()
+        mock_client = MagicMock()
+
+        handle_mention(event, mock_say, mock_client)
+
+        # 세션이 있으면 무시 (handle_message에서 처리)
+        mock_say.assert_not_called()
+
+    @patch("seosoyoung.main._run_claude_in_session")
+    @patch("seosoyoung.main.get_channel_history", return_value="")
+    @patch("seosoyoung.main.session_manager")
+    @patch("seosoyoung.main.get_user_role")
+    def test_handle_mention_in_thread_without_session_oneshot(
+        self, mock_get_role, mock_session_manager, mock_history, mock_run_claude
+    ):
+        """세션이 없는 스레드에서 멘션은 원샷 답변"""
+        mock_session_manager.exists.return_value = False
+        mock_get_role.return_value = {
+            "user_id": "U12345",
+            "username": "testuser",
+            "role": "viewer",
+            "allowed_tools": ["Read", "Glob", "Grep"]
+        }
+        mock_session = MagicMock()
+        mock_session_manager.create.return_value = mock_session
+
+        from seosoyoung.main import handle_mention
+
+        event = {
+            "user": "U12345",
+            "text": "<@UBOT> 이 스레드에서 질문합니다",
+            "channel": "C12345",
+            "ts": "1234567890.123457",
+            "thread_ts": "1234567890.123456"  # 세션 없는 스레드
+        }
+        mock_say = MagicMock()
+        mock_client = MagicMock()
+
+        handle_mention(event, mock_say, mock_client)
+
+        # 세션이 thread_ts 기준으로 생성됨
+        call_kwargs = mock_session_manager.create.call_args.kwargs
+        assert call_kwargs["thread_ts"] == "1234567890.123456"
+
+        # 스레드 시작 메시지 없음 (원샷)
+        # 바로 Claude 실행
+        mock_run_claude.assert_called_once()
 
 
 class TestHandleMessage:
@@ -267,9 +422,27 @@ class TestHandleMessage:
 
         mock_say.assert_not_called()
 
+    def test_handle_message_with_mention_ignored(self):
+        """멘션이 포함된 메시지는 무시 (handle_mention에서 처리)"""
+        from seosoyoung.main import handle_message
+
+        event = {
+            "user": "U12345",
+            "text": "<@UBOT> 질문입니다",
+            "channel": "C12345",
+            "thread_ts": "1234567890.123456",
+            "ts": "1234567890.123457"
+        }
+        mock_say = MagicMock()
+        mock_client = MagicMock()
+
+        handle_message(event, mock_say, mock_client)
+
+        # 멘션이 있으면 무시
+        mock_say.assert_not_called()
+
     @patch("seosoyoung.main.session_manager")
-    @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_handle_message_no_session_ignored(self, mock_check_perm, mock_session_manager):
+    def test_handle_message_no_session_ignored(self, mock_session_manager):
         """세션이 없으면 무시"""
         mock_session_manager.get.return_value = None  # 세션 없음
 
@@ -290,14 +463,19 @@ class TestHandleMessage:
         # 세션이 없으면 처리 안 함
         mock_say.assert_not_called()
 
-    @patch("seosoyoung.main.check_permission", return_value=False)
-    def test_handle_message_no_permission_ignored(self, mock_check_perm):
-        """권한 없으면 무시"""
+    @patch("seosoyoung.main._run_claude_in_session")
+    @patch("seosoyoung.main.session_manager")
+    def test_handle_message_with_session_runs_claude(self, mock_session_manager, mock_run_claude):
+        """세션이 있으면 Claude 실행"""
+        mock_session = MagicMock()
+        mock_session.role = "admin"
+        mock_session_manager.get.return_value = mock_session
+
         from seosoyoung.main import handle_message
 
         event = {
             "user": "U12345",
-            "text": "Hello",
+            "text": "파일 구조를 보여줘",  # 멘션 없음
             "channel": "C12345",
             "thread_ts": "1234567890.123456",
             "ts": "1234567890.123457"
@@ -307,19 +485,23 @@ class TestHandleMessage:
 
         handle_message(event, mock_say, mock_client)
 
-        mock_say.assert_not_called()
+        # Claude 실행 확인
+        mock_run_claude.assert_called_once()
+        call_args = mock_run_claude.call_args
+        assert call_args[0][0] == mock_session  # 첫 번째 인자: session
+        assert call_args[0][1] == "파일 구조를 보여줘"  # 두 번째 인자: prompt
 
     @patch("seosoyoung.main.session_manager")
-    @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_handle_message_empty_text_ignored(self, mock_check_perm, mock_session_manager):
-        """빈 텍스트(멘션만 있는 경우)는 무시"""
-        mock_session_manager.get.return_value = MagicMock()
+    def test_handle_message_empty_text_ignored(self, mock_session_manager):
+        """빈 텍스트는 무시"""
+        mock_session = MagicMock()
+        mock_session_manager.get.return_value = mock_session
 
         from seosoyoung.main import handle_message
 
         event = {
             "user": "U12345",
-            "text": "<@UBOT>",  # 멘션만 있음
+            "text": "",  # 빈 텍스트
             "channel": "C12345",
             "thread_ts": "1234567890.123456",
             "ts": "1234567890.123457"
@@ -330,94 +512,7 @@ class TestHandleMessage:
         handle_message(event, mock_say, mock_client)
 
         # 빈 텍스트면 처리 안 함
-        mock_client.chat_postMessage.assert_not_called()
-
-    @patch("seosoyoung.main.send_long_message")
-    @patch("seosoyoung.main.claude_runner")
-    @patch("seosoyoung.main.session_manager")
-    @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_handle_message_success(self, mock_check_perm, mock_session_manager, mock_runner, mock_send_long):
-        """성공적인 메시지 처리"""
-        from seosoyoung.claude.runner import ClaudeResult
-        from seosoyoung.main import handle_message
-
-        mock_session = MagicMock()
-        mock_session.session_id = "session-123"
-        mock_session_manager.get.return_value = mock_session
-
-        # Claude 실행 결과
-        mock_result = ClaudeResult(
-            success=True,
-            output="응답입니다",
-            session_id="session-123"
-        )
-
-        async def mock_run(*args, **kwargs):
-            return mock_result
-
-        mock_runner.run = mock_run
-
-        event = {
-            "user": "U12345",
-            "text": "테스트 메시지",
-            "channel": "C12345",
-            "thread_ts": "1234567890.123456",
-            "ts": "1234567890.123457"
-        }
-
-        mock_say = MagicMock()
-        mock_client = MagicMock()
-        mock_client.chat_postMessage.return_value = {"ts": "progress-ts"}
-
-        handle_message(event, mock_say, mock_client)
-
-        # on_progress가 호출되지 않으면 chat_postMessage는 호출되지 않음
-        # last_message_ts가 None이므로 send_long_message로 최종 응답 전송
-        mock_send_long.assert_called()
-
-    @patch("seosoyoung.main.claude_runner")
-    @patch("seosoyoung.main.session_manager")
-    @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_handle_message_claude_error(self, mock_check_perm, mock_session_manager, mock_runner):
-        """Claude 실행 오류 처리"""
-        from seosoyoung.claude.runner import ClaudeResult
-        from seosoyoung.main import handle_message
-
-        mock_session = MagicMock()
-        mock_session.session_id = "session-123"
-        mock_session_manager.get.return_value = mock_session
-
-        # Claude 실행 실패
-        mock_result = ClaudeResult(
-            success=False,
-            output="",
-            error="오류 발생"
-        )
-
-        async def mock_run(*args, **kwargs):
-            return mock_result
-
-        mock_runner.run = mock_run
-
-        event = {
-            "user": "U12345",
-            "text": "테스트 메시지",
-            "channel": "C12345",
-            "thread_ts": "1234567890.123456",
-            "ts": "1234567890.123457"
-        }
-
-        mock_say = MagicMock()
-        mock_client = MagicMock()
-        mock_client.chat_postMessage.return_value = {"ts": "progress-ts"}
-
-        handle_message(event, mock_say, mock_client)
-
-        # on_progress가 호출되지 않으면 last_message_ts가 None
-        # 따라서 say로 오류 메시지 전송
-        mock_say.assert_called()
-        call_text = mock_say.call_args.kwargs["text"]
-        assert "오류" in call_text
+        mock_say.assert_not_called()
 
 
 class TestGetChannelHistory:
@@ -452,95 +547,6 @@ class TestGetChannelHistory:
         result = get_channel_history(mock_client, "C12345")
 
         assert result == ""
-
-
-class TestHandleInstantAnswer:
-    """handle_instant_answer 함수 테스트"""
-
-    @patch("seosoyoung.main.claude_runner")
-    @patch("seosoyoung.main.get_channel_history", return_value="<U123>: 이전 대화")
-    def test_instant_answer_success(self, mock_history, mock_runner):
-        """인스턴트 답변 성공"""
-        from seosoyoung.claude.runner import ClaudeResult
-        from seosoyoung.main import handle_instant_answer
-
-        mock_result = ClaudeResult(
-            success=True,
-            output="답변입니다",
-            session_id=None
-        )
-
-        async def mock_run(*args, **kwargs):
-            return mock_result
-
-        mock_runner.run = mock_run
-
-        mock_say = MagicMock()
-        mock_client = MagicMock()
-        mock_client.chat_postMessage.return_value = {"ts": "thinking-ts"}
-
-        handle_instant_answer("질문입니다", "C12345", "ts123", None, mock_say, mock_client)
-
-        # 채널 히스토리 호출 확인
-        mock_history.assert_called_once_with(mock_client, "C12345", limit=20)
-        # "생각하고 있어요..." 메시지 전송 확인
-        mock_client.chat_postMessage.assert_called()
-        # 최종 응답으로 업데이트 확인
-        mock_client.chat_update.assert_called()
-
-    @patch("seosoyoung.main.claude_runner")
-    @patch("seosoyoung.main.get_channel_history", return_value="")
-    def test_instant_answer_error(self, mock_history, mock_runner):
-        """인스턴트 답변 오류"""
-        from seosoyoung.claude.runner import ClaudeResult
-        from seosoyoung.main import handle_instant_answer
-
-        mock_result = ClaudeResult(
-            success=False,
-            output="",
-            error="오류 발생"
-        )
-
-        async def mock_run(*args, **kwargs):
-            return mock_result
-
-        mock_runner.run = mock_run
-
-        mock_say = MagicMock()
-        mock_client = MagicMock()
-        mock_client.chat_postMessage.return_value = {"ts": "thinking-ts"}
-
-        handle_instant_answer("질문입니다", "C12345", "ts123", None, mock_say, mock_client)
-
-        # 오류 메시지로 업데이트 확인
-        mock_client.chat_update.assert_called()
-        # 마지막 호출의 text에 "오류" 포함 확인
-        last_call = mock_client.chat_update.call_args
-        assert "오류" in last_call.kwargs["text"]
-
-
-class TestHandleMentionInstantAnswer:
-    """handle_mention에서 인스턴트 답변 호출 테스트"""
-
-    @patch("seosoyoung.main.handle_instant_answer")
-    @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_unknown_command_triggers_instant_answer(self, mock_check_perm, mock_instant):
-        """알 수 없는 명령어는 인스턴트 답변으로 처리"""
-        from seosoyoung.main import handle_mention
-
-        event = {
-            "user": "U12345",
-            "text": "<@UBOT> 오늘 날씨 어때?",
-            "channel": "C12345",
-            "ts": "1234567890.123456"
-        }
-        mock_say = MagicMock()
-        mock_client = MagicMock()
-
-        handle_mention(event, mock_say, mock_client)
-
-        # 인스턴트 답변 호출 확인
-        mock_instant.assert_called_once()
 
 
 if __name__ == "__main__":
