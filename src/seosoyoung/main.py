@@ -59,6 +59,27 @@ def extract_command(text: str) -> str:
     return match.lower()
 
 
+def get_channel_history(client, channel: str, limit: int = 20) -> str:
+    """채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환"""
+    try:
+        result = client.conversations_history(channel=channel, limit=limit)
+        messages = result.get("messages", [])
+
+        # 시간순 정렬 (오래된 것부터)
+        messages = list(reversed(messages))
+
+        context_lines = []
+        for msg in messages:
+            user = msg.get("user", "unknown")
+            text = msg.get("text", "")
+            context_lines.append(f"<{user}>: {text}")
+
+        return "\n".join(context_lines)
+    except Exception as e:
+        logger.warning(f"채널 히스토리 가져오기 실패: {e}")
+        return ""
+
+
 @app.event("app_mention")
 def handle_mention(event, say, client):
     """@seosoyoung 멘션 처리"""
@@ -66,6 +87,7 @@ def handle_mention(event, say, client):
     text = event.get("text", "")
     channel = event["channel"]
     ts = event["ts"]
+    thread_ts = event.get("thread_ts")  # 스레드에서 호출되었으면 값 있음
 
     logger.info(f"멘션 수신: user={user_id}, channel={channel}, text={text[:50]}")
 
@@ -124,10 +146,56 @@ def handle_mention(event, say, client):
         os._exit(43)
 
     else:
-        say(
-            text=f"알 수 없는 명령입니다: `{command}`\n`@seosoyoung help`를 입력해보세요.",
-            thread_ts=ts
-        )
+        # 인스턴트 답변: 명령이 아니면 바로 Claude에 전달
+        # 채널에서 호출되었으면 채널에, 스레드에서 호출되었으면 스레드에 응답
+        handle_instant_answer(text, channel, ts, thread_ts, say, client)
+
+
+def handle_instant_answer(text: str, channel: str, ts: str, thread_ts: str | None, say, client):
+    """인스턴트 답변 처리 - 세션 없이 바로 Claude에 전달
+
+    Args:
+        thread_ts: 스레드에서 호출되었으면 스레드 ts, 채널에서 호출되었으면 None
+    """
+    # 이전 대화 20개를 컨텍스트로 포함
+    context = get_channel_history(client, channel, limit=20)
+
+    prompt = f"""아래는 Slack 채널의 최근 대화입니다:
+
+{context}
+
+사용자의 질문: {text}
+
+위 컨텍스트를 참고하여 질문에 답변해주세요."""
+
+    # 작업 중 이모지
+    try:
+        client.reactions_add(channel=channel, timestamp=ts, name="eyes")
+    except Exception:
+        pass
+
+    # 응답 위치: 스레드에서 호출되었으면 스레드에, 채널에서 호출되었으면 채널에
+    reply_ts = thread_ts  # None이면 채널에 응답
+
+    # Claude Code 실행 (세션 없이, 스트리밍 없이)
+    try:
+        result = asyncio.run(claude_runner.run(prompt=prompt))
+
+        if result.success:
+            response = result.output or "(응답 없음)"
+            send_long_message(say, response, reply_ts)
+        else:
+            say(text=f"오류가 발생했습니다: {result.error}", thread_ts=reply_ts)
+    except Exception as e:
+        logger.exception(f"인스턴트 답변 오류: {e}")
+        say(text=f"오류가 발생했습니다: {str(e)}", thread_ts=reply_ts)
+
+    # 이모지 제거/추가
+    try:
+        client.reactions_remove(channel=channel, timestamp=ts, name="eyes")
+        client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
+    except Exception:
+        pass
 
 
 @app.event("message")
@@ -273,8 +341,8 @@ def handle_message(event, say, client):
         pass
 
 
-def send_long_message(say, text: str, thread_ts: str, max_length: int = 3900):
-    """긴 메시지를 분할해서 전송"""
+def send_long_message(say, text: str, thread_ts: str | None, max_length: int = 3900):
+    """긴 메시지를 분할해서 전송 (thread_ts가 None이면 채널에 응답)"""
     if len(text) <= max_length:
         say(text=f"{text}", thread_ts=thread_ts)
         return

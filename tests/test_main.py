@@ -187,9 +187,10 @@ class TestHandleMention:
         call_text = mock_say.call_args.kwargs["text"]
         assert "상태" in call_text
 
+    @patch("seosoyoung.main.handle_instant_answer")
     @patch("seosoyoung.main.check_permission", return_value=True)
-    def test_handle_mention_unknown_command(self, mock_check_perm):
-        """알 수 없는 명령어 처리"""
+    def test_handle_mention_unknown_command(self, mock_check_perm, mock_instant):
+        """알 수 없는 명령어는 인스턴트 답변으로 처리"""
         from seosoyoung.main import handle_mention
 
         event = {
@@ -203,9 +204,8 @@ class TestHandleMention:
 
         handle_mention(event, mock_say, mock_client)
 
-        mock_say.assert_called()
-        call_text = mock_say.call_args.kwargs["text"]
-        assert "알 수 없는 명령" in call_text
+        # 인스턴트 답변이 호출되어야 함
+        mock_instant.assert_called_once()
 
     @patch("seosoyoung.main.check_permission", return_value=False)
     def test_handle_mention_no_permission(self, mock_check_perm):
@@ -418,6 +418,125 @@ class TestHandleMessage:
         mock_say.assert_called()
         call_text = mock_say.call_args.kwargs["text"]
         assert "오류" in call_text
+
+
+class TestGetChannelHistory:
+    """get_channel_history 함수 테스트"""
+
+    def test_get_channel_history_success(self):
+        """채널 히스토리 가져오기 성공"""
+        from seosoyoung.main import get_channel_history
+
+        mock_client = MagicMock()
+        mock_client.conversations_history.return_value = {
+            "messages": [
+                {"user": "U123", "text": "첫 번째 메시지"},
+                {"user": "U456", "text": "두 번째 메시지"},
+            ]
+        }
+
+        result = get_channel_history(mock_client, "C12345", limit=20)
+
+        mock_client.conversations_history.assert_called_once_with(channel="C12345", limit=20)
+        # 시간순 정렬 (오래된 것부터)
+        assert "<U456>: 두 번째 메시지" in result
+        assert "<U123>: 첫 번째 메시지" in result
+
+    def test_get_channel_history_api_error(self):
+        """API 오류 시 빈 문자열 반환"""
+        from seosoyoung.main import get_channel_history
+
+        mock_client = MagicMock()
+        mock_client.conversations_history.side_effect = Exception("API Error")
+
+        result = get_channel_history(mock_client, "C12345")
+
+        assert result == ""
+
+
+class TestHandleInstantAnswer:
+    """handle_instant_answer 함수 테스트"""
+
+    @patch("seosoyoung.main.send_long_message")
+    @patch("seosoyoung.main.claude_runner")
+    @patch("seosoyoung.main.get_channel_history", return_value="<U123>: 이전 대화")
+    def test_instant_answer_success(self, mock_history, mock_runner, mock_send_long):
+        """인스턴트 답변 성공"""
+        from seosoyoung.claude.runner import ClaudeResult
+        from seosoyoung.main import handle_instant_answer
+
+        mock_result = ClaudeResult(
+            success=True,
+            output="답변입니다",
+            session_id=None
+        )
+
+        async def mock_run(*args, **kwargs):
+            return mock_result
+
+        mock_runner.run = mock_run
+
+        mock_say = MagicMock()
+        mock_client = MagicMock()
+
+        handle_instant_answer("질문입니다", "C12345", "ts123", None, mock_say, mock_client)
+
+        # 채널 히스토리 호출 확인
+        mock_history.assert_called_once_with(mock_client, "C12345", limit=20)
+        # 응답 전송 확인
+        mock_send_long.assert_called()
+
+    @patch("seosoyoung.main.claude_runner")
+    @patch("seosoyoung.main.get_channel_history", return_value="")
+    def test_instant_answer_error(self, mock_history, mock_runner):
+        """인스턴트 답변 오류"""
+        from seosoyoung.claude.runner import ClaudeResult
+        from seosoyoung.main import handle_instant_answer
+
+        mock_result = ClaudeResult(
+            success=False,
+            output="",
+            error="오류 발생"
+        )
+
+        async def mock_run(*args, **kwargs):
+            return mock_result
+
+        mock_runner.run = mock_run
+
+        mock_say = MagicMock()
+        mock_client = MagicMock()
+
+        handle_instant_answer("질문입니다", "C12345", "ts123", None, mock_say, mock_client)
+
+        # 오류 메시지 전송 확인
+        mock_say.assert_called()
+        call_text = mock_say.call_args.kwargs["text"]
+        assert "오류" in call_text
+
+
+class TestHandleMentionInstantAnswer:
+    """handle_mention에서 인스턴트 답변 호출 테스트"""
+
+    @patch("seosoyoung.main.handle_instant_answer")
+    @patch("seosoyoung.main.check_permission", return_value=True)
+    def test_unknown_command_triggers_instant_answer(self, mock_check_perm, mock_instant):
+        """알 수 없는 명령어는 인스턴트 답변으로 처리"""
+        from seosoyoung.main import handle_mention
+
+        event = {
+            "user": "U12345",
+            "text": "<@UBOT> 오늘 날씨 어때?",
+            "channel": "C12345",
+            "ts": "1234567890.123456"
+        }
+        mock_say = MagicMock()
+        mock_client = MagicMock()
+
+        handle_mention(event, mock_say, mock_client)
+
+        # 인스턴트 답변 호출 확인
+        mock_instant.assert_called_once()
 
 
 if __name__ == "__main__":
