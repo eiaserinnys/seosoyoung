@@ -169,11 +169,35 @@ def handle_message(event, say, client):
     except Exception:
         pass
 
+    # 진행 상황 메시지 먼저 전송
+    progress_msg = client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text="👩 _작업 중..._"
+    )
+    progress_ts = progress_msg["ts"]
+
+    # 스트리밍 콜백 (진행 상황 업데이트)
+    async def on_progress(text: str):
+        try:
+            # 텍스트가 너무 길면 마지막 부분만
+            display_text = text
+            if len(display_text) > 3800:
+                display_text = "...\n" + display_text[-3800:]
+            client.chat_update(
+                channel=channel,
+                ts=progress_ts,
+                text=f"👩 _작업 중..._\n```\n{display_text}\n```"
+            )
+        except Exception as e:
+            logger.warning(f"진행 상황 업데이트 실패: {e}")
+
     # Claude Code 실행
     try:
         result = asyncio.run(claude_runner.run(
             prompt=clean_text,
-            session_id=session.session_id
+            session_id=session.session_id,
+            on_progress=on_progress
         ))
 
         # 세션 ID 업데이트 (첫 응답에서 받음)
@@ -184,7 +208,13 @@ def handle_message(event, say, client):
         session_manager.increment_message_count(thread_ts)
 
         if result.success:
-            # 응답 전송 (길면 분할)
+            # 진행 상황 메시지 삭제
+            try:
+                client.chat_delete(channel=channel, ts=progress_ts)
+            except Exception:
+                pass
+
+            # 최종 응답 전송 (길면 분할)
             response = result.output or "(응답 없음)"
             send_long_message(say, response, thread_ts)
 
@@ -194,7 +224,16 @@ def handle_message(event, say, client):
             except Exception:
                 pass
         else:
-            say(text=f"👩 오류가 발생했습니다: {result.error}", thread_ts=thread_ts)
+            # 진행 상황 메시지를 오류 메시지로 업데이트
+            try:
+                client.chat_update(
+                    channel=channel,
+                    ts=progress_ts,
+                    text=f"👩 오류가 발생했습니다: {result.error}"
+                )
+            except Exception:
+                say(text=f"👩 오류가 발생했습니다: {result.error}", thread_ts=thread_ts)
+
             try:
                 client.reactions_add(channel=channel, timestamp=event["ts"], name="x")
             except Exception:
@@ -202,7 +241,14 @@ def handle_message(event, say, client):
 
     except Exception as e:
         logger.exception(f"Claude Code 실행 오류: {e}")
-        say(text=f"👩 오류가 발생했습니다: {str(e)}", thread_ts=thread_ts)
+        try:
+            client.chat_update(
+                channel=channel,
+                ts=progress_ts,
+                text=f"👩 오류가 발생했습니다: {str(e)}"
+            )
+        except Exception:
+            say(text=f"👩 오류가 발생했습니다: {str(e)}", thread_ts=thread_ts)
 
     # 작업 중 이모지 제거
     try:

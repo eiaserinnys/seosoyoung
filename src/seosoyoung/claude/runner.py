@@ -4,11 +4,13 @@ import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable, Awaitable
 
 from seosoyoung.config import Config
+from seosoyoung.claude.security import SecurityChecker, SecurityError
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,24 @@ SENSITIVE_ENV_KEYS = {
     "SLACK_APP_TOKEN",
     "ANTHROPIC_API_KEY",
 }
+
+# Claude Code 허용 도구
+ALLOWED_TOOLS = [
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "Bash",
+    "TodoWrite",
+]
+
+# Claude Code 금지 도구
+DISALLOWED_TOOLS = [
+    "WebFetch",
+    "WebSearch",
+    "Task",
+]
 
 
 @dataclass
@@ -37,10 +57,17 @@ class ClaudeRunner:
         self,
         working_dir: Optional[Path] = None,
         timeout: int = 300,  # 5분 기본 타임아웃
+        allowed_tools: Optional[list[str]] = None,
+        disallowed_tools: Optional[list[str]] = None,
+        enable_security_check: bool = True,
     ):
         self.working_dir = working_dir or Path(Config.EB_RENPY_PATH)
         self.timeout = timeout
+        self.allowed_tools = allowed_tools or ALLOWED_TOOLS
+        self.disallowed_tools = disallowed_tools or DISALLOWED_TOOLS
+        self.enable_security_check = enable_security_check
         self._lock = asyncio.Lock()  # 동시 실행 제어
+        self._security = SecurityChecker()
 
     def _get_filtered_env(self) -> dict:
         """민감 정보를 제외한 환경 변수 반환"""
@@ -63,6 +90,14 @@ class ClaudeRunner:
             "--verbose",
         ]
 
+        # 허용 도구 설정
+        if self.allowed_tools:
+            cmd.extend(["--allowedTools", ",".join(self.allowed_tools)])
+
+        # 금지 도구 설정
+        if self.disallowed_tools:
+            cmd.extend(["--disallowedTools", ",".join(self.disallowed_tools)])
+
         if session_id:
             cmd.extend(["--resume", session_id])
 
@@ -72,10 +107,31 @@ class ClaudeRunner:
         self,
         prompt: str,
         session_id: Optional[str] = None,
+        on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> ClaudeResult:
-        """Claude Code 실행"""
+        """Claude Code 실행
+
+        Args:
+            prompt: 실행할 프롬프트
+            session_id: 이어갈 세션 ID (선택)
+            on_progress: 진행 상황 콜백 (선택). 텍스트 청크가 생성될 때마다 호출됨.
+        """
+        # 보안 검사
+        if self.enable_security_check:
+            is_safe, reason = self._security.check_prompt(prompt)
+            if not is_safe:
+                logger.warning(f"보안 검사 실패: {reason}")
+                return ClaudeResult(
+                    success=False,
+                    output="",
+                    error=f"보안 검사 실패: {reason}"
+                )
+
         async with self._lock:
-            return await self._execute(prompt, session_id)
+            if on_progress:
+                return await self._execute_streaming(prompt, session_id, on_progress)
+            else:
+                return await self._execute(prompt, session_id)
 
     async def _execute(
         self,
@@ -128,6 +184,144 @@ class ClaudeRunner:
                 error=str(e)
             )
 
+    async def _execute_streaming(
+        self,
+        prompt: str,
+        session_id: Optional[str],
+        on_progress: Callable[[str], Awaitable[None]],
+    ) -> ClaudeResult:
+        """스트리밍 모드 실행 (진행 상황 콜백 호출)"""
+        cmd = self._build_command(prompt, session_id)
+        logger.info(f"Claude Code 스트리밍 실행: {' '.join(cmd[:5])}...")
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(self.working_dir),
+                env=self._get_filtered_env(),
+                limit=1024 * 1024,
+            )
+
+            result_session_id = None
+            output_parts = []
+            files = []
+            last_progress_time = asyncio.get_event_loop().time()
+            progress_interval = 2.0  # 2초 간격으로 업데이트
+
+            async def read_stream():
+                nonlocal result_session_id, last_progress_time
+
+                while True:
+                    try:
+                        line = await asyncio.wait_for(
+                            process.stdout.readline(),
+                            timeout=self.timeout
+                        )
+                    except asyncio.TimeoutError:
+                        process.terminate()
+                        await process.wait()
+                        return False, "타임아웃"
+
+                    if not line:
+                        break
+
+                    line_str = line.decode("utf-8").strip()
+                    if not line_str:
+                        continue
+
+                    try:
+                        data = json.loads(line_str)
+                        msg_type = data.get("type")
+
+                        # 세션 ID 추출
+                        if msg_type == "system" and data.get("subtype") == "init":
+                            result_session_id = data.get("session_id")
+                            logger.info(f"세션 ID: {result_session_id}")
+
+                        # assistant 응답 수집
+                        elif msg_type == "assistant":
+                            content = data.get("message", {}).get("content", [])
+                            for block in content:
+                                if block.get("type") == "text":
+                                    text = block.get("text", "")
+                                    output_parts.append(text)
+
+                                    # 진행 상황 콜백 (2초 간격)
+                                    current_time = asyncio.get_event_loop().time()
+                                    if current_time - last_progress_time >= progress_interval:
+                                        try:
+                                            progress_text = "\n".join(output_parts)
+                                            # 너무 길면 마지막 부분만
+                                            if len(progress_text) > 1000:
+                                                progress_text = "...\n" + progress_text[-1000:]
+                                            await on_progress(progress_text)
+                                            last_progress_time = current_time
+                                        except Exception as e:
+                                            logger.warning(f"진행 상황 콜백 오류: {e}")
+
+                        # result 메시지
+                        elif msg_type == "result":
+                            result_text = data.get("result", "")
+                            if result_text:
+                                output_parts.append(result_text)
+
+                    except json.JSONDecodeError:
+                        output_parts.append(line_str)
+
+                return True, None
+
+            success, error_msg = await read_stream()
+
+            # stderr 읽기
+            stderr_data = await process.stderr.read()
+            stderr = stderr_data.decode("utf-8") if stderr_data else ""
+
+            if not success:
+                return ClaudeResult(
+                    success=False,
+                    output="\n".join(output_parts),
+                    session_id=result_session_id,
+                    error=error_msg
+                )
+
+            await process.wait()
+
+            output = "\n".join(output_parts)
+
+            # FILE 마커 추출
+            file_pattern = r"<!-- FILE: (.+?) -->"
+            files = re.findall(file_pattern, output)
+
+            # 출력 마스킹
+            output = self._security.mask_output(output)
+
+            if stderr:
+                logger.warning(f"Claude Code stderr: {stderr[:500]}")
+
+            return ClaudeResult(
+                success=True,
+                output=output,
+                session_id=result_session_id,
+                files=files,
+            )
+
+        except FileNotFoundError:
+            logger.error("Claude Code CLI를 찾을 수 없습니다.")
+            return ClaudeResult(
+                success=False,
+                output="",
+                error="Claude Code CLI를 찾을 수 없습니다."
+            )
+        except Exception as e:
+            logger.exception(f"Claude Code 스트리밍 실행 오류: {e}")
+            return ClaudeResult(
+                success=False,
+                output="",
+                error=str(e)
+            )
+
     def _parse_output(self, stdout: str, stderr: str) -> ClaudeResult:
         """stream-json 출력 파싱"""
         session_id = None
@@ -169,9 +363,11 @@ class ClaudeRunner:
 
         # FILE 마커 추출
         # <!-- FILE: /path/to/file --> 패턴
-        import re
         file_pattern = r"<!-- FILE: (.+?) -->"
         files = re.findall(file_pattern, output)
+
+        # 출력 마스킹 (민감 정보 제거)
+        output = self._security.mask_output(output)
 
         if stderr:
             logger.warning(f"Claude Code stderr: {stderr[:500]}")
