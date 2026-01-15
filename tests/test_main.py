@@ -457,10 +457,9 @@ class TestGetChannelHistory:
 class TestHandleInstantAnswer:
     """handle_instant_answer 함수 테스트"""
 
-    @patch("seosoyoung.main.send_long_message")
     @patch("seosoyoung.main.claude_runner")
     @patch("seosoyoung.main.get_channel_history", return_value="<U123>: 이전 대화")
-    def test_instant_answer_success(self, mock_history, mock_runner, mock_send_long):
+    def test_instant_answer_success(self, mock_history, mock_runner):
         """인스턴트 답변 성공"""
         from seosoyoung.claude.runner import ClaudeResult
         from seosoyoung.main import handle_instant_answer
@@ -478,13 +477,16 @@ class TestHandleInstantAnswer:
 
         mock_say = MagicMock()
         mock_client = MagicMock()
+        mock_client.chat_postMessage.return_value = {"ts": "thinking-ts"}
 
         handle_instant_answer("질문입니다", "C12345", "ts123", None, mock_say, mock_client)
 
         # 채널 히스토리 호출 확인
         mock_history.assert_called_once_with(mock_client, "C12345", limit=20)
-        # 응답 전송 확인
-        mock_send_long.assert_called()
+        # "생각하고 있어요..." 메시지 전송 확인
+        mock_client.chat_postMessage.assert_called()
+        # 최종 응답으로 업데이트 확인
+        mock_client.chat_update.assert_called()
 
     @patch("seosoyoung.main.claude_runner")
     @patch("seosoyoung.main.get_channel_history", return_value="")
@@ -506,13 +508,15 @@ class TestHandleInstantAnswer:
 
         mock_say = MagicMock()
         mock_client = MagicMock()
+        mock_client.chat_postMessage.return_value = {"ts": "thinking-ts"}
 
         handle_instant_answer("질문입니다", "C12345", "ts123", None, mock_say, mock_client)
 
-        # 오류 메시지 전송 확인
-        mock_say.assert_called()
-        call_text = mock_say.call_args.kwargs["text"]
-        assert "오류" in call_text
+        # 오류 메시지로 업데이트 확인
+        mock_client.chat_update.assert_called()
+        # 마지막 호출의 text에 "오류" 포함 확인
+        last_call = mock_client.chat_update.call_args
+        assert "오류" in last_call.kwargs["text"]
 
 
 class TestHandleMentionInstantAnswer:

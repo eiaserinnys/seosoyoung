@@ -177,18 +177,60 @@ def handle_instant_answer(text: str, channel: str, ts: str, thread_ts: str | Non
     # 응답 위치: 스레드에서 호출되었으면 스레드에, 채널에서 호출되었으면 채널에
     reply_ts = thread_ts  # None이면 채널에 응답
 
-    # Claude Code 실행 (세션 없이, 스트리밍 없이)
+    # "생각하고 있어요..." 메시지 먼저 전송
+    thinking_msg = client.chat_postMessage(
+        channel=channel,
+        thread_ts=reply_ts,
+        text="_생각하고 있어요..._"
+    )
+    thinking_ts = thinking_msg["ts"]
+
+    # 스트리밍 콜백 (사고 과정 업데이트)
+    async def on_progress(current_text: str):
+        try:
+            display_text = current_text
+            if len(display_text) > 3800:
+                display_text = "...\n" + display_text[-3800:]
+            client.chat_update(
+                channel=channel,
+                ts=thinking_ts,
+                text=f"_생각하고 있어요..._\n```\n{display_text}\n```"
+            )
+        except Exception as e:
+            logger.warning(f"사고 과정 업데이트 실패: {e}")
+
+    # Claude Code 실행 (스트리밍)
     try:
-        result = asyncio.run(claude_runner.run(prompt=prompt))
+        result = asyncio.run(claude_runner.run(prompt=prompt, on_progress=on_progress))
 
         if result.success:
             response = result.output or "(응답 없음)"
-            send_long_message(say, response, reply_ts)
+            # "생각하고 있어요..." 메시지를 최종 응답으로 교체
+            try:
+                if len(response) <= 3900:
+                    client.chat_update(channel=channel, ts=thinking_ts, text=response)
+                else:
+                    client.chat_update(channel=channel, ts=thinking_ts, text=f"(1/?) {response[:3900]}")
+                    remaining = response[3900:]
+                    send_long_message(say, remaining, reply_ts)
+            except Exception:
+                send_long_message(say, response, reply_ts)
         else:
-            say(text=f"오류가 발생했습니다: {result.error}", thread_ts=reply_ts)
+            client.chat_update(
+                channel=channel,
+                ts=thinking_ts,
+                text=f"오류가 발생했습니다: {result.error}"
+            )
     except Exception as e:
         logger.exception(f"인스턴트 답변 오류: {e}")
-        say(text=f"오류가 발생했습니다: {str(e)}", thread_ts=reply_ts)
+        try:
+            client.chat_update(
+                channel=channel,
+                ts=thinking_ts,
+                text=f"오류가 발생했습니다: {str(e)}"
+            )
+        except Exception:
+            say(text=f"오류가 발생했습니다: {str(e)}", thread_ts=reply_ts)
 
     # 이모지 제거/추가
     try:
