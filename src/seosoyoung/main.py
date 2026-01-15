@@ -168,8 +168,10 @@ def handle_instant_answer(text: str, channel: str, ts: str, thread_ts: str | Non
     Args:
         thread_ts: 스레드에서 호출되었으면 스레드 ts, 채널에서 호출되었으면 None
     """
-    # 응답 위치: 스레드에서 호출되었으면 스레드에, 채널에서 호출되었으면 채널에
-    reply_ts = thread_ts  # None이면 채널에 응답
+    # 응답 위치: 항상 스레드에 응답
+    # - 채널에서 호출 → 원본 메시지(ts)의 스레드로 답변
+    # - 스레드에서 호출 → 해당 스레드에 답변
+    reply_ts = thread_ts or ts
 
     # 동시 실행 제한
     if not _instant_answer_lock.acquire(blocking=False):
