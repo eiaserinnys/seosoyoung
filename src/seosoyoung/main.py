@@ -4,6 +4,7 @@ import asyncio
 import os
 import re
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 from slack_bolt import App
@@ -37,6 +38,9 @@ app = App(token=Config.SLACK_BOT_TOKEN, logger=logger)
 # Claude Code 연동
 claude_runner = ClaudeRunner()
 session_manager = SessionManager()
+
+# 인스턴트 답변 동시 실행 제한
+_instant_answer_lock = threading.Lock()
 
 
 def check_permission(user_id: str, client) -> bool:
@@ -91,14 +95,15 @@ def handle_mention(event, say, client):
 
     logger.info(f"멘션 수신: user={user_id}, channel={channel}, text={text[:50]}")
 
-    # 권한 확인
-    if not check_permission(user_id, client):
-        logger.warning(f"권한 없음: user={user_id}")
-        say(text="권한이 없습니다.", thread_ts=ts)
-        return
-
     command = extract_command(text)
     logger.info(f"명령어 처리: command={command}")
+
+    # 권한 확인 (인스턴트 답변은 권한 제한 없음)
+    if command in ["cc", "help", "status", "update", "restart"]:
+        if not check_permission(user_id, client):
+            logger.warning(f"권한 없음: user={user_id}")
+            say(text="권한이 없습니다.", thread_ts=ts)
+            return
 
     if command == "cc":
         # Claude Code 세션 시작
@@ -157,87 +162,97 @@ def handle_instant_answer(text: str, channel: str, ts: str, thread_ts: str | Non
     Args:
         thread_ts: 스레드에서 호출되었으면 스레드 ts, 채널에서 호출되었으면 None
     """
-    # 이전 대화 20개를 컨텍스트로 포함
-    context = get_channel_history(client, channel, limit=20)
+    # 응답 위치: 스레드에서 호출되었으면 스레드에, 채널에서 호출되었으면 채널에
+    reply_ts = thread_ts  # None이면 채널에 응답
 
-    prompt = f"""아래는 Slack 채널의 최근 대화입니다:
+    # 동시 실행 제한
+    if not _instant_answer_lock.acquire(blocking=False):
+        say(text="죄송합니다. 이전에 받은 요청을 처리 중이예요.", thread_ts=reply_ts)
+        return
+
+    try:
+        # 이전 대화 20개를 컨텍스트로 포함
+        context = get_channel_history(client, channel, limit=20)
+
+        prompt = f"""아래는 Slack 채널의 최근 대화입니다:
 
 {context}
 
 사용자의 질문: {text}
 
-위 컨텍스트를 참고하여 질문에 답변해주세요."""
+위 컨텍스트를 참고하여 질문에 답변해주세요.
 
-    # 작업 중 이모지
-    try:
-        client.reactions_add(channel=channel, timestamp=ts, name="eyes")
-    except Exception:
-        pass
+중요: 마크다운 형식을 사용하지 마세요. 사용자가 읽고 이해하기 쉬운 평이한 말투로 풀어서 설명해주세요."""
 
-    # 응답 위치: 스레드에서 호출되었으면 스레드에, 채널에서 호출되었으면 채널에
-    reply_ts = thread_ts  # None이면 채널에 응답
-
-    # "생각하고 있어요..." 메시지 먼저 전송
-    thinking_msg = client.chat_postMessage(
-        channel=channel,
-        thread_ts=reply_ts,
-        text="_생각하고 있어요..._"
-    )
-    thinking_ts = thinking_msg["ts"]
-
-    # 스트리밍 콜백 (사고 과정 업데이트)
-    async def on_progress(current_text: str):
+        # 작업 중 이모지
         try:
-            display_text = current_text
-            if len(display_text) > 3800:
-                display_text = "...\n" + display_text[-3800:]
-            client.chat_update(
-                channel=channel,
-                ts=thinking_ts,
-                text=f"_생각하고 있어요..._\n```\n{display_text}\n```"
-            )
-        except Exception as e:
-            logger.warning(f"사고 과정 업데이트 실패: {e}")
-
-    # Claude Code 실행 (스트리밍)
-    try:
-        result = asyncio.run(claude_runner.run(prompt=prompt, on_progress=on_progress))
-
-        if result.success:
-            response = result.output or "(응답 없음)"
-            # "생각하고 있어요..." 메시지를 최종 응답으로 교체
-            try:
-                if len(response) <= 3900:
-                    client.chat_update(channel=channel, ts=thinking_ts, text=response)
-                else:
-                    client.chat_update(channel=channel, ts=thinking_ts, text=f"(1/?) {response[:3900]}")
-                    remaining = response[3900:]
-                    send_long_message(say, remaining, reply_ts)
-            except Exception:
-                send_long_message(say, response, reply_ts)
-        else:
-            client.chat_update(
-                channel=channel,
-                ts=thinking_ts,
-                text=f"오류가 발생했습니다: {result.error}"
-            )
-    except Exception as e:
-        logger.exception(f"인스턴트 답변 오류: {e}")
-        try:
-            client.chat_update(
-                channel=channel,
-                ts=thinking_ts,
-                text=f"오류가 발생했습니다: {str(e)}"
-            )
+            client.reactions_add(channel=channel, timestamp=ts, name="eyes")
         except Exception:
-            say(text=f"오류가 발생했습니다: {str(e)}", thread_ts=reply_ts)
+            pass
 
-    # 이모지 제거/추가
-    try:
-        client.reactions_remove(channel=channel, timestamp=ts, name="eyes")
-        client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
-    except Exception:
-        pass
+        # "생각하고 있어요..." 메시지 먼저 전송
+        thinking_msg = client.chat_postMessage(
+            channel=channel,
+            thread_ts=reply_ts,
+            text="_생각하고 있어요..._"
+        )
+        thinking_ts = thinking_msg["ts"]
+
+        # 스트리밍 콜백 (사고 과정 업데이트)
+        async def on_progress(current_text: str):
+            try:
+                display_text = current_text
+                if len(display_text) > 3800:
+                    display_text = "...\n" + display_text[-3800:]
+                client.chat_update(
+                    channel=channel,
+                    ts=thinking_ts,
+                    text=f"_생각하고 있어요..._\n```\n{display_text}\n```"
+                )
+            except Exception as e:
+                logger.warning(f"사고 과정 업데이트 실패: {e}")
+
+        # Claude Code 실행 (스트리밍)
+        try:
+            result = asyncio.run(claude_runner.run(prompt=prompt, on_progress=on_progress))
+
+            if result.success:
+                response = result.output or "(응답 없음)"
+                # "생각하고 있어요..." 메시지를 최종 응답으로 교체
+                try:
+                    if len(response) <= 3900:
+                        client.chat_update(channel=channel, ts=thinking_ts, text=response)
+                    else:
+                        client.chat_update(channel=channel, ts=thinking_ts, text=f"(1/?) {response[:3900]}")
+                        remaining = response[3900:]
+                        send_long_message(say, remaining, reply_ts)
+                except Exception:
+                    send_long_message(say, response, reply_ts)
+            else:
+                client.chat_update(
+                    channel=channel,
+                    ts=thinking_ts,
+                    text=f"오류가 발생했습니다: {result.error}"
+                )
+        except Exception as e:
+            logger.exception(f"인스턴트 답변 오류: {e}")
+            try:
+                client.chat_update(
+                    channel=channel,
+                    ts=thinking_ts,
+                    text=f"오류가 발생했습니다: {str(e)}"
+                )
+            except Exception:
+                say(text=f"오류가 발생했습니다: {str(e)}", thread_ts=reply_ts)
+
+        # 이모지 제거/추가
+        try:
+            client.reactions_remove(channel=channel, timestamp=ts, name="eyes")
+            client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
+        except Exception:
+            pass
+    finally:
+        _instant_answer_lock.release()
 
 
 @app.event("message")
