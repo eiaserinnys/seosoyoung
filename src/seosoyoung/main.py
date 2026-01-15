@@ -152,10 +152,24 @@ def handle_reaction(event, client):
     pass
 
 
+def notify_startup():
+    """봇 시작 알림"""
+    if Config.NOTIFY_CHANNEL:
+        try:
+            app.client.chat_postMessage(
+                channel=Config.NOTIFY_CHANNEL,
+                text="👩 소영이가 시작되었습니다."
+            )
+            logger.info(f"시작 알림 전송: {Config.NOTIFY_CHANNEL}")
+        except Exception as e:
+            logger.error(f"시작 알림 실패: {e}")
+
+
 if __name__ == "__main__":
     logger.info("SeoSoyoung 봇을 시작합니다...")
     logger.info(f"LOG_PATH: {Config.LOG_PATH}")
     logger.info(f"ALLOWED_USERS: {Config.ALLOWED_USERS}")
     logger.info(f"DEBUG: {Config.DEBUG}")
+    notify_startup()
     handler = SocketModeHandler(app, Config.SLACK_APP_TOKEN)
     handler.start()

@@ -24,3 +24,6 @@ class Config:
 
     # Debug
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+    # Notification
+    NOTIFY_CHANNEL = os.getenv("NOTIFY_CHANNEL", "")
