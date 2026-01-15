@@ -371,9 +371,8 @@ class TestHandleMessage:
 
         handle_message(event, mock_say, mock_client)
 
-        # 진행 상황 메시지가 전송되어야 함
-        mock_client.chat_postMessage.assert_called()
-        # 최종 응답이 전송되어야 함
+        # on_progress가 호출되지 않으면 chat_postMessage는 호출되지 않음
+        # last_message_ts가 None이므로 send_long_message로 최종 응답 전송
         mock_send_long.assert_called()
 
     @patch("seosoyoung.main.claude_runner")
@@ -414,8 +413,11 @@ class TestHandleMessage:
 
         handle_message(event, mock_say, mock_client)
 
-        # 오류 메시지로 업데이트되어야 함
-        mock_client.chat_update.assert_called()
+        # on_progress가 호출되지 않으면 last_message_ts가 None
+        # 따라서 say로 오류 메시지 전송
+        mock_say.assert_called()
+        call_text = mock_say.call_args.kwargs["text"]
+        assert "오류" in call_text
 
 
 if __name__ == "__main__":

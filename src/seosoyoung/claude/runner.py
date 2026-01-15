@@ -205,13 +205,14 @@ class ClaudeRunner:
             )
 
             result_session_id = None
-            output_parts = []
+            current_text = ""  # 현재 assistant 응답 (누적 X)
+            result_text = ""   # 최종 result 응답
             files = []
             last_progress_time = asyncio.get_event_loop().time()
             progress_interval = 2.0  # 2초 간격으로 업데이트
 
             async def read_stream():
-                nonlocal result_session_id, last_progress_time
+                nonlocal result_session_id, last_progress_time, current_text, result_text
 
                 while True:
                     try:
@@ -240,35 +241,32 @@ class ClaudeRunner:
                             result_session_id = data.get("session_id")
                             logger.info(f"세션 ID: {result_session_id}")
 
-                        # assistant 응답 수집
+                        # assistant 응답: 현재 텍스트만 표시 (누적 X)
                         elif msg_type == "assistant":
                             content = data.get("message", {}).get("content", [])
                             for block in content:
                                 if block.get("type") == "text":
-                                    text = block.get("text", "")
-                                    output_parts.append(text)
+                                    current_text = block.get("text", "")
 
                                     # 진행 상황 콜백 (2초 간격)
                                     current_time = asyncio.get_event_loop().time()
                                     if current_time - last_progress_time >= progress_interval:
                                         try:
-                                            progress_text = "\n".join(output_parts)
+                                            display_text = current_text
                                             # 너무 길면 마지막 부분만
-                                            if len(progress_text) > 1000:
-                                                progress_text = "...\n" + progress_text[-1000:]
-                                            await on_progress(progress_text)
+                                            if len(display_text) > 1000:
+                                                display_text = "...\n" + display_text[-1000:]
+                                            await on_progress(display_text)
                                             last_progress_time = current_time
                                         except Exception as e:
                                             logger.warning(f"진행 상황 콜백 오류: {e}")
 
-                        # result 메시지
+                        # result 메시지: 최종 응답으로 저장
                         elif msg_type == "result":
                             result_text = data.get("result", "")
-                            if result_text:
-                                output_parts.append(result_text)
 
                     except json.JSONDecodeError:
-                        output_parts.append(line_str)
+                        pass  # JSON이 아닌 라인은 무시
 
                 return True, None
 
@@ -281,14 +279,15 @@ class ClaudeRunner:
             if not success:
                 return ClaudeResult(
                     success=False,
-                    output="\n".join(output_parts),
+                    output=current_text,
                     session_id=result_session_id,
                     error=error_msg
                 )
 
             await process.wait()
 
-            output = "\n".join(output_parts)
+            # 최종 출력: result만 사용
+            output = result_text
 
             # FILE 마커 추출
             file_pattern = r"<!-- FILE: (.+?) -->"

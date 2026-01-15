@@ -169,28 +169,26 @@ def handle_message(event, say, client):
     except Exception:
         pass
 
-    # 진행 상황 메시지 먼저 전송
-    progress_msg = client.chat_postMessage(
-        channel=channel,
-        thread_ts=thread_ts,
-        text="👩 _작업 중..._"
-    )
-    progress_ts = progress_msg["ts"]
+    # 마지막 메시지 ts 추적
+    last_message_ts = None
 
-    # 스트리밍 콜백 (진행 상황 업데이트)
+    # 스트리밍 콜백 (새 메시지 추가)
     async def on_progress(text: str):
+        nonlocal last_message_ts
         try:
             # 텍스트가 너무 길면 마지막 부분만
             display_text = text
             if len(display_text) > 3800:
                 display_text = "...\n" + display_text[-3800:]
-            client.chat_update(
+            # 새 메시지 추가
+            msg = client.chat_postMessage(
                 channel=channel,
-                ts=progress_ts,
+                thread_ts=thread_ts,
                 text=f"👩 _작업 중..._\n```\n{display_text}\n```"
             )
+            last_message_ts = msg["ts"]
         except Exception as e:
-            logger.warning(f"진행 상황 업데이트 실패: {e}")
+            logger.warning(f"진행 상황 메시지 전송 실패: {e}")
 
     # Claude Code 실행
     try:
@@ -208,15 +206,33 @@ def handle_message(event, say, client):
         session_manager.increment_message_count(thread_ts)
 
         if result.success:
-            # 진행 상황 메시지 삭제
-            try:
-                client.chat_delete(channel=channel, ts=progress_ts)
-            except Exception:
-                pass
-
-            # 최종 응답 전송 (길면 분할)
             response = result.output or "(응답 없음)"
-            send_long_message(say, response, thread_ts)
+
+            if last_message_ts:
+                # 마지막 메시지를 최종 응답으로 교체
+                try:
+                    # 응답이 길면 첫 부분만 교체하고 나머지는 새 메시지로
+                    if len(response) <= 3900:
+                        client.chat_update(
+                            channel=channel,
+                            ts=last_message_ts,
+                            text=f"👩 {response}"
+                        )
+                    else:
+                        # 첫 부분 교체
+                        client.chat_update(
+                            channel=channel,
+                            ts=last_message_ts,
+                            text=f"👩 (1/?) {response[:3900]}"
+                        )
+                        # 나머지는 send_long_message로 처리
+                        remaining = response[3900:]
+                        send_long_message(say, remaining, thread_ts)
+                except Exception:
+                    send_long_message(say, response, thread_ts)
+            else:
+                # 진행 메시지가 없으면 새로 전송
+                send_long_message(say, response, thread_ts)
 
             # 완료 이모지
             try:
@@ -224,15 +240,15 @@ def handle_message(event, say, client):
             except Exception:
                 pass
         else:
-            # 진행 상황 메시지를 오류 메시지로 업데이트
-            try:
-                client.chat_update(
-                    channel=channel,
-                    ts=progress_ts,
-                    text=f"👩 오류가 발생했습니다: {result.error}"
-                )
-            except Exception:
-                say(text=f"👩 오류가 발생했습니다: {result.error}", thread_ts=thread_ts)
+            # 마지막 메시지를 오류 메시지로 교체
+            error_msg = f"👩 오류가 발생했습니다: {result.error}"
+            if last_message_ts:
+                try:
+                    client.chat_update(channel=channel, ts=last_message_ts, text=error_msg)
+                except Exception:
+                    say(text=error_msg, thread_ts=thread_ts)
+            else:
+                say(text=error_msg, thread_ts=thread_ts)
 
             try:
                 client.reactions_add(channel=channel, timestamp=event["ts"], name="x")
@@ -241,14 +257,14 @@ def handle_message(event, say, client):
 
     except Exception as e:
         logger.exception(f"Claude Code 실행 오류: {e}")
-        try:
-            client.chat_update(
-                channel=channel,
-                ts=progress_ts,
-                text=f"👩 오류가 발생했습니다: {str(e)}"
-            )
-        except Exception:
-            say(text=f"👩 오류가 발생했습니다: {str(e)}", thread_ts=thread_ts)
+        error_msg = f"👩 오류가 발생했습니다: {str(e)}"
+        if last_message_ts:
+            try:
+                client.chat_update(channel=channel, ts=last_message_ts, text=error_msg)
+            except Exception:
+                say(text=error_msg, thread_ts=thread_ts)
+        else:
+            say(text=error_msg, thread_ts=thread_ts)
 
     # 작업 중 이모지 제거
     try:

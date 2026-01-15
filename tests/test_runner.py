@@ -312,7 +312,8 @@ class TestClaudeRunnerStreaming:
 
         assert result.success is True
         assert result.session_id == "stream-123"
-        assert "첫 번째 응답" in result.output
+        # 최종 출력은 result만 포함 (assistant 응답은 진행 상황으로만 표시)
+        assert result.output == "완료"
 
     async def test_streaming_timeout(self):
         """스트리밍 타임아웃 테스트"""
@@ -374,7 +375,8 @@ class TestClaudeRunnerStreaming:
             result = await runner.run("테스트", on_progress=on_progress)
 
         assert result.success is True
-        assert "이건 JSON이 아님" in result.output
+        # JSON이 아닌 라인은 무시되고 result만 반환
+        assert result.output == "완료"
 
     async def test_streaming_progress_callback(self):
         """진행 상황 콜백 호출 테스트"""
