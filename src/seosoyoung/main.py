@@ -15,10 +15,8 @@ def check_permission(user_id: str, client) -> bool:
     try:
         result = client.users_info(user=user_id)
         username = result["user"]["name"]
-        print(f"[DEBUG] user_id={user_id}, username={username}, ALLOWED_USERS={Config.ALLOWED_USERS}")
         return username in Config.ALLOWED_USERS
-    except Exception as e:
-        print(f"[DEBUG] check_permission error: {e}")
+    except Exception:
         return False
 
 
