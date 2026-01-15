@@ -72,7 +72,7 @@ def handle_mention(event, say, client):
     # 권한 확인
     if not check_permission(user_id, client):
         logger.warning(f"권한 없음: user={user_id}")
-        say(text="👩 권한이 없습니다.", thread_ts=ts)
+        say(text="권한이 없습니다.", thread_ts=ts)
         return
 
     command = extract_command(text)
@@ -81,7 +81,7 @@ def handle_mention(event, say, client):
     if command == "cc":
         # Claude Code 세션 시작
         say(
-            text="👩 소영이 작업을 시작합니다. 스레드 안에서 대화해주세요.",
+            text="소영이 작업을 시작합니다. 스레드 안에서 대화해주세요.",
             thread_ts=ts
         )
         # 세션 생성
@@ -114,18 +114,18 @@ def handle_mention(event, say, client):
         )
 
     elif command == "update":
-        say(text="👩 업데이트합니다. 잠시만요...", thread_ts=ts)
+        say(text="업데이트합니다. 잠시만요...", thread_ts=ts)
         logger.info("업데이트 요청 - 프로세스 종료")
         os._exit(42)
 
     elif command == "restart":
-        say(text="👩 재시작합니다. 잠시만요...", thread_ts=ts)
+        say(text="재시작합니다. 잠시만요...", thread_ts=ts)
         logger.info("재시작 요청 - 프로세스 종료")
         os._exit(43)
 
     else:
         say(
-            text=f"👩 알 수 없는 명령입니다: `{command}`\n`@seosoyoung help`를 입력해보세요.",
+            text=f"알 수 없는 명령입니다: `{command}`\n`@seosoyoung help`를 입력해보세요.",
             thread_ts=ts
         )
 
@@ -184,7 +184,7 @@ def handle_message(event, say, client):
             msg = client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
-                text=f"👩 _작업 중..._\n```\n{display_text}\n```"
+                text=f"_작업 중..._\n```\n{display_text}\n```"
             )
             last_message_ts = msg["ts"]
         except Exception as e:
@@ -216,14 +216,14 @@ def handle_message(event, say, client):
                         client.chat_update(
                             channel=channel,
                             ts=last_message_ts,
-                            text=f"👩 {response}"
+                            text=f"{response}"
                         )
                     else:
                         # 첫 부분 교체
                         client.chat_update(
                             channel=channel,
                             ts=last_message_ts,
-                            text=f"👩 (1/?) {response[:3900]}"
+                            text=f"(1/?) {response[:3900]}"
                         )
                         # 나머지는 send_long_message로 처리
                         remaining = response[3900:]
@@ -241,7 +241,7 @@ def handle_message(event, say, client):
                 pass
         else:
             # 마지막 메시지를 오류 메시지로 교체
-            error_msg = f"👩 오류가 발생했습니다: {result.error}"
+            error_msg = f"오류가 발생했습니다: {result.error}"
             if last_message_ts:
                 try:
                     client.chat_update(channel=channel, ts=last_message_ts, text=error_msg)
@@ -257,7 +257,7 @@ def handle_message(event, say, client):
 
     except Exception as e:
         logger.exception(f"Claude Code 실행 오류: {e}")
-        error_msg = f"👩 오류가 발생했습니다: {str(e)}"
+        error_msg = f"오류가 발생했습니다: {str(e)}"
         if last_message_ts:
             try:
                 client.chat_update(channel=channel, ts=last_message_ts, text=error_msg)
@@ -276,7 +276,7 @@ def handle_message(event, say, client):
 def send_long_message(say, text: str, thread_ts: str, max_length: int = 3900):
     """긴 메시지를 분할해서 전송"""
     if len(text) <= max_length:
-        say(text=f"👩 {text}", thread_ts=thread_ts)
+        say(text=f"{text}", thread_ts=thread_ts)
         return
 
     # 줄 단위로 분할
@@ -297,7 +297,7 @@ def send_long_message(say, text: str, thread_ts: str, max_length: int = 3900):
 
     # 분할된 메시지 전송
     for i, chunk in enumerate(chunks):
-        prefix = f"👩 ({i+1}/{len(chunks)})\n" if len(chunks) > 1 else "👩 "
+        prefix = f"({i+1}/{len(chunks)})\n" if len(chunks) > 1 else ""
         say(text=prefix + chunk, thread_ts=thread_ts)
 
 
@@ -314,7 +314,7 @@ def notify_startup():
         try:
             app.client.chat_postMessage(
                 channel=Config.NOTIFY_CHANNEL,
-                text="👩 소영이가 시작되었습니다."
+                text="소영이가 시작되었습니다."
             )
             logger.info(f"시작 알림 전송: {Config.NOTIFY_CHANNEL}")
         except Exception as e:
