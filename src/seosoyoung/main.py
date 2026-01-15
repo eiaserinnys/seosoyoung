@@ -1,5 +1,6 @@
 """SeoSoyoung 슬랙 봇 메인"""
 
+import asyncio
 import os
 import re
 import logging
@@ -9,6 +10,8 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from seosoyoung.config import Config
+from seosoyoung.claude.runner import ClaudeRunner
+from seosoyoung.claude.session import SessionManager
 
 # 로깅 설정
 def setup_logging():
@@ -30,6 +33,10 @@ def setup_logging():
 logger = setup_logging()
 
 app = App(token=Config.SLACK_BOT_TOKEN, logger=logger)
+
+# Claude Code 연동
+claude_runner = ClaudeRunner()
+session_manager = SessionManager()
 
 
 def check_permission(user_id: str, client) -> bool:
@@ -77,7 +84,9 @@ def handle_mention(event, say, client):
             text="👩 소영이 작업을 시작합니다. 스레드 안에서 대화해주세요.",
             thread_ts=ts
         )
-        # TODO: Claude Code 세션 생성
+        # 세션 생성
+        session_manager.create(thread_ts=ts, channel_id=channel)
+        logger.info(f"세션 생성: thread_ts={ts}, channel={channel}")
 
     elif command == "help":
         say(
@@ -98,6 +107,7 @@ def handle_mention(event, say, client):
                 f"📊 *상태*\n"
                 f"• eb_renpy 경로: `{Config.EB_RENPY_PATH}`\n"
                 f"• 허용 사용자: {', '.join(Config.ALLOWED_USERS)}\n"
+                f"• 활성 세션: {session_manager.count()}개\n"
                 f"• 디버그 모드: {Config.DEBUG}"
             ),
             thread_ts=ts
@@ -134,17 +144,99 @@ def handle_message(event, say, client):
 
     user_id = event["user"]
     text = event.get("text", "")
+    channel = event["channel"]
 
     # 권한 확인
     if not check_permission(user_id, client):
         return
 
-    # TODO: Claude Code로 메시지 전달
-    # 지금은 에코만
-    say(
-        text=f"👩 (에코) {text}\n\n_Claude Code 연동은 아직 구현 중입니다._",
-        thread_ts=thread_ts
-    )
+    # 세션 확인
+    session = session_manager.get(thread_ts)
+    if not session:
+        # 세션이 없으면 무시 (cc 명령으로 시작한 스레드만 처리)
+        return
+
+    # 멘션 제거 (스레드 내에서도 멘션할 수 있으므로)
+    clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+    if not clean_text:
+        return
+
+    logger.info(f"메시지 처리: thread_ts={thread_ts}, text={clean_text[:50]}")
+
+    # 작업 중 이모지 추가
+    try:
+        client.reactions_add(channel=channel, timestamp=event["ts"], name="eyes")
+    except Exception:
+        pass
+
+    # Claude Code 실행
+    try:
+        result = asyncio.run(claude_runner.run(
+            prompt=clean_text,
+            session_id=session.session_id
+        ))
+
+        # 세션 ID 업데이트 (첫 응답에서 받음)
+        if result.session_id and result.session_id != session.session_id:
+            session_manager.update_session_id(thread_ts, result.session_id)
+
+        # 메시지 카운트 증가
+        session_manager.increment_message_count(thread_ts)
+
+        if result.success:
+            # 응답 전송 (길면 분할)
+            response = result.output or "(응답 없음)"
+            send_long_message(say, response, thread_ts)
+
+            # 완료 이모지
+            try:
+                client.reactions_add(channel=channel, timestamp=event["ts"], name="white_check_mark")
+            except Exception:
+                pass
+        else:
+            say(text=f"👩 오류가 발생했습니다: {result.error}", thread_ts=thread_ts)
+            try:
+                client.reactions_add(channel=channel, timestamp=event["ts"], name="x")
+            except Exception:
+                pass
+
+    except Exception as e:
+        logger.exception(f"Claude Code 실행 오류: {e}")
+        say(text=f"👩 오류가 발생했습니다: {str(e)}", thread_ts=thread_ts)
+
+    # 작업 중 이모지 제거
+    try:
+        client.reactions_remove(channel=channel, timestamp=event["ts"], name="eyes")
+    except Exception:
+        pass
+
+
+def send_long_message(say, text: str, thread_ts: str, max_length: int = 3900):
+    """긴 메시지를 분할해서 전송"""
+    if len(text) <= max_length:
+        say(text=f"👩 {text}", thread_ts=thread_ts)
+        return
+
+    # 줄 단위로 분할
+    lines = text.split("\n")
+    chunks = []
+    current_chunk = ""
+
+    for line in lines:
+        if len(current_chunk) + len(line) + 1 > max_length:
+            if current_chunk:
+                chunks.append(current_chunk)
+            current_chunk = line
+        else:
+            current_chunk = current_chunk + "\n" + line if current_chunk else line
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    # 분할된 메시지 전송
+    for i, chunk in enumerate(chunks):
+        prefix = f"👩 ({i+1}/{len(chunks)})\n" if len(chunks) > 1 else "👩 "
+        say(text=prefix + chunk, thread_ts=thread_ts)
 
 
 @app.event("reaction_added")
