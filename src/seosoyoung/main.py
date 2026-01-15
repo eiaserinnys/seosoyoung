@@ -39,6 +39,12 @@ app = App(token=Config.SLACK_BOT_TOKEN, logger=logger)
 claude_runner = ClaudeRunner()
 session_manager = SessionManager()
 
+# 인스턴트 답변용 러너 (조회만 허용, 수정/커밋/웹서핑 금지)
+instant_runner = ClaudeRunner(
+    allowed_tools=["Read", "Glob", "Grep"],
+    disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"]
+)
+
 # 인스턴트 답변 동시 실행 제한
 _instant_answer_lock = threading.Lock()
 
@@ -212,9 +218,9 @@ def handle_instant_answer(text: str, channel: str, ts: str, thread_ts: str | Non
             except Exception as e:
                 logger.warning(f"사고 과정 업데이트 실패: {e}")
 
-        # Claude Code 실행 (스트리밍)
+        # Claude Code 실행 (스트리밍, 읽기 전용)
         try:
-            result = asyncio.run(claude_runner.run(prompt=prompt, on_progress=on_progress))
+            result = asyncio.run(instant_runner.run(prompt=prompt, on_progress=on_progress))
 
             if result.success:
                 response = result.output or "(응답 없음)"
