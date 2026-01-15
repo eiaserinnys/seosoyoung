@@ -147,6 +147,52 @@ class TestSessionManager:
         assert data["thread_ts"] == "1234567890.123456"
         assert data["channel_id"] == "C12345"
 
+    def test_get_corrupted_session_file(self, manager, temp_dir):
+        """손상된 세션 파일 로드 시 None 반환"""
+        # 손상된 JSON 파일 생성
+        corrupted_file = temp_dir / "session_corrupted_123.json"
+        corrupted_file.write_text("{ invalid json }", encoding="utf-8")
+
+        # 로드 시 None 반환 (에러 로그만 남김)
+        session = manager.get("corrupted.123")
+        assert session is None
+
+    def test_list_active_with_corrupted_file(self, manager, temp_dir):
+        """손상된 파일이 있어도 정상 파일 목록 반환"""
+        # 정상 세션 생성
+        manager.create(thread_ts="1111111111.111111", channel_id="C1")
+
+        # 손상된 파일 생성
+        corrupted_file = temp_dir / "session_corrupted_2.json"
+        corrupted_file.write_text("{ invalid }", encoding="utf-8")
+
+        # 정상 세션만 반환
+        sessions = manager.list_active()
+        assert len(sessions) == 1
+        assert sessions[0].thread_ts == "1111111111.111111"
+
+    def test_save_to_readonly_directory(self, temp_dir):
+        """읽기 전용 디렉토리에 저장 시 에러 처리"""
+        import os
+        import stat
+
+        # 테스트용 읽기 전용 디렉토리 생성
+        readonly_dir = temp_dir / "readonly"
+        readonly_dir.mkdir()
+
+        manager = SessionManager(session_dir=readonly_dir)
+
+        # 디렉토리를 읽기 전용으로 변경
+        os.chmod(readonly_dir, stat.S_IRUSR | stat.S_IXUSR)
+
+        try:
+            # 저장 시도 - 실패해도 예외 발생 안 함
+            session = Session(thread_ts="test.123", channel_id="C1")
+            manager._save(session)  # 에러 로그만 남김
+        finally:
+            # 권한 복원
+            os.chmod(readonly_dir, stat.S_IRWXU)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

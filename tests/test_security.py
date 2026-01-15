@@ -122,6 +122,23 @@ class TestSecurityChecker:
         assert ".env" in reason
 
 
+    def test_check_path_within_allowed(self, checker):
+        """허용된 경로 내부의 파일"""
+        from seosoyoung.config import Config
+
+        # EB_RENPY_PATH 내부 파일 경로
+        test_path = str(Path(Config.EB_RENPY_PATH) / "src" / "test.py")
+        is_allowed, reason = checker.check_path(test_path)
+        assert is_allowed is True
+
+    def test_check_path_invalid_raises_no_error(self, checker):
+        """유효하지 않은 경로도 예외 없이 처리"""
+        # 존재하지 않는 특수 경로
+        is_allowed, reason = checker.check_path("/nonexistent/path/\x00invalid")
+        # 기본적으로 True 반환 (차단 안 함)
+        assert is_allowed is True
+
+
 class TestHelperFunctions:
     """헬퍼 함수 테스트"""
 
