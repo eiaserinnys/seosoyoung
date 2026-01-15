@@ -1,6 +1,6 @@
 """SeoSoyoung 슬랙 봇 메인"""
 
-import sys
+import os
 import re
 import logging
 from datetime import datetime
@@ -105,11 +105,13 @@ def handle_mention(event, say, client):
 
     elif command == "update":
         say(text="👩 업데이트합니다. 잠시만요...", thread_ts=ts)
-        sys.exit(42)
+        logger.info("업데이트 요청 - 프로세스 종료")
+        os._exit(42)
 
     elif command == "restart":
         say(text="👩 재시작합니다. 잠시만요...", thread_ts=ts)
-        sys.exit(43)
+        logger.info("재시작 요청 - 프로세스 종료")
+        os._exit(43)
 
     else:
         say(
