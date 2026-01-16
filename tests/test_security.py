@@ -124,9 +124,10 @@ class TestSecurityChecker:
 
     def test_check_path_within_allowed(self, checker):
         """허용된 경로 내부의 파일"""
-        # 현재 작업 디렉토리 내부 파일 경로
-        test_path = str(Path.cwd() / "src" / "test.py")
+        # 차단 패턴에 해당하지 않는 일반 경로
+        test_path = "D:\\soyoung_root\\slackbot_workspace\\eb_renpy\\test.py"
         is_allowed, reason = checker.check_path(test_path)
+        # 차단 패턴에 해당하지 않으면 기본적으로 True
         assert is_allowed is True
 
     def test_check_path_invalid_raises_no_error(self, checker):

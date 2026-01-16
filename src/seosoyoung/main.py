@@ -220,14 +220,6 @@ def handle_mention(event, say, client):
         role=user_info["role"]
     )
 
-    # 스레드 시작 메시지 (원샷이 아닌 경우에만)
-    if not is_oneshot:
-        role_msg = "(관리자)" if user_info["role"] == "admin" else "(조회 전용)"
-        say(
-            text=f"소영이 작업을 시작합니다 {role_msg}. 스레드 안에서 대화해주세요.",
-            thread_ts=session_thread_ts
-        )
-
     # 멘션 텍스트에서 질문 추출 (멘션 제거)
     clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
     if not clean_text:
@@ -269,6 +261,9 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
         say(text="이전 요청을 처리 중이에요. 잠시 후 다시 시도해주세요.", thread_ts=thread_ts)
         return
 
+    # 마지막 메시지 ts 추적 (최종 답변으로 교체할 대상)
+    last_msg_ts = None
+
     try:
         # 작업 중 이모지
         try:
@@ -276,27 +271,35 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
         except Exception:
             pass
 
-        # "생각하고 있어요..." 메시지
-        thinking_msg = client.chat_postMessage(
+        # 초기 "생각합니다..." 메시지
+        if session.role == "admin":
+            initial_text = "소영이 생각합니다..."
+        else:
+            initial_text = "소영이 조회 전용 모드로 생각합니다..."
+
+        initial_msg = client.chat_postMessage(
             channel=channel,
             thread_ts=thread_ts,
-            text="_생각하고 있어요..._"
+            text=initial_text
         )
-        thinking_ts = thinking_msg["ts"]
+        last_msg_ts = initial_msg["ts"]
 
-        # 스트리밍 콜백
+        # 스트리밍 콜백 - 새 메시지로 사고 과정 추가
         async def on_progress(current_text: str):
+            nonlocal last_msg_ts
             try:
                 display_text = current_text
                 if len(display_text) > 3800:
                     display_text = "...\n" + display_text[-3800:]
-                client.chat_update(
+                # 새 메시지로 사고 과정 추가
+                new_msg = client.chat_postMessage(
                     channel=channel,
-                    ts=thinking_ts,
-                    text=f"_생각하고 있어요..._\n```\n{display_text}\n```"
+                    thread_ts=thread_ts,
+                    text=f"```\n{display_text}\n```"
                 )
+                last_msg_ts = new_msg["ts"]
             except Exception as e:
-                logger.warning(f"사고 과정 업데이트 실패: {e}")
+                logger.warning(f"사고 과정 메시지 전송 실패: {e}")
 
         # 역할에 맞는 runner 생성
         runner = get_runner_for_role(session.role)
@@ -318,11 +321,12 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
 
             if result.success:
                 response = result.output or "(응답 없음)"
+                # 마지막 메시지를 최종 답변으로 교체 (일반 텍스트)
                 try:
                     if len(response) <= 3900:
-                        client.chat_update(channel=channel, ts=thinking_ts, text=response)
+                        client.chat_update(channel=channel, ts=last_msg_ts, text=response)
                     else:
-                        client.chat_update(channel=channel, ts=thinking_ts, text=f"(1/?) {response[:3900]}")
+                        client.chat_update(channel=channel, ts=last_msg_ts, text=f"(1/?) {response[:3900]}")
                         remaining = response[3900:]
                         send_long_message(say, remaining, thread_ts)
                 except Exception:
@@ -336,7 +340,7 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
             else:
                 client.chat_update(
                     channel=channel,
-                    ts=thinking_ts,
+                    ts=last_msg_ts,
                     text=f"오류가 발생했습니다: {result.error}"
                 )
                 try:
@@ -349,7 +353,7 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
             try:
                 client.chat_update(
                     channel=channel,
-                    ts=thinking_ts,
+                    ts=last_msg_ts,
                     text=f"오류가 발생했습니다: {str(e)}"
                 )
             except Exception:
