@@ -464,12 +464,19 @@ class TestHandleMessage:
         mock_say.assert_not_called()
 
     @patch("seosoyoung.main._run_claude_in_session")
+    @patch("seosoyoung.main.get_user_role")
     @patch("seosoyoung.main.session_manager")
-    def test_handle_message_with_session_runs_claude(self, mock_session_manager, mock_run_claude):
+    def test_handle_message_with_session_runs_claude(self, mock_session_manager, mock_get_role, mock_run_claude):
         """세션이 있으면 Claude 실행"""
         mock_session = MagicMock()
         mock_session.role = "admin"
         mock_session_manager.get.return_value = mock_session
+        mock_get_role.return_value = {
+            "user_id": "U12345",
+            "username": "testuser",
+            "role": "admin",
+            "allowed_tools": ["Read", "Write", "Edit"]
+        }
 
         from seosoyoung.main import handle_message
 
@@ -490,6 +497,78 @@ class TestHandleMessage:
         call_args = mock_run_claude.call_args
         assert call_args[0][0] == mock_session  # 첫 번째 인자: session
         assert call_args[0][1] == "파일 구조를 보여줘"  # 두 번째 인자: prompt
+        assert call_args.kwargs.get("role") == "admin"  # 역할 파라미터
+
+    @patch("seosoyoung.main._run_claude_in_session")
+    @patch("seosoyoung.main.get_user_role")
+    @patch("seosoyoung.main.session_manager")
+    def test_handle_message_uses_message_author_role(self, mock_session_manager, mock_get_role, mock_run_claude):
+        """스레드 메시지는 세션 생성자가 아닌 메시지 작성자 권한으로 실행"""
+        # 세션은 admin이 생성했지만
+        mock_session = MagicMock()
+        mock_session.role = "admin"
+        mock_session.user_id = "U_ADMIN"
+        mock_session_manager.get.return_value = mock_session
+
+        # 메시지 작성자는 viewer
+        mock_get_role.return_value = {
+            "user_id": "U_VIEWER",
+            "username": "viewer_user",
+            "role": "viewer",
+            "allowed_tools": ["Read", "Glob", "Grep"]
+        }
+
+        from seosoyoung.main import handle_message
+
+        event = {
+            "user": "U_VIEWER",  # admin이 아닌 다른 사용자
+            "text": "파일 수정해줘",
+            "channel": "C12345",
+            "thread_ts": "1234567890.123456",
+            "ts": "1234567890.123457"
+        }
+        mock_say = MagicMock()
+        mock_client = MagicMock()
+
+        handle_message(event, mock_say, mock_client)
+
+        # 메시지 작성자 역할 조회 확인
+        mock_get_role.assert_called_once_with("U_VIEWER", mock_client)
+
+        # viewer 권한으로 실행되어야 함
+        mock_run_claude.assert_called_once()
+        call_args = mock_run_claude.call_args
+        assert call_args.kwargs.get("role") == "viewer"
+
+    @patch("seosoyoung.main._run_claude_in_session")
+    @patch("seosoyoung.main.get_user_role")
+    @patch("seosoyoung.main.session_manager")
+    def test_handle_message_user_info_error(self, mock_session_manager, mock_get_role, mock_run_claude):
+        """사용자 정보 조회 실패 시 에러 메시지"""
+        mock_session = MagicMock()
+        mock_session_manager.get.return_value = mock_session
+        mock_get_role.return_value = None  # 사용자 정보 조회 실패
+
+        from seosoyoung.main import handle_message
+
+        event = {
+            "user": "U12345",
+            "text": "테스트 메시지",
+            "channel": "C12345",
+            "thread_ts": "1234567890.123456",
+            "ts": "1234567890.123457"
+        }
+        mock_say = MagicMock()
+        mock_client = MagicMock()
+
+        handle_message(event, mock_say, mock_client)
+
+        # 에러 메시지 전송
+        mock_say.assert_called_once()
+        assert "사용자 정보" in mock_say.call_args.kwargs["text"]
+
+        # Claude는 실행되지 않음
+        mock_run_claude.assert_not_called()
 
     @patch("seosoyoung.main.session_manager")
     def test_handle_message_empty_text_ignored(self, mock_session_manager):

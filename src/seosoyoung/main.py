@@ -242,7 +242,7 @@ def handle_mention(event, say, client):
     _run_claude_in_session(session, prompt, ts, channel, say, client)
 
 
-def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say, client):
+def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say, client, role: str = None):
     """세션 내에서 Claude Code 실행 (공통 로직)
 
     Args:
@@ -252,8 +252,10 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
         channel: Slack 채널 ID
         say: Slack say 함수
         client: Slack client
+        role: 실행할 역할 (None이면 session.role 사용)
     """
     thread_ts = session.thread_ts
+    effective_role = role or session.role
 
     # 스레드별 락으로 동시 실행 방지
     lock = get_session_lock(thread_ts)
@@ -272,7 +274,7 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
             pass
 
         # 초기 "생각합니다..." 메시지
-        if session.role == "admin":
+        if effective_role == "admin":
             initial_text = "소영이 생각합니다..."
         else:
             initial_text = "소영이 조회 전용 모드로 생각합니다..."
@@ -302,7 +304,8 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
                 logger.warning(f"사고 과정 메시지 전송 실패: {e}")
 
         # 역할에 맞는 runner 생성
-        runner = get_runner_for_role(session.role)
+        runner = get_runner_for_role(effective_role)
+        logger.info(f"Claude 실행: thread={thread_ts}, role={effective_role}")
 
         # Claude Code 실행
         try:
@@ -404,10 +407,16 @@ def handle_message(event, say, client):
     if not clean_text:
         return
 
-    logger.info(f"메시지 처리: thread_ts={thread_ts}, text={clean_text[:50]}")
+    # 메시지 작성자의 역할 조회 (세션 생성자와 다를 수 있음)
+    user_info = get_user_role(user_id, client)
+    if not user_info:
+        say(text="사용자 정보를 확인할 수 없습니다.", thread_ts=thread_ts)
+        return
 
-    # _run_claude_in_session 사용 (역할 기반 runner)
-    _run_claude_in_session(session, clean_text, ts, channel, say, client)
+    logger.info(f"메시지 처리: thread_ts={thread_ts}, user={user_info['username']}, role={user_info['role']}, text={clean_text[:50]}")
+
+    # 메시지 작성자 권한으로 실행
+    _run_claude_in_session(session, clean_text, ts, channel, say, client, role=user_info["role"])
 
 
 def send_long_message(say, text: str, thread_ts: str | None, max_length: int = 3900):
