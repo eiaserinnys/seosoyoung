@@ -13,6 +13,31 @@ if (-not (Test-Path $workspaceDir)) {
     Write-Host "wrapper: 작업 폴더 생성: $workspaceDir" -ForegroundColor Yellow
 }
 
+# eb_renpy skills를 workspace로 복사하는 함수
+function Copy-Skills {
+    $ebRenpySkills = Join-Path $workspaceDir "eb_renpy\.claude\skills"
+    $workspaceClaudeDir = Join-Path $workspaceDir ".claude"
+    $workspaceSkills = Join-Path $workspaceClaudeDir "skills"
+
+    if (Test-Path $ebRenpySkills) {
+        # .claude 폴더 생성
+        if (-not (Test-Path $workspaceClaudeDir)) {
+            New-Item -ItemType Directory -Path $workspaceClaudeDir -Force | Out-Null
+        }
+        # 기존 skills 삭제 후 복사
+        if (Test-Path $workspaceSkills) {
+            Remove-Item -Path $workspaceSkills -Recurse -Force
+        }
+        Copy-Item -Path $ebRenpySkills -Destination $workspaceSkills -Recurse
+        Write-Host "wrapper: skills 복사 완료: $ebRenpySkills -> $workspaceSkills" -ForegroundColor Green
+    } else {
+        Write-Host "wrapper: eb_renpy skills 없음: $ebRenpySkills" -ForegroundColor Yellow
+    }
+}
+
+# 초기 skills 복사
+Copy-Skills
+
 # 작업 폴더로 이동 (Claude Code가 이 폴더에서 작업)
 Set-Location $workspaceDir
 
@@ -46,6 +71,7 @@ while ($true) {
             Push-Location $runtimeDir
             git pull origin main
             Pop-Location
+            Copy-Skills  # 업데이트 후 skills 재복사
             Write-Host "wrapper: 업데이트 완료, 재시작..." -ForegroundColor Cyan
         }
         43 {
