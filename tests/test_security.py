@@ -124,10 +124,8 @@ class TestSecurityChecker:
 
     def test_check_path_within_allowed(self, checker):
         """허용된 경로 내부의 파일"""
-        from seosoyoung.config import Config
-
-        # EB_RENPY_PATH 내부 파일 경로
-        test_path = str(Path(Config.EB_RENPY_PATH) / "src" / "test.py")
+        # 현재 작업 디렉토리 내부 파일 경로
+        test_path = str(Path.cwd() / "src" / "test.py")
         is_allowed, reason = checker.check_path(test_path)
         assert is_allowed is True
 

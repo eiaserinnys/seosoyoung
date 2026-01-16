@@ -3,9 +3,9 @@
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$rootDir = Split-Path -Parent $scriptDir
+$runtimeDir = Split-Path -Parent $scriptDir  # seosoyoung_runtime
 
-Set-Location $rootDir
+Set-Location $runtimeDir
 
 Write-Host "start: 최신 코드 가져오는 중..." -ForegroundColor Cyan
 git pull origin main

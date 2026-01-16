@@ -16,7 +16,7 @@ from seosoyoung.claude.session import SessionManager
 
 # 로깅 설정
 def setup_logging():
-    log_dir = Path(Config.LOG_PATH)
+    log_dir = Path(Config.get_log_path())
     log_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = log_dir / f"bot_{datetime.now().strftime('%Y%m%d')}.log"
@@ -173,7 +173,7 @@ def handle_mention(event, say, client):
         say(
             text=(
                 f"📊 *상태*\n"
-                f"• eb_renpy 경로: `{Config.EB_RENPY_PATH}`\n"
+                f"• 작업 폴더: `{Path.cwd()}`\n"
                 f"• 관리자: {', '.join(Config.ADMIN_USERS)}\n"
                 f"• 활성 세션: {session_manager.count()}개\n"
                 f"• 디버그 모드: {Config.DEBUG}"
@@ -456,7 +456,7 @@ def notify_startup():
 
 if __name__ == "__main__":
     logger.info("SeoSoyoung 봇을 시작합니다...")
-    logger.info(f"LOG_PATH: {Config.LOG_PATH}")
+    logger.info(f"LOG_PATH: {Config.get_log_path()}")
     logger.info(f"ADMIN_USERS: {Config.ADMIN_USERS}")
     logger.info(f"ALLOWED_USERS: {Config.ALLOWED_USERS}")
     logger.info(f"DEBUG: {Config.DEBUG}")

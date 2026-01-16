@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
-from seosoyoung.config import Config
 from seosoyoung.claude.security import SecurityChecker, SecurityError
 
 logger = logging.getLogger(__name__)
@@ -61,7 +60,7 @@ class ClaudeRunner:
         disallowed_tools: Optional[list[str]] = None,
         enable_security_check: bool = True,
     ):
-        self.working_dir = working_dir or Path(Config.EB_RENPY_PATH)
+        self.working_dir = working_dir or Path.cwd()
         self.timeout = timeout
         self.allowed_tools = allowed_tools or ALLOWED_TOOLS
         self.disallowed_tools = disallowed_tools or DISALLOWED_TOOLS

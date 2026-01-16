@@ -44,7 +44,7 @@ class SessionManager:
     """
 
     def __init__(self, session_dir: Optional[Path] = None):
-        self.session_dir = session_dir or Path(Config.SESSION_PATH)
+        self.session_dir = session_dir or Path(Config.get_session_path())
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, Session] = {}
 

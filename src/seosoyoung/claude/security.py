@@ -8,8 +8,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from seosoyoung.config import Config
-
 logger = logging.getLogger(__name__)
 
 
@@ -55,10 +53,10 @@ MASK_PATTERNS = [
     (r"Bearer\s+[a-zA-Z0-9\-_.]+", "Bearer [TOKEN]"),
 ]
 
-# 허용된 작업 디렉토리
-ALLOWED_PATHS = [
-    Path(Config.EB_RENPY_PATH),
-]
+def get_allowed_paths() -> list[Path]:
+    """허용된 작업 디렉토리 (런타임에 평가)"""
+    return [Path.cwd()]
+
 
 # 차단된 경로 패턴
 BLOCKED_PATH_PATTERNS = [
@@ -133,7 +131,7 @@ class SecurityChecker:
         # 허용된 디렉토리 내인지 검사
         try:
             target = Path(path).resolve()
-            for allowed in ALLOWED_PATHS:
+            for allowed in get_allowed_paths():
                 allowed_resolved = allowed.resolve()
                 if target == allowed_resolved or allowed_resolved in target.parents:
                     return True, None

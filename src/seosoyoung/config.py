@@ -1,9 +1,18 @@
 """설정 관리"""
 
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _get_path(env_var: str, default_subdir: str) -> str:
+    """환경변수가 없으면 현재 경로 하위 폴더 반환"""
+    env_value = os.getenv(env_var)
+    if env_value:
+        return env_value
+    return str(Path.cwd() / default_subdir)
 
 
 class Config:
@@ -11,10 +20,14 @@ class Config:
     SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
     SLACK_APP_TOKEN = os.getenv("SLACK_APP_TOKEN")
 
-    # Paths
-    EB_RENPY_PATH = os.getenv("EB_RENPY_PATH", r"D:\soyoung_root\eb_renpy")
-    LOG_PATH = os.getenv("LOG_PATH", r"D:\soyoung_root\seosoyoung_runtime\logs")
-    SESSION_PATH = os.getenv("SESSION_PATH", r"D:\soyoung_root\seosoyoung_runtime\sessions")
+    # Paths - 런타임에 평가 (환경변수 없으면 현재 경로 기준)
+    @staticmethod
+    def get_log_path() -> str:
+        return _get_path("LOG_PATH", "logs")
+
+    @staticmethod
+    def get_session_path() -> str:
+        return _get_path("SESSION_PATH", "sessions")
 
     # Claude
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
