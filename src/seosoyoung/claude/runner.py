@@ -47,6 +47,7 @@ class ClaudeResult:
     session_id: Optional[str] = None
     error: Optional[str] = None
     files: list[str] = field(default_factory=list)  # FILE 마커로 추출된 파일 경로들
+    attachments: list[str] = field(default_factory=list)  # ATTACH 마커로 추출된 첨부 파일 경로들
 
 
 class ClaudeRunner:
@@ -292,6 +293,12 @@ class ClaudeRunner:
             file_pattern = r"<!-- FILE: (.+?) -->"
             files = re.findall(file_pattern, output)
 
+            # ATTACH 마커 추출
+            attach_pattern = r"<!-- ATTACH: (.+?) -->"
+            attachments = re.findall(attach_pattern, output)
+            if attachments:
+                logger.info(f"첨부 파일 요청: {attachments}")
+
             # 출력 마스킹
             output = self._security.mask_output(output)
 
@@ -303,6 +310,7 @@ class ClaudeRunner:
                 output=output,
                 session_id=result_session_id,
                 files=files,
+                attachments=attachments,
             )
 
         except FileNotFoundError:
@@ -364,6 +372,13 @@ class ClaudeRunner:
         file_pattern = r"<!-- FILE: (.+?) -->"
         files = re.findall(file_pattern, output)
 
+        # ATTACH 마커 추출
+        # <!-- ATTACH: /path/to/file --> 패턴
+        attach_pattern = r"<!-- ATTACH: (.+?) -->"
+        attachments = re.findall(attach_pattern, output)
+        if attachments:
+            logger.info(f"첨부 파일 요청: {attachments}")
+
         # 출력 마스킹 (민감 정보 제거)
         output = self._security.mask_output(output)
 
@@ -375,6 +390,7 @@ class ClaudeRunner:
             output=output,
             session_id=session_id,
             files=files,
+            attachments=attachments,
         )
 
 

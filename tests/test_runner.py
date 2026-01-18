@@ -145,6 +145,51 @@ class TestClaudeRunnerUnit:
         assert "/path/to/file2.py" in result.files
         assert len(result.files) == 2
 
+    def test_parse_output_attach_markers(self):
+        """ATTACH 마커 추출 테스트"""
+        runner = ClaudeRunner()
+
+        lines = [
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "파일을 첨부합니다.\n<!-- ATTACH: D:\\workspace\\file1.md -->\n<!-- ATTACH: D:\\workspace\\file2.png -->"}
+                    ]
+                }
+            }),
+        ]
+        stdout = "\n".join(lines)
+
+        result = runner._parse_output(stdout, "")
+
+        assert "D:\\workspace\\file1.md" in result.attachments
+        assert "D:\\workspace\\file2.png" in result.attachments
+        assert len(result.attachments) == 2
+
+    def test_parse_output_mixed_markers(self):
+        """FILE과 ATTACH 마커 혼합 테스트"""
+        runner = ClaudeRunner()
+
+        lines = [
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "<!-- FILE: /created/file.py -->\n파일을 첨부합니다.\n<!-- ATTACH: /attach/doc.md -->"}
+                    ]
+                }
+            }),
+        ]
+        stdout = "\n".join(lines)
+
+        result = runner._parse_output(stdout, "")
+
+        assert len(result.files) == 1
+        assert "/created/file.py" in result.files
+        assert len(result.attachments) == 1
+        assert "/attach/doc.md" in result.attachments
+
     def test_parse_output_invalid_json(self):
         """유효하지 않은 JSON 처리"""
         runner = ClaudeRunner()

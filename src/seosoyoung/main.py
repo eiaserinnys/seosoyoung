@@ -13,6 +13,7 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from seosoyoung.config import Config
 from seosoyoung.claude.runner import ClaudeRunner
 from seosoyoung.claude.session import SessionManager
+from seosoyoung.claude.security import validate_attach_path
 
 # 로깅 설정
 def setup_logging():
@@ -335,6 +336,13 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
                 except Exception:
                     send_long_message(say, response, thread_ts)
 
+                # 첨부 파일 처리
+                if result.attachments:
+                    for file_path in result.attachments:
+                        success, msg = upload_file_to_slack(client, channel, thread_ts, file_path)
+                        if not success:
+                            say(text=f"⚠️ {msg}", thread_ts=thread_ts)
+
                 # 완료 이모지
                 try:
                     client.reactions_add(channel=channel, timestamp=msg_ts, name="white_check_mark")
@@ -417,6 +425,44 @@ def handle_message(event, say, client):
 
     # 메시지 작성자 권한으로 실행
     _run_claude_in_session(session, clean_text, ts, channel, say, client, role=user_info["role"])
+
+
+# 워크스페이스 루트 (첨부 파일 허용 범위)
+WORKSPACE_ROOT = Path.cwd()
+
+
+def upload_file_to_slack(client, channel: str, thread_ts: str, file_path: str) -> tuple[bool, str]:
+    """파일을 슬랙에 첨부
+
+    Args:
+        client: Slack client
+        channel: 채널 ID
+        thread_ts: 스레드 타임스탬프
+        file_path: 첨부할 파일 경로
+
+    Returns:
+        (success, message): 성공 여부와 메시지
+    """
+    # 경로 검증
+    is_valid, error = validate_attach_path(file_path, WORKSPACE_ROOT)
+    if not is_valid:
+        logger.warning(f"파일 첨부 거부: {file_path} - {error}")
+        return False, f"파일 첨부 거부: {error}"
+
+    try:
+        file_path_obj = Path(file_path).resolve()
+        result = client.files_upload_v2(
+            channel=channel,
+            thread_ts=thread_ts,
+            file=str(file_path_obj),
+            filename=file_path_obj.name,
+            initial_comment=f"📎 `{file_path_obj.name}`"
+        )
+        logger.info(f"파일 첨부 성공: {file_path}")
+        return True, "첨부 완료"
+    except Exception as e:
+        logger.error(f"파일 첨부 실패: {file_path} - {e}")
+        return False, f"첨부 실패: {str(e)}"
 
 
 def send_long_message(say, text: str, thread_ts: str | None, max_length: int = 3900):

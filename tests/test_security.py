@@ -11,6 +11,7 @@ from seosoyoung.claude.security import (
     SecurityError,
     validate_prompt,
     mask_sensitive_data,
+    validate_attach_path,
 )
 
 
@@ -156,6 +157,90 @@ class TestHelperFunctions:
         output = "token: xoxb-abc123"
         masked = mask_sensitive_data(output)
         assert "xoxb-" not in masked
+
+
+class TestValidateAttachPath:
+    """validate_attach_path 테스트"""
+
+    @pytest.fixture
+    def workspace(self, tmp_path):
+        """임시 워크스페이스 생성"""
+        # 테스트용 파일 생성
+        (tmp_path / "test.md").write_text("# Test")
+        (tmp_path / "image.png").write_bytes(b"PNG")
+        (tmp_path / "large.txt").write_text("x" * 25_000_000)  # 25MB
+        (tmp_path / ".env").write_text("SECRET=123")
+        (tmp_path / "script.exe").write_text("binary")
+
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        (subdir / "nested.yaml").write_text("key: value")
+
+        return tmp_path
+
+    def test_valid_md_file(self, workspace):
+        """유효한 .md 파일"""
+        file_path = workspace / "test.md"
+        is_valid, error = validate_attach_path(str(file_path), workspace)
+        assert is_valid is True
+        assert error is None
+
+    def test_valid_nested_file(self, workspace):
+        """하위 폴더의 유효한 파일"""
+        file_path = workspace / "subdir" / "nested.yaml"
+        is_valid, error = validate_attach_path(str(file_path), workspace)
+        assert is_valid is True
+        assert error is None
+
+    def test_valid_image_file(self, workspace):
+        """유효한 이미지 파일"""
+        file_path = workspace / "image.png"
+        is_valid, error = validate_attach_path(str(file_path), workspace)
+        assert is_valid is True
+
+    def test_reject_outside_workspace(self, workspace, tmp_path):
+        """workspace 외부 경로 거부"""
+        outside = tmp_path.parent / "outside.md"
+        outside.write_text("outside")
+
+        is_valid, error = validate_attach_path(str(outside), workspace)
+        assert is_valid is False
+        assert "workspace 외부" in error
+
+    def test_reject_env_file(self, workspace):
+        """.env 파일 거부"""
+        file_path = workspace / ".env"
+        is_valid, error = validate_attach_path(str(file_path), workspace)
+        assert is_valid is False
+        assert "차단된 경로 패턴" in error
+
+    def test_reject_disallowed_extension(self, workspace):
+        """허용되지 않은 확장자 거부"""
+        file_path = workspace / "script.exe"
+        is_valid, error = validate_attach_path(str(file_path), workspace)
+        assert is_valid is False
+        assert "허용되지 않은 확장자" in error
+
+    def test_reject_large_file(self, workspace):
+        """큰 파일 거부 (20MB 초과)"""
+        file_path = workspace / "large.txt"
+        is_valid, error = validate_attach_path(str(file_path), workspace)
+        assert is_valid is False
+        assert "파일 크기 초과" in error
+
+    def test_reject_nonexistent_file(self, workspace):
+        """존재하지 않는 파일 거부"""
+        file_path = workspace / "nonexistent.md"
+        is_valid, error = validate_attach_path(str(file_path), workspace)
+        assert is_valid is False
+        assert "존재하지 않음" in error
+
+    def test_reject_directory(self, workspace):
+        """디렉토리 거부"""
+        dir_path = workspace / "subdir"
+        is_valid, error = validate_attach_path(str(dir_path), workspace)
+        assert is_valid is False
+        assert "파일이 아님" in error
 
 
 if __name__ == "__main__":

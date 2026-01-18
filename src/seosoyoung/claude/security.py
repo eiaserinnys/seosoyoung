@@ -162,3 +162,82 @@ def mask_sensitive_data(output: str) -> str:
     """출력에서 민감 정보 마스킹"""
     checker = SecurityChecker()
     return checker.mask_output(output)
+
+
+# 첨부 파일 차단 패턴
+BLOCKED_ATTACH_PATTERNS = [
+    r"\.env$",
+    r"\.env\.",
+    r"\.git[/\\]",
+    r"__pycache__",
+    r"node_modules",
+    r"\.pyc$",
+    r"seosoyoung_runtime",
+    r"credentials",
+    r"\.key$",
+    r"\.pem$",
+]
+
+# 첨부 허용 확장자 (화이트리스트)
+ALLOWED_ATTACH_EXTENSIONS = {
+    # 텍스트/문서
+    ".md", ".txt", ".yaml", ".yml", ".json", ".csv", ".tsv",
+    # 코드 (읽기 전용 공유)
+    ".py", ".js", ".ts", ".html", ".css",
+    # 이미지
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
+    # 기타
+    ".pdf", ".log",
+}
+
+
+def validate_attach_path(file_path: str, workspace_root: Path) -> tuple[bool, Optional[str]]:
+    """첨부 파일 경로 검증
+
+    Args:
+        file_path: 첨부할 파일의 경로
+        workspace_root: 허용된 워크스페이스 루트 경로
+
+    Returns:
+        (is_valid, error_message): 유효하면 (True, None), 아니면 (False, 에러 메시지)
+    """
+    try:
+        # 절대 경로로 변환 (symlink 해제)
+        target = Path(file_path).resolve()
+        workspace = workspace_root.resolve()
+
+        # 1. workspace 내부인지 확인
+        try:
+            target.relative_to(workspace)
+        except ValueError:
+            return False, f"workspace 외부 경로: {file_path}"
+
+        # 2. 차단 패턴 검사
+        path_str = str(target)
+        for pattern in BLOCKED_ATTACH_PATTERNS:
+            if re.search(pattern, path_str, re.IGNORECASE):
+                return False, f"차단된 경로 패턴: {pattern}"
+
+        # 3. 파일 존재 확인
+        if not target.exists():
+            return False, f"파일이 존재하지 않음: {file_path}"
+
+        if not target.is_file():
+            return False, f"파일이 아님: {file_path}"
+
+        # 4. 확장자 확인
+        ext = target.suffix.lower()
+        if ext not in ALLOWED_ATTACH_EXTENSIONS:
+            return False, f"허용되지 않은 확장자: {ext}"
+
+        # 5. 파일 크기 확인 (20MB 제한)
+        max_size = 20 * 1024 * 1024  # 20MB
+        file_size = target.stat().st_size
+        if file_size > max_size:
+            return False, f"파일 크기 초과: {file_size / 1024 / 1024:.1f}MB > 20MB"
+
+        return True, None
+
+    except Exception as e:
+        logger.error(f"경로 검증 오류: {e}")
+        return False, f"검증 오류: {str(e)}"
