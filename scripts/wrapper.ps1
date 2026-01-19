@@ -100,11 +100,10 @@ $pythonExe = Join-Path $runtimeDir "venv\Scripts\python.exe"
 while ($true) {
     Write-Host "wrapper: 봇 시작..." -ForegroundColor Green
 
-    $process = Start-Process -FilePath $pythonExe `
-        -ArgumentList "-m", "seosoyoung.main" `
-        -NoNewWindow -Wait -PassThru
+    # 직접 실행 (출력이 콘솔과 로그에 캡처됨)
+    & $pythonExe -m seosoyoung.main
+    $exitCode = $LASTEXITCODE
 
-    $exitCode = $process.ExitCode
     Write-Host "wrapper: 봇 종료 (exit code: $exitCode)" -ForegroundColor Yellow
 
     switch ($exitCode) {
