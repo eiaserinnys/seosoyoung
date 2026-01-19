@@ -1,4 +1,4 @@
-# start.ps1 - 봇 시작
+﻿# start.ps1 - 봇 시작
 # git pull 후 wrapper.ps1 실행
 
 # UTF-8 인코딩 설정
