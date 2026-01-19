@@ -190,6 +190,69 @@ class TestClaudeRunnerUnit:
         assert len(result.attachments) == 1
         assert "/attach/doc.md" in result.attachments
 
+    def test_parse_output_update_marker(self):
+        """UPDATE 마커 감지 테스트"""
+        runner = ClaudeRunner()
+
+        lines = [
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "코드를 수정했습니다.\n<!-- UPDATE -->"}
+                    ]
+                }
+            }),
+        ]
+        stdout = "\n".join(lines)
+
+        result = runner._parse_output(stdout, "")
+
+        assert result.update_requested is True
+        assert result.restart_requested is False
+
+    def test_parse_output_restart_marker(self):
+        """RESTART 마커 감지 테스트"""
+        runner = ClaudeRunner()
+
+        lines = [
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "재시작이 필요합니다.\n<!-- RESTART -->"}
+                    ]
+                }
+            }),
+        ]
+        stdout = "\n".join(lines)
+
+        result = runner._parse_output(stdout, "")
+
+        assert result.update_requested is False
+        assert result.restart_requested is True
+
+    def test_parse_output_no_restart_marker(self):
+        """재기동 마커 없음 테스트"""
+        runner = ClaudeRunner()
+
+        lines = [
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "일반 응답입니다."}
+                    ]
+                }
+            }),
+        ]
+        stdout = "\n".join(lines)
+
+        result = runner._parse_output(stdout, "")
+
+        assert result.update_requested is False
+        assert result.restart_requested is False
+
     def test_parse_output_invalid_json(self):
         """유효하지 않은 JSON 처리"""
         runner = ClaudeRunner()

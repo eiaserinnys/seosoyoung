@@ -48,6 +48,8 @@ class ClaudeResult:
     error: Optional[str] = None
     files: list[str] = field(default_factory=list)  # FILE 마커로 추출된 파일 경로들
     attachments: list[str] = field(default_factory=list)  # ATTACH 마커로 추출된 첨부 파일 경로들
+    update_requested: bool = False  # <!-- UPDATE --> 마커 감지 (exit 42)
+    restart_requested: bool = False  # <!-- RESTART --> 마커 감지 (exit 43)
 
 
 class ClaudeRunner:
@@ -299,6 +301,14 @@ class ClaudeRunner:
             if attachments:
                 logger.info(f"첨부 파일 요청: {attachments}")
 
+            # 재기동 마커 감지
+            update_requested = "<!-- UPDATE -->" in output
+            restart_requested = "<!-- RESTART -->" in output
+            if update_requested:
+                logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
+            if restart_requested:
+                logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
+
             # 출력 마스킹
             output = self._security.mask_output(output)
 
@@ -311,6 +321,8 @@ class ClaudeRunner:
                 session_id=result_session_id,
                 files=files,
                 attachments=attachments,
+                update_requested=update_requested,
+                restart_requested=restart_requested,
             )
 
         except FileNotFoundError:
@@ -379,6 +391,14 @@ class ClaudeRunner:
         if attachments:
             logger.info(f"첨부 파일 요청: {attachments}")
 
+        # 재기동 마커 감지
+        update_requested = "<!-- UPDATE -->" in output
+        restart_requested = "<!-- RESTART -->" in output
+        if update_requested:
+            logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
+        if restart_requested:
+            logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
+
         # 출력 마스킹 (민감 정보 제거)
         output = self._security.mask_output(output)
 
@@ -391,6 +411,8 @@ class ClaudeRunner:
             session_id=session_id,
             files=files,
             attachments=attachments,
+            update_requested=update_requested,
+            restart_requested=restart_requested,
         )
 
 

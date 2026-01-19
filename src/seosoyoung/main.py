@@ -348,6 +348,17 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
                     client.reactions_add(channel=channel, timestamp=msg_ts, name="white_check_mark")
                 except Exception:
                     pass
+
+                # 재기동 마커 감지 (admin 역할만 허용)
+                if effective_role == "admin":
+                    if result.update_requested:
+                        logger.info("업데이트 요청 마커 감지 - 프로세스 종료 (exit 42)")
+                        say(text="코드가 업데이트되었습니다. 재시작합니다...", thread_ts=thread_ts)
+                        os._exit(42)
+                    elif result.restart_requested:
+                        logger.info("재시작 요청 마커 감지 - 프로세스 종료 (exit 43)")
+                        say(text="재시작합니다...", thread_ts=thread_ts)
+                        os._exit(43)
             else:
                 client.chat_update(
                     channel=channel,

@@ -13,6 +13,32 @@ if (-not (Test-Path $workspaceDir)) {
     Write-Host "wrapper: 작업 폴더 생성: $workspaceDir" -ForegroundColor Yellow
 }
 
+# slackbot_workspace/seosoyoung 개발용 소스 동기화 함수
+function Sync-DevSeosoyoung {
+    $devSeosoyoung = Join-Path $workspaceDir "seosoyoung"
+    $repoUrl = "https://github.com/eias/seosoyoung"
+
+    if (-not (Test-Path $devSeosoyoung)) {
+        Write-Host "wrapper: seosoyoung 개발 소스 클론 중..." -ForegroundColor Cyan
+        git clone $repoUrl $devSeosoyoung
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "wrapper: seosoyoung 클론 완료: $devSeosoyoung" -ForegroundColor Green
+        } else {
+            Write-Host "wrapper: seosoyoung 클론 실패" -ForegroundColor Red
+        }
+    } else {
+        Write-Host "wrapper: seosoyoung 개발 소스 동기화 중..." -ForegroundColor Cyan
+        Push-Location $devSeosoyoung
+        git pull origin main
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "wrapper: seosoyoung 동기화 완료" -ForegroundColor Green
+        } else {
+            Write-Host "wrapper: seosoyoung 동기화 실패 (로컬 변경사항 있음?)" -ForegroundColor Yellow
+        }
+        Pop-Location
+    }
+}
+
 # eb_renpy skills를 workspace로 복사하는 함수
 function Copy-Skills {
     $ebRenpySkills = Join-Path $workspaceDir "eb_renpy\.claude\skills"
@@ -35,7 +61,8 @@ function Copy-Skills {
     }
 }
 
-# 초기 skills 복사
+# 초기 동기화
+Sync-DevSeosoyoung
 Copy-Skills
 
 # 작업 폴더로 이동 (Claude Code가 이 폴더에서 작업)
@@ -71,6 +98,7 @@ while ($true) {
             Push-Location $runtimeDir
             git pull origin main
             Pop-Location
+            Sync-DevSeosoyoung  # 개발 소스 동기화
             Copy-Skills  # 업데이트 후 skills 재복사
             Write-Host "wrapper: 업데이트 완료, 재시작..." -ForegroundColor Cyan
         }
