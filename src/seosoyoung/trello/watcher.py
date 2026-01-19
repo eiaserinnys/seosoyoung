@@ -162,8 +162,22 @@ class TrelloWatcher:
         if removed:
             self._save_tracked()
 
+    def _add_spinner_prefix(self, card: TrelloCard) -> bool:
+        """카드 제목에 🌀 prefix 추가"""
+        if card.name.startswith("🌀"):
+            return True  # 이미 있음
+        new_name = f"🌀 {card.name}"
+        return self.trello.update_card_name(card.id, new_name)
+
+    def _remove_spinner_prefix(self, card_id: str, card_name: str) -> bool:
+        """카드 제목에서 🌀 prefix 제거"""
+        if not card_name.startswith("🌀"):
+            return True  # 없음
+        new_name = card_name.lstrip("🌀").lstrip()
+        return self.trello.update_card_name(card_id, new_name)
+
     def _handle_new_card(self, card: TrelloCard, list_key: str):
-        """새 카드 처리: 알림 → 스레드 생성 → Claude 실행"""
+        """새 카드 처리: 알림 → 🌀 추가 → 스레드 생성 → Claude 실행"""
         # 리스트 이름 매핑
         list_names = {
             "to_plan": "📋 To Plan",
@@ -171,17 +185,30 @@ class TrelloWatcher:
         }
         list_name = list_names.get(list_key, list_key)
 
-        # 1. 알림 메시지 전송
+        # 1. 알림 메시지 전송 (간결한 형식)
+        # 설명 첫 줄 추출 (있으면)
+        desc_first_line = ""
+        if card.desc:
+            first_line = card.desc.strip().split("\n")[0]
+            if first_line:
+                desc_first_line = f"\n{first_line}"
+
         try:
             msg_result = self.slack_client.chat_postMessage(
                 channel=self.notify_channel,
-                text=f"{list_name} 리스트에 새로운 작업이 감지되었습니다: *{card.name}*\n{card.url}"
+                text=f"*{list_name}에* <{card.url}|*{card.name}*> *감지*{desc_first_line}"
             )
             thread_ts = msg_result["ts"]
             logger.info(f"알림 전송 완료: thread_ts={thread_ts}")
         except Exception as e:
             logger.error(f"알림 전송 실패: {e}")
             return
+
+        # 2. 🌀 prefix 추가 (슬랙 메시지 전송 후)
+        if self._add_spinner_prefix(card):
+            logger.info(f"🌀 prefix 추가: {card.name}")
+        else:
+            logger.warning(f"🌀 prefix 추가 실패: {card.name}")
 
         # 2. 추적 등록
         tracked = TrackedCard(
@@ -212,6 +239,10 @@ class TrelloWatcher:
             prompt = self._build_to_go_prompt(card)
 
         # 5. Claude 실행 (별도 스레드에서)
+        # 🌀 제거를 위해 카드 정보 캡처
+        card_id_for_cleanup = card.id
+        card_name_with_spinner = f"🌀 {card.name}"
+
         def run_claude():
             try:
                 # say 함수 생성 (thread_ts 고정)
@@ -232,9 +263,22 @@ class TrelloWatcher:
                 )
             except Exception as e:
                 logger.exception(f"Claude 실행 오류 (워처): {e}")
+            finally:
+                # Claude 실행 완료 후 🌀 제거
+                if self._remove_spinner_prefix(card_id_for_cleanup, card_name_with_spinner):
+                    logger.info(f"🌀 prefix 제거: {card.name}")
+                else:
+                    logger.warning(f"🌀 prefix 제거 실패: {card.name}")
 
         claude_thread = threading.Thread(target=run_claude, daemon=True)
         claude_thread.start()
+
+    def _build_task_context_hint(self) -> str:
+        """태스크 컨텍스트 힌트 생성"""
+        return """
+태스크는 여러가지 이유로 중단되거나 재개될 수 있습니다.
+제목, 본문과 함께 체크리스트와 코멘트를 확인하세요.
+"""
 
     def _build_to_plan_prompt(self, card: TrelloCard) -> str:
         """To Plan 카드용 프롬프트 생성"""
@@ -242,7 +286,7 @@ class TrelloWatcher:
 
 카드 ID: {card.id}
 카드 URL: {card.url}
-"""
+{self._build_task_context_hint()}"""
         if card.desc:
             prompt += f"""
 ---
@@ -257,7 +301,7 @@ class TrelloWatcher:
 
 카드 ID: {card.id}
 카드 URL: {card.url}
-"""
+{self._build_task_context_hint()}"""
         if card.desc:
             prompt += f"""
 ---

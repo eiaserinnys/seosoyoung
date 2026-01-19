@@ -85,6 +85,19 @@ class TrelloClient:
             list_id=data.get("idList", ""),
         )
 
+    def update_card_name(self, card_id: str, name: str) -> bool:
+        """카드 제목 변경
+
+        Args:
+            card_id: 카드 ID
+            name: 새 제목
+
+        Returns:
+            성공 여부
+        """
+        result = self._request("PUT", f"/cards/{card_id}", params={"name": name})
+        return result is not None
+
     def is_configured(self) -> bool:
         """API 설정 여부 확인"""
         return bool(self.api_key and self.token)
