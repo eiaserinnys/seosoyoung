@@ -1,11 +1,30 @@
 # wrapper.ps1 - 봇 프로세스 관리
 # exit code에 따라 재시작/업데이트 처리
 
-$ErrorActionPreference = "Stop"
+# UTF-8 인코딩 설정 (한국어 깨짐 방지)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+chcp 65001 | Out-Null
+
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $runtimeDir = Split-Path -Parent $scriptDir  # seosoyoung_runtime
 $soyoungRoot = Split-Path -Parent $runtimeDir  # soyoung_root
 $workspaceDir = Join-Path $soyoungRoot "slackbot_workspace"
+
+# 로그 설정
+$logsDir = Join-Path $runtimeDir "logs"
+if (-not (Test-Path $logsDir)) {
+    New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+}
+$logFile = Join-Path $logsDir "wrapper_$(Get-Date -Format 'yyyyMMdd').log"
+Start-Transcript -Path $logFile -Append
+
+# 에러 발생 시에도 계속 진행 (로그에 기록됨)
+$ErrorActionPreference = "Continue"
+
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "wrapper: 시작 - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 
 # 작업 폴더가 없으면 생성
 if (-not (Test-Path $workspaceDir)) {
@@ -114,4 +133,7 @@ while ($true) {
     if ($exitCode -eq 0) { break }
 }
 
-Write-Host "wrapper: 종료" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "wrapper: 종료 - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Stop-Transcript
