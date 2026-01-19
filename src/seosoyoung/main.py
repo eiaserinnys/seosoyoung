@@ -541,6 +541,7 @@ def start_trello_watcher():
         slack_client=app.client,
         session_manager=session_manager,
         claude_runner_factory=_run_claude_in_session,
+        poll_interval=15,
     )
     trello_watcher.start()
     logger.info("Trello 워처 시작됨")
