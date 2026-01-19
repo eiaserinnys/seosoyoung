@@ -14,6 +14,7 @@ from seosoyoung.config import Config
 from seosoyoung.claude.runner import ClaudeRunner
 from seosoyoung.claude.session import SessionManager
 from seosoyoung.claude.security import validate_attach_path
+from seosoyoung.trello.watcher import TrelloWatcher
 
 # 로깅 설정
 def setup_logging():
@@ -524,6 +525,27 @@ def notify_startup():
             logger.error(f"시작 알림 실패: {e}")
 
 
+# Trello 워처
+trello_watcher: TrelloWatcher | None = None
+
+
+def start_trello_watcher():
+    """Trello 워처 시작"""
+    global trello_watcher
+
+    if not Config.TRELLO_API_KEY or not Config.TRELLO_TOKEN:
+        logger.info("Trello API 키가 설정되지 않아 워처를 시작하지 않습니다.")
+        return
+
+    trello_watcher = TrelloWatcher(
+        slack_client=app.client,
+        session_manager=session_manager,
+        claude_runner_factory=_run_claude_in_session,
+    )
+    trello_watcher.start()
+    logger.info("Trello 워처 시작됨")
+
+
 if __name__ == "__main__":
     logger.info("SeoSoyoung 봇을 시작합니다...")
     logger.info(f"LOG_PATH: {Config.get_log_path()}")
@@ -531,5 +553,6 @@ if __name__ == "__main__":
     logger.info(f"ALLOWED_USERS: {Config.ALLOWED_USERS}")
     logger.info(f"DEBUG: {Config.DEBUG}")
     notify_startup()
+    start_trello_watcher()
     handler = SocketModeHandler(app, Config.SLACK_APP_TOKEN)
     handler.start()

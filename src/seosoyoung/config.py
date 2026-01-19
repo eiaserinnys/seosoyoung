@@ -47,3 +47,13 @@ class Config:
 
     # Notification
     NOTIFY_CHANNEL = os.getenv("NOTIFY_CHANNEL", "")
+
+    # Trello
+    TRELLO_API_KEY = os.getenv("TRELLO_API_KEY", "")
+    TRELLO_TOKEN = os.getenv("TRELLO_TOKEN", "")
+    TRELLO_BOARD_ID = os.getenv("TRELLO_BOARD_ID", "696dd91e3c1e1a16b9c23ff7")  # 서소영의 일감 보드
+    TRELLO_NOTIFY_CHANNEL = os.getenv("TRELLO_NOTIFY_CHANNEL", "C08HX0Z475M")  # #nl_봇-테스트
+    TRELLO_WATCH_LISTS = {
+        "to_plan": "696ddb6fdacbb622fc85e278",  # 📋 To Plan
+        "to_go": "696ddb71107016c16d1001ba",    # 🚀 To Go
+    }
