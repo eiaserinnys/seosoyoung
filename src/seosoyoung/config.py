@@ -44,6 +44,7 @@ class Config:
 
     # Debug
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+    TRELLO_POLLING_DEBUG = os.getenv("TRELLO_POLLING_DEBUG", "false").lower() == "true"
 
     # Notification
     NOTIFY_CHANNEL = os.getenv("NOTIFY_CHANNEL", "")

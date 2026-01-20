@@ -161,7 +161,8 @@ class TrelloWatcher:
             logger.debug("Trello 워처 일시 중단 상태 - 폴링 스킵")
             return
 
-        logger.debug("Trello 폴링 시작")
+        if Config.TRELLO_POLLING_DEBUG:
+            logger.debug("Trello 폴링 시작")
 
         # 현재 감시 리스트의 모든 카드 조회
         current_cards: dict[str, tuple[TrelloCard, str]] = {}  # card_id -> (card, list_key)
