@@ -18,12 +18,6 @@ from claude_code_sdk.types import (
 
 logger = logging.getLogger(__name__)
 
-# 환경 변수에서 제외할 민감 정보
-SENSITIVE_ENV_KEYS = {
-    "SLACK_BOT_TOKEN",
-    "SLACK_APP_TOKEN",
-    "ANTHROPIC_API_KEY",
-}
 
 # Claude Code 기본 허용 도구
 DEFAULT_ALLOWED_TOOLS = [
@@ -78,24 +72,22 @@ class ClaudeAgentRunner:
         self.mcp_config_path = mcp_config_path
         self._lock = asyncio.Lock()
 
-    def _get_filtered_env(self) -> dict:
-        """민감 정보를 제외한 환경 변수 반환"""
-        return {
-            k: v for k, v in os.environ.items()
-            if k not in SENSITIVE_ENV_KEYS
-        }
-
     def _build_options(
         self,
         session_id: Optional[str] = None,
     ) -> ClaudeCodeOptions:
-        """ClaudeCodeOptions 생성"""
+        """ClaudeCodeOptions 생성
+
+        참고: env 파라미터를 명시적으로 전달하지 않으면
+        Claude Code CLI가 현재 프로세스의 환경변수를 상속받습니다.
+        이 방식이 API 키 등을 안전하게 전달하는 가장 간단한 방법입니다.
+        """
         options = ClaudeCodeOptions(
             allowed_tools=self.allowed_tools,
             disallowed_tools=self.disallowed_tools,
             permission_mode="bypassPermissions",  # dangerously-skip-permissions 대응
             cwd=self.working_dir,
-            env=self._get_filtered_env(),
+            # env는 명시적으로 전달하지 않음 (CLI가 상위 프로세스 환경 상속)
         )
 
         # MCP 서버 설정 (경로 지정된 경우)

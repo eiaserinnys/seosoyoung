@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from seosoyoung.claude.agent_runner import (
     ClaudeAgentRunner,
     ClaudeResult,
-    SENSITIVE_ENV_KEYS,
     DEFAULT_ALLOWED_TOOLS,
     DEFAULT_DISALLOWED_TOOLS,
 )
@@ -22,25 +21,6 @@ from seosoyoung.claude.agent_runner import (
 
 class TestClaudeAgentRunnerUnit:
     """유닛 테스트 (Mock 사용)"""
-
-    def test_get_filtered_env(self):
-        """민감 정보가 필터링되는지 확인"""
-        runner = ClaudeAgentRunner()
-
-        with patch.dict(os.environ, {
-            "SLACK_BOT_TOKEN": "xoxb-secret",
-            "SLACK_APP_TOKEN": "xapp-secret",
-            "ANTHROPIC_API_KEY": "sk-ant-secret",
-            "PATH": "/usr/bin",
-            "HOME": "/home/user",
-        }, clear=True):
-            filtered = runner._get_filtered_env()
-
-            assert "SLACK_BOT_TOKEN" not in filtered
-            assert "SLACK_APP_TOKEN" not in filtered
-            assert "ANTHROPIC_API_KEY" not in filtered
-            assert filtered.get("PATH") == "/usr/bin"
-            assert filtered.get("HOME") == "/home/user"
 
     def test_build_options_basic(self):
         """기본 옵션 생성 테스트"""
