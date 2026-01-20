@@ -78,6 +78,8 @@ class TrelloWatcher:
         # 워처 스레드
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._paused = False
+        self._pause_lock = threading.Lock()
 
     def _load_tracked(self):
         """추적 상태 로드"""
@@ -123,6 +125,24 @@ class TrelloWatcher:
             self._thread.join(timeout=5)
             logger.info("Trello 워처 중지")
 
+    def pause(self):
+        """워처 일시 중단 (재시작 대기용)"""
+        with self._pause_lock:
+            self._paused = True
+            logger.info("Trello 워처 일시 중단")
+
+    def resume(self):
+        """워처 재개"""
+        with self._pause_lock:
+            self._paused = False
+            logger.info("Trello 워처 재개")
+
+    @property
+    def is_paused(self) -> bool:
+        """일시 중단 상태인지 확인"""
+        with self._pause_lock:
+            return self._paused
+
     def _run(self):
         """워처 메인 루프"""
         while not self._stop_event.is_set():
@@ -136,6 +156,11 @@ class TrelloWatcher:
 
     def _poll(self):
         """리스트 폴링"""
+        # 일시 중단 상태면 스킵
+        if self.is_paused:
+            logger.debug("Trello 워처 일시 중단 상태 - 폴링 스킵")
+            return
+
         logger.debug("Trello 폴링 시작")
 
         # 현재 감시 리스트의 모든 카드 조회

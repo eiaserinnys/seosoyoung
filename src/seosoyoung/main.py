@@ -15,6 +15,7 @@ from seosoyoung.claude.runner import ClaudeRunner
 from seosoyoung.claude.session import SessionManager
 from seosoyoung.claude.security import validate_attach_path
 from seosoyoung.trello.watcher import TrelloWatcher
+from seosoyoung.restart import RestartManager, RestartRequest, RestartType
 
 # 로깅 설정
 def setup_logging():
@@ -40,11 +41,25 @@ app = App(token=Config.SLACK_BOT_TOKEN, logger=logger)
 # Claude Code 연동
 session_manager = SessionManager()
 
+
+def _perform_restart(restart_type: RestartType) -> None:
+    """실제 재시작 수행"""
+    notify_shutdown()
+    os._exit(restart_type.value)
+
+
+# 재시작 관리자 (get_running_session_count는 아래에서 정의되므로 나중에 설정)
+restart_manager: RestartManager = None  # type: ignore
+
 # 실행 중인 세션 락 (스레드별 동시 실행 방지)
 # RLock 사용: 같은 스레드에서 여러 번 acquire 가능 (재진입 가능)
 # 워처가 락을 획득한 상태에서 _run_claude_in_session이 같은 락을 다시 획득할 수 있음
 _session_locks: dict[str, threading.RLock] = {}
 _locks_lock = threading.Lock()
+
+# 현재 실행 중인 세션 추적 (락이 acquire된 thread_ts 집합)
+_running_sessions: set[str] = set()
+_running_sessions_lock = threading.Lock()
 
 
 def get_session_lock(thread_ts: str) -> threading.RLock:
@@ -53,6 +68,40 @@ def get_session_lock(thread_ts: str) -> threading.RLock:
         if thread_ts not in _session_locks:
             _session_locks[thread_ts] = threading.RLock()
         return _session_locks[thread_ts]
+
+
+def mark_session_running(thread_ts: str) -> None:
+    """세션을 실행 중으로 표시"""
+    with _running_sessions_lock:
+        _running_sessions.add(thread_ts)
+    logger.debug(f"세션 실행 시작: thread_ts={thread_ts}")
+
+
+def mark_session_stopped(thread_ts: str) -> None:
+    """세션 실행 종료 표시
+
+    세션 종료 후 대기 중인 재시작 요청이 있으면 확인합니다.
+    """
+    with _running_sessions_lock:
+        _running_sessions.discard(thread_ts)
+    logger.debug(f"세션 실행 종료: thread_ts={thread_ts}")
+
+    # 대기 중인 재시작이 있으면 확인 (restart_manager가 초기화된 후에만)
+    if restart_manager is not None and restart_manager.is_pending:
+        restart_manager.check_and_restart_if_ready()
+
+
+def get_running_session_count() -> int:
+    """현재 실행 중인 세션 수 반환"""
+    with _running_sessions_lock:
+        return len(_running_sessions)
+
+
+# restart_manager 초기화 (get_running_session_count가 정의된 후)
+restart_manager = RestartManager(
+    get_running_count=get_running_session_count,
+    on_restart=_perform_restart
+)
 
 
 def get_runner_for_role(role: str) -> ClaudeRunner:
@@ -158,6 +207,14 @@ def handle_mention(event, say, client):
     command = extract_command(text)
     logger.info(f"명령어 처리: command={command}")
 
+    # 재시작 대기 중이면 안내 메시지 (관리자 명령어 제외)
+    if restart_manager.is_pending and command not in ["help", "status", "update", "restart"]:
+        say(
+            text="재시작을 대기하는 중입니다.\n재시작이 완료되면 다시 대화를 요청해주세요.",
+            thread_ts=ts
+        )
+        return
+
     # 관리자 명령어 처리
     if command == "help":
         say(
@@ -192,16 +249,27 @@ def handle_mention(event, say, client):
             say(text="관리자 권한이 필요합니다.", thread_ts=ts)
             return
 
-        if command == "update":
-            say(text="업데이트합니다. 잠시만요...", thread_ts=ts)
-            logger.info("업데이트 요청 - 프로세스 종료")
-            notify_shutdown()
-            os._exit(42)
-        else:
-            say(text="재시작합니다. 잠시만요...", thread_ts=ts)
-            logger.info("재시작 요청 - 프로세스 종료")
-            notify_shutdown()
-            os._exit(43)
+        restart_type = RestartType.UPDATE if command == "update" else RestartType.RESTART
+
+        # 실행 중인 세션이 있으면 확인 프로세스
+        running_count = get_running_session_count()
+        if running_count > 0:
+            say(text="진행 중인 대화를 확인합니다...", thread_ts=ts)
+            send_restart_confirmation(
+                client=client,
+                channel=Config.TRELLO_NOTIFY_CHANNEL,
+                restart_type=restart_type,
+                running_count=running_count,
+                user_id=user_id,
+                original_thread_ts=ts
+            )
+            return
+
+        # 실행 중인 세션이 없으면 즉시 재시작
+        type_name = "업데이트" if command == "update" else "재시작"
+        say(text=f"{type_name}합니다. 잠시만요...", thread_ts=ts)
+        logger.info(f"{type_name} 요청 - 프로세스 종료")
+        restart_manager.force_restart(restart_type)
         return
 
     # 일반 질문: 세션 생성 + Claude 실행
@@ -268,6 +336,9 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
     if not lock.acquire(blocking=False):
         say(text="이전 요청을 처리 중이에요. 잠시 후 다시 시도해주세요.", thread_ts=thread_ts)
         return
+
+    # 실행 중 세션으로 표시
+    mark_session_running(thread_ts)
 
     # 마지막 메시지 ts 추적 (최종 답변으로 교체할 대상)
     last_msg_ts = None
@@ -356,16 +427,29 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
 
                 # 재기동 마커 감지 (admin 역할만 허용)
                 if effective_role == "admin":
-                    if result.update_requested:
-                        logger.info("업데이트 요청 마커 감지 - 프로세스 종료 (exit 42)")
-                        say(text="코드가 업데이트되었습니다. 재시작합니다...", thread_ts=thread_ts)
-                        notify_shutdown()
-                        os._exit(42)
-                    elif result.restart_requested:
-                        logger.info("재시작 요청 마커 감지 - 프로세스 종료 (exit 43)")
-                        say(text="재시작합니다...", thread_ts=thread_ts)
-                        notify_shutdown()
-                        os._exit(43)
+                    if result.update_requested or result.restart_requested:
+                        restart_type = RestartType.UPDATE if result.update_requested else RestartType.RESTART
+                        type_name = "업데이트" if result.update_requested else "재시작"
+
+                        # 현재 세션 외 다른 실행 중인 세션 수 확인
+                        # (현재 세션은 아직 mark_session_stopped 전이므로 -1)
+                        running_count = get_running_session_count() - 1
+
+                        if running_count > 0:
+                            logger.info(f"{type_name} 마커 감지 - 다른 세션 {running_count}개 실행 중, 확인 필요")
+                            say(text=f"코드가 변경되었습니다. 다른 대화가 진행 중이어서 확인이 필요합니다.", thread_ts=thread_ts)
+                            send_restart_confirmation(
+                                client=client,
+                                channel=Config.TRELLO_NOTIFY_CHANNEL,
+                                restart_type=restart_type,
+                                running_count=running_count,
+                                user_id=session.user_id,
+                                original_thread_ts=thread_ts
+                            )
+                        else:
+                            logger.info(f"{type_name} 마커 감지 - 다른 실행 중인 세션 없음, 즉시 {type_name}")
+                            say(text=f"코드가 변경되었습니다. {type_name}합니다...", thread_ts=thread_ts)
+                            restart_manager.force_restart(restart_type)
             else:
                 client.chat_update(
                     channel=channel,
@@ -394,6 +478,8 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
         except Exception:
             pass
     finally:
+        # 세션 실행 종료 표시
+        mark_session_stopped(thread_ts)
         lock.release()
 
 
@@ -426,6 +512,14 @@ def handle_message(event, say, client):
     session = session_manager.get(thread_ts)
     if not session:
         # 세션이 없으면 무시
+        return
+
+    # 재시작 대기 중이면 안내 메시지
+    if restart_manager.is_pending:
+        say(
+            text="재시작을 대기하는 중입니다.\n재시작이 완료되면 다시 대화를 요청해주세요.",
+            thread_ts=thread_ts
+        )
         return
 
     # 멘션 제거 (혹시 모를 경우 대비)
@@ -545,6 +639,173 @@ def notify_shutdown():
         except Exception as e:
             logger.error(f"종료 알림 실패: {e}")
 
+
+# ==================== 재시작 확인 UI ====================
+
+def send_restart_confirmation(
+    client,
+    channel: str,
+    restart_type: RestartType,
+    running_count: int,
+    user_id: str,
+    original_thread_ts: str | None = None
+) -> None:
+    """재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
+
+    Args:
+        client: Slack client
+        channel: 알림 채널 ID
+        restart_type: 재시작 유형
+        running_count: 실행 중인 대화 수
+        user_id: 요청한 사용자 ID
+        original_thread_ts: 원래 요청 메시지의 스레드 ts (있으면)
+    """
+    type_name = "업데이트" if restart_type == RestartType.UPDATE else "재시작"
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"현재 *{running_count}개*의 대화가 진행 중입니다. :ar-embarrass:\n지금 다시 시작하면 진행 중이던 대화가 끊깁니다.\n그래도 {type_name}할까요?"
+            }
+        },
+        {
+            "type": "actions",
+            "block_id": "restart_actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "예"},
+                    "style": "danger",
+                    "action_id": "restart_yes",
+                    "value": f"{restart_type.value}|{user_id}|{original_thread_ts or ''}"
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "아니오"},
+                    "action_id": "restart_no",
+                    "value": f"{restart_type.value}|{user_id}|{original_thread_ts or ''}"
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "모든 대화 종료 후 재시작"},
+                    "action_id": "restart_wait_all",
+                    "value": f"{restart_type.value}|{user_id}|{original_thread_ts or ''}"
+                }
+            ]
+        }
+    ]
+
+    try:
+        client.chat_postMessage(
+            channel=channel,
+            blocks=blocks,
+            text=f"재시작 확인 필요: {running_count}개 대화 진행 중"
+        )
+        logger.info(f"재시작 확인 메시지 전송: channel={channel}, count={running_count}")
+    except Exception as e:
+        logger.error(f"재시작 확인 메시지 전송 실패: {e}")
+
+
+@app.action("restart_yes")
+def handle_restart_yes(ack, body, client):
+    """예 버튼 클릭 - 즉시 재시작"""
+    ack()
+
+    value = body["actions"][0]["value"]
+    restart_type_val, user_id, original_thread_ts = value.split("|")
+    restart_type = RestartType(int(restart_type_val))
+
+    # 버튼이 있는 메시지 업데이트
+    channel = body["channel"]["id"]
+    message_ts = body["message"]["ts"]
+
+    type_name = "업데이트" if restart_type == RestartType.UPDATE else "재시작"
+
+    try:
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            blocks=[],
+            text=f"알겠습니다. {type_name}합니다."
+        )
+    except Exception as e:
+        logger.error(f"메시지 업데이트 실패: {e}")
+
+    logger.info(f"재시작 승인: type={restart_type.name}, user={user_id}")
+    restart_manager.force_restart(restart_type)
+
+
+@app.action("restart_no")
+def handle_restart_no(ack, body, client):
+    """아니오 버튼 클릭 - 취소"""
+    ack()
+
+    value = body["actions"][0]["value"]
+    restart_type_val, user_id, original_thread_ts = value.split("|")
+
+    # 버튼이 있는 메시지 업데이트
+    channel = body["channel"]["id"]
+    message_ts = body["message"]["ts"]
+
+    try:
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            blocks=[],
+            text="알겠습니다. 이후에 재시작을 시도하려면\n`@서소영 update` 또는 `@서소영 restart`라고 입력해주세요."
+        )
+    except Exception as e:
+        logger.error(f"메시지 업데이트 실패: {e}")
+
+    logger.info(f"재시작 취소: user={user_id}")
+
+
+@app.action("restart_wait_all")
+def handle_restart_wait_all(ack, body, client):
+    """모든 대화 종료 후 재시작 버튼 클릭"""
+    ack()
+
+    value = body["actions"][0]["value"]
+    restart_type_val, user_id, original_thread_ts = value.split("|")
+    restart_type = RestartType(int(restart_type_val))
+
+    # 버튼이 있는 메시지 업데이트
+    channel = body["channel"]["id"]
+    message_ts = body["message"]["ts"]
+
+    try:
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            blocks=[],
+            text="알겠습니다, 모든 대화가 종료되면 재시작합니다.\n재시작을 대기하는 동안은 새로운 대화를 시작하지 않습니다."
+        )
+    except Exception as e:
+        logger.error(f"메시지 업데이트 실패: {e}")
+
+    # 재시작 대기 요청 등록
+    request = RestartRequest(
+        restart_type=restart_type,
+        requester_user_id=user_id,
+        channel_id=channel,
+        thread_ts=original_thread_ts if original_thread_ts else message_ts
+    )
+    restart_manager.request_restart(request)
+
+    # Trello 워처 일시 중단
+    if trello_watcher:
+        trello_watcher.pause()
+
+    logger.info(f"재시작 대기 시작: type={restart_type.name}, user={user_id}")
+
+    # 현재 실행 중인 세션이 없으면 즉시 재시작
+    if get_running_session_count() == 0:
+        restart_manager.check_and_restart_if_ready()
+
+
+# ==================== Trello 워처 ====================
 
 # Trello 워처
 trello_watcher: TrelloWatcher | None = None
