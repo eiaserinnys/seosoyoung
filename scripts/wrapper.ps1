@@ -115,6 +115,18 @@ while ($true) {
             Write-Host "wrapper: 업데이트 요청 - git pull 실행" -ForegroundColor Cyan
             Push-Location $runtimeDir
             git pull origin main
+            # 의존성 설치 (requirements.txt 변경 대응)
+            $pipExe = Join-Path $runtimeDir "venv\Scripts\pip.exe"
+            $requirementsFile = Join-Path $runtimeDir "requirements.txt"
+            if (Test-Path $requirementsFile) {
+                Write-Host "wrapper: 의존성 설치 중..." -ForegroundColor Cyan
+                & $pipExe install -r $requirementsFile --quiet
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "wrapper: 의존성 설치 완료" -ForegroundColor Green
+                } else {
+                    Write-Host "wrapper: 의존성 설치 실패 (계속 진행)" -ForegroundColor Yellow
+                }
+            }
             Pop-Location
             Sync-DevSeosoyoung  # 개발 소스 동기화
             Copy-Skills  # 업데이트 후 skills 재복사
