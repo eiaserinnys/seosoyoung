@@ -57,3 +57,5 @@ class Config:
         "to_plan": "696ddb6fdacbb622fc85e278",  # 📋 To Plan
         "to_go": "696ddb71107016c16d1001ba",    # 🚀 To Go
     }
+    TRELLO_REVIEW_LIST_ID = "696ddb72e70fe807b0199746"  # 👀 Review
+    TRELLO_DONE_LIST_ID = "696ddb74cc52e4c5d5261ed4"    # ✅ Done

@@ -21,6 +21,7 @@ class TrelloCard:
     url: str
     list_id: str
     list_name: str = ""
+    due_complete: bool = False
 
 
 class TrelloClient:
@@ -68,6 +69,7 @@ class TrelloClient:
                 desc=card_data.get("desc", ""),
                 url=card_data.get("shortUrl", ""),
                 list_id=list_id,
+                due_complete=card_data.get("dueComplete", False),
             ))
         return cards
 
@@ -96,6 +98,19 @@ class TrelloClient:
             성공 여부
         """
         result = self._request("PUT", f"/cards/{card_id}", params={"name": name})
+        return result is not None
+
+    def move_card(self, card_id: str, list_id: str) -> bool:
+        """카드를 다른 리스트로 이동
+
+        Args:
+            card_id: 카드 ID
+            list_id: 대상 리스트 ID
+
+        Returns:
+            성공 여부
+        """
+        result = self._request("PUT", f"/cards/{card_id}", params={"idList": list_id})
         return result is not None
 
     def is_configured(self) -> bool:
