@@ -1,4 +1,4 @@
-"""Trello 워처 - To Plan / To Go 리스트 감시"""
+"""Trello 워처 - To Go 리스트 감시 및 처리"""
 
 import json
 import logging
@@ -21,7 +21,7 @@ class TrackedCard:
     card_id: str
     card_name: str
     list_id: str
-    list_key: str  # "to_plan" or "to_go"
+    list_key: str  # "to_go" (단일 모니터링 포인트)
     thread_ts: str
     channel_id: str
     detected_at: str
@@ -30,10 +30,13 @@ class TrackedCard:
 class TrelloWatcher:
     """Trello 리스트 감시자
 
-    To Plan, To Go 리스트에 새 카드가 들어오면:
-    1. Slack에 알림 메시지 전송
-    2. 스레드 생성
+    To Go 리스트에 새 카드가 들어오면:
+    1. 카드를 In Progress로 이동
+    2. Slack에 알림 메시지 전송
     3. Claude Code 세션 시작
+    4. Execute 레이블 유무에 따라:
+       - 없음: 계획 수립 후 Backlog로 이동
+       - 있음: 작업 실행 후 Review/Blocked로 이동
     """
 
     def __init__(
@@ -233,17 +236,28 @@ class TrelloWatcher:
         new_name = card_name.lstrip("🌀").lstrip()
         return self.trello.update_card_name(card_id, new_name)
 
-    def _handle_new_card(self, card: TrelloCard, list_key: str):
-        """새 카드 처리: 알림 → 🌀 추가 → 스레드 생성 → Claude 실행"""
-        # 리스트 이름 매핑
-        list_names = {
-            "to_plan": "📋 To Plan",
-            "to_go": "🚀 To Go",
-        }
-        list_name = list_names.get(list_key, list_key)
+    def _has_execute_label(self, card: TrelloCard) -> bool:
+        """카드에 Execute 레이블이 있는지 확인"""
+        for label in card.labels:
+            if label.get("name", "").lower() == "execute":
+                return True
+        return False
 
-        # 1. 알림 메시지 전송 (간결한 형식)
-        # 설명 첫 줄 추출 (있으면)
+    def _handle_new_card(self, card: TrelloCard, list_key: str):
+        """새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행"""
+        # 1. 카드를 In Progress로 이동
+        in_progress_list_id = Config.TRELLO_IN_PROGRESS_LIST_ID
+        if in_progress_list_id:
+            if self.trello.move_card(card.id, in_progress_list_id):
+                logger.info(f"카드 In Progress로 이동: {card.name}")
+            else:
+                logger.warning(f"카드 In Progress 이동 실패: {card.name}")
+
+        # 2. Execute 레이블 확인
+        has_execute = self._has_execute_label(card)
+        mode = "실행" if has_execute else "계획 수립"
+
+        # 3. 알림 메시지 전송
         desc_first_line = ""
         if card.desc:
             first_line = card.desc.strip().split("\n")[0]
@@ -253,7 +267,7 @@ class TrelloWatcher:
         try:
             msg_result = self.slack_client.chat_postMessage(
                 channel=self.notify_channel,
-                text=f"*{list_name}에* <{card.url}|*{card.name}*> *감지*{desc_first_line}"
+                text=f"*🚀 To Go →* <{card.url}|*{card.name}*> *({mode} 모드)*{desc_first_line}"
             )
             thread_ts = msg_result["ts"]
             logger.info(f"알림 전송 완료: thread_ts={thread_ts}")
@@ -261,13 +275,13 @@ class TrelloWatcher:
             logger.error(f"알림 전송 실패: {e}")
             return
 
-        # 2. 🌀 prefix 추가 (슬랙 메시지 전송 후)
+        # 4. 🌀 prefix 추가
         if self._add_spinner_prefix(card):
             logger.info(f"🌀 prefix 추가: {card.name}")
         else:
             logger.warning(f"🌀 prefix 추가 실패: {card.name}")
 
-        # 2. 추적 등록
+        # 5. 추적 등록
         tracked = TrackedCard(
             card_id=card.id,
             card_name=card.name,
@@ -280,7 +294,7 @@ class TrelloWatcher:
         self._tracked[card.id] = tracked
         self._save_tracked()
 
-        # 3. 세션 생성
+        # 6. 세션 생성
         session = self.session_manager.create(
             thread_ts=thread_ts,
             channel_id=self.notify_channel,
@@ -289,27 +303,20 @@ class TrelloWatcher:
             role="admin"  # 워처는 admin 권한으로 실행
         )
 
-        # 4. 프롬프트 생성
-        if list_key == "to_plan":
-            prompt = self._build_to_plan_prompt(card)
-        else:
-            prompt = self._build_to_go_prompt(card)
+        # 7. 프롬프트 생성 (Execute 레이블 유무에 따라)
+        prompt = self._build_to_go_prompt(card, has_execute)
 
-        # 5. Claude 실행 (별도 스레드에서)
-        # 🌀 제거를 위해 카드 정보 캡처
+        # 8. Claude 실행 (별도 스레드에서)
         card_id_for_cleanup = card.id
         card_name_with_spinner = f"🌀 {card.name}"
 
         def run_claude():
-            # 락을 스레드 내부에서 획득 (같은 스레드에서 획득/해제해야 RLock이 정상 동작)
-            # 이렇게 하면 _run_claude_in_session에서 같은 스레드로 RLock 재진입 가능
             lock = None
             if self.get_session_lock:
                 lock = self.get_session_lock(thread_ts)
                 lock.acquire()
                 logger.debug(f"워처 락 획득: thread_ts={thread_ts}")
             try:
-                # say 함수 생성 (thread_ts 고정)
                 def say(text, thread_ts=None):
                     self.slack_client.chat_postMessage(
                         channel=self.notify_channel,
@@ -348,24 +355,32 @@ class TrelloWatcher:
 제목, 본문과 함께 체크리스트와 코멘트를 확인하세요.
 """
 
-    def _build_to_plan_prompt(self, card: TrelloCard) -> str:
-        """To Plan 카드용 프롬프트 생성"""
-        prompt = f"""📋 To Plan 리스트에 들어온 '{card.name}' 태스크의 계획을 수립해주세요.
+    def _build_to_go_prompt(self, card: TrelloCard, has_execute: bool = False) -> str:
+        """To Go 카드용 프롬프트 생성
+
+        Args:
+            card: Trello 카드
+            has_execute: Execute 레이블 유무
+                - True: 실행 모드 (계획 수립 후 바로 실행)
+                - False: 계획 모드 (계획 수립만 하고 Backlog로 이동)
+        """
+        if has_execute:
+            # 실행 모드: 계획 수립 후 바로 실행
+            prompt = f"""🚀 To Go 리스트에 들어온 '{card.name}' 태스크를 실행해주세요.
 
 카드 ID: {card.id}
 카드 URL: {card.url}
 {self._build_task_context_hint()}"""
-        if card.desc:
-            prompt += f"""
----
-{card.desc}
----
-"""
-        return prompt
+        else:
+            # 계획 모드: 계획 수립만 하고 Backlog로 이동
+            prompt = f"""📋 To Go 리스트에 들어온 '{card.name}' 태스크의 계획을 수립해주세요.
 
-    def _build_to_go_prompt(self, card: TrelloCard) -> str:
-        """To Go 카드용 프롬프트 생성"""
-        prompt = f"""🚀 To Go 리스트에 들어온 '{card.name}' 태스크를 실행해주세요.
+**Execute 레이블이 없으므로 계획 수립만 진행합니다.**
+
+1. 카드를 분석하고 계획을 수립하세요
+2. 체크리스트로 세부 단계를 기록하세요
+3. 완료 후 카드를 📦 Backlog로 이동하세요
+4. 사용자가 Execute 레이블을 붙이고 다시 🚀 To Go로 보내면 실행됩니다
 
 카드 ID: {card.id}
 카드 URL: {card.url}

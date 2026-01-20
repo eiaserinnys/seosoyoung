@@ -58,8 +58,9 @@ class Config:
     TRELLO_BOARD_ID = os.getenv("TRELLO_BOARD_ID", "696dd91e3c1e1a16b9c23ff7")  # 서소영의 일감 보드
     TRELLO_NOTIFY_CHANNEL = os.getenv("TRELLO_NOTIFY_CHANNEL", "C0A9H2JJ4AX")  # #nl_서소영의-방
     TRELLO_WATCH_LISTS = {
-        "to_plan": "696ddb6fdacbb622fc85e278",  # 📋 To Plan
-        "to_go": "696ddb71107016c16d1001ba",    # 🚀 To Go
+        "to_go": "696ddb71107016c16d1001ba",    # 🚀 To Go (단일 모니터링 포인트)
     }
+    TRELLO_BACKLOG_LIST_ID = "696ddb707a578b0021173f72"  # 📦 Backlog
+    TRELLO_IN_PROGRESS_LIST_ID = "696ddb72ba1278b514c0ae18"  # 🔨 In Progress
     TRELLO_REVIEW_LIST_ID = "696ddb72e70fe807b0199746"  # 👀 Review
     TRELLO_DONE_LIST_ID = "696ddb74cc52e4c5d5261ed4"    # ✅ Done

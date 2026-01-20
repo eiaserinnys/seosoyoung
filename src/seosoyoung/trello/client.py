@@ -1,7 +1,7 @@
 """Trello API 클라이언트"""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import requests
 
@@ -22,6 +22,7 @@ class TrelloCard:
     list_id: str
     list_name: str = ""
     due_complete: bool = False
+    labels: list = field(default_factory=list)  # [{"id": "...", "name": "...", "color": "..."}]
 
 
 class TrelloClient:
@@ -70,6 +71,7 @@ class TrelloClient:
                 url=card_data.get("shortUrl", ""),
                 list_id=list_id,
                 due_complete=card_data.get("dueComplete", False),
+                labels=card_data.get("labels", []),
             ))
         return cards
 
@@ -85,6 +87,7 @@ class TrelloClient:
             desc=data.get("desc", ""),
             url=data.get("shortUrl", ""),
             list_id=data.get("idList", ""),
+            labels=data.get("labels", []),
         )
 
     def update_card_name(self, card_id: str, name: str) -> bool:
