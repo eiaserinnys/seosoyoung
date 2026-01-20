@@ -261,7 +261,6 @@ def handle_mention(event, say, client):
         # 실행 중인 세션이 있으면 확인 프로세스
         running_count = get_running_session_count()
         if running_count > 0:
-            say(text="진행 중인 대화를 확인합니다...", thread_ts=ts)
             send_restart_confirmation(
                 client=client,
                 channel=Config.TRELLO_NOTIFY_CHANNEL,
@@ -274,7 +273,6 @@ def handle_mention(event, say, client):
 
         # 실행 중인 세션이 없으면 즉시 재시작
         type_name = "업데이트" if command == "update" else "재시작"
-        say(text=f"{type_name}합니다. 잠시만요...", thread_ts=ts)
         logger.info(f"{type_name} 요청 - 프로세스 종료")
         restart_manager.force_restart(restart_type)
         return
