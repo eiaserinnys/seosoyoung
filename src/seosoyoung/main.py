@@ -193,10 +193,12 @@ def handle_mention(event, say, client):
         if command == "update":
             say(text="업데이트합니다. 잠시만요...", thread_ts=ts)
             logger.info("업데이트 요청 - 프로세스 종료")
+            notify_shutdown()
             os._exit(42)
         else:
             say(text="재시작합니다. 잠시만요...", thread_ts=ts)
             logger.info("재시작 요청 - 프로세스 종료")
+            notify_shutdown()
             os._exit(43)
         return
 
@@ -355,10 +357,12 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
                     if result.update_requested:
                         logger.info("업데이트 요청 마커 감지 - 프로세스 종료 (exit 42)")
                         say(text="코드가 업데이트되었습니다. 재시작합니다...", thread_ts=thread_ts)
+                        notify_shutdown()
                         os._exit(42)
                     elif result.restart_requested:
                         logger.info("재시작 요청 마커 감지 - 프로세스 종료 (exit 43)")
                         say(text="재시작합니다...", thread_ts=thread_ts)
+                        notify_shutdown()
                         os._exit(43)
             else:
                 client.chat_update(
@@ -514,15 +518,30 @@ def handle_reaction(event, client):
 
 def notify_startup():
     """봇 시작 알림"""
-    if Config.NOTIFY_CHANNEL:
+    channel = Config.TRELLO_NOTIFY_CHANNEL
+    if channel:
         try:
             app.client.chat_postMessage(
-                channel=Config.NOTIFY_CHANNEL,
-                text="소영이가 시작되었습니다."
+                channel=channel,
+                text="안녕하세요, 서소영입니다."
             )
-            logger.info(f"시작 알림 전송: {Config.NOTIFY_CHANNEL}")
+            logger.info(f"시작 알림 전송: {channel}")
         except Exception as e:
             logger.error(f"시작 알림 실패: {e}")
+
+
+def notify_shutdown():
+    """봇 종료 알림"""
+    channel = Config.TRELLO_NOTIFY_CHANNEL
+    if channel:
+        try:
+            app.client.chat_postMessage(
+                channel=channel,
+                text="다음에 또 뵙겠습니다, 안녕히 계세요."
+            )
+            logger.info(f"종료 알림 전송: {channel}")
+        except Exception as e:
+            logger.error(f"종료 알림 실패: {e}")
 
 
 # Trello 워처
