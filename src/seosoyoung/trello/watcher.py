@@ -274,16 +274,14 @@ class TrelloWatcher:
         card_id_for_cleanup = card.id
         card_name_with_spinner = f"🌀 {card.name}"
 
-        # 락을 먼저 획득하여 사용자 메시지가 워처 실행 중에 끼어들지 않도록 함
-        # 이렇게 하면 워처의 Claude 실행이 완료되고 session_id가 저장된 후에
-        # 사용자 메시지가 처리되어 동일한 세션을 이어갈 수 있음
-        lock = None
-        if self.get_session_lock:
-            lock = self.get_session_lock(thread_ts)
-            lock.acquire()
-            logger.debug(f"워처 락 획득: thread_ts={thread_ts}")
-
         def run_claude():
+            # 락을 스레드 내부에서 획득 (같은 스레드에서 획득/해제해야 RLock이 정상 동작)
+            # 이렇게 하면 _run_claude_in_session에서 같은 스레드로 RLock 재진입 가능
+            lock = None
+            if self.get_session_lock:
+                lock = self.get_session_lock(thread_ts)
+                lock.acquire()
+                logger.debug(f"워처 락 획득: thread_ts={thread_ts}")
             try:
                 # say 함수 생성 (thread_ts 고정)
                 def say(text, thread_ts=None):
