@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
-from seosoyoung.claude.security import SecurityChecker, SecurityError
+from seosoyoung.claude.security import SecurityError
 
 logger = logging.getLogger(__name__)
 
@@ -61,15 +61,12 @@ class ClaudeRunner:
         timeout: int = 300,  # 5분 기본 타임아웃
         allowed_tools: Optional[list[str]] = None,
         disallowed_tools: Optional[list[str]] = None,
-        enable_security_check: bool = True,
     ):
         self.working_dir = working_dir or Path.cwd()
         self.timeout = timeout
         self.allowed_tools = allowed_tools or ALLOWED_TOOLS
         self.disallowed_tools = disallowed_tools or DISALLOWED_TOOLS
-        self.enable_security_check = enable_security_check
         self._lock = asyncio.Lock()  # 동시 실행 제어
-        self._security = SecurityChecker()
 
     def _get_filtered_env(self) -> dict:
         """민감 정보를 제외한 환경 변수 반환"""
@@ -118,17 +115,6 @@ class ClaudeRunner:
             session_id: 이어갈 세션 ID (선택)
             on_progress: 진행 상황 콜백 (선택). 텍스트 청크가 생성될 때마다 호출됨.
         """
-        # 보안 검사
-        if self.enable_security_check:
-            is_safe, reason = self._security.check_prompt(prompt)
-            if not is_safe:
-                logger.warning(f"보안 검사 실패: {reason}")
-                return ClaudeResult(
-                    success=False,
-                    output="",
-                    error=f"보안 검사 실패: {reason}"
-                )
-
         async with self._lock:
             if on_progress:
                 return await self._execute_streaming(prompt, session_id, on_progress)
@@ -309,9 +295,6 @@ class ClaudeRunner:
             if restart_requested:
                 logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
 
-            # 출력 마스킹
-            output = self._security.mask_output(output)
-
             if stderr:
                 logger.warning(f"Claude Code stderr: {stderr[:500]}")
 
@@ -398,9 +381,6 @@ class ClaudeRunner:
             logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
         if restart_requested:
             logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
-
-        # 출력 마스킹 (민감 정보 제거)
-        output = self._security.mask_output(output)
 
         if stderr:
             logger.warning(f"Claude Code stderr: {stderr[:500]}")
