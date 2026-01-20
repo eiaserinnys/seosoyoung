@@ -31,6 +31,12 @@ def setup_logging():
             logging.StreamHandler()
         ]
     )
+
+    # urllib3 HTTP 요청 로그 제어
+    # TRELLO_POLLING_DEBUG=true일 때만 DEBUG 로그 출력
+    if not Config.TRELLO_POLLING_DEBUG:
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+
     return logging.getLogger(__name__)
 
 logger = setup_logging()
