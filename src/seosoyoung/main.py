@@ -13,7 +13,6 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from seosoyoung.config import Config
 from seosoyoung.claude.runner import ClaudeRunner
 from seosoyoung.claude.session import SessionManager
-from seosoyoung.claude.security import validate_attach_path
 from seosoyoung.trello.watcher import TrelloWatcher
 from seosoyoung.restart import RestartManager, RestartRequest, RestartType
 
@@ -539,10 +538,6 @@ def handle_message(event, say, client):
     _run_claude_in_session(session, clean_text, ts, channel, say, client, role=user_info["role"])
 
 
-# 워크스페이스 루트 (첨부 파일 허용 범위)
-WORKSPACE_ROOT = Path.cwd()
-
-
 def upload_file_to_slack(client, channel: str, thread_ts: str, file_path: str) -> tuple[bool, str]:
     """파일을 슬랙에 첨부
 
@@ -555,14 +550,15 @@ def upload_file_to_slack(client, channel: str, thread_ts: str, file_path: str) -
     Returns:
         (success, message): 성공 여부와 메시지
     """
-    # 경로 검증
-    is_valid, error = validate_attach_path(file_path, WORKSPACE_ROOT)
-    if not is_valid:
-        logger.warning(f"파일 첨부 거부: {file_path} - {error}")
-        return False, f"파일 첨부 거부: {error}"
-
     try:
         file_path_obj = Path(file_path).resolve()
+
+        if not file_path_obj.exists():
+            return False, f"파일이 존재하지 않음: {file_path}"
+
+        if not file_path_obj.is_file():
+            return False, f"파일이 아님: {file_path}"
+
         result = client.files_upload_v2(
             channel=channel,
             thread_ts=thread_ts,
