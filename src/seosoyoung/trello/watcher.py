@@ -41,6 +41,7 @@ class TrelloWatcher:
         slack_client,
         session_manager,
         claude_runner_factory: Callable,
+        get_session_lock: Optional[Callable[[str], threading.Lock]] = None,
         notify_channel: Optional[str] = None,
         poll_interval: int = 60,  # 1분
         data_dir: Optional[Path] = None,
@@ -50,6 +51,7 @@ class TrelloWatcher:
             slack_client: Slack WebClient
             session_manager: SessionManager 인스턴스
             claude_runner_factory: (session, prompt, msg_ts, channel, say, client) -> None
+            get_session_lock: 스레드별 락 반환 함수 (thread_ts -> Lock)
             notify_channel: 알림 채널 ID
             poll_interval: 폴링 간격 (초)
             data_dir: 상태 파일 저장 디렉토리
@@ -57,6 +59,7 @@ class TrelloWatcher:
         self.slack_client = slack_client
         self.session_manager = session_manager
         self.claude_runner_factory = claude_runner_factory
+        self.get_session_lock = get_session_lock
         self.notify_channel = notify_channel or Config.TRELLO_NOTIFY_CHANNEL
         self.poll_interval = poll_interval
 
@@ -271,6 +274,15 @@ class TrelloWatcher:
         card_id_for_cleanup = card.id
         card_name_with_spinner = f"🌀 {card.name}"
 
+        # 락을 먼저 획득하여 사용자 메시지가 워처 실행 중에 끼어들지 않도록 함
+        # 이렇게 하면 워처의 Claude 실행이 완료되고 session_id가 저장된 후에
+        # 사용자 메시지가 처리되어 동일한 세션을 이어갈 수 있음
+        lock = None
+        if self.get_session_lock:
+            lock = self.get_session_lock(thread_ts)
+            lock.acquire()
+            logger.debug(f"워처 락 획득: thread_ts={thread_ts}")
+
         def run_claude():
             try:
                 # say 함수 생성 (thread_ts 고정)
@@ -297,6 +309,10 @@ class TrelloWatcher:
                     logger.info(f"🌀 prefix 제거: {card.name}")
                 else:
                     logger.warning(f"🌀 prefix 제거 실패: {card.name}")
+                # 락 해제
+                if lock:
+                    lock.release()
+                    logger.debug(f"워처 락 해제: thread_ts={thread_ts}")
 
         claude_thread = threading.Thread(target=run_claude, daemon=True)
         claude_thread.start()

@@ -41,15 +41,17 @@ app = App(token=Config.SLACK_BOT_TOKEN, logger=logger)
 session_manager = SessionManager()
 
 # 실행 중인 세션 락 (스레드별 동시 실행 방지)
-_session_locks: dict[str, threading.Lock] = {}
+# RLock 사용: 같은 스레드에서 여러 번 acquire 가능 (재진입 가능)
+# 워처가 락을 획득한 상태에서 _run_claude_in_session이 같은 락을 다시 획득할 수 있음
+_session_locks: dict[str, threading.RLock] = {}
 _locks_lock = threading.Lock()
 
 
-def get_session_lock(thread_ts: str) -> threading.Lock:
+def get_session_lock(thread_ts: str) -> threading.RLock:
     """스레드별 락 반환 (없으면 생성)"""
     with _locks_lock:
         if thread_ts not in _session_locks:
-            _session_locks[thread_ts] = threading.Lock()
+            _session_locks[thread_ts] = threading.RLock()
         return _session_locks[thread_ts]
 
 
@@ -560,6 +562,7 @@ def start_trello_watcher():
         slack_client=app.client,
         session_manager=session_manager,
         claude_runner_factory=_run_claude_in_session,
+        get_session_lock=get_session_lock,
         poll_interval=15,
     )
     trello_watcher.start()
