@@ -162,6 +162,34 @@ class TrelloWatcher:
         if removed:
             self._save_tracked()
 
+        # 3. Review 리스트에서 dueComplete된 카드를 Done으로 이동
+        self._check_review_list_for_completion()
+
+    def _check_review_list_for_completion(self):
+        """Review 리스트에서 dueComplete된 카드를 Done으로 자동 이동"""
+        review_list_id = Config.TRELLO_REVIEW_LIST_ID
+        done_list_id = Config.TRELLO_DONE_LIST_ID
+
+        if not review_list_id or not done_list_id:
+            return
+
+        cards = self.trello.get_cards_in_list(review_list_id)
+        for card in cards:
+            if card.due_complete:
+                logger.info(f"dueComplete 카드 감지: {card.name} -> Done으로 이동")
+                if self.trello.move_card(card.id, done_list_id):
+                    logger.info(f"카드 이동 완료: {card.name}")
+                    # Slack에 알림
+                    try:
+                        self.slack_client.chat_postMessage(
+                            channel=self.notify_channel,
+                            text=f"✅ <{card.url}|*{card.name}*> 완료 처리됨 (Review → Done)"
+                        )
+                    except Exception as e:
+                        logger.error(f"완료 알림 전송 실패: {e}")
+                else:
+                    logger.error(f"카드 이동 실패: {card.name}")
+
     def _add_spinner_prefix(self, card: TrelloCard) -> bool:
         """카드 제목에 🌀 prefix 추가"""
         if card.name.startswith("🌀"):
