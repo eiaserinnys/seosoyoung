@@ -179,8 +179,8 @@ class TestGetRunnerForRole:
     """get_runner_for_role 함수 테스트"""
 
     @patch("seosoyoung.main.Config")
-    @patch("seosoyoung.main.ClaudeRunner")
-    def test_get_runner_for_admin(self, mock_runner_class, mock_config):
+    @patch("seosoyoung.main.get_claude_runner")
+    def test_get_runner_for_admin(self, mock_get_runner, mock_config):
         """관리자 역할용 runner"""
         mock_config.ROLE_TOOLS = {
             "admin": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
@@ -190,13 +190,13 @@ class TestGetRunnerForRole:
         get_runner_for_role("admin")
 
         # admin은 disallowed_tools 없이 생성
-        mock_runner_class.assert_called_once_with(
+        mock_get_runner.assert_called_once_with(
             allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"]
         )
 
     @patch("seosoyoung.main.Config")
-    @patch("seosoyoung.main.ClaudeRunner")
-    def test_get_runner_for_viewer(self, mock_runner_class, mock_config):
+    @patch("seosoyoung.main.get_claude_runner")
+    def test_get_runner_for_viewer(self, mock_get_runner, mock_config):
         """일반 사용자 역할용 runner"""
         mock_config.ROLE_TOOLS = {
             "admin": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
@@ -206,7 +206,7 @@ class TestGetRunnerForRole:
         get_runner_for_role("viewer")
 
         # viewer는 수정 도구들이 차단됨
-        mock_runner_class.assert_called_once_with(
+        mock_get_runner.assert_called_once_with(
             allowed_tools=["Read", "Glob", "Grep"],
             disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"]
         )
