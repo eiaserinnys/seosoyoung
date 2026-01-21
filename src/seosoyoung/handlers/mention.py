@@ -69,18 +69,23 @@ def register_mention_handlers(app, dependencies: dict):
 
         logger.info(f"멘션 수신: user={user_id}, channel={channel}, text={text[:50]}")
 
-        # 스레드에서 멘션된 경우
-        if thread_ts:
+        command = extract_command(text)
+
+        # 관리자 명령어는 스레드/세션 여부와 관계없이 항상 처리
+        admin_commands = ["help", "status", "update", "restart"]
+        is_admin_command = command in admin_commands
+
+        # 스레드에서 멘션된 경우 (관리자 명령어가 아닐 때만 세션 체크)
+        if thread_ts and not is_admin_command:
             if session_manager.exists(thread_ts):
                 logger.debug("스레드에서 멘션됨 (세션 있음) - handle_message에서 처리")
                 return
             logger.debug("스레드에서 멘션됨 (세션 없음) - 원샷 답변")
 
-        command = extract_command(text)
         logger.info(f"명령어 처리: command={command}")
 
         # 재시작 대기 중이면 안내 메시지 (관리자 명령어 제외)
-        if restart_manager.is_pending and command not in ["help", "status", "update", "restart"]:
+        if restart_manager.is_pending and not is_admin_command:
             say(
                 text="재시작을 대기하는 중입니다.\n재시작이 완료되면 다시 대화를 요청해주세요.",
                 thread_ts=ts
