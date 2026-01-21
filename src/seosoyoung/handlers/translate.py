@@ -86,11 +86,11 @@ def _format_response(user_name: str, translated: str, source_lang: Language) -> 
         포맷팅된 응답 문자열
     """
     if source_lang == Language.KOREAN:
-        # 한국어 -> 영어: "(이름) told that\n> 번역"
-        return f"{user_name} told that\n> {translated}"
+        # 한국어 -> 영어: `Name said,` "번역"
+        return f"`{user_name} said,` \"{translated}\""
     else:
-        # 영어 -> 한국어: "(이름)님이\n> 번역\n...라고 말씀하셨습니다."
-        return f"{user_name}님이\n> {translated}\n...라고 말씀하셨습니다."
+        # 영어 -> 한국어: `이름님이` "번역"`라고 하셨습니다.`
+        return f"`{user_name}님이` \"{translated}\"`라고 하셨습니다.`"
 
 
 def register_translate_handler(app: App, dependencies: dict):
