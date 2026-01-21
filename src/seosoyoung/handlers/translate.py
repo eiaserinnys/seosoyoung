@@ -133,6 +133,13 @@ def register_translate_handler(app: App, dependencies: dict):
         message_ts = event.get("ts")
 
         try:
+            # 번역 시작 리액션
+            client.reactions_add(
+                channel=channel,
+                timestamp=message_ts,
+                name="hn-curious"
+            )
+
             # 언어 감지
             source_lang = detect_language(text)
             logger.info(f"번역 요청: {source_lang.value} -> {text[:30]}...")
@@ -163,7 +170,28 @@ def register_translate_handler(app: App, dependencies: dict):
                 thread_ts=reply_ts
             )
 
+            # 번역 완료: 리액션 교체
+            client.reactions_remove(
+                channel=channel,
+                timestamp=message_ts,
+                name="hn-curious"
+            )
+            client.reactions_add(
+                channel=channel,
+                timestamp=message_ts,
+                name="hn_deal_rainbow"
+            )
+
             logger.info(f"번역 응답 완료: {user_name}")
 
         except Exception as e:
             logger.error(f"번역 실패: {e}", exc_info=True)
+            # 실패 시 리액션 제거 시도
+            try:
+                client.reactions_remove(
+                    channel=channel,
+                    timestamp=message_ts,
+                    name="hn-curious"
+                )
+            except Exception:
+                pass
