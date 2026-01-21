@@ -29,20 +29,17 @@ def get_runner_for_role(role: str):
     return get_claude_runner(allowed_tools=allowed_tools)
 
 
-def _escape_code_block(text: str) -> str:
-    """코드 블록 내부의 백틱 시퀀스 이스케이프
+def _escape_backticks(text: str) -> str:
+    """텍스트 내 모든 백틱을 이스케이프
 
-    슬랙 코드 블록(```)으로 감싼 텍스트 내부에 또 다른 코드 블록이 있으면
-    포맷팅이 깨지므로, 내부의 백틱 시퀀스를 유사 문자로 대체합니다.
+    슬랙에서 백틱은 인라인 코드(`)나 코드 블록(```)을 만드므로,
+    텍스트 내부에 백틱이 있으면 포맷팅이 깨집니다.
+    모든 백틱을 유사 문자(ˋ, modifier letter grave accent)로 대체합니다.
 
     변환 규칙:
-    - ``` (코드 블록) → ˋˋˋ (grave accent)
-    - `` (이중 백틱) → ˋˋ
-    - 단일 ` 는 유지 (슬랙에서 인라인 코드로 렌더링)
+    - ` (모든 백틱) → ˋ (U+02CB, modifier letter grave accent)
     """
-    # 2개 이상의 연속 백틱을 모두 이스케이프
-    result = re.sub(r'`{2,}', lambda m: 'ˋ' * len(m.group()), text)
-    return result
+    return text.replace('`', 'ˋ')
 
 
 def _build_trello_header(card: TrackedCard, mode: str, session_id: str = "") -> str:
@@ -170,8 +167,8 @@ class ClaudeExecutor:
                     if is_trello_mode:
                         mode = "실행 중" if trello_card.has_execute else "계획 중"
                         header = _build_trello_header(trello_card, mode, session.session_id or "")
-                        escaped_text = _escape_code_block(display_text)
-                        update_text = f"{header}\n```\n{escaped_text}\n```"
+                        escaped_text = _escape_backticks(display_text)
+                        update_text = f"{header}\n`{escaped_text}`"
 
                         client.chat_update(
                             channel=channel,
@@ -183,7 +180,7 @@ class ClaudeExecutor:
                             }]
                         )
                     else:
-                        escaped_text = _escape_code_block(display_text)
+                        escaped_text = _escape_backticks(display_text)
                         code_text = f"```\n{escaped_text}\n```"
                         new_msg = client.chat_postMessage(
                             channel=channel,
