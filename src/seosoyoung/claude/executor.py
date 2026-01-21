@@ -182,20 +182,21 @@ class ClaudeExecutor:
             if is_trello_mode:
                 last_msg_ts = msg_ts
             else:
-                try:
-                    client.reactions_add(channel=channel, timestamp=msg_ts, name="eyes")
-                except Exception:
-                    pass
-
+                # 초기 메시지: 코드 블럭 형태로 생각 과정 표시
                 if effective_role == "admin":
                     initial_text = "소영이 생각합니다..."
                 else:
                     initial_text = "소영이 조회 전용 모드로 생각합니다..."
 
+                code_text = f"```\n{initial_text}\n```"
                 initial_msg = client.chat_postMessage(
                     channel=channel,
                     thread_ts=thread_ts,
-                    text=initial_text
+                    text=code_text,
+                    blocks=[{
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": code_text}
+                    }]
                 )
                 last_msg_ts = initial_msg["ts"]
 
@@ -229,18 +230,18 @@ class ClaudeExecutor:
                             }]
                         )
                     else:
+                        # 일반 모드: chat_update로 기존 메시지 갱신 (트렐로 모드와 동일)
                         escaped_text = _escape_backticks(display_text)
                         code_text = f"```\n{escaped_text}\n```"
-                        new_msg = client.chat_postMessage(
+                        client.chat_update(
                             channel=channel,
-                            thread_ts=thread_ts,
+                            ts=last_msg_ts,
                             text=code_text,
                             blocks=[{
                                 "type": "section",
                                 "text": {"type": "mrkdwn", "text": code_text}
                             }]
                         )
-                        last_msg_ts = new_msg["ts"]
                 except Exception as e:
                     logger.warning(f"사고 과정 메시지 전송 실패: {e}")
 
@@ -281,12 +282,6 @@ class ClaudeExecutor:
                     channel, thread_ts, last_msg_ts, main_msg_ts, say, client
                 )
 
-            # 작업 중 이모지 제거 (일반 모드에서만)
-            if not is_trello_mode:
-                try:
-                    client.reactions_remove(channel=channel, timestamp=msg_ts, name="eyes")
-                except Exception:
-                    pass
         finally:
             self.mark_session_stopped(thread_ts)
             lock.release()
@@ -400,12 +395,6 @@ class ClaudeExecutor:
                 success, msg = self.upload_file_to_slack(client, channel, thread_ts, file_path)
                 if not success:
                     say(text=f"⚠️ {msg}", thread_ts=thread_ts)
-
-        # 완료 이모지
-        try:
-            client.reactions_add(channel=channel, timestamp=msg_ts, name="white_check_mark")
-        except Exception:
-            pass
 
     def _handle_restart_marker(self, result, session, thread_ts, say):
         """재기동 마커 처리"""
