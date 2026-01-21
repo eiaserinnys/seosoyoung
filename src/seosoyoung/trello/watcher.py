@@ -20,11 +20,14 @@ class TrackedCard:
     """추적 중인 카드 정보"""
     card_id: str
     card_name: str
+    card_url: str  # 카드 URL (슬랙 링크용)
     list_id: str
     list_key: str  # "to_go" (단일 모니터링 포인트)
     thread_ts: str
     channel_id: str
     detected_at: str
+    session_id: Optional[str] = None  # Claude 세션 ID
+    has_execute: bool = False  # Execute 레이블 유무
 
 
 class TrelloWatcher:
@@ -90,6 +93,13 @@ class TrelloWatcher:
             try:
                 data = json.loads(self.tracked_file.read_text(encoding="utf-8"))
                 for card_id, card_data in data.items():
+                    # 하위 호환성: 새 필드가 없으면 기본값 사용
+                    if "card_url" not in card_data:
+                        card_data["card_url"] = ""
+                    if "session_id" not in card_data:
+                        card_data["session_id"] = None
+                    if "has_execute" not in card_data:
+                        card_data["has_execute"] = False
                     self._tracked[card_id] = TrackedCard(**card_data)
                 logger.info(f"추적 상태 로드: {len(self._tracked)}개 카드")
             except Exception as e:
@@ -243,6 +253,31 @@ class TrelloWatcher:
                 return True
         return False
 
+    def _build_header(self, card_name: str, card_url: str, mode: str, session_id: str = "") -> str:
+        """슬랙 메시지 헤더 생성
+
+        Args:
+            card_name: 카드 이름
+            card_url: 카드 URL
+            mode: "계획 중", "실행 중", "완료" 등
+            session_id: 세션 ID (표시용)
+
+        Returns:
+            헤더 문자열
+        """
+        mode_emoji = {
+            "계획 중": "💭",
+            "실행 중": "▶️",
+            "완료": "✅",
+        }.get(mode, "")
+
+        session_display = f" | #️⃣ {session_id[:8]}" if session_id else ""
+
+        if mode_emoji:
+            return f"*🎫 <{card_url}|{card_name}> | {mode_emoji} {mode}{session_display}*"
+        else:
+            return f"*🎫 <{card_url}|{card_name}>{session_display}*"
+
     def _handle_new_card(self, card: TrelloCard, list_key: str):
         """새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행"""
         # 1. 카드를 In Progress로 이동
@@ -255,19 +290,16 @@ class TrelloWatcher:
 
         # 2. Execute 레이블 확인
         has_execute = self._has_execute_label(card)
-        mode = "실행" if has_execute else "계획 수립"
+        mode = "실행 중" if has_execute else "계획 중"
 
-        # 3. 알림 메시지 전송
-        desc_first_line = ""
-        if card.desc:
-            first_line = card.desc.strip().split("\n")[0]
-            if first_line:
-                desc_first_line = f"\n{first_line}"
+        # 3. 알림 메시지 전송 (새 포맷)
+        header = self._build_header(card.name, card.url, mode)
+        initial_text = f"{header}\n`소영이 생각합니다...`"
 
         try:
             msg_result = self.slack_client.chat_postMessage(
                 channel=self.notify_channel,
-                text=f"*🚀 To Go →* <{card.url}|*{card.name}*> *({mode} 모드)*{desc_first_line}"
+                text=initial_text
             )
             thread_ts = msg_result["ts"]
             logger.info(f"알림 전송 완료: thread_ts={thread_ts}")
@@ -285,11 +317,13 @@ class TrelloWatcher:
         tracked = TrackedCard(
             card_id=card.id,
             card_name=card.name,
+            card_url=card.url,
             list_id=card.list_id,
             list_key=list_key,
             thread_ts=thread_ts,
             channel_id=self.notify_channel,
             detected_at=datetime.now().isoformat(),
+            has_execute=has_execute,
         )
         self._tracked[card.id] = tracked
         self._save_tracked()
@@ -330,7 +364,8 @@ class TrelloWatcher:
                     msg_ts=thread_ts,
                     channel=self.notify_channel,
                     say=say,
-                    client=self.slack_client
+                    client=self.slack_client,
+                    trello_card=tracked  # TrackedCard 정보 전달
                 )
             except Exception as e:
                 logger.exception(f"Claude 실행 오류 (워처): {e}")

@@ -10,7 +10,10 @@ from seosoyoung.main import (
     check_permission,
     get_user_role,
     get_runner_for_role,
+    _escape_backticks,
+    _build_trello_header,
 )
+from seosoyoung.trello.watcher import TrackedCard
 
 
 class TestExtractCommand:
@@ -626,6 +629,102 @@ class TestGetChannelHistory:
         result = get_channel_history(mock_client, "C12345")
 
         assert result == ""
+
+
+class TestEscapeBackticks:
+    """_escape_backticks 함수 테스트"""
+
+    def test_escape_single_backtick(self):
+        """단일 백틱 이스케이프"""
+        result = _escape_backticks("Hello `world`")
+        assert result == "Hello ˋworldˋ"
+        assert "`" not in result
+
+    def test_escape_triple_backticks(self):
+        """코드 블록 백틱 이스케이프"""
+        result = _escape_backticks("```python\nprint('hello')\n```")
+        assert "```" not in result
+        assert "ˋˋˋ" in result
+
+    def test_no_backticks(self):
+        """백틱이 없는 텍스트"""
+        result = _escape_backticks("Hello world")
+        assert result == "Hello world"
+
+    def test_empty_string(self):
+        """빈 문자열"""
+        result = _escape_backticks("")
+        assert result == ""
+
+
+class TestBuildTrelloHeader:
+    """_build_trello_header 함수 테스트"""
+
+    def _create_tracked_card(self, **kwargs):
+        """테스트용 TrackedCard 생성"""
+        defaults = {
+            "card_id": "test_card_id",
+            "card_name": "테스트 카드",
+            "card_url": "https://trello.com/c/abc123",
+            "list_id": "test_list_id",
+            "list_key": "to_go",
+            "thread_ts": "1234567890.123456",
+            "channel_id": "C12345",
+            "detected_at": "2024-01-01T00:00:00",
+            "session_id": None,
+            "has_execute": False,
+        }
+        defaults.update(kwargs)
+        return TrackedCard(**defaults)
+
+    def test_header_planning_mode(self):
+        """계획 중 모드 헤더"""
+        card = self._create_tracked_card()
+        result = _build_trello_header(card, "계획 중")
+
+        assert "🎫" in result
+        assert "테스트 카드" in result
+        assert "💭" in result
+        assert "계획 중" in result
+
+    def test_header_executing_mode(self):
+        """실행 중 모드 헤더"""
+        card = self._create_tracked_card()
+        result = _build_trello_header(card, "실행 중")
+
+        assert "▶️" in result
+        assert "실행 중" in result
+
+    def test_header_completed_mode(self):
+        """완료 모드 헤더"""
+        card = self._create_tracked_card()
+        result = _build_trello_header(card, "완료")
+
+        assert "✅" in result
+        assert "완료" in result
+
+    def test_header_with_session_id(self):
+        """세션 ID가 있는 헤더"""
+        card = self._create_tracked_card()
+        result = _build_trello_header(card, "실행 중", session_id="abcd1234efgh5678")
+
+        assert "#️⃣" in result
+        assert "abcd1234" in result  # 8자까지만 표시
+
+    def test_header_without_session_id(self):
+        """세션 ID가 없는 헤더"""
+        card = self._create_tracked_card()
+        result = _build_trello_header(card, "실행 중", session_id="")
+
+        assert "#️⃣" not in result
+
+    def test_header_contains_card_link(self):
+        """헤더에 카드 링크 포함"""
+        card = self._create_tracked_card()
+        result = _build_trello_header(card, "완료")
+
+        assert "https://trello.com/c/abc123" in result
+        assert "<https://trello.com/c/abc123|테스트 카드>" in result
 
 
 if __name__ == "__main__":

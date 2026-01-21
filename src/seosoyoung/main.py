@@ -13,7 +13,7 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from seosoyoung.config import Config
 from seosoyoung.claude import get_claude_runner
 from seosoyoung.claude.session import SessionManager
-from seosoyoung.trello.watcher import TrelloWatcher
+from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
 from seosoyoung.restart import RestartManager, RestartRequest, RestartType
 
 # 로깅 설정
@@ -321,7 +321,44 @@ def handle_mention(event, say, client):
     _run_claude_in_session(session, prompt, ts, channel, say, client)
 
 
-def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say, client, role: str = None):
+def _escape_backticks(text: str) -> str:
+    """백틱 이스케이프 처리
+
+    슬랙 코드 블록 내에서 백틱이 포함된 텍스트를 안전하게 표시하기 위해
+    백틱(`)을 유사한 문자(ˋ, grave accent)로 대체합니다.
+    """
+    return text.replace("`", "ˋ")
+
+
+def _build_trello_header(card: TrackedCard, mode: str, session_id: str = "") -> str:
+    """트렐로 카드용 슬랙 메시지 헤더 생성
+
+    Args:
+        card: TrackedCard 정보
+        mode: "계획 중", "실행 중", "완료" 등
+        session_id: 세션 ID (표시용)
+
+    Returns:
+        헤더 문자열
+    """
+    mode_emoji = {
+        "계획 중": "💭",
+        "실행 중": "▶️",
+        "완료": "✅",
+    }.get(mode, "")
+
+    session_display = f" | #️⃣ {session_id[:8]}" if session_id else ""
+
+    if mode_emoji:
+        return f"*🎫 <{card.card_url}|{card.card_name}> | {mode_emoji} {mode}{session_display}*"
+    else:
+        return f"*🎫 <{card.card_url}|{card.card_name}>{session_display}*"
+
+
+def _run_claude_in_session(
+    session, prompt: str, msg_ts: str, channel: str, say, client,
+    role: str = None, trello_card: TrackedCard = None
+):
     """세션 내에서 Claude Code 실행 (공통 로직)
 
     Args:
@@ -332,9 +369,11 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
         say: Slack say 함수
         client: Slack client
         role: 실행할 역할 (None이면 session.role 사용)
+        trello_card: 트렐로 워처에서 호출된 경우 TrackedCard 정보
     """
     thread_ts = session.thread_ts
     effective_role = role or session.role
+    is_trello_mode = trello_card is not None
 
     # 스레드별 락으로 동시 실행 방지
     lock = get_session_lock(thread_ts)
@@ -347,41 +386,62 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
 
     # 마지막 메시지 ts 추적 (최종 답변으로 교체할 대상)
     last_msg_ts = None
+    # 트렐로 모드에서 사용할 메인 메시지 ts (채널 메시지)
+    main_msg_ts = msg_ts if is_trello_mode else None
 
     try:
-        # 작업 중 이모지
-        try:
-            client.reactions_add(channel=channel, timestamp=msg_ts, name="eyes")
-        except Exception:
-            pass
-
-        # 초기 "생각합니다..." 메시지
-        if effective_role == "admin":
-            initial_text = "소영이 생각합니다..."
+        if is_trello_mode:
+            # 트렐로 모드: 메인 메시지(채널)를 업데이트하는 방식
+            # 초기 메시지는 watcher에서 이미 전송됨, msg_ts가 메인 메시지
+            last_msg_ts = msg_ts
         else:
-            initial_text = "소영이 조회 전용 모드로 생각합니다..."
+            # 일반 모드: 작업 중 이모지
+            try:
+                client.reactions_add(channel=channel, timestamp=msg_ts, name="eyes")
+            except Exception:
+                pass
 
-        initial_msg = client.chat_postMessage(
-            channel=channel,
-            thread_ts=thread_ts,
-            text=initial_text
-        )
-        last_msg_ts = initial_msg["ts"]
+            # 초기 "생각합니다..." 메시지
+            if effective_role == "admin":
+                initial_text = "소영이 생각합니다..."
+            else:
+                initial_text = "소영이 조회 전용 모드로 생각합니다..."
 
-        # 스트리밍 콜백 - 새 메시지로 사고 과정 추가
+            initial_msg = client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=initial_text
+            )
+            last_msg_ts = initial_msg["ts"]
+
+        # 스트리밍 콜백
         async def on_progress(current_text: str):
             nonlocal last_msg_ts
             try:
                 display_text = current_text
                 if len(display_text) > 3800:
                     display_text = "...\n" + display_text[-3800:]
-                # 새 메시지로 사고 과정 추가
-                new_msg = client.chat_postMessage(
-                    channel=channel,
-                    thread_ts=thread_ts,
-                    text=f"```\n{display_text}\n```"
-                )
-                last_msg_ts = new_msg["ts"]
+
+                if is_trello_mode:
+                    # 트렐로 모드: 메인 메시지 업데이트 (백틱 이스케이프)
+                    mode = "실행 중" if trello_card.has_execute else "계획 중"
+                    header = _build_trello_header(trello_card, mode, session.session_id or "")
+                    escaped_text = _escape_backticks(display_text)
+                    update_text = f"{header}\n`{escaped_text}`"
+
+                    client.chat_update(
+                        channel=channel,
+                        ts=main_msg_ts,
+                        text=update_text
+                    )
+                else:
+                    # 일반 모드: 새 메시지로 사고 과정 추가
+                    new_msg = client.chat_postMessage(
+                        channel=channel,
+                        thread_ts=thread_ts,
+                        text=f"```\n{display_text}\n```"
+                    )
+                    last_msg_ts = new_msg["ts"]
             except Exception as e:
                 logger.warning(f"사고 과정 메시지 전송 실패: {e}")
 
@@ -406,29 +466,56 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
 
             if result.success:
                 response = result.output or "(응답 없음)"
-                # 마지막 메시지를 최종 답변으로 교체 (일반 텍스트)
-                try:
-                    if len(response) <= 3900:
-                        client.chat_update(channel=channel, ts=last_msg_ts, text=response)
+
+                if is_trello_mode:
+                    # 트렐로 모드: 완료 메시지 포맷 적용
+                    final_session_id = result.session_id or session.session_id or ""
+                    header = _build_trello_header(trello_card, "완료", final_session_id)
+                    continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
+
+                    # 응답 길이 제한 (헤더 + 안내 문구 고려)
+                    max_response_len = 3900 - len(header) - len(continuation_hint) - 10
+                    if len(response) <= max_response_len:
+                        final_text = f"{header}\n{response}\n{continuation_hint}"
+                        client.chat_update(channel=channel, ts=main_msg_ts, text=final_text)
                     else:
-                        client.chat_update(channel=channel, ts=last_msg_ts, text=f"(1/?) {response[:3900]}")
-                        remaining = response[3900:]
-                        send_long_message(say, remaining, thread_ts)
-                except Exception:
-                    send_long_message(say, response, thread_ts)
+                        # 긴 응답: 첫 부분만 메인 메시지에, 나머지는 스레드로
+                        truncated = response[:max_response_len]
+                        final_text = f"{header}\n{truncated}...\n{continuation_hint}"
+                        client.chat_update(channel=channel, ts=main_msg_ts, text=final_text)
+                        # 전체 응답은 스레드에 별도 전송
+                        send_long_message(say, response, thread_ts)
 
-                # 첨부 파일 처리
-                if result.attachments:
-                    for file_path in result.attachments:
-                        success, msg = upload_file_to_slack(client, channel, thread_ts, file_path)
-                        if not success:
-                            say(text=f"⚠️ {msg}", thread_ts=thread_ts)
+                    # 첨부 파일은 스레드에 전송
+                    if result.attachments:
+                        for file_path in result.attachments:
+                            success, msg = upload_file_to_slack(client, channel, thread_ts, file_path)
+                            if not success:
+                                say(text=f"⚠️ {msg}", thread_ts=thread_ts)
+                else:
+                    # 일반 모드: 기존 방식
+                    try:
+                        if len(response) <= 3900:
+                            client.chat_update(channel=channel, ts=last_msg_ts, text=response)
+                        else:
+                            client.chat_update(channel=channel, ts=last_msg_ts, text=f"(1/?) {response[:3900]}")
+                            remaining = response[3900:]
+                            send_long_message(say, remaining, thread_ts)
+                    except Exception:
+                        send_long_message(say, response, thread_ts)
 
-                # 완료 이모지
-                try:
-                    client.reactions_add(channel=channel, timestamp=msg_ts, name="white_check_mark")
-                except Exception:
-                    pass
+                    # 첨부 파일 처리
+                    if result.attachments:
+                        for file_path in result.attachments:
+                            success, msg = upload_file_to_slack(client, channel, thread_ts, file_path)
+                            if not success:
+                                say(text=f"⚠️ {msg}", thread_ts=thread_ts)
+
+                    # 완료 이모지 (일반 모드에서만)
+                    try:
+                        client.reactions_add(channel=channel, timestamp=msg_ts, name="white_check_mark")
+                    except Exception:
+                        pass
 
                 # 재기동 마커 감지 (admin 역할만 허용)
                 if effective_role == "admin":
@@ -456,32 +543,61 @@ def _run_claude_in_session(session, prompt: str, msg_ts: str, channel: str, say,
                             say(text=f"코드가 변경되었습니다. {type_name}합니다...", thread_ts=thread_ts)
                             restart_manager.force_restart(restart_type)
             else:
-                client.chat_update(
-                    channel=channel,
-                    ts=last_msg_ts,
-                    text=f"오류가 발생했습니다: {result.error}"
-                )
-                try:
-                    client.reactions_add(channel=channel, timestamp=msg_ts, name="x")
-                except Exception:
-                    pass
+                # 오류 발생
+                error_msg = f"오류가 발생했습니다: {result.error}"
+
+                if is_trello_mode:
+                    # 트렐로 모드: 오류도 메인 메시지에 업데이트
+                    header = _build_trello_header(trello_card, "완료", session.session_id or "")
+                    continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
+                    client.chat_update(
+                        channel=channel,
+                        ts=main_msg_ts,
+                        text=f"{header}\n❌ {error_msg}\n{continuation_hint}"
+                    )
+                else:
+                    client.chat_update(
+                        channel=channel,
+                        ts=last_msg_ts,
+                        text=error_msg
+                    )
+                    try:
+                        client.reactions_add(channel=channel, timestamp=msg_ts, name="x")
+                    except Exception:
+                        pass
 
         except Exception as e:
             logger.exception(f"Claude 실행 오류: {e}")
-            try:
-                client.chat_update(
-                    channel=channel,
-                    ts=last_msg_ts,
-                    text=f"오류가 발생했습니다: {str(e)}"
-                )
-            except Exception:
-                say(text=f"오류가 발생했습니다: {str(e)}", thread_ts=thread_ts)
+            error_msg = f"오류가 발생했습니다: {str(e)}"
 
-        # 작업 중 이모지 제거
-        try:
-            client.reactions_remove(channel=channel, timestamp=msg_ts, name="eyes")
-        except Exception:
-            pass
+            if is_trello_mode:
+                # 트렐로 모드: 오류도 메인 메시지에 업데이트
+                try:
+                    header = _build_trello_header(trello_card, "완료", session.session_id or "")
+                    continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
+                    client.chat_update(
+                        channel=channel,
+                        ts=main_msg_ts,
+                        text=f"{header}\n❌ {error_msg}\n{continuation_hint}"
+                    )
+                except Exception:
+                    say(text=f"❌ {error_msg}", thread_ts=thread_ts)
+            else:
+                try:
+                    client.chat_update(
+                        channel=channel,
+                        ts=last_msg_ts,
+                        text=error_msg
+                    )
+                except Exception:
+                    say(text=error_msg, thread_ts=thread_ts)
+
+        # 작업 중 이모지 제거 (일반 모드에서만)
+        if not is_trello_mode:
+            try:
+                client.reactions_remove(channel=channel, timestamp=msg_ts, name="eyes")
+            except Exception:
+                pass
     finally:
         # 세션 실행 종료 표시
         mark_session_stopped(thread_ts)
