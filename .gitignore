@@ -27,3 +27,6 @@ sessions/
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime data
+tracked_cards.json
