@@ -7,6 +7,7 @@ from seosoyoung.translator.translator import (
     translate,
     _build_context_text,
     _build_prompt,
+    _build_glossary_section,
     _calculate_cost,
 )
 from seosoyoung.translator.detector import Language
@@ -59,6 +60,45 @@ class TestBuildPrompt:
         prompt = _build_prompt("Hello", Language.ENGLISH, context)
         assert "<previous_messages>" in prompt
         assert "[Alice]: Previous message" in prompt
+
+    @patch("seosoyoung.translator.translator.find_relevant_terms")
+    def test_with_glossary(self, mock_find_terms):
+        """용어집 포함"""
+        mock_find_terms.return_value = [("펜릭스", "Fenrix")]
+        prompt = _build_prompt("펜릭스가 말했다.", Language.KOREAN)
+        assert "<glossary>" in prompt
+        assert "펜릭스 → Fenrix" in prompt
+
+    @patch("seosoyoung.translator.translator.find_relevant_terms")
+    def test_without_glossary(self, mock_find_terms):
+        """관련 용어 없을 때 용어집 섹션 없음"""
+        mock_find_terms.return_value = []
+        prompt = _build_prompt("Hello", Language.ENGLISH)
+        assert "<glossary>" not in prompt
+
+
+class TestBuildGlossarySection:
+    """용어집 섹션 생성 테스트"""
+
+    @patch("seosoyoung.translator.translator.find_relevant_terms")
+    def test_builds_glossary_section(self, mock_find_terms):
+        """용어집 섹션 생성"""
+        mock_find_terms.return_value = [
+            ("펜릭스", "Fenrix"),
+            ("아리엘라", "Ariella"),
+        ]
+        section = _build_glossary_section("펜릭스와 아리엘라", Language.KOREAN)
+        assert "<glossary>" in section
+        assert "</glossary>" in section
+        assert "펜릭스 → Fenrix" in section
+        assert "아리엘라 → Ariella" in section
+
+    @patch("seosoyoung.translator.translator.find_relevant_terms")
+    def test_empty_when_no_terms(self, mock_find_terms):
+        """관련 용어 없으면 빈 문자열"""
+        mock_find_terms.return_value = []
+        section = _build_glossary_section("Hello world", Language.ENGLISH)
+        assert section == ""
 
 
 class TestCalculateCost:

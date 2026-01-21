@@ -70,3 +70,8 @@ class Config:
     TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "claude-3-5-haiku-latest")
     TRANSLATE_CONTEXT_COUNT = int(os.getenv("TRANSLATE_CONTEXT_COUNT", "10"))
     TRANSLATE_API_KEY = os.getenv("TRANSLATE_API_KEY")  # 번역 전용 API 키
+
+    # 용어집 경로 (번역 시 고유명사 참조)
+    @staticmethod
+    def get_glossary_path() -> str:
+        return _get_path("GLOSSARY_PATH", "eb_lore/content/glossary.yaml")

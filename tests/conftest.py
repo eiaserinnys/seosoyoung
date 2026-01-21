@@ -8,7 +8,8 @@ from unittest.mock import MagicMock
 # 테스트 환경 변수 설정
 os.environ["SLACK_BOT_TOKEN"] = "xoxb-test-token"
 os.environ["SLACK_APP_TOKEN"] = "xapp-test-token"
-os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test-key"
+# ANTHROPIC_API_KEY는 설정하지 않음 (CLI 로그인 세션 사용)
+# os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test-key"
 
 # slack_bolt를 mock하여 실제 API 호출 방지
 mock_app = MagicMock()

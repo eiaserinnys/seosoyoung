@@ -8,6 +8,7 @@ import anthropic
 
 from seosoyoung.config import Config
 from seosoyoung.translator.detector import Language
+from seosoyoung.translator.glossary import find_relevant_terms
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,30 @@ def _build_context_text(context_messages: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _build_glossary_section(text: str, source_lang: Language) -> str:
+    """텍스트에서 관련 용어를 찾아 용어집 섹션 생성
+
+    Args:
+        text: 번역할 텍스트
+        source_lang: 원본 언어
+
+    Returns:
+        용어집 섹션 문자열 (관련 용어가 없으면 빈 문자열)
+    """
+    lang_code = "ko" if source_lang == Language.KOREAN else "en"
+    relevant_terms = find_relevant_terms(text, lang_code)
+
+    if not relevant_terms:
+        return ""
+
+    lines = ["<glossary>", "Translate the following proper nouns as specified:"]
+    for source_term, target_term in relevant_terms:
+        lines.append(f"- {source_term} → {target_term}")
+    lines.append("</glossary>")
+
+    return "\n".join(lines)
+
+
 def _build_prompt(
     text: str,
     source_lang: Language,
@@ -48,11 +73,16 @@ def _build_prompt(
     """
     target_lang = "English" if source_lang == Language.KOREAN else "Korean"
 
+    # 컨텍스트 섹션
     context_text = ""
     if context_messages:
         context_text = _build_context_text(context_messages) + "\n\n"
 
-    return f"""{context_text}Translate the following text to {target_lang}.
+    # 용어집 섹션
+    glossary_section = _build_glossary_section(text, source_lang)
+    glossary_text = glossary_section + "\n\n" if glossary_section else ""
+
+    return f"""{context_text}{glossary_text}Translate the following text to {target_lang}.
 Output ONLY the translation, nothing else. No explanations, no quotes, no prefixes.
 
 Text to translate:
