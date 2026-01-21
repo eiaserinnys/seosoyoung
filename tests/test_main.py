@@ -252,10 +252,11 @@ class TestEscapeCodeBlock:
         assert result == "Hello `world`"
         assert "`world`" in result
 
-    def test_double_backtick_preserved(self):
-        """이중 백틱도 유지"""
+    def test_double_backtick_escaped(self):
+        """이중 백틱도 이스케이프"""
         result = _escape_code_block("Use ``code`` here")
-        assert result == "Use ``code`` here"
+        assert result == "Use ˋˋcodeˋˋ here"
+        assert "``" not in result
 
     def test_triple_backticks_escaped(self):
         """삼중 백틱(코드 블록)은 이스케이프"""

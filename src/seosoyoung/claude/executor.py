@@ -37,10 +37,11 @@ def _escape_code_block(text: str) -> str:
 
     변환 규칙:
     - ``` (코드 블록) → ˋˋˋ (grave accent)
-    - `` (인라인 코드 이스케이프) → ˋˋ
+    - `` (이중 백틱) → ˋˋ
     - 단일 ` 는 유지 (슬랙에서 인라인 코드로 렌더링)
     """
-    result = re.sub(r'`{3,}', lambda m: 'ˋ' * len(m.group()), text)
+    # 2개 이상의 연속 백틱을 모두 이스케이프
+    result = re.sub(r'`{2,}', lambda m: 'ˋ' * len(m.group()), text)
     return result
 
 
