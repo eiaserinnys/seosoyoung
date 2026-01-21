@@ -273,7 +273,7 @@ class ClaudeExecutor:
         """트렐로 모드 성공 처리"""
         final_session_id = result.session_id or session.session_id or ""
         header = _build_trello_header(trello_card, "완료", final_session_id)
-        continuation_hint = "_작업을 이어가려면 이 대화에 댓글을 달아주세요._"
+        continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
 
         max_response_len = 3900 - len(header) - len(continuation_hint) - 10
         if len(response) <= max_response_len:
@@ -384,7 +384,7 @@ class ClaudeExecutor:
 
         if is_trello_mode:
             header = _build_trello_header(trello_card, "완료", session.session_id or "")
-            continuation_hint = "_작업을 이어가려면 이 대화에 댓글을 달아주세요._"
+            continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
             error_text = f"{header}\n❌ {error_msg}\n{continuation_hint}"
             client.chat_update(
                 channel=channel,
