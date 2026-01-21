@@ -59,12 +59,32 @@ Text to translate:
 {text}"""
 
 
+# Claude Haiku 4 가격 (2025년 기준, USD per 1M tokens)
+HAIKU_INPUT_PRICE = 0.80   # $0.80 / 1M input tokens
+HAIKU_OUTPUT_PRICE = 4.00  # $4.00 / 1M output tokens
+
+
+def _calculate_cost(input_tokens: int, output_tokens: int) -> float:
+    """토큰 사용량으로 비용을 계산합니다.
+
+    Args:
+        input_tokens: 입력 토큰 수
+        output_tokens: 출력 토큰 수
+
+    Returns:
+        예상 비용 (USD)
+    """
+    input_cost = (input_tokens / 1_000_000) * HAIKU_INPUT_PRICE
+    output_cost = (output_tokens / 1_000_000) * HAIKU_OUTPUT_PRICE
+    return input_cost + output_cost
+
+
 def translate(
     text: str,
     source_lang: Language,
     context_messages: list[dict] | None = None,
     model: str | None = None,
-) -> str:
+) -> tuple[str, float]:
     """텍스트를 번역
 
     Args:
@@ -74,7 +94,7 @@ def translate(
         model: 사용할 모델 (기본값: Config.TRANSLATE_MODEL)
 
     Returns:
-        번역된 텍스트
+        (번역된 텍스트, 예상 비용 USD)
 
     Raises:
         Exception: API 호출 실패 시
@@ -99,6 +119,12 @@ def translate(
     )
 
     translated = response.content[0].text.strip()
-    logger.debug(f"번역 완료: {translated[:50]}...")
 
-    return translated
+    # 토큰 사용량에서 비용 계산
+    input_tokens = response.usage.input_tokens
+    output_tokens = response.usage.output_tokens
+    cost = _calculate_cost(input_tokens, output_tokens)
+
+    logger.debug(f"번역 완료: {translated[:50]}... (비용: ${cost:.6f})")
+
+    return translated, cost

@@ -74,23 +74,26 @@ def _get_context_messages(client, channel: str, thread_ts: str | None, limit: in
         return []
 
 
-def _format_response(user_name: str, translated: str, source_lang: Language) -> str:
+def _format_response(user_name: str, translated: str, source_lang: Language, cost: float) -> str:
     """응답 메시지를 포맷팅합니다.
 
     Args:
         user_name: 원본 메시지 작성자 이름
         translated: 번역된 텍스트
         source_lang: 원본 언어
+        cost: 예상 번역 비용 (USD)
 
     Returns:
         포맷팅된 응답 문자열
     """
+    cost_line = f"`💸 예상 번역 비용: ${cost:.4f}`"
+
     if source_lang == Language.KOREAN:
         # 한국어 -> 영어: `Name said,` "번역"
-        return f"`{user_name} said,` \"{translated}\""
+        return f"`{user_name} said,` \"{translated}\"\n{cost_line}"
     else:
         # 영어 -> 한국어: `이름님이` "번역"`라고 하셨습니다.`
-        return f"`{user_name}님이` \"{translated}\"`라고 하셨습니다.`"
+        return f"`{user_name}님이` \"{translated}\"`라고 하셨습니다.`\n{cost_line}"
 
 
 def process_translate_message(event: dict, client) -> bool:
@@ -142,13 +145,13 @@ def process_translate_message(event: dict, client) -> bool:
         )
 
         # 번역
-        translated = translate(text, source_lang, context_messages)
+        translated, cost = translate(text, source_lang, context_messages)
 
         # 사용자 이름 조회
         user_name = _get_user_display_name(client, user_id)
 
         # 응답 포맷
-        response = _format_response(user_name, translated, source_lang)
+        response = _format_response(user_name, translated, source_lang, cost)
 
         # 응답 위치: 스레드면 스레드에, 아니면 채널에 직접
         reply_ts = thread_ts if thread_ts else message_ts

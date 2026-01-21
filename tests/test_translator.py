@@ -7,6 +7,7 @@ from seosoyoung.translator.translator import (
     translate,
     _build_context_text,
     _build_prompt,
+    _calculate_cost,
 )
 from seosoyoung.translator.detector import Language
 
@@ -60,6 +61,24 @@ class TestBuildPrompt:
         assert "[Alice]: Previous message" in prompt
 
 
+class TestCalculateCost:
+    """비용 계산 테스트"""
+
+    def test_calculate_cost_basic(self):
+        """기본 비용 계산"""
+        # 1000 input tokens, 100 output tokens
+        # input: 1000 / 1M * $0.80 = $0.0008
+        # output: 100 / 1M * $4.00 = $0.0004
+        # total: $0.0012
+        cost = _calculate_cost(1000, 100)
+        assert abs(cost - 0.0012) < 0.0001
+
+    def test_calculate_cost_zero(self):
+        """0 토큰"""
+        cost = _calculate_cost(0, 0)
+        assert cost == 0.0
+
+
 class TestTranslate:
     """번역 함수 테스트"""
 
@@ -77,11 +96,14 @@ class TestTranslate:
 
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="Hello")]
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 10
         mock_client.messages.create.return_value = mock_response
 
-        result = translate("안녕하세요", Language.KOREAN)
+        text, cost = translate("안녕하세요", Language.KOREAN)
 
-        assert result == "Hello"
+        assert text == "Hello"
+        assert cost > 0
         mock_client.messages.create.assert_called_once()
 
     @patch("seosoyoung.translator.translator.anthropic.Anthropic")
@@ -96,11 +118,14 @@ class TestTranslate:
 
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="안녕하세요")]
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 10
         mock_client.messages.create.return_value = mock_response
 
-        result = translate("Hello", Language.ENGLISH)
+        text, cost = translate("Hello", Language.ENGLISH)
 
-        assert result == "안녕하세요"
+        assert text == "안녕하세요"
+        assert cost > 0
 
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_without_api_key(self, mock_config):
@@ -122,6 +147,8 @@ class TestTranslate:
 
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="Result")]
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 10
         mock_client.messages.create.return_value = mock_response
 
         translate("Test", Language.ENGLISH, model="custom-model")
