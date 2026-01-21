@@ -321,15 +321,6 @@ def handle_mention(event, say, client):
     _run_claude_in_session(session, prompt, ts, channel, say, client)
 
 
-def _escape_backticks(text: str) -> str:
-    """백틱 이스케이프 처리
-
-    슬랙 코드 블록 내에서 백틱이 포함된 텍스트를 안전하게 표시하기 위해
-    백틱(`)을 유사한 문자(ˋ, grave accent)로 대체합니다.
-    """
-    return text.replace("`", "ˋ")
-
-
 def _build_trello_header(card: TrackedCard, mode: str, session_id: str = "") -> str:
     """트렐로 카드용 슬랙 메시지 헤더 생성
 
@@ -423,23 +414,31 @@ def _run_claude_in_session(
                     display_text = "...\n" + display_text[-3800:]
 
                 if is_trello_mode:
-                    # 트렐로 모드: 메인 메시지 업데이트 (백틱 이스케이프)
+                    # 트렐로 모드: 메인 메시지 업데이트 (코드 블록 포맷팅)
                     mode = "실행 중" if trello_card.has_execute else "계획 중"
                     header = _build_trello_header(trello_card, mode, session.session_id or "")
-                    escaped_text = _escape_backticks(display_text)
-                    update_text = f"{header}\n`{escaped_text}`"
+                    update_text = f"{header}\n```\n{display_text}\n```"
 
                     client.chat_update(
                         channel=channel,
                         ts=main_msg_ts,
-                        text=update_text
+                        text=update_text,
+                        blocks=[{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": update_text}
+                        }]
                     )
                 else:
-                    # 일반 모드: 새 메시지로 사고 과정 추가
+                    # 일반 모드: 새 메시지로 사고 과정 추가 (코드 블록 포맷팅)
+                    code_text = f"```\n{display_text}\n```"
                     new_msg = client.chat_postMessage(
                         channel=channel,
                         thread_ts=thread_ts,
-                        text=f"```\n{display_text}\n```"
+                        text=code_text,
+                        blocks=[{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": code_text}
+                        }]
                     )
                     last_msg_ts = new_msg["ts"]
             except Exception as e:
@@ -468,21 +467,37 @@ def _run_claude_in_session(
                 response = result.output or "(응답 없음)"
 
                 if is_trello_mode:
-                    # 트렐로 모드: 완료 메시지 포맷 적용
+                    # 트렐로 모드: 완료 메시지 포맷 적용 (mrkdwn 블록 사용)
                     final_session_id = result.session_id or session.session_id or ""
                     header = _build_trello_header(trello_card, "완료", final_session_id)
-                    continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
+                    continuation_hint = "_작업을 이어가려면 이 대화에 댓글을 달아주세요._"
 
                     # 응답 길이 제한 (헤더 + 안내 문구 고려)
                     max_response_len = 3900 - len(header) - len(continuation_hint) - 10
                     if len(response) <= max_response_len:
                         final_text = f"{header}\n{response}\n{continuation_hint}"
-                        client.chat_update(channel=channel, ts=main_msg_ts, text=final_text)
+                        client.chat_update(
+                            channel=channel,
+                            ts=main_msg_ts,
+                            text=final_text,
+                            blocks=[{
+                                "type": "section",
+                                "text": {"type": "mrkdwn", "text": final_text}
+                            }]
+                        )
                     else:
                         # 긴 응답: 첫 부분만 메인 메시지에, 나머지는 스레드로
                         truncated = response[:max_response_len]
                         final_text = f"{header}\n{truncated}...\n{continuation_hint}"
-                        client.chat_update(channel=channel, ts=main_msg_ts, text=final_text)
+                        client.chat_update(
+                            channel=channel,
+                            ts=main_msg_ts,
+                            text=final_text,
+                            blocks=[{
+                                "type": "section",
+                                "text": {"type": "mrkdwn", "text": final_text}
+                            }]
+                        )
                         # 전체 응답은 스레드에 별도 전송
                         send_long_message(say, response, thread_ts)
 
@@ -493,12 +508,29 @@ def _run_claude_in_session(
                             if not success:
                                 say(text=f"⚠️ {msg}", thread_ts=thread_ts)
                 else:
-                    # 일반 모드: 기존 방식
+                    # 일반 모드: mrkdwn 블록 사용
                     try:
                         if len(response) <= 3900:
-                            client.chat_update(channel=channel, ts=last_msg_ts, text=response)
+                            client.chat_update(
+                                channel=channel,
+                                ts=last_msg_ts,
+                                text=response,
+                                blocks=[{
+                                    "type": "section",
+                                    "text": {"type": "mrkdwn", "text": response}
+                                }]
+                            )
                         else:
-                            client.chat_update(channel=channel, ts=last_msg_ts, text=f"(1/?) {response[:3900]}")
+                            first_part = f"(1/?) {response[:3900]}"
+                            client.chat_update(
+                                channel=channel,
+                                ts=last_msg_ts,
+                                text=first_part,
+                                blocks=[{
+                                    "type": "section",
+                                    "text": {"type": "mrkdwn", "text": first_part}
+                                }]
+                            )
                             remaining = response[3900:]
                             send_long_message(say, remaining, thread_ts)
                     except Exception:
@@ -547,19 +579,28 @@ def _run_claude_in_session(
                 error_msg = f"오류가 발생했습니다: {result.error}"
 
                 if is_trello_mode:
-                    # 트렐로 모드: 오류도 메인 메시지에 업데이트
+                    # 트렐로 모드: 오류도 메인 메시지에 업데이트 (mrkdwn 블록 사용)
                     header = _build_trello_header(trello_card, "완료", session.session_id or "")
-                    continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
+                    continuation_hint = "_작업을 이어가려면 이 대화에 댓글을 달아주세요._"
+                    error_text = f"{header}\n❌ {error_msg}\n{continuation_hint}"
                     client.chat_update(
                         channel=channel,
                         ts=main_msg_ts,
-                        text=f"{header}\n❌ {error_msg}\n{continuation_hint}"
+                        text=error_text,
+                        blocks=[{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": error_text}
+                        }]
                     )
                 else:
                     client.chat_update(
                         channel=channel,
                         ts=last_msg_ts,
-                        text=error_msg
+                        text=error_msg,
+                        blocks=[{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": error_msg}
+                        }]
                     )
                     try:
                         client.reactions_add(channel=channel, timestamp=msg_ts, name="x")
