@@ -394,7 +394,10 @@ if DEBUG:
 
 
 class TestBuildTrelloHeader:
-    """_build_trello_header 함수 테스트"""
+    """_build_trello_header 함수 테스트
+
+    NOTE: mode 파라미터가 제거됨 (진행 상태는 슬랙 이모지 리액션으로 표시)
+    """
 
     def _create_tracked_card(self, **kwargs):
         """테스트용 TrackedCard 생성"""
@@ -413,36 +416,43 @@ class TestBuildTrelloHeader:
         defaults.update(kwargs)
         return TrackedCard(**defaults)
 
-    def test_header_planning_mode(self):
-        """계획 중 모드 헤더"""
+    def test_header_basic(self):
+        """기본 헤더 생성 (모드 없음)"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card, "계획 중")
+        result = _build_trello_header(card)
 
         assert "🎫" in result
         assert "테스트 카드" in result
-        assert "💭" in result
-        assert "계획 중" in result
+        # 모드 이모지/텍스트가 없어야 함
+        assert "💭" not in result
+        assert "▶️" not in result
+        assert "✅" not in result
+        assert "계획 중" not in result
+        assert "실행 중" not in result
+        assert "완료" not in result
 
-    def test_header_executing_mode(self):
-        """실행 중 모드 헤더"""
+    def test_header_no_mode_emoji(self):
+        """헤더에 모드 이모지가 포함되지 않음"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card, "실행 중")
+        result = _build_trello_header(card)
 
-        assert "▶️" in result
-        assert "실행 중" in result
+        # 모드 관련 이모지가 없어야 함
+        assert "💭" not in result
+        assert "▶️" not in result
 
-    def test_header_completed_mode(self):
-        """완료 모드 헤더"""
+    def test_header_no_mode_text(self):
+        """헤더에 모드 텍스트가 포함되지 않음"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card, "완료")
+        result = _build_trello_header(card)
 
-        assert "✅" in result
-        assert "완료" in result
+        assert "계획 중" not in result
+        assert "실행 중" not in result
+        assert "완료" not in result
 
     def test_header_with_session_id(self):
         """세션 ID가 있는 헤더"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card, "실행 중", session_id="abcd1234efgh5678")
+        result = _build_trello_header(card, session_id="abcd1234efgh5678")
 
         assert "#️⃣" in result
         assert "abcd1234" in result  # 8자까지만 표시
@@ -450,14 +460,14 @@ class TestBuildTrelloHeader:
     def test_header_without_session_id(self):
         """세션 ID가 없는 헤더"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card, "실행 중", session_id="")
+        result = _build_trello_header(card, session_id="")
 
         assert "#️⃣" not in result
 
     def test_header_contains_card_link(self):
         """헤더에 카드 링크 포함"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card, "완료")
+        result = _build_trello_header(card)
 
         assert "https://trello.com/c/abc123" in result
         assert "<https://trello.com/c/abc123|테스트 카드>" in result

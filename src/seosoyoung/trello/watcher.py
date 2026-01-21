@@ -253,30 +253,21 @@ class TrelloWatcher:
                 return True
         return False
 
-    def _build_header(self, card_name: str, card_url: str, mode: str, session_id: str = "") -> str:
+    def _build_header(self, card_name: str, card_url: str, session_id: str = "") -> str:
         """슬랙 메시지 헤더 생성
+
+        진행 상태(계획/실행/완료)는 헤더가 아닌 슬랙 이모지 리액션으로 표시합니다.
 
         Args:
             card_name: 카드 이름
             card_url: 카드 URL
-            mode: "계획 중", "실행 중", "완료" 등
             session_id: 세션 ID (표시용)
 
         Returns:
             헤더 문자열
         """
-        mode_emoji = {
-            "계획 중": "💭",
-            "실행 중": "▶️",
-            "완료": "✅",
-        }.get(mode, "")
-
         session_display = f" | #️⃣ {session_id[:8]}" if session_id else ""
-
-        if mode_emoji:
-            return f"*🎫 <{card_url}|{card_name}> | {mode_emoji} {mode}{session_display}*"
-        else:
-            return f"*🎫 <{card_url}|{card_name}>{session_display}*"
+        return f"*🎫 <{card_url}|{card_name}>{session_display}*"
 
     def _handle_new_card(self, card: TrelloCard, list_key: str):
         """새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행"""
@@ -290,11 +281,11 @@ class TrelloWatcher:
 
         # 2. Execute 레이블 확인
         has_execute = self._has_execute_label(card)
-        mode = "실행 중" if has_execute else "계획 중"
 
-        # 3. 알림 메시지 전송 (새 포맷)
-        header = self._build_header(card.name, card.url, mode)
-        initial_text = f"{header}\n`소영이 생각합니다...`"
+        # 3. 알림 메시지 전송 (새 포맷: 모드는 리액션으로 표시)
+        header = self._build_header(card.name, card.url)
+        # 헤더와 초기 텍스트 사이에 빈 줄 추가
+        initial_text = f"{header}\n\n`소영이 생각합니다...`"
 
         try:
             msg_result = self.slack_client.chat_postMessage(
@@ -303,6 +294,17 @@ class TrelloWatcher:
             )
             thread_ts = msg_result["ts"]
             logger.info(f"알림 전송 완료: thread_ts={thread_ts}")
+
+            # 메시지 전송 후 상태 이모지 리액션 추가
+            reaction = "arrow_forward" if has_execute else "thought_balloon"  # ▶️ or 💭
+            try:
+                self.slack_client.reactions_add(
+                    channel=self.notify_channel,
+                    timestamp=thread_ts,
+                    name=reaction
+                )
+            except Exception as e:
+                logger.debug(f"초기 상태 리액션 추가 실패: {e}")
         except Exception as e:
             logger.error(f"알림 전송 실패: {e}")
             return

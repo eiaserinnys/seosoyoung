@@ -42,29 +42,69 @@ def _escape_backticks(text: str) -> str:
     return text.replace('`', 'ˋ')
 
 
-def _build_trello_header(card: TrackedCard, mode: str, session_id: str = "") -> str:
+# 트렐로 모드 이모지 리액션 매핑
+TRELLO_REACTIONS = {
+    "planning": "thought_balloon",  # 💭 계획 중
+    "executing": "arrow_forward",   # ▶️ 실행 중
+    "success": "white_check_mark",  # ✅ 완료
+    "error": "x",                   # ❌ 오류
+}
+
+
+def _add_reaction(client, channel: str, ts: str, emoji: str) -> bool:
+    """슬랙 메시지에 이모지 리액션 추가
+
+    Args:
+        client: Slack client
+        channel: 채널 ID
+        ts: 메시지 타임스탬프
+        emoji: 이모지 이름 (콜론 없이, 예: "thought_balloon")
+
+    Returns:
+        성공 여부
+    """
+    try:
+        client.reactions_add(channel=channel, timestamp=ts, name=emoji)
+        return True
+    except Exception as e:
+        logger.debug(f"이모지 리액션 추가 실패 ({emoji}): {e}")
+        return False
+
+
+def _remove_reaction(client, channel: str, ts: str, emoji: str) -> bool:
+    """슬랙 메시지에서 이모지 리액션 제거
+
+    Args:
+        client: Slack client
+        channel: 채널 ID
+        ts: 메시지 타임스탬프
+        emoji: 이모지 이름 (콜론 없이, 예: "thought_balloon")
+
+    Returns:
+        성공 여부
+    """
+    try:
+        client.reactions_remove(channel=channel, timestamp=ts, name=emoji)
+        return True
+    except Exception as e:
+        logger.debug(f"이모지 리액션 제거 실패 ({emoji}): {e}")
+        return False
+
+
+def _build_trello_header(card: TrackedCard, session_id: str = "") -> str:
     """트렐로 카드용 슬랙 메시지 헤더 생성
+
+    진행 상태(계획/실행/완료)는 헤더가 아닌 슬랙 이모지 리액션으로 표시합니다.
 
     Args:
         card: TrackedCard 정보
-        mode: "계획 중", "실행 중", "완료" 등
         session_id: 세션 ID (표시용)
 
     Returns:
         헤더 문자열
     """
-    mode_emoji = {
-        "계획 중": "💭",
-        "실행 중": "▶️",
-        "완료": "✅",
-    }.get(mode, "")
-
     session_display = f" | #️⃣ {session_id[:8]}" if session_id else ""
-
-    if mode_emoji:
-        return f"*🎫 <{card.card_url}|{card.card_name}> | {mode_emoji} {mode}{session_display}*"
-    else:
-        return f"*🎫 <{card.card_url}|{card.card_name}>{session_display}*"
+    return f"*🎫 <{card.card_url}|{card.card_name}>{session_display}*"
 
 
 class ClaudeExecutor:
@@ -135,6 +175,9 @@ class ClaudeExecutor:
         last_msg_ts = None
         main_msg_ts = msg_ts if is_trello_mode else None
 
+        # 트렐로 모드에서 첫 번째 on_progress 호출 시 리액션 추가 여부 추적
+        trello_reaction_added = False
+
         try:
             if is_trello_mode:
                 last_msg_ts = msg_ts
@@ -158,17 +201,23 @@ class ClaudeExecutor:
 
             # 스트리밍 콜백
             async def on_progress(current_text: str):
-                nonlocal last_msg_ts
+                nonlocal last_msg_ts, trello_reaction_added
                 try:
                     display_text = current_text
                     if len(display_text) > 3800:
                         display_text = "...\n" + display_text[-3800:]
 
                     if is_trello_mode:
-                        mode = "실행 중" if trello_card.has_execute else "계획 중"
-                        header = _build_trello_header(trello_card, mode, session.session_id or "")
+                        # 첫 호출 시 상태 이모지 리액션 추가
+                        if not trello_reaction_added:
+                            reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
+                            _add_reaction(client, channel, main_msg_ts, reaction)
+                            trello_reaction_added = True
+
+                        header = _build_trello_header(trello_card, session.session_id or "")
                         escaped_text = _escape_backticks(display_text)
-                        update_text = f"{header}\n```\n{escaped_text}\n```"
+                        # 헤더와 코드블록 사이에 빈 줄 추가
+                        update_text = f"{header}\n\n```\n{escaped_text}\n```"
 
                         client.chat_update(
                             channel=channel,
@@ -271,13 +320,19 @@ class ClaudeExecutor:
         channel, thread_ts, main_msg_ts, say, client
     ):
         """트렐로 모드 성공 처리"""
+        # 이전 상태 리액션 제거 후 완료 리액션 추가
+        prev_reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
+        _remove_reaction(client, channel, main_msg_ts, prev_reaction)
+        _add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["success"])
+
         final_session_id = result.session_id or session.session_id or ""
-        header = _build_trello_header(trello_card, "완료", final_session_id)
+        header = _build_trello_header(trello_card, final_session_id)
         continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
 
-        max_response_len = 3900 - len(header) - len(continuation_hint) - 10
+        # 헤더-응답-continuation_hint 사이에 빈 줄 추가
+        max_response_len = 3900 - len(header) - len(continuation_hint) - 20  # 줄바꿈 추가 분량 반영
         if len(response) <= max_response_len:
-            final_text = f"{header}\n{response}\n{continuation_hint}"
+            final_text = f"{header}\n\n{response}\n\n{continuation_hint}"
             client.chat_update(
                 channel=channel,
                 ts=main_msg_ts,
@@ -289,7 +344,7 @@ class ClaudeExecutor:
             )
         else:
             truncated = response[:max_response_len]
-            final_text = f"{header}\n{truncated}...\n{continuation_hint}"
+            final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
             client.chat_update(
                 channel=channel,
                 ts=main_msg_ts,
@@ -383,9 +438,14 @@ class ClaudeExecutor:
         error_msg = f"오류가 발생했습니다: {error}"
 
         if is_trello_mode:
-            header = _build_trello_header(trello_card, "완료", session.session_id or "")
+            # 이전 상태 리액션 제거 후 에러 리액션 추가
+            prev_reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
+            _remove_reaction(client, channel, main_msg_ts, prev_reaction)
+            _add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["error"])
+
+            header = _build_trello_header(trello_card, session.session_id or "")
             continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
-            error_text = f"{header}\n❌ {error_msg}\n{continuation_hint}"
+            error_text = f"{header}\n\n❌ {error_msg}\n\n{continuation_hint}"
             client.chat_update(
                 channel=channel,
                 ts=main_msg_ts,
@@ -419,12 +479,17 @@ class ClaudeExecutor:
 
         if is_trello_mode:
             try:
-                header = _build_trello_header(trello_card, "완료", session.session_id or "")
+                # 이전 상태 리액션 제거 후 에러 리액션 추가
+                prev_reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
+                _remove_reaction(client, channel, main_msg_ts, prev_reaction)
+                _add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["error"])
+
+                header = _build_trello_header(trello_card, session.session_id or "")
                 continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
                 client.chat_update(
                     channel=channel,
                     ts=main_msg_ts,
-                    text=f"{header}\n❌ {error_msg}\n{continuation_hint}"
+                    text=f"{header}\n\n❌ {error_msg}\n\n{continuation_hint}"
                 )
             except Exception:
                 say(text=f"❌ {error_msg}", thread_ts=thread_ts)
