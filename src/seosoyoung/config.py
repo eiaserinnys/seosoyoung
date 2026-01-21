@@ -64,3 +64,8 @@ class Config:
     TRELLO_IN_PROGRESS_LIST_ID = "696ddb72ba1278b514c0ae18"  # 🔨 In Progress
     TRELLO_REVIEW_LIST_ID = "696ddb72e70fe807b0199746"  # 👀 Review
     TRELLO_DONE_LIST_ID = "696ddb74cc52e4c5d5261ed4"    # ✅ Done
+
+    # 번역 기능 설정
+    TRANSLATE_CHANNEL = os.getenv("TRANSLATE_CHANNEL", "C09JQTDCV4G")
+    TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "claude-3-5-haiku-20241022")
+    TRANSLATE_CONTEXT_COUNT = int(os.getenv("TRANSLATE_CONTEXT_COUNT", "10"))

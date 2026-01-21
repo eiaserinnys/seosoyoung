@@ -3,6 +3,7 @@
 from seosoyoung.handlers.mention import register_mention_handlers
 from seosoyoung.handlers.message import register_message_handlers
 from seosoyoung.handlers.actions import register_action_handlers
+from seosoyoung.handlers.translate import register_translate_handler
 
 
 def register_all_handlers(app, dependencies: dict):
@@ -21,6 +22,7 @@ def register_all_handlers(app, dependencies: dict):
     register_mention_handlers(app, dependencies)
     register_message_handlers(app, dependencies)
     register_action_handlers(app, dependencies)
+    register_translate_handler(app, dependencies)
 
 
 __all__ = [
@@ -28,4 +30,5 @@ __all__ = [
     "register_mention_handlers",
     "register_message_handlers",
     "register_action_handlers",
+    "register_translate_handler",
 ]

@@ -1,0 +1,130 @@
+"""번역 모듈 테스트"""
+
+import pytest
+from unittest.mock import patch, MagicMock
+
+from seosoyoung.translator.translator import (
+    translate,
+    _build_context_text,
+    _build_prompt,
+)
+from seosoyoung.translator.detector import Language
+
+
+class TestBuildContextText:
+    """컨텍스트 텍스트 생성 테스트"""
+
+    def test_empty_context(self):
+        """빈 컨텍스트"""
+        assert _build_context_text([]) == ""
+
+    def test_single_message(self):
+        """단일 메시지"""
+        context = [{"user": "Alice", "text": "Hello"}]
+        result = _build_context_text(context)
+        assert "<previous_messages>" in result
+        assert "[Alice]: Hello" in result
+        assert "</previous_messages>" in result
+
+    def test_multiple_messages(self):
+        """여러 메시지"""
+        context = [
+            {"user": "Alice", "text": "Hello"},
+            {"user": "Bob", "text": "Hi there"},
+        ]
+        result = _build_context_text(context)
+        assert "[Alice]: Hello" in result
+        assert "[Bob]: Hi there" in result
+
+
+class TestBuildPrompt:
+    """프롬프트 생성 테스트"""
+
+    def test_korean_to_english(self):
+        """한국어 -> 영어 프롬프트"""
+        prompt = _build_prompt("안녕하세요", Language.KOREAN)
+        assert "English" in prompt
+        assert "안녕하세요" in prompt
+
+    def test_english_to_korean(self):
+        """영어 -> 한국어 프롬프트"""
+        prompt = _build_prompt("Hello", Language.ENGLISH)
+        assert "Korean" in prompt
+        assert "Hello" in prompt
+
+    def test_with_context(self):
+        """컨텍스트 포함"""
+        context = [{"user": "Alice", "text": "Previous message"}]
+        prompt = _build_prompt("Hello", Language.ENGLISH, context)
+        assert "<previous_messages>" in prompt
+        assert "[Alice]: Previous message" in prompt
+
+
+class TestTranslate:
+    """번역 함수 테스트"""
+
+    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_korean_to_english(self, mock_config, mock_anthropic_class):
+        """한국어 -> 영어 번역"""
+        # Config mock
+        mock_config.ANTHROPIC_API_KEY = "test-key"
+        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-20241022"
+
+        # Anthropic client mock
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Hello")]
+        mock_client.messages.create.return_value = mock_response
+
+        result = translate("안녕하세요", Language.KOREAN)
+
+        assert result == "Hello"
+        mock_client.messages.create.assert_called_once()
+
+    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_english_to_korean(self, mock_config, mock_anthropic_class):
+        """영어 -> 한국어 번역"""
+        mock_config.ANTHROPIC_API_KEY = "test-key"
+        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-20241022"
+
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="안녕하세요")]
+        mock_client.messages.create.return_value = mock_response
+
+        result = translate("Hello", Language.ENGLISH)
+
+        assert result == "안녕하세요"
+
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_without_api_key(self, mock_config):
+        """API 키 없이 호출 시 에러"""
+        mock_config.ANTHROPIC_API_KEY = None
+
+        with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+            translate("Hello", Language.ENGLISH)
+
+    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_with_custom_model(self, mock_config, mock_anthropic_class):
+        """커스텀 모델 사용"""
+        mock_config.ANTHROPIC_API_KEY = "test-key"
+        mock_config.TRANSLATE_MODEL = "default-model"
+
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Result")]
+        mock_client.messages.create.return_value = mock_response
+
+        translate("Test", Language.ENGLISH, model="custom-model")
+
+        call_args = mock_client.messages.create.call_args
+        assert call_args.kwargs["model"] == "custom-model"
