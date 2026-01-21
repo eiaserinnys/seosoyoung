@@ -32,10 +32,13 @@ def register_message_handlers(app, dependencies: dict):
         if event.get("bot_id"):
             return
 
-        # 번역 채널인 경우 번역 처리
         channel = event.get("channel")
+        text = event.get("text", "")
+
+        # 번역 채널인 경우: 멘션이 없으면 번역, 멘션이 있으면 기존 로직 (handle_mention에서 처리)
         if channel == Config.TRANSLATE_CHANNEL:
-            process_translate_message(event, client)
+            if "<@" not in text:
+                process_translate_message(event, client)
             return
 
         # 스레드 메시지인 경우만 처리
@@ -44,7 +47,6 @@ def register_message_handlers(app, dependencies: dict):
             return
 
         # 멘션이 포함된 경우 handle_mention에서 처리 (중복 방지)
-        text = event.get("text", "")
         if "<@" in text:
             return
 
