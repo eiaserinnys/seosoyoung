@@ -153,14 +153,18 @@ def process_translate_message(event: dict, client) -> bool:
         # 응답 포맷
         response = _format_response(user_name, translated, source_lang, cost)
 
-        # 응답 위치: 스레드면 스레드에, 아니면 채널에 직접
-        reply_ts = thread_ts if thread_ts else message_ts
-
-        client.chat_postMessage(
-            channel=channel,
-            text=response,
-            thread_ts=reply_ts
-        )
+        # 응답 위치: 스레드면 스레드에, 채널이면 채널에 (스레드 열지 않음)
+        if thread_ts:
+            client.chat_postMessage(
+                channel=channel,
+                text=response,
+                thread_ts=thread_ts
+            )
+        else:
+            client.chat_postMessage(
+                channel=channel,
+                text=response
+            )
 
         # 번역 완료: 리액션 교체
         client.reactions_remove(
@@ -196,14 +200,19 @@ def process_translate_message(event: dict, client) -> bool:
             )
         except Exception:
             pass
-        # 실패 이유를 스레드에 알림
+        # 실패 이유를 같은 위치에 알림 (스레드 열지 않음)
         try:
-            reply_ts = thread_ts if thread_ts else message_ts
-            client.chat_postMessage(
-                channel=channel,
-                text=f"번역 실패: `{e}`",
-                thread_ts=reply_ts
-            )
+            if thread_ts:
+                client.chat_postMessage(
+                    channel=channel,
+                    text=f"번역 실패: `{e}`",
+                    thread_ts=thread_ts
+                )
+            else:
+                client.chat_postMessage(
+                    channel=channel,
+                    text=f"번역 실패: `{e}`"
+                )
         except Exception:
             pass
         return False
