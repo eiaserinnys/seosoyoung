@@ -321,6 +321,31 @@ def handle_mention(event, say, client):
     _run_claude_in_session(session, prompt, ts, channel, say, client)
 
 
+def _escape_code_block(text: str) -> str:
+    """코드 블록 내부의 백틱 시퀀스 이스케이프
+
+    슬랙 코드 블록(```)으로 감싼 텍스트 내부에 또 다른 코드 블록이 있으면
+    포맷팅이 깨지므로, 내부의 백틱 시퀀스를 유사 문자로 대체합니다.
+
+    변환 규칙:
+    - ``` (코드 블록) → ˋˋˋ (grave accent)
+    - `` (인라인 코드 이스케이프) → ˋˋ
+    - 단일 ` 는 유지 (슬랙에서 인라인 코드로 렌더링)
+
+    Args:
+        text: 이스케이프할 텍스트
+
+    Returns:
+        이스케이프된 텍스트
+    """
+    # 3개 이상의 연속 백틱을 유사 문자로 대체
+    # ```python, ````markdown 등 다양한 패턴 처리
+    import re
+    # 3개 이상 연속 백틱 → 동일 개수의 grave accent
+    result = re.sub(r'`{3,}', lambda m: 'ˋ' * len(m.group()), text)
+    return result
+
+
 def _build_trello_header(card: TrackedCard, mode: str, session_id: str = "") -> str:
     """트렐로 카드용 슬랙 메시지 헤더 생성
 
@@ -417,7 +442,8 @@ def _run_claude_in_session(
                     # 트렐로 모드: 메인 메시지 업데이트 (코드 블록 포맷팅)
                     mode = "실행 중" if trello_card.has_execute else "계획 중"
                     header = _build_trello_header(trello_card, mode, session.session_id or "")
-                    update_text = f"{header}\n```\n{display_text}\n```"
+                    escaped_text = _escape_code_block(display_text)
+                    update_text = f"{header}\n```\n{escaped_text}\n```"
 
                     client.chat_update(
                         channel=channel,
@@ -430,7 +456,8 @@ def _run_claude_in_session(
                     )
                 else:
                     # 일반 모드: 새 메시지로 사고 과정 추가 (코드 블록 포맷팅)
-                    code_text = f"```\n{display_text}\n```"
+                    escaped_text = _escape_code_block(display_text)
+                    code_text = f"```\n{escaped_text}\n```"
                     new_msg = client.chat_postMessage(
                         channel=channel,
                         thread_ts=thread_ts,

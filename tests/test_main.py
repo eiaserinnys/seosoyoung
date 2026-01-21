@@ -10,7 +10,7 @@ from seosoyoung.main import (
     check_permission,
     get_user_role,
     get_runner_for_role,
-    _escape_backticks,
+    _escape_code_block,
     _build_trello_header,
 )
 from seosoyoung.trello.watcher import TrackedCard
@@ -631,30 +631,154 @@ class TestGetChannelHistory:
         assert result == ""
 
 
-class TestEscapeBackticks:
-    """_escape_backticks 함수 테스트"""
+class TestEscapeCodeBlock:
+    """_escape_code_block 함수 테스트 - 코드 블록 중첩 방지"""
 
-    def test_escape_single_backtick(self):
-        """단일 백틱 이스케이프"""
-        result = _escape_backticks("Hello `world`")
-        assert result == "Hello ˋworldˋ"
-        assert "`" not in result
+    def test_single_backtick_preserved(self):
+        """단일 백틱은 유지 (슬랙 인라인 코드용)"""
+        result = _escape_code_block("Hello `world`")
+        assert result == "Hello `world`"
+        assert "`world`" in result
 
-    def test_escape_triple_backticks(self):
-        """코드 블록 백틱 이스케이프"""
-        result = _escape_backticks("```python\nprint('hello')\n```")
+    def test_double_backtick_preserved(self):
+        """이중 백틱도 유지"""
+        result = _escape_code_block("Use ``code`` here")
+        assert result == "Use ``code`` here"
+
+    def test_triple_backticks_escaped(self):
+        """삼중 백틱(코드 블록)은 이스케이프"""
+        result = _escape_code_block("```python\nprint('hello')\n```")
         assert "```" not in result
+        assert "ˋˋˋ" in result
+        assert "print('hello')" in result
+
+    def test_quadruple_backticks_escaped(self):
+        """4개 백틱도 이스케이프"""
+        result = _escape_code_block("````markdown\n# Title\n````")
+        assert "````" not in result
+        assert "ˋˋˋˋ" in result
+
+    def test_mixed_backticks(self):
+        """혼합된 백틱 패턴"""
+        text = "Use `inline` and ```block``` code"
+        result = _escape_code_block(text)
+        assert "`inline`" in result  # 단일 백틱 유지
+        assert "```" not in result   # 삼중 백틱 이스케이프됨
         assert "ˋˋˋ" in result
 
     def test_no_backticks(self):
         """백틱이 없는 텍스트"""
-        result = _escape_backticks("Hello world")
+        result = _escape_code_block("Hello world")
         assert result == "Hello world"
 
     def test_empty_string(self):
         """빈 문자열"""
-        result = _escape_backticks("")
+        result = _escape_code_block("")
         assert result == ""
+
+    def test_code_block_with_language(self):
+        """언어 지정된 코드 블록"""
+        text = "```javascript\nconst x = 1;\n```"
+        result = _escape_code_block(text)
+        assert "```" not in result
+        assert "ˋˋˋjavascript" in result
+        assert "const x = 1;" in result
+
+    def test_nested_code_blocks(self):
+        """중첩된 코드 블록 (마크다운 내 코드 블록 설명)"""
+        text = """Here's how to write code:
+```markdown
+Use triple backticks:
+```python
+print("hello")
+```
+```"""
+        result = _escape_code_block(text)
+        assert "```" not in result
+        # 모든 삼중 백틱이 이스케이프되어야 함
+        assert result.count("ˋˋˋ") >= 3
+
+    def test_code_block_in_explanation(self):
+        """Claude가 코드 블록 사용법을 설명하는 경우"""
+        text = """파일을 수정했습니다:
+```python
+def hello():
+    print("world")
+```
+
+다음 명령어로 실행하세요:
+```bash
+python main.py
+```"""
+        result = _escape_code_block(text)
+        assert "```" not in result
+        assert result.count("ˋˋˋ") == 4  # 시작/끝 각 2개씩
+
+    def test_backticks_at_line_start(self):
+        """줄 시작에 백틱이 있는 경우"""
+        text = "설명:\n```\ncode here\n```"
+        result = _escape_code_block(text)
+        assert "```" not in result
+
+    def test_consecutive_code_blocks(self):
+        """연속된 코드 블록"""
+        text = "```\nblock1\n``````\nblock2\n```"
+        result = _escape_code_block(text)
+        assert "```" not in result
+        # 6개 연속 백틱도 처리
+        assert "ˋˋˋˋˋˋ" in result
+
+    def test_real_claude_response_simulation(self):
+        """실제 Claude 응답 시뮬레이션"""
+        text = """파일을 확인했습니다.
+
+`config.py`에서 다음 설정을 찾았습니다:
+
+```python
+DEBUG = True
+API_KEY = "..."
+```
+
+그리고 `main.py`에서:
+
+```python
+from config import DEBUG
+if DEBUG:
+    print("Debug mode")
+```
+
+수정이 필요하시면 말씀해주세요."""
+        result = _escape_code_block(text)
+        # 단일 백틱은 유지
+        assert "`config.py`" in result
+        assert "`main.py`" in result
+        # 삼중 백틱은 이스케이프
+        assert "```" not in result
+        assert result.count("ˋˋˋ") == 4
+
+    def test_only_backticks(self):
+        """백틱만 있는 경우"""
+        result = _escape_code_block("```")
+        assert result == "ˋˋˋ"
+
+    def test_many_consecutive_backticks(self):
+        """매우 많은 연속 백틱"""
+        result = _escape_code_block("``````````")  # 10개
+        assert "`" not in result
+        assert "ˋ" * 10 == result
+
+    def test_special_characters_preserved(self):
+        """특수 문자는 영향 없음"""
+        text = "```\n<>&\"'\n```"
+        result = _escape_code_block(text)
+        assert "<>&\"'" in result
+
+    def test_unicode_preserved(self):
+        """유니코드 문자 보존"""
+        text = "```\n한글 테스트 🎉\n```"
+        result = _escape_code_block(text)
+        assert "한글 테스트 🎉" in result
+        assert "```" not in result
 
 
 class TestBuildTrelloHeader:
