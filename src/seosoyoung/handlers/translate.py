@@ -93,105 +93,107 @@ def _format_response(user_name: str, translated: str, source_lang: Language) -> 
         return f"`{user_name}님이` \"{translated}\"`라고 하셨습니다.`"
 
 
-def register_translate_handler(app: App, dependencies: dict):
-    """번역 핸들러를 앱에 등록합니다.
+def process_translate_message(event: dict, client) -> bool:
+    """메시지를 번역 처리합니다.
 
     Args:
-        app: Slack Bolt App 인스턴스
-        dependencies: 핸들러 의존성 (현재 미사용)
+        event: 슬랙 메시지 이벤트
+        client: 슬랙 클라이언트
+
+    Returns:
+        처리 여부 (True: 처리됨, False: 처리하지 않음)
     """
-    translate_channel = Config.TRANSLATE_CHANNEL
-    if not translate_channel:
-        logger.info("TRANSLATE_CHANNEL이 설정되지 않아 번역 핸들러를 등록하지 않습니다.")
-        return
+    # 봇 메시지 무시
+    if event.get("bot_id") or event.get("subtype") == "bot_message":
+        return False
 
-    logger.info(f"번역 핸들러 등록: 채널 {translate_channel}")
+    # 메시지 수정/삭제 이벤트 무시
+    subtype = event.get("subtype")
+    if subtype in ("message_changed", "message_deleted"):
+        return False
 
-    @app.event("message")
-    def handle_translate_message(event, client, context, say):
-        """메시지 이벤트 핸들러"""
-        # 채널 확인
-        channel = event.get("channel")
-        if channel != translate_channel:
-            return
+    text = event.get("text", "").strip()
+    if not text:
+        return False
 
-        # 봇 메시지 무시
-        if event.get("bot_id") or event.get("subtype") == "bot_message":
-            return
+    channel = event.get("channel")
+    user_id = event.get("user")
+    thread_ts = event.get("thread_ts")  # 스레드면 부모 ts
+    message_ts = event.get("ts")
 
-        # 메시지 수정/삭제 이벤트 무시
-        subtype = event.get("subtype")
-        if subtype in ("message_changed", "message_deleted"):
-            return
+    try:
+        # 번역 시작 리액션
+        client.reactions_add(
+            channel=channel,
+            timestamp=message_ts,
+            name="hn-curious"
+        )
 
-        text = event.get("text", "").strip()
-        if not text:
-            return
+        # 언어 감지
+        source_lang = detect_language(text)
+        logger.info(f"번역 요청: {source_lang.value} -> {text[:30]}...")
 
-        user_id = event.get("user")
-        thread_ts = event.get("thread_ts")  # 스레드면 부모 ts
-        message_ts = event.get("ts")
+        # 컨텍스트 메시지 수집
+        context_messages = _get_context_messages(
+            client,
+            channel,
+            thread_ts,
+            Config.TRANSLATE_CONTEXT_COUNT
+        )
 
+        # 번역
+        translated = translate(text, source_lang, context_messages)
+
+        # 사용자 이름 조회
+        user_name = _get_user_display_name(client, user_id)
+
+        # 응답 포맷
+        response = _format_response(user_name, translated, source_lang)
+
+        # 응답 위치: 스레드면 스레드에, 아니면 채널에 직접
+        reply_ts = thread_ts if thread_ts else message_ts
+
+        client.chat_postMessage(
+            channel=channel,
+            text=response,
+            thread_ts=reply_ts
+        )
+
+        # 번역 완료: 리액션 교체
+        client.reactions_remove(
+            channel=channel,
+            timestamp=message_ts,
+            name="hn-curious"
+        )
+        client.reactions_add(
+            channel=channel,
+            timestamp=message_ts,
+            name="hn_deal_rainbow"
+        )
+
+        logger.info(f"번역 응답 완료: {user_name}")
+        return True
+
+    except Exception as e:
+        logger.error(f"번역 실패: {e}", exc_info=True)
+        # 실패 시 리액션 제거 시도
         try:
-            # 번역 시작 리액션
-            client.reactions_add(
-                channel=channel,
-                timestamp=message_ts,
-                name="hn-curious"
-            )
-
-            # 언어 감지
-            source_lang = detect_language(text)
-            logger.info(f"번역 요청: {source_lang.value} -> {text[:30]}...")
-
-            # 컨텍스트 메시지 수집
-            context_messages = _get_context_messages(
-                client,
-                channel,
-                thread_ts,
-                Config.TRANSLATE_CONTEXT_COUNT
-            )
-
-            # 번역
-            translated = translate(text, source_lang, context_messages)
-
-            # 사용자 이름 조회
-            user_name = _get_user_display_name(client, user_id)
-
-            # 응답 포맷
-            response = _format_response(user_name, translated, source_lang)
-
-            # 응답 위치: 스레드면 스레드에, 아니면 채널에 직접
-            reply_ts = thread_ts if thread_ts else message_ts
-
-            client.chat_postMessage(
-                channel=channel,
-                text=response,
-                thread_ts=reply_ts
-            )
-
-            # 번역 완료: 리액션 교체
             client.reactions_remove(
                 channel=channel,
                 timestamp=message_ts,
                 name="hn-curious"
             )
-            client.reactions_add(
-                channel=channel,
-                timestamp=message_ts,
-                name="hn_deal_rainbow"
-            )
+        except Exception:
+            pass
+        return False
 
-            logger.info(f"번역 응답 완료: {user_name}")
 
-        except Exception as e:
-            logger.error(f"번역 실패: {e}", exc_info=True)
-            # 실패 시 리액션 제거 시도
-            try:
-                client.reactions_remove(
-                    channel=channel,
-                    timestamp=message_ts,
-                    name="hn-curious"
-                )
-            except Exception:
-                pass
+def register_translate_handler(app: App, dependencies: dict):
+    """번역 핸들러를 앱에 등록합니다.
+
+    Note: 이 함수는 더 이상 핸들러를 등록하지 않습니다.
+    번역 처리는 message.py의 handle_message에서 process_translate_message를 호출합니다.
+    """
+    translate_channel = Config.TRANSLATE_CHANNEL
+    if translate_channel:
+        logger.info(f"번역 기능 활성화: 채널 {translate_channel}")

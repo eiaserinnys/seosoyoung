@@ -3,6 +3,9 @@
 import re
 import logging
 
+from seosoyoung.config import Config
+from seosoyoung.handlers.translate import process_translate_message
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,6 +30,12 @@ def register_message_handlers(app, dependencies: dict):
         """
         # 봇 자신의 메시지는 무시
         if event.get("bot_id"):
+            return
+
+        # 번역 채널인 경우 번역 처리
+        channel = event.get("channel")
+        if channel == Config.TRANSLATE_CHANNEL:
+            process_translate_message(event, client)
             return
 
         # 스레드 메시지인 경우만 처리
