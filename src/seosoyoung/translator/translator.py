@@ -79,15 +79,16 @@ def translate(
     Raises:
         Exception: API 호출 실패 시
     """
-    if not Config.ANTHROPIC_API_KEY:
-        raise ValueError("ANTHROPIC_API_KEY가 설정되지 않았습니다.")
+    api_key = Config.TRANSLATE_API_KEY
+    if not api_key:
+        raise ValueError("TRANSLATE_API_KEY가 설정되지 않았습니다.")
 
     model = model or Config.TRANSLATE_MODEL
     prompt = _build_prompt(text, source_lang, context_messages)
 
     logger.debug(f"번역 요청: {text[:50]}... -> {source_lang.value}")
 
-    client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=api_key)
 
     response = client.messages.create(
         model=model,

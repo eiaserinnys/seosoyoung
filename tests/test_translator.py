@@ -68,8 +68,8 @@ class TestTranslate:
     def test_translate_korean_to_english(self, mock_config, mock_anthropic_class):
         """한국어 -> 영어 번역"""
         # Config mock
-        mock_config.ANTHROPIC_API_KEY = "test-key"
-        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-20241022"
+        mock_config.TRANSLATE_API_KEY = "test-key"
+        mock_config.TRANSLATE_MODEL = "claude-haiku-4-20250514"
 
         # Anthropic client mock
         mock_client = MagicMock()
@@ -88,8 +88,8 @@ class TestTranslate:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_english_to_korean(self, mock_config, mock_anthropic_class):
         """영어 -> 한국어 번역"""
-        mock_config.ANTHROPIC_API_KEY = "test-key"
-        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-20241022"
+        mock_config.TRANSLATE_API_KEY = "test-key"
+        mock_config.TRANSLATE_MODEL = "claude-haiku-4-20250514"
 
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
@@ -105,16 +105,16 @@ class TestTranslate:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_without_api_key(self, mock_config):
         """API 키 없이 호출 시 에러"""
-        mock_config.ANTHROPIC_API_KEY = None
+        mock_config.TRANSLATE_API_KEY = None
 
-        with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+        with pytest.raises(ValueError, match="TRANSLATE_API_KEY"):
             translate("Hello", Language.ENGLISH)
 
     @patch("seosoyoung.translator.translator.anthropic.Anthropic")
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_with_custom_model(self, mock_config, mock_anthropic_class):
         """커스텀 모델 사용"""
-        mock_config.ANTHROPIC_API_KEY = "test-key"
+        mock_config.TRANSLATE_API_KEY = "test-key"
         mock_config.TRANSLATE_MODEL = "default-model"
 
         mock_client = MagicMock()
