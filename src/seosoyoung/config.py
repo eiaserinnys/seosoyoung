@@ -67,6 +67,6 @@ class Config:
 
     # 번역 기능 설정
     TRANSLATE_CHANNEL = os.getenv("TRANSLATE_CHANNEL", "C09JQTDCV4G")
-    TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "claude-haiku-4-20250414")
+    TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "claude-3-5-haiku-latest")
     TRANSLATE_CONTEXT_COUNT = int(os.getenv("TRANSLATE_CONTEXT_COUNT", "10"))
     TRANSLATE_API_KEY = os.getenv("TRANSLATE_API_KEY")  # 번역 전용 API 키

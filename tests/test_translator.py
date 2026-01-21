@@ -88,7 +88,7 @@ class TestTranslate:
         """한국어 -> 영어 번역"""
         # Config mock
         mock_config.TRANSLATE_API_KEY = "test-key"
-        mock_config.TRANSLATE_MODEL = "claude-haiku-4-20250414"
+        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-latest"
 
         # Anthropic client mock
         mock_client = MagicMock()
@@ -111,7 +111,7 @@ class TestTranslate:
     def test_translate_english_to_korean(self, mock_config, mock_anthropic_class):
         """영어 -> 한국어 번역"""
         mock_config.TRANSLATE_API_KEY = "test-key"
-        mock_config.TRANSLATE_MODEL = "claude-haiku-4-20250414"
+        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-latest"
 
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
