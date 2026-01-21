@@ -196,6 +196,16 @@ def process_translate_message(event: dict, client) -> bool:
             )
         except Exception:
             pass
+        # 실패 이유를 스레드에 알림
+        try:
+            reply_ts = thread_ts if thread_ts else message_ts
+            client.chat_postMessage(
+                channel=channel,
+                text=f"번역 실패: `{e}`",
+                thread_ts=reply_ts
+            )
+        except Exception:
+            pass
         return False
 
 
