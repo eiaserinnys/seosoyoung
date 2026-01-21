@@ -1,12 +1,14 @@
 """Claude Code 세션 관리
 
 스레드 ID ↔ 세션 ID 매핑을 관리합니다.
+세션 락과 실행 상태 추적도 포함합니다.
 """
 
 import json
 import logging
+import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
@@ -142,3 +144,62 @@ class SessionManager:
     def count(self) -> int:
         """활성 세션 수"""
         return len(list(self.session_dir.glob("session_*.json")))
+
+
+class SessionRuntime:
+    """세션 실행 상태 관리자
+
+    세션 락(동시 실행 방지)과 실행 상태 추적을 담당합니다.
+    """
+
+    def __init__(self, on_all_sessions_stopped: Optional[Callable] = None):
+        """
+        Args:
+            on_all_sessions_stopped: 모든 세션이 종료되었을 때 호출될 콜백
+        """
+        # 실행 중인 세션 락 (스레드별 동시 실행 방지)
+        # RLock 사용: 같은 스레드에서 여러 번 acquire 가능 (재진입 가능)
+        self._session_locks: dict[str, threading.RLock] = {}
+        self._locks_lock = threading.Lock()
+
+        # 현재 실행 중인 세션 추적 (락이 acquire된 thread_ts 집합)
+        self._running_sessions: set[str] = set()
+        self._running_sessions_lock = threading.Lock()
+
+        # 세션 종료 시 콜백 (재시작 대기 확인용)
+        self._on_all_sessions_stopped = on_all_sessions_stopped
+
+    def get_session_lock(self, thread_ts: str) -> threading.RLock:
+        """스레드별 락 반환 (없으면 생성)"""
+        with self._locks_lock:
+            if thread_ts not in self._session_locks:
+                self._session_locks[thread_ts] = threading.RLock()
+            return self._session_locks[thread_ts]
+
+    def mark_session_running(self, thread_ts: str) -> None:
+        """세션을 실행 중으로 표시"""
+        with self._running_sessions_lock:
+            self._running_sessions.add(thread_ts)
+        logger.debug(f"세션 실행 시작: thread_ts={thread_ts}")
+
+    def mark_session_stopped(self, thread_ts: str) -> None:
+        """세션 실행 종료 표시
+
+        세션 종료 후 대기 중인 재시작 요청이 있으면 확인합니다.
+        """
+        with self._running_sessions_lock:
+            self._running_sessions.discard(thread_ts)
+        logger.debug(f"세션 실행 종료: thread_ts={thread_ts}")
+
+        # 콜백 호출 (재시작 대기 확인 등)
+        if self._on_all_sessions_stopped is not None:
+            self._on_all_sessions_stopped()
+
+    def get_running_session_count(self) -> int:
+        """현재 실행 중인 세션 수 반환"""
+        with self._running_sessions_lock:
+            return len(self._running_sessions)
+
+    def set_on_all_sessions_stopped(self, callback: Callable) -> None:
+        """세션 종료 콜백 설정 (초기화 후 설정 가능)"""
+        self._on_all_sessions_stopped = callback
