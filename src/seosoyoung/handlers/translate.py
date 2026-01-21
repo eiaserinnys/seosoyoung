@@ -86,14 +86,12 @@ def _format_response(user_name: str, translated: str, source_lang: Language, cos
     Returns:
         포맷팅된 응답 문자열
     """
-    cost_line = f"`💸 예상 번역 비용: ${cost:.4f}`"
-
     if source_lang == Language.KOREAN:
-        # 한국어 -> 영어: `Name said,` "번역"
-        return f"`{user_name} said,` \"{translated}\"\n{cost_line}"
+        # 한국어 -> 영어
+        return f"`{user_name} said,`\n\"{translated}\""
     else:
-        # 영어 -> 한국어: `이름님이` "번역"`라고 하셨습니다.`
-        return f"`{user_name}님이` \"{translated}\"`라고 하셨습니다.`\n{cost_line}"
+        # 영어 -> 한국어
+        return f"`{user_name}님이`\n\"{translated}\"\n`라고 하셨습니다.`"
 
 
 def process_translate_message(event: dict, client) -> bool:
