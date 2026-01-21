@@ -179,12 +179,20 @@ def process_translate_message(event: dict, client) -> bool:
 
     except Exception as e:
         logger.error(f"번역 실패: {e}", exc_info=True)
-        # 실패 시 리액션 제거 시도
+        # 실패 시 리액션 교체 (hn-curious -> hn-embarrass)
         try:
             client.reactions_remove(
                 channel=channel,
                 timestamp=message_ts,
                 name="hn-curious"
+            )
+        except Exception:
+            pass
+        try:
+            client.reactions_add(
+                channel=channel,
+                timestamp=message_ts,
+                name="hn-embarrass"
             )
         except Exception:
             pass
