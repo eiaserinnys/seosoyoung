@@ -168,7 +168,7 @@ class ClaudeExecutor:
                         mode = "실행 중" if trello_card.has_execute else "계획 중"
                         header = _build_trello_header(trello_card, mode, session.session_id or "")
                         escaped_text = _escape_backticks(display_text)
-                        update_text = f"{header}\n`{escaped_text}`"
+                        update_text = f"{header}\n```\n{escaped_text}\n```"
 
                         client.chat_update(
                             channel=channel,
