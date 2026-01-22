@@ -86,12 +86,13 @@ def _format_response(user_name: str, translated: str, source_lang: Language, cos
     Returns:
         포맷팅된 응답 문자열
     """
+    cost_str = f"  `${cost:.4f}`"
     if source_lang == Language.KOREAN:
         # 한국어 -> 영어
-        return f"`{user_name} said,`\n\"{translated}\""
+        return f"`{user_name} said,`\n\"{translated}\"{cost_str}"
     else:
         # 영어 -> 한국어
-        return f"`{user_name}님이`\n\"{translated}\"\n`라고 하셨습니다.`"
+        return f"`{user_name}님이`\n\"{translated}\"\n`라고 하셨습니다.`{cost_str}"
 
 
 def process_translate_message(event: dict, client) -> bool:
@@ -222,6 +223,6 @@ def register_translate_handler(app: App, dependencies: dict):
     Note: 이 함수는 더 이상 핸들러를 등록하지 않습니다.
     번역 처리는 message.py의 handle_message에서 process_translate_message를 호출합니다.
     """
-    translate_channel = Config.TRANSLATE_CHANNEL
-    if translate_channel:
-        logger.info(f"번역 기능 활성화: 채널 {translate_channel}")
+    translate_channels = Config.TRANSLATE_CHANNELS
+    if translate_channels:
+        logger.info(f"번역 기능 활성화: 채널 {translate_channels}")
