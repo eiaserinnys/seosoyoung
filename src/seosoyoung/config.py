@@ -81,3 +81,14 @@ class Config:
     @staticmethod
     def get_glossary_path() -> str:
         return _get_path("GLOSSARY_PATH", "eb_lore/content/glossary.yaml")
+
+    # 대사 검색 관련 경로
+    @staticmethod
+    def get_narrative_path() -> str:
+        """대사 데이터 경로 (eb_narrative/narrative)"""
+        return _get_path("NARRATIVE_PATH", "eb_narrative/narrative")
+
+    @staticmethod
+    def get_search_index_path() -> str:
+        """검색 인덱스 경로 (internal/index/dialogues)"""
+        return _get_path("SEARCH_INDEX_PATH", "internal/index/dialogues")

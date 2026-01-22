@@ -6,6 +6,7 @@ requests>=2.31.0
 claude-code-sdk>=0.0.25
 pyyaml>=6.0.0
 rapidfuzz>=3.0.0
+whoosh>=2.7.4
 
 # Testing
 pytest>=8.0.0
