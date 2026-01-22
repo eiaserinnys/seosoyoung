@@ -32,7 +32,7 @@ def _build_context_text(context_messages: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _build_glossary_section(text: str, source_lang: Language) -> str:
+def _build_glossary_section(text: str, source_lang: Language) -> tuple[str, list[tuple[str, str]]]:
     """텍스트에서 관련 용어를 찾아 용어집 섹션 생성
 
     Args:
@@ -40,27 +40,28 @@ def _build_glossary_section(text: str, source_lang: Language) -> str:
         source_lang: 원본 언어
 
     Returns:
-        용어집 섹션 문자열 (관련 용어가 없으면 빈 문자열)
+        (용어집 섹션 문자열, 참고한 용어 목록)
+        용어가 없으면 ("", [])
     """
     lang_code = "ko" if source_lang == Language.KOREAN else "en"
     relevant_terms = find_relevant_terms(text, lang_code)
 
     if not relevant_terms:
-        return ""
+        return "", []
 
     lines = ["<glossary>", "Translate the following proper nouns as specified:"]
     for source_term, target_term in relevant_terms:
         lines.append(f"- {source_term} → {target_term}")
     lines.append("</glossary>")
 
-    return "\n".join(lines)
+    return "\n".join(lines), relevant_terms
 
 
 def _build_prompt(
     text: str,
     source_lang: Language,
     context_messages: list[dict] | None = None
-) -> str:
+) -> tuple[str, list[tuple[str, str]]]:
     """번역 프롬프트 생성
 
     Args:
@@ -69,7 +70,7 @@ def _build_prompt(
         context_messages: 이전 대화 컨텍스트
 
     Returns:
-        프롬프트 문자열
+        (프롬프트 문자열, 참고한 용어 목록)
     """
     target_lang = "English" if source_lang == Language.KOREAN else "Korean"
 
@@ -79,14 +80,15 @@ def _build_prompt(
         context_text = _build_context_text(context_messages) + "\n\n"
 
     # 용어집 섹션
-    glossary_section = _build_glossary_section(text, source_lang)
+    glossary_section, glossary_terms = _build_glossary_section(text, source_lang)
     glossary_text = glossary_section + "\n\n" if glossary_section else ""
 
-    return f"""{context_text}{glossary_text}Translate the following text to {target_lang}.
+    prompt = f"""{context_text}{glossary_text}Translate the following text to {target_lang}.
 Output ONLY the translation, nothing else. No explanations, no quotes, no prefixes.
 
 Text to translate:
 {text}"""
+    return prompt, glossary_terms
 
 
 # 모델별 가격 (2025년 기준, USD per 1M tokens)
@@ -125,7 +127,7 @@ def translate(
     source_lang: Language,
     context_messages: list[dict] | None = None,
     model: str | None = None,
-) -> tuple[str, float]:
+) -> tuple[str, float, list[tuple[str, str]]]:
     """텍스트를 번역
 
     Args:
@@ -135,7 +137,7 @@ def translate(
         model: 사용할 모델 (기본값: Config.TRANSLATE_MODEL)
 
     Returns:
-        (번역된 텍스트, 예상 비용 USD)
+        (번역된 텍스트, 예상 비용 USD, 참고한 용어 목록)
 
     Raises:
         Exception: API 호출 실패 시
@@ -145,7 +147,7 @@ def translate(
         raise ValueError("TRANSLATE_API_KEY가 설정되지 않았습니다.")
 
     model = model or Config.TRANSLATE_MODEL
-    prompt = _build_prompt(text, source_lang, context_messages)
+    prompt, glossary_terms = _build_prompt(text, source_lang, context_messages)
 
     logger.debug(f"번역 요청: {text[:50]}... -> {source_lang.value}")
 
@@ -168,4 +170,4 @@ def translate(
 
     logger.debug(f"번역 완료: {translated[:50]}... (비용: ${cost:.6f})")
 
-    return translated, cost
+    return translated, cost, glossary_terms

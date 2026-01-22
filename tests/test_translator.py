@@ -11,6 +11,7 @@ from seosoyoung.translator.translator import (
     _calculate_cost,
 )
 from seosoyoung.translator.detector import Language
+from seosoyoung.handlers.translate import _format_response
 
 
 class TestBuildContextText:
@@ -44,20 +45,20 @@ class TestBuildPrompt:
 
     def test_korean_to_english(self):
         """한국어 -> 영어 프롬프트"""
-        prompt = _build_prompt("안녕하세요", Language.KOREAN)
+        prompt, terms = _build_prompt("안녕하세요", Language.KOREAN)
         assert "English" in prompt
         assert "안녕하세요" in prompt
 
     def test_english_to_korean(self):
         """영어 -> 한국어 프롬프트"""
-        prompt = _build_prompt("Hello", Language.ENGLISH)
+        prompt, terms = _build_prompt("Hello", Language.ENGLISH)
         assert "Korean" in prompt
         assert "Hello" in prompt
 
     def test_with_context(self):
         """컨텍스트 포함"""
         context = [{"user": "Alice", "text": "Previous message"}]
-        prompt = _build_prompt("Hello", Language.ENGLISH, context)
+        prompt, terms = _build_prompt("Hello", Language.ENGLISH, context)
         assert "<previous_messages>" in prompt
         assert "[Alice]: Previous message" in prompt
 
@@ -65,16 +66,18 @@ class TestBuildPrompt:
     def test_with_glossary(self, mock_find_terms):
         """용어집 포함"""
         mock_find_terms.return_value = [("펜릭스", "Fenrix")]
-        prompt = _build_prompt("펜릭스가 말했다.", Language.KOREAN)
+        prompt, terms = _build_prompt("펜릭스가 말했다.", Language.KOREAN)
         assert "<glossary>" in prompt
         assert "펜릭스 → Fenrix" in prompt
+        assert terms == [("펜릭스", "Fenrix")]
 
     @patch("seosoyoung.translator.translator.find_relevant_terms")
     def test_without_glossary(self, mock_find_terms):
         """관련 용어 없을 때 용어집 섹션 없음"""
         mock_find_terms.return_value = []
-        prompt = _build_prompt("Hello", Language.ENGLISH)
+        prompt, terms = _build_prompt("Hello", Language.ENGLISH)
         assert "<glossary>" not in prompt
+        assert terms == []
 
 
 class TestBuildGlossarySection:
@@ -87,18 +90,20 @@ class TestBuildGlossarySection:
             ("펜릭스", "Fenrix"),
             ("아리엘라", "Ariella"),
         ]
-        section = _build_glossary_section("펜릭스와 아리엘라", Language.KOREAN)
+        section, terms = _build_glossary_section("펜릭스와 아리엘라", Language.KOREAN)
         assert "<glossary>" in section
         assert "</glossary>" in section
         assert "펜릭스 → Fenrix" in section
         assert "아리엘라 → Ariella" in section
+        assert terms == [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
 
     @patch("seosoyoung.translator.translator.find_relevant_terms")
     def test_empty_when_no_terms(self, mock_find_terms):
-        """관련 용어 없으면 빈 문자열"""
+        """관련 용어 없으면 빈 튜플"""
         mock_find_terms.return_value = []
-        section = _build_glossary_section("Hello world", Language.ENGLISH)
+        section, terms = _build_glossary_section("Hello world", Language.ENGLISH)
         assert section == ""
+        assert terms == []
 
 
 class TestCalculateCost:
@@ -155,10 +160,11 @@ class TestTranslate:
         mock_response.usage.output_tokens = 10
         mock_client.messages.create.return_value = mock_response
 
-        text, cost = translate("안녕하세요", Language.KOREAN)
+        text, cost, terms = translate("안녕하세요", Language.KOREAN)
 
         assert text == "Hello"
         assert cost > 0
+        assert isinstance(terms, list)
         mock_client.messages.create.assert_called_once()
 
     @patch("seosoyoung.translator.translator.anthropic.Anthropic")
@@ -177,10 +183,11 @@ class TestTranslate:
         mock_response.usage.output_tokens = 10
         mock_client.messages.create.return_value = mock_response
 
-        text, cost = translate("Hello", Language.ENGLISH)
+        text, cost, terms = translate("Hello", Language.ENGLISH)
 
         assert text == "안녕하세요"
         assert cost > 0
+        assert isinstance(terms, list)
 
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_without_api_key(self, mock_config):
@@ -210,3 +217,74 @@ class TestTranslate:
 
         call_args = mock_client.messages.create.call_args
         assert call_args.kwargs["model"] == "custom-model"
+
+    @patch("seosoyoung.translator.translator.find_relevant_terms")
+    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_returns_glossary_terms(self, mock_config, mock_anthropic_class, mock_find_terms):
+        """번역 시 참고한 용어 목록 반환"""
+        mock_config.TRANSLATE_API_KEY = "test-key"
+        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-latest"
+
+        mock_find_terms.return_value = [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
+
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Fenrix and Ariella")]
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 10
+        mock_client.messages.create.return_value = mock_response
+
+        text, cost, terms = translate("펜릭스와 아리엘라", Language.KOREAN)
+
+        assert text == "Fenrix and Ariella"
+        assert terms == [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
+
+
+class TestFormatResponse:
+    """응답 포맷팅 테스트"""
+
+    def test_korean_to_english_without_glossary(self):
+        """한국어 -> 영어 (용어집 없음)"""
+        result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012)
+        assert "`홍길동 said,`" in result
+        assert '"Hello"' in result
+        assert "`~💵$0.0012`" in result
+        assert "📖" not in result
+
+    def test_english_to_korean_without_glossary(self):
+        """영어 -> 한국어 (용어집 없음)"""
+        result = _format_response("John", "안녕하세요", Language.ENGLISH, 0.0012)
+        assert "`John님이`" in result
+        assert '"안녕하세요"' in result
+        assert "`라고 하셨습니다.`" in result
+        assert "`~💵$0.0012`" in result
+        assert "📖" not in result
+
+    def test_korean_to_english_with_glossary(self):
+        """한국어 -> 영어 (용어집 있음)"""
+        terms = [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
+        result = _format_response("홍길동", "Fenrix and Ariella", Language.KOREAN, 0.0012, terms)
+        assert "`홍길동 said,`" in result
+        assert "`📖 펜릭스 (Fenrix), 아리엘라 (Ariella)`" in result
+        assert "`~💵$0.0012`" in result
+
+    def test_english_to_korean_with_glossary(self):
+        """영어 -> 한국어 (용어집 있음)"""
+        terms = [("Fenrix", "펜릭스")]
+        result = _format_response("John", "펜릭스가 말했다", Language.ENGLISH, 0.0012, terms)
+        assert "`John님이`" in result
+        assert "`📖 Fenrix (펜릭스)`" in result
+        assert "`~💵$0.0012`" in result
+
+    def test_with_empty_glossary(self):
+        """빈 용어집"""
+        result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012, [])
+        assert "📖" not in result
+
+    def test_with_none_glossary(self):
+        """None 용어집"""
+        result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012, None)
+        assert "📖" not in result

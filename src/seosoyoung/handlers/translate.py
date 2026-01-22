@@ -74,7 +74,13 @@ def _get_context_messages(client, channel: str, thread_ts: str | None, limit: in
         return []
 
 
-def _format_response(user_name: str, translated: str, source_lang: Language, cost: float) -> str:
+def _format_response(
+    user_name: str,
+    translated: str,
+    source_lang: Language,
+    cost: float,
+    glossary_terms: list[tuple[str, str]] | None = None
+) -> str:
     """응답 메시지를 포맷팅합니다.
 
     Args:
@@ -82,17 +88,25 @@ def _format_response(user_name: str, translated: str, source_lang: Language, cos
         translated: 번역된 텍스트
         source_lang: 원본 언어
         cost: 예상 번역 비용 (USD)
+        glossary_terms: 참고한 용어 목록 [(원어, 번역어), ...]
 
     Returns:
         포맷팅된 응답 문자열
     """
+    # 용어 라인 생성 (있는 경우에만)
+    glossary_line = ""
+    if glossary_terms:
+        # 원어 (번역어) 형식으로 나열
+        term_strs = [f"{src} ({tgt})" for src, tgt in glossary_terms]
+        glossary_line = f"\n`📖 {', '.join(term_strs)}`"
+
     cost_line = f"`~💵${cost:.4f}`"
     if source_lang == Language.KOREAN:
         # 한국어 -> 영어
-        return f"`{user_name} said,`\n\"{translated}\"\n{cost_line}"
+        return f"`{user_name} said,`\n\"{translated}\"{glossary_line}\n{cost_line}"
     else:
         # 영어 -> 한국어
-        return f"`{user_name}님이`\n\"{translated}\"\n`라고 하셨습니다.`\n{cost_line}"
+        return f"`{user_name}님이`\n\"{translated}\"\n`라고 하셨습니다.`{glossary_line}\n{cost_line}"
 
 
 def process_translate_message(event: dict, client) -> bool:
@@ -144,13 +158,13 @@ def process_translate_message(event: dict, client) -> bool:
         )
 
         # 번역
-        translated, cost = translate(text, source_lang, context_messages)
+        translated, cost, glossary_terms = translate(text, source_lang, context_messages)
 
         # 사용자 이름 조회
         user_name = _get_user_display_name(client, user_id)
 
         # 응답 포맷
-        response = _format_response(user_name, translated, source_lang, cost)
+        response = _format_response(user_name, translated, source_lang, cost, glossary_terms)
 
         # 응답 위치: 스레드면 스레드에, 채널이면 채널에 (스레드 열지 않음)
         if thread_ts:
