@@ -1,10 +1,12 @@
 """스레드 메시지 핸들러"""
 
+import asyncio
 import re
 import logging
 
 from seosoyoung.config import Config
 from seosoyoung.handlers.translate import process_translate_message
+from seosoyoung.slack import download_files_from_event, build_file_context
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +71,21 @@ def register_message_handlers(app, dependencies: dict):
 
         # 멘션 제거 (혹시 모를 경우 대비)
         clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
-        if not clean_text:
+
+        # 첨부 파일 처리
+        file_context = ""
+        if event.get("files"):
+            try:
+                downloaded_files = asyncio.get_event_loop().run_until_complete(
+                    download_files_from_event(event, thread_ts)
+                )
+                if downloaded_files:
+                    file_context = build_file_context(downloaded_files)
+                    logger.info(f"파일 {len(downloaded_files)}개 다운로드 완료")
+            except Exception as e:
+                logger.error(f"파일 다운로드 실패: {e}")
+
+        if not clean_text and not file_context:
             return
 
         # 메시지 작성자의 역할 조회 (세션 생성자와 다를 수 있음)
@@ -78,14 +94,22 @@ def register_message_handlers(app, dependencies: dict):
             say(text="사용자 정보를 확인할 수 없습니다.", thread_ts=thread_ts)
             return
 
+        # 프롬프트 구성
+        prompt_parts = []
+        if clean_text:
+            prompt_parts.append(clean_text)
+        if file_context:
+            prompt_parts.append(file_context)
+        prompt = "\n".join(prompt_parts)
+
         logger.info(
             f"메시지 처리: thread_ts={thread_ts}, "
             f"user={user_info['username']}, role={user_info['role']}, "
-            f"text={clean_text[:50]}"
+            f"text={clean_text[:50] if clean_text else '(파일 첨부)'}"
         )
 
         # 메시지 작성자 권한으로 실행
-        run_claude_in_session(session, clean_text, ts, channel, say, client, role=user_info["role"])
+        run_claude_in_session(session, prompt, ts, channel, say, client, role=user_info["role"])
 
     @app.event("reaction_added")
     def handle_reaction(event, client):

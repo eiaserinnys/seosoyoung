@@ -1,5 +1,6 @@
 """@seosoyoung 멘션 핸들러"""
 
+import asyncio
 import re
 import logging
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 from seosoyoung.config import Config
 from seosoyoung.restart import RestartType
 from seosoyoung.translator import detect_language, translate
+from seosoyoung.slack import download_files_from_event, build_file_context
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +219,21 @@ def register_mention_handlers(app, dependencies: dict):
 
         # 멘션 텍스트에서 질문 추출 (멘션 제거)
         clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
-        if not clean_text:
+
+        # 첨부 파일 처리
+        file_context = ""
+        if event.get("files"):
+            try:
+                downloaded_files = asyncio.get_event_loop().run_until_complete(
+                    download_files_from_event(event, session_thread_ts)
+                )
+                if downloaded_files:
+                    file_context = build_file_context(downloaded_files)
+                    logger.info(f"파일 {len(downloaded_files)}개 다운로드 완료")
+            except Exception as e:
+                logger.error(f"파일 다운로드 실패: {e}")
+
+        if not clean_text and not file_context:
             logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")
             return
 
@@ -225,13 +241,17 @@ def register_mention_handlers(app, dependencies: dict):
         context = get_channel_history(client, channel, limit=20)
 
         # 프롬프트 구성
-        prompt = f"""아래는 Slack 채널의 최근 대화입니다:
+        prompt_parts = [f"아래는 Slack 채널의 최근 대화입니다:\n\n{context}"]
 
-{context}
+        if clean_text:
+            prompt_parts.append(f"\n사용자의 질문: {clean_text}")
 
-사용자의 질문: {clean_text}
+        if file_context:
+            prompt_parts.append(file_context)
 
-위 컨텍스트를 참고하여 질문에 답변해주세요."""
+        prompt_parts.append("\n위 컨텍스트를 참고하여 질문에 답변해주세요.")
+
+        prompt = "\n".join(prompt_parts)
 
         # Claude 실행 (스레드 락으로 동시 실행 방지)
         run_claude_in_session(session, prompt, ts, channel, say, client)
