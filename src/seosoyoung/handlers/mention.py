@@ -6,6 +6,7 @@ from pathlib import Path
 
 from seosoyoung.config import Config
 from seosoyoung.restart import RestartType
+from seosoyoung.translator import detect_language, translate
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ def register_mention_handlers(app, dependencies: dict):
                 text=(
                     "📖 *사용법*\n"
                     "• `@seosoyoung <질문>` - 질문하기 (세션 생성 + 응답)\n"
+                    "• `@seosoyoung 번역 <텍스트>` - 번역 테스트\n"
                     "• `@seosoyoung help` - 도움말\n"
                     "• `@seosoyoung status` - 상태 확인\n"
                     "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
@@ -119,6 +121,52 @@ def register_mention_handlers(app, dependencies: dict):
                     f"• 디버그 모드: {Config.DEBUG}"
                 )
             )
+            return
+
+        # 번역 테스트 명령어
+        if command.startswith("번역 ") or command.startswith("번역\n"):
+            translate_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+            # "번역 " 또는 "번역\n" 제거
+            translate_text = re.sub(r"^번역[\s\n]+", "", translate_text, flags=re.IGNORECASE).strip()
+
+            if not translate_text:
+                say(text="번역할 텍스트를 입력해주세요.\n예: `@seosoyoung 번역 Hello, world!`", thread_ts=ts)
+                return
+
+            try:
+                # 번역 진행 중 리액션
+                client.reactions_add(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
+
+                source_lang = detect_language(translate_text)
+                translated, cost, glossary_terms, _ = translate(translate_text, source_lang)
+
+                target_lang = "영어" if source_lang.value == "ko" else "한국어"
+
+                # 응답 구성
+                lines = [
+                    f"*번역 결과* ({source_lang.value} → {target_lang})",
+                    f"```{translated}```",
+                    f"`💵 ${cost:.4f}`"
+                ]
+                if glossary_terms:
+                    terms_str = ", ".join(f"{s}→{t}" for s, t in glossary_terms[:5])
+                    if len(glossary_terms) > 5:
+                        terms_str += f" 외 {len(glossary_terms) - 5}개"
+                    lines.append(f"`📖 {terms_str}`")
+
+                say(text="\n".join(lines), thread_ts=ts)
+
+                # 완료 리액션
+                client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
+                client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
+
+            except Exception as e:
+                logger.error(f"번역 테스트 실패: {e}", exc_info=True)
+                try:
+                    client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
+                except Exception:
+                    pass
+                say(text=f"번역 실패: `{e}`", thread_ts=ts)
             return
 
         if command in ["update", "restart"]:
