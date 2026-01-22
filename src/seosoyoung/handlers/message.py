@@ -36,7 +36,7 @@ def register_message_handlers(app, dependencies: dict):
         text = event.get("text", "")
 
         # 번역 채널인 경우: 멘션이 없으면 번역, 멘션이 있으면 기존 로직 (handle_mention에서 처리)
-        if channel == Config.TRANSLATE_CHANNEL:
+        if channel in Config.TRANSLATE_CHANNELS:
             if "<@" not in text:
                 process_translate_message(event, client)
             return

@@ -105,18 +105,33 @@ class TestCalculateCost:
     """비용 계산 테스트"""
 
     def test_calculate_cost_basic(self):
-        """기본 비용 계산"""
-        # 1000 input tokens, 100 output tokens
+        """기본 비용 계산 (Haiku 모델)"""
+        # 1000 input tokens, 100 output tokens (Haiku 가격 기준)
         # input: 1000 / 1M * $0.80 = $0.0008
         # output: 100 / 1M * $4.00 = $0.0004
         # total: $0.0012
-        cost = _calculate_cost(1000, 100)
+        cost = _calculate_cost(1000, 100, "claude-3-5-haiku-latest")
         assert abs(cost - 0.0012) < 0.0001
 
     def test_calculate_cost_zero(self):
         """0 토큰"""
-        cost = _calculate_cost(0, 0)
+        cost = _calculate_cost(0, 0, "claude-3-5-haiku-latest")
         assert cost == 0.0
+
+    def test_calculate_cost_sonnet(self):
+        """Sonnet 모델 비용 계산"""
+        # 1000 input tokens, 100 output tokens (Sonnet 가격 기준)
+        # input: 1000 / 1M * $3.00 = $0.003
+        # output: 100 / 1M * $15.00 = $0.0015
+        # total: $0.0045
+        cost = _calculate_cost(1000, 100, "claude-sonnet-4-20250514")
+        assert abs(cost - 0.0045) < 0.0001
+
+    def test_calculate_cost_unknown_model(self):
+        """알 수 없는 모델은 기본 가격 사용"""
+        # 기본 가격: input $3.00, output $15.00
+        cost = _calculate_cost(1000, 100, "unknown-model")
+        assert abs(cost - 0.0045) < 0.0001
 
 
 class TestTranslate:

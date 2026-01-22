@@ -66,8 +66,14 @@ class Config:
     TRELLO_DONE_LIST_ID = "696ddb74cc52e4c5d5261ed4"    # ✅ Done
 
     # 번역 기능 설정
-    TRANSLATE_CHANNEL = os.getenv("TRANSLATE_CHANNEL", "C09JQTDCV4G")
-    TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "claude-3-5-haiku-latest")
+    # TRANSLATE_CHANNELS: 쉼표로 구분된 채널 ID 목록
+    TRANSLATE_CHANNELS = [
+        ch.strip() for ch in os.getenv(
+            "TRANSLATE_CHANNELS",
+            "C09JQTDCV4G,C09HFD13UTH"  # lg_elite_qa, lg_elite_community
+        ).split(",") if ch.strip()
+    ]
+    TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "claude-sonnet-4-20250514")
     TRANSLATE_CONTEXT_COUNT = int(os.getenv("TRANSLATE_CONTEXT_COUNT", "10"))
     TRANSLATE_API_KEY = os.getenv("TRANSLATE_API_KEY")  # 번역 전용 API 키
 

@@ -89,23 +89,34 @@ Text to translate:
 {text}"""
 
 
-# Claude Haiku 4 가격 (2025년 기준, USD per 1M tokens)
-HAIKU_INPUT_PRICE = 0.80   # $0.80 / 1M input tokens
-HAIKU_OUTPUT_PRICE = 4.00  # $4.00 / 1M output tokens
+# 모델별 가격 (2025년 기준, USD per 1M tokens)
+MODEL_PRICING = {
+    "claude-3-5-haiku-latest": {"input": 0.80, "output": 4.00},
+    "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00},
+    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
+    "claude-3-5-sonnet-latest": {"input": 3.00, "output": 15.00},
+    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
+    "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
+}
+
+# 기본 가격 (알 수 없는 모델용)
+DEFAULT_PRICING = {"input": 3.00, "output": 15.00}
 
 
-def _calculate_cost(input_tokens: int, output_tokens: int) -> float:
+def _calculate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     """토큰 사용량으로 비용을 계산합니다.
 
     Args:
         input_tokens: 입력 토큰 수
         output_tokens: 출력 토큰 수
+        model: 사용한 모델명
 
     Returns:
         예상 비용 (USD)
     """
-    input_cost = (input_tokens / 1_000_000) * HAIKU_INPUT_PRICE
-    output_cost = (output_tokens / 1_000_000) * HAIKU_OUTPUT_PRICE
+    pricing = MODEL_PRICING.get(model, DEFAULT_PRICING)
+    input_cost = (input_tokens / 1_000_000) * pricing["input"]
+    output_cost = (output_tokens / 1_000_000) * pricing["output"]
     return input_cost + output_cost
 
 
@@ -153,7 +164,7 @@ def translate(
     # 토큰 사용량에서 비용 계산
     input_tokens = response.usage.input_tokens
     output_tokens = response.usage.output_tokens
-    cost = _calculate_cost(input_tokens, output_tokens)
+    cost = _calculate_cost(input_tokens, output_tokens, model)
 
     logger.debug(f"번역 완료: {translated[:50]}... (비용: ${cost:.6f})")
 
