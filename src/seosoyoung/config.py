@@ -77,6 +77,13 @@ class Config:
     TRANSLATE_CONTEXT_COUNT = int(os.getenv("TRANSLATE_CONTEXT_COUNT", "10"))
     TRANSLATE_API_KEY = os.getenv("TRANSLATE_API_KEY")  # 번역 전용 API 키
 
+    # 번역 응답 표시 옵션
+    TRANSLATE_SHOW_GLOSSARY = os.getenv("TRANSLATE_SHOW_GLOSSARY", "false").lower() == "true"
+    TRANSLATE_SHOW_COST = os.getenv("TRANSLATE_SHOW_COST", "false").lower() == "true"
+
+    # 번역 디버그 로그 채널 (비어있으면 비활성화)
+    TRANSLATE_DEBUG_CHANNEL = os.getenv("TRANSLATE_DEBUG_CHANNEL", "C0A9H2JJ4AX")
+
     # 용어집 경로 (번역 시 고유명사 참조)
     @staticmethod
     def get_glossary_path() -> str:

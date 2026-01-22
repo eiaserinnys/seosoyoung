@@ -7,7 +7,7 @@ import logging
 from slack_bolt import App
 
 from seosoyoung.config import Config
-from seosoyoung.translator import detect_language, translate, Language
+from seosoyoung.translator import detect_language, translate, Language, GlossaryMatchResult
 
 logger = logging.getLogger(__name__)
 
@@ -93,20 +93,102 @@ def _format_response(
     Returns:
         포맷팅된 응답 문자열
     """
-    # 용어 라인 생성 (있는 경우에만)
+    # 용어 라인 생성 (TRANSLATE_SHOW_GLOSSARY가 True이고 용어가 있는 경우에만)
     glossary_line = ""
-    if glossary_terms:
+    if Config.TRANSLATE_SHOW_GLOSSARY and glossary_terms:
         # 원어 (번역어) 형식으로 나열
         term_strs = [f"{src} ({tgt})" for src, tgt in glossary_terms]
         glossary_line = f"\n`📖 {', '.join(term_strs)}`"
 
-    cost_line = f"`~💵${cost:.4f}`"
+    # 비용 라인 (TRANSLATE_SHOW_COST가 True인 경우에만)
+    cost_line = f"\n`~💵${cost:.4f}`" if Config.TRANSLATE_SHOW_COST else ""
+
     if source_lang == Language.KOREAN:
         # 한국어 -> 영어
-        return f"`{user_name} said,`\n\"{translated}\"{glossary_line}\n{cost_line}"
+        return f"`{user_name} said,`\n\"{translated}\"{glossary_line}{cost_line}"
     else:
         # 영어 -> 한국어
-        return f"`{user_name}님이`\n\"{translated}\"\n`라고 하셨습니다.`{glossary_line}\n{cost_line}"
+        return f"`{user_name}님이`\n\"{translated}\"\n`라고 하셨습니다.`{glossary_line}{cost_line}"
+
+
+def _send_debug_log(
+    client,
+    original_text: str,
+    source_lang: Language,
+    match_result: GlossaryMatchResult | None
+) -> None:
+    """디버그 로그를 지정된 슬랙 채널에 전송합니다.
+
+    Args:
+        client: Slack 클라이언트
+        original_text: 원본 텍스트
+        source_lang: 원본 언어
+        match_result: 용어 매칭 결과
+    """
+    debug_channel = Config.TRANSLATE_DEBUG_CHANNEL
+    if not debug_channel or not match_result:
+        return
+
+    try:
+        debug_info = match_result.debug_info
+
+        # 디버그 메시지 구성
+        lines = [
+            f"*🔍 번역 디버그 로그* ({source_lang.value} → {'en' if source_lang == Language.KOREAN else 'ko'})",
+            f"```원문: {original_text[:100]}{'...' if len(original_text) > 100 else ''}```",
+            "",
+            f"*추출된 단어 ({len(match_result.extracted_words)}개):*",
+            f"`{', '.join(match_result.extracted_words[:20])}{'...' if len(match_result.extracted_words) > 20 else ''}`",
+            "",
+        ]
+
+        # 정확한 매칭
+        exact_matches = debug_info.get("exact_matches", [])
+        if exact_matches:
+            lines.append(f"*✅ 정확한 매칭 ({len(exact_matches)}개):*")
+            for match in exact_matches[:10]:
+                lines.append(f"  • {match}")
+            if len(exact_matches) > 10:
+                lines.append(f"  ... 외 {len(exact_matches) - 10}개")
+            lines.append("")
+
+        # 부분 문자열 매칭
+        substring_matches = debug_info.get("substring_matches", [])
+        if substring_matches:
+            lines.append(f"*📎 부분 매칭 ({len(substring_matches)}개):*")
+            for match in substring_matches[:10]:
+                lines.append(f"  • {match}")
+            if len(substring_matches) > 10:
+                lines.append(f"  ... 외 {len(substring_matches) - 10}개")
+            lines.append("")
+
+        # 퍼지 매칭
+        fuzzy_matches = debug_info.get("fuzzy_matches", [])
+        if fuzzy_matches:
+            lines.append(f"*🔮 퍼지 매칭 ({len(fuzzy_matches)}개):*")
+            for match in fuzzy_matches[:10]:
+                lines.append(f"  • {match}")
+            if len(fuzzy_matches) > 10:
+                lines.append(f"  ... 외 {len(fuzzy_matches) - 10}개")
+            lines.append("")
+
+        # 최종 결과
+        lines.append(f"*📖 최종 용어집 포함 ({len(match_result.matched_terms)}개):*")
+        if match_result.matched_terms:
+            for src, tgt in match_result.matched_terms[:10]:
+                lines.append(f"  • {src} → {tgt}")
+            if len(match_result.matched_terms) > 10:
+                lines.append(f"  ... 외 {len(match_result.matched_terms) - 10}개")
+        else:
+            lines.append("  (없음)")
+
+        client.chat_postMessage(
+            channel=debug_channel,
+            text="\n".join(lines)
+        )
+
+    except Exception as e:
+        logger.warning(f"디버그 로그 전송 실패: {e}")
 
 
 def process_translate_message(event: dict, client) -> bool:
@@ -158,7 +240,10 @@ def process_translate_message(event: dict, client) -> bool:
         )
 
         # 번역
-        translated, cost, glossary_terms = translate(text, source_lang, context_messages)
+        translated, cost, glossary_terms, match_result = translate(text, source_lang, context_messages)
+
+        # 디버그 로그 전송 (설정된 경우)
+        _send_debug_log(client, text, source_lang, match_result)
 
         # 사용자 이름 조회
         user_name = _get_user_display_name(client, user_id)

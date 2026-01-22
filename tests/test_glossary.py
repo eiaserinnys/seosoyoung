@@ -5,8 +5,12 @@ from unittest.mock import patch, mock_open
 
 from seosoyoung.translator.glossary import (
     _extract_name_pair,
+    _extract_short_names,
     get_term_mappings,
+    get_glossary_entries,
     find_relevant_terms,
+    find_relevant_terms_v2,
+    GlossaryMatchResult,
     clear_cache,
 )
 
@@ -109,16 +113,51 @@ class TestGetTermMappings:
         assert en_to_kr == {}
 
 
-class TestFindRelevantTerms:
-    """관련 용어 찾기 테스트"""
+class TestExtractShortNames:
+    """짧은 이름 추출 테스트"""
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_find_korean_terms(self, mock_mappings):
+    def test_simple_name(self):
+        """단순 이름"""
+        result = _extract_short_names("펜릭스")
+        assert "펜릭스" in result
+
+    def test_comma_separated(self):
+        """쉼표로 분리된 이름"""
+        result = _extract_short_names("불사의 악마 사냥꾼, 펜릭스 헤이븐")
+        assert "불사의 악마 사냥꾼, 펜릭스 헤이븐" in result
+        assert "불사의 악마 사냥꾼" in result
+        assert "펜릭스 헤이븐" in result
+
+    def test_parenthesis_removal(self):
+        """괄호 제거"""
+        result = _extract_short_names("(눈 먼 정의의 천사) 칼리엘")
+        assert "(눈 먼 정의의 천사) 칼리엘" in result
+        assert "칼리엘" in result
+
+    def test_first_word_extraction(self):
+        """이름 성 패턴에서 첫 단어 추출"""
+        result = _extract_short_names("펜릭스 헤이븐")
+        assert "펜릭스 헤이븐" in result
+        assert "펜릭스" in result
+
+
+class TestFindRelevantTerms:
+    """관련 용어 찾기 테스트 (새 알고리즘)"""
+
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    def test_find_korean_terms(self, mock_extract, mock_entries, mock_index):
         """한국어 텍스트에서 용어 찾기"""
-        mock_mappings.return_value = (
-            {"펜릭스": "Fenrix", "아리엘라": "Ariella"},
-            {"Fenrix": "펜릭스", "Ariella": "아리엘라"},
+        mock_entries.return_value = (
+            ("펜릭스", "Fenrix"),
+            ("아리엘라", "Ariella"),
         )
+        mock_index.return_value = (
+            {"펜릭스": [0], "아리엘라": [1]},
+            {"Fenrix": [0], "Ariella": [1]}
+        )
+        mock_extract.return_value = ["펜릭스", "아리엘라"]
 
         text = "펜릭스가 아리엘라에게 말했다."
         result = find_relevant_terms(text, "ko")
@@ -127,13 +166,20 @@ class TestFindRelevantTerms:
         assert ("펜릭스", "Fenrix") in result
         assert ("아리엘라", "Ariella") in result
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_find_english_terms(self, mock_mappings):
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_english_words")
+    def test_find_english_terms(self, mock_extract, mock_entries, mock_index):
         """영어 텍스트에서 용어 찾기"""
-        mock_mappings.return_value = (
-            {"펜릭스": "Fenrix", "아리엘라": "Ariella"},
-            {"Fenrix": "펜릭스", "Ariella": "아리엘라"},
+        mock_entries.return_value = (
+            ("펜릭스", "Fenrix"),
+            ("아리엘라", "Ariella"),
         )
+        mock_index.return_value = (
+            {"펜릭스": [0], "아리엘라": [1]},
+            {"Fenrix": [0], "Ariella": [1]}
+        )
+        mock_extract.return_value = ["Fenrix", "Ariella"]
 
         text = "Fenrix spoke to Ariella."
         result = find_relevant_terms(text, "en")
@@ -142,26 +188,28 @@ class TestFindRelevantTerms:
         assert ("Fenrix", "펜릭스") in result
         assert ("Ariella", "아리엘라") in result
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_find_no_matching_terms(self, mock_mappings):
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_english_words")
+    def test_find_no_matching_terms(self, mock_extract, mock_entries, mock_index):
         """매칭되는 용어 없음"""
-        mock_mappings.return_value = (
-            {"펜릭스": "Fenrix"},
-            {"Fenrix": "펜릭스"},
-        )
+        mock_entries.return_value = (("펜릭스", "Fenrix"),)
+        mock_index.return_value = ({"펜릭스": [0]}, {"Fenrix": [0]})
+        mock_extract.return_value = ["Hello", "world"]
 
         text = "Hello world"
         result = find_relevant_terms(text, "en")
 
         assert len(result) == 0
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_no_duplicate_matches(self, mock_mappings):
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    def test_no_duplicate_matches(self, mock_extract, mock_entries, mock_index):
         """중복 매칭 방지"""
-        mock_mappings.return_value = (
-            {"펜릭스": "Fenrix"},
-            {"Fenrix": "펜릭스"},
-        )
+        mock_entries.return_value = (("펜릭스", "Fenrix"),)
+        mock_index.return_value = ({"펜릭스": [0]}, {"Fenrix": [0]})
+        mock_extract.return_value = ["펜릭스", "펜릭스"]
 
         text = "펜릭스가 펜릭스에게 말했다."
         result = find_relevant_terms(text, "ko")
@@ -170,97 +218,145 @@ class TestFindRelevantTerms:
         assert len(result) == 1
         assert ("펜릭스", "Fenrix") in result
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_fuzzy_match_typo(self, mock_mappings):
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    def test_fuzzy_match_typo(self, mock_extract, mock_entries, mock_index):
         """오타가 있는 용어 퍼지 매칭"""
-        mock_mappings.return_value = (
-            {"아리엘라": "Ariella", "펜릭스 헤이븐": "Fenrix Haven"},
-            {"Ariella": "아리엘라", "Fenrix Haven": "펜릭스 헤이븐"},
+        mock_entries.return_value = (
+            ("아리엘라", "Ariella"),
+            ("펜릭스 헤이븐", "Fenrix Haven"),
         )
+        mock_index.return_value = (
+            {"아리엘라": [0], "펜릭스 헤이븐": [1], "펜릭스": [1], "헤이븐": [1]},
+            {"Ariella": [0], "Fenrix Haven": [1], "Fenrix": [1], "Haven": [1]}
+        )
+        mock_extract.return_value = ["아리엘나"]  # 오타 (4자 중 1자 다름 = 75%)
 
-        # "아리엘라" 대신 "아리엘나" (오타)
         text = "아리엘나가 말했다."
-        result = find_relevant_terms(text, "ko", fuzzy_threshold=80)
+        # 75% 유사도이므로 70% 임계값 사용
+        result = find_relevant_terms(text, "ko", fuzzy_threshold=70)
 
         # 퍼지 매칭으로 유사한 용어 찾아야 함
         assert len(result) >= 1
         assert ("아리엘라", "Ariella") in result
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_fuzzy_match_english_typo(self, mock_mappings):
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_english_words")
+    def test_fuzzy_match_english_typo(self, mock_extract, mock_entries, mock_index):
         """영어 오타 퍼지 매칭"""
-        mock_mappings.return_value = (
-            {"아리엘라": "Ariella"},
-            {"Ariella": "아리엘라"},
-        )
+        mock_entries.return_value = (("아리엘라", "Ariella"),)
+        mock_index.return_value = ({"아리엘라": [0]}, {"Ariella": [0]})
+        mock_extract.return_value = ["Ariela"]  # 오타
 
-        # "Ariella" 대신 "Ariela" (오타)
         text = "Ariela spoke quietly."
         result = find_relevant_terms(text, "en", fuzzy_threshold=80)
 
         assert len(result) >= 1
         assert ("Ariella", "아리엘라") in result
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_fuzzy_match_partial_name(self, mock_mappings):
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    def test_fuzzy_match_partial_name(self, mock_extract, mock_entries, mock_index):
         """부분 이름 퍼지 매칭"""
-        mock_mappings.return_value = (
-            {"망각의 성채": "The Sanctuary of Oblivion"},
-            {"The Sanctuary of Oblivion": "망각의 성채"},
+        mock_entries.return_value = (("망각의 성채", "The Sanctuary of Oblivion"),)
+        mock_index.return_value = (
+            {"망각의 성채": [0], "망각의": [0], "성채": [0]},
+            {"The Sanctuary of Oblivion": [0], "Sanctuary": [0], "Oblivion": [0]}
         )
+        mock_extract.return_value = ["망각의성채"]  # 띄어쓰기 없음
 
-        # "망각의 성채" 대신 "망각의성채" (띄어쓰기 없음)
         text = "망각의성채로 돌아갔다."
         result = find_relevant_terms(text, "ko", fuzzy_threshold=80)
 
+        # 퍼지 매칭으로 찾아야 함
         assert len(result) >= 1
         assert ("망각의 성채", "The Sanctuary of Oblivion") in result
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_short_term_no_fuzzy(self, mock_mappings):
-        """짧은 용어(4자 미만)는 퍼지 매칭 미적용"""
-        mock_mappings.return_value = (
-            {"루미": "Lumi"},
-            {"Lumi": "루미"},
-        )
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    def test_short_term_no_fuzzy(self, mock_extract, mock_entries, mock_index):
+        """짧은 용어(3자 미만)는 퍼지 매칭 미적용"""
+        mock_entries.return_value = (("루미", "Lumi"),)
+        mock_index.return_value = ({"루미": [0]}, {"Lumi": [0]})
+        mock_extract.return_value = ["루비"]  # 2글자, 퍼지 미적용
 
-        # "루미" 대신 "루비" - 3자라서 퍼지 매칭 안 함
         text = "루비가 다가왔다."
         result = find_relevant_terms(text, "ko", fuzzy_threshold=80)
 
         # 정확히 일치하지 않고, 퍼지도 안 되므로 빈 결과
         assert len(result) == 0
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_fuzzy_threshold_high(self, mock_mappings):
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    def test_fuzzy_threshold_high(self, mock_extract, mock_entries, mock_index):
         """높은 임계값에서 퍼지 매칭 실패"""
-        mock_mappings.return_value = (
-            {"아리엘라": "Ariella"},
-            {"Ariella": "아리엘라"},
-        )
+        mock_entries.return_value = (("아리엘라", "Ariella"),)
+        mock_index.return_value = ({"아리엘라": [0]}, {"Ariella": [0]})
+        mock_extract.return_value = ["아리엘나"]
 
-        # 임계값을 95%로 높이면 오타 매칭 안 됨
         text = "아리엘나가 말했다."
         result = find_relevant_terms(text, "ko", fuzzy_threshold=95)
 
         # 95% 이상 유사해야 하는데 "아리엘나"는 그 정도로 유사하지 않음
         assert ("아리엘라", "Ariella") not in result
 
-    @patch("seosoyoung.translator.glossary.get_term_mappings")
-    def test_exact_match_priority(self, mock_mappings):
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    def test_exact_match_priority(self, mock_extract, mock_entries, mock_index):
         """정확한 매칭이 있으면 퍼지 매칭 중복 안 함"""
-        mock_mappings.return_value = (
-            {"펜릭스": "Fenrix"},
-            {"Fenrix": "펜릭스"},
-        )
+        mock_entries.return_value = (("펜릭스", "Fenrix"),)
+        mock_index.return_value = ({"펜릭스": [0]}, {"Fenrix": [0]})
+        mock_extract.return_value = ["펜릭스"]
 
-        # 정확히 "펜릭스"가 있는 경우
         text = "펜릭스가 말했다."
         result = find_relevant_terms(text, "ko")
 
         # 정확한 매칭 1개만
         assert len(result) == 1
         assert ("펜릭스", "Fenrix") in result
+
+
+class TestFindRelevantTermsV2:
+    """find_relevant_terms_v2 디버그 정보 테스트"""
+
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    def test_returns_glossary_match_result(self, mock_extract, mock_entries, mock_index):
+        """GlossaryMatchResult 반환 확인"""
+        mock_entries.return_value = (("펜릭스", "Fenrix"),)
+        mock_index.return_value = ({"펜릭스": [0]}, {"Fenrix": [0]})
+        mock_extract.return_value = ["펜릭스"]
+
+        result = find_relevant_terms_v2("펜릭스가 말했다.", "ko")
+
+        assert isinstance(result, GlossaryMatchResult)
+        assert result.matched_terms == [("펜릭스", "Fenrix")]
+        assert result.extracted_words == ["펜릭스"]
+        assert "exact_matches" in result.debug_info
+
+    @patch("seosoyoung.translator.glossary._build_word_index")
+    @patch("seosoyoung.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    def test_debug_info_contains_match_types(self, mock_extract, mock_entries, mock_index):
+        """디버그 정보에 매칭 유형 포함 확인"""
+        mock_entries.return_value = (("펜릭스", "Fenrix"),)
+        mock_index.return_value = ({"펜릭스": [0]}, {"Fenrix": [0]})
+        mock_extract.return_value = ["펜릭스"]
+
+        result = find_relevant_terms_v2("펜릭스가 말했다.", "ko")
+
+        debug = result.debug_info
+        assert "exact_matches" in debug
+        assert "substring_matches" in debug
+        assert "fuzzy_matches" in debug
+        assert "total_matched" in debug
 
 
 class TestClearCache:

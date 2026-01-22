@@ -1,17 +1,32 @@
 """용어집 로더 모듈
 
 번역 시 고유명사 일관성을 위해 glossary.yaml을 로드하고 파싱합니다.
+kiwipiepy를 활용하여 한국어 형태소 분석 기반 용어 매칭을 수행합니다.
 """
 
 import logging
+import re
 from functools import lru_cache
 from pathlib import Path
+from dataclasses import dataclass, field
 
 import yaml
 
 from seosoyoung.config import Config
 
 logger = logging.getLogger(__name__)
+
+# kiwipiepy 싱글톤 인스턴스
+_kiwi = None
+_kiwi_initialized = False
+
+
+@dataclass
+class GlossaryMatchResult:
+    """용어 매칭 결과"""
+    matched_terms: list[tuple[str, str]]  # [(원본, 번역), ...]
+    extracted_words: list[str] = field(default_factory=list)  # 추출된 단어들
+    debug_info: dict = field(default_factory=dict)  # 디버그 정보
 
 
 @lru_cache(maxsize=1)
@@ -56,59 +71,42 @@ def _extract_name_pair(item: dict) -> tuple[str, str] | None:
     return None
 
 
-def _extract_short_names(full_name: str, lang: str = "auto") -> list[str]:
-    """전체 이름에서 짧은 이름들을 추출
-
-    예시:
-    - "불사의 악마 사냥꾼, 펜릭스 헤이븐" -> ["불사의 악마 사냥꾼", "펜릭스 헤이븐", "펜릭스"]
-    - "(눈 먼 정의의 천사) 칼리엘" -> ["칼리엘"]
-    - "Fenrix Haven, the Immortal Demon Hunter" -> ["Fenrix Haven", "the Immortal Demon Hunter", "Fenrix"]
-    - "Kaliel (Angel of Blind Justice)" -> ["Kaliel"]
+def _extract_short_names(full_name: str) -> list[str]:
+    """전체 이름에서 짧은 이름들을 추출 (사용자 사전 등록용)
 
     Args:
         full_name: 전체 이름 문자열
-        lang: 언어 힌트 ("kr", "en", "auto")
 
     Returns:
-        추출된 짧은 이름 리스트
+        추출된 짧은 이름 리스트 (전체 이름 포함)
     """
-    import re
-
-    short_names = []
+    names = [full_name]
 
     # 쉼표로 분리
     if "," in full_name:
         parts = [p.strip() for p in full_name.split(",")]
-        short_names.extend(parts)
+        names.extend(parts)
 
     # 괄호 제거 후 핵심 이름 추출
-    # "(이명) 이름" 또는 "이름 (이명)" 패턴
-    # 한국어: (눈 먼 정의의 천사) 칼리엘 -> 칼리엘
-    # 영어: Kaliel (Angel of Blind Justice) -> Kaliel
     name_without_paren = re.sub(r"\([^)]*\)", "", full_name).strip()
     if name_without_paren and name_without_paren != full_name:
-        # 쉼표로 다시 분리
         if "," in name_without_paren:
             parts = [p.strip() for p in name_without_paren.split(",") if p.strip()]
-            short_names.extend(parts)
+            names.extend(parts)
         elif name_without_paren.strip():
-            short_names.append(name_without_paren.strip())
+            names.append(name_without_paren.strip())
 
-    # "이름 성" 패턴에서 "이름"만 추출 (영어)
-    # "펜릭스 헤이븐" -> "펜릭스", "Fenrix Haven" -> "Fenrix"
-    for name in list(short_names):  # 복사본으로 순회
+    # "이름 성" 패턴에서 첫 단어만 추출
+    for name in list(names):
         words = name.split()
-        if len(words) == 2:
-            # 첫 번째 단어만 추출 (이름)
-            first_word = words[0]
-            if len(first_word) >= 2:  # 너무 짧은 것 제외
-                short_names.append(first_word)
+        if len(words) == 2 and len(words[0]) >= 2:
+            names.append(words[0])
 
-    # 중복 제거 및 원본과 동일한 것 제외
-    result = []
+    # 중복 제거
     seen = set()
-    for name in short_names:
-        if name and name != full_name and name not in seen:
+    result = []
+    for name in names:
+        if name and name not in seen:
             seen.add(name)
             result.append(name)
 
@@ -116,17 +114,15 @@ def _extract_short_names(full_name: str, lang: str = "auto") -> list[str]:
 
 
 @lru_cache(maxsize=1)
-def get_term_mappings() -> tuple[dict[str, str], dict[str, str]]:
-    """용어 매핑 딕셔너리 생성 (캐싱)
+def get_glossary_entries() -> tuple[tuple[str, str], ...]:
+    """용어집 항목들을 (한국어, 영어) 쌍으로 반환 (캐싱)
 
     Returns:
-        (한→영 매핑, 영→한 매핑) 튜플
+        ((kr_name, en_name), ...) 튜플
     """
     raw_data = _load_glossary_raw()
-    kr_to_en: dict[str, str] = {}
-    en_to_kr: dict[str, str] = {}
+    entries = []
 
-    # items 배열을 가진 카테고리들 처리
     categories_with_items = [
         "main_characters", "ariella_variants", "bosses", "boss_human_era",
         "blessing_angels", "npcs", "golems", "system_characters",
@@ -140,43 +136,112 @@ def get_term_mappings() -> tuple[dict[str, str], dict[str, str]]:
         for item in items:
             pair = _extract_name_pair(item)
             if pair:
-                kr_name, en_name = pair
-                kr_to_en[kr_name] = en_name
-                en_to_kr[en_name] = kr_name
+                entries.append(pair)
 
-                # 짧은 이름들 추출 및 등록
-                short_kr_names = _extract_short_names(kr_name)
-                short_en_names = _extract_short_names(en_name)
-
-                # 짧은 한국어 이름 -> 대응하는 짧은 영어 이름 (또는 전체 영어 이름)
-                for i, short_kr in enumerate(short_kr_names):
-                    # 대응하는 짧은 영어 이름이 있으면 사용, 없으면 첫 번째 짧은 영어 이름 사용
-                    if i < len(short_en_names):
-                        target_en = short_en_names[i]
-                    elif short_en_names:
-                        target_en = short_en_names[0]
-                    else:
-                        target_en = en_name
-                    kr_to_en[short_kr] = target_en
-
-                # 짧은 영어 이름 -> 대응하는 짧은 한국어 이름
-                for i, short_en in enumerate(short_en_names):
-                    if i < len(short_kr_names):
-                        target_kr = short_kr_names[i]
-                    elif short_kr_names:
-                        target_kr = short_kr_names[0]
-                    else:
-                        target_kr = kr_name
-                    en_to_kr[short_en] = target_kr
-
-    logger.debug(f"용어집 로드 완료: {len(kr_to_en)}개 한→영, {len(en_to_kr)}개 영→한")
-    return kr_to_en, en_to_kr
+    logger.debug(f"용어집 항목 {len(entries)}개 로드")
+    return tuple(entries)
 
 
-def clear_cache() -> None:
-    """캐시 초기화 (테스트 또는 용어집 갱신 시 사용)"""
-    _load_glossary_raw.cache_clear()
-    get_term_mappings.cache_clear()
+def _get_kiwi():
+    """Kiwi 인스턴스 반환 (싱글톤, 사용자 사전 포함)"""
+    global _kiwi, _kiwi_initialized
+
+    if _kiwi_initialized:
+        return _kiwi
+
+    try:
+        from kiwipiepy import Kiwi
+        _kiwi = Kiwi()
+
+        # 용어집에서 한국어 고유명사 추출하여 사용자 사전에 등록
+        entries = get_glossary_entries()
+        registered = set()
+
+        for kr_name, _ in entries:
+            # 전체 이름과 짧은 이름 모두 등록
+            for name in _extract_short_names(kr_name):
+                if len(name) >= 2 and name not in registered:
+                    try:
+                        _kiwi.add_user_word(name, 'NNP')
+                        registered.add(name)
+                    except Exception:
+                        pass  # 이미 등록된 경우 무시
+
+        logger.info(f"kiwipiepy 사용자 사전에 {len(registered)}개 한국어 고유명사 등록")
+        _kiwi_initialized = True
+
+    except ImportError:
+        logger.warning("kiwipiepy 미설치, 단순 공백 분리 사용")
+        _kiwi = None
+        _kiwi_initialized = True
+
+    return _kiwi
+
+
+def _extract_korean_words(text: str) -> list[str]:
+    """한국어 텍스트에서 명사 추출 (kiwipiepy 사용)
+
+    Args:
+        text: 한국어 텍스트
+
+    Returns:
+        추출된 명사 리스트 (2글자 이상)
+    """
+    kiwi = _get_kiwi()
+
+    if kiwi is None:
+        # kiwipiepy가 없으면 단순 공백 분리
+        words = text.split()
+        return [w for w in words if len(w) >= 2]
+
+    tokens = kiwi.tokenize(text)
+    nouns = []
+
+    for token in tokens:
+        # NNG: 일반명사, NNP: 고유명사, NNB: 의존명사
+        if token.tag in ('NNG', 'NNP') and len(token.form) >= 2:
+            nouns.append(token.form)
+
+    return nouns
+
+
+def _extract_english_words(text: str) -> list[str]:
+    """영어 텍스트에서 단어 추출
+
+    Args:
+        text: 영어 텍스트
+
+    Returns:
+        추출된 단어 리스트 (3글자 이상)
+    """
+    words = re.findall(r'[A-Za-z]+', text)
+    return [w for w in words if len(w) >= 3]
+
+
+@lru_cache(maxsize=1)
+def _build_word_index() -> tuple[dict[str, list[int]], dict[str, list[int]]]:
+    """용어집 역색인 구축 (단어 → 항목 인덱스)
+
+    Returns:
+        (한국어 역색인, 영어 역색인)
+    """
+    entries = get_glossary_entries()
+    kr_index: dict[str, list[int]] = {}
+    en_index: dict[str, list[int]] = {}
+
+    for idx, (kr_name, en_name) in enumerate(entries):
+        # 한국어: 짧은 이름들로 역색인
+        for name in _extract_short_names(kr_name):
+            if len(name) >= 2:
+                kr_index.setdefault(name, []).append(idx)
+
+        # 영어: 짧은 이름들로 역색인
+        for name in _extract_short_names(en_name):
+            if len(name) >= 3:
+                en_index.setdefault(name, []).append(idx)
+
+    logger.debug(f"역색인 구축: 한국어 {len(kr_index)}개, 영어 {len(en_index)}개")
+    return kr_index, en_index
 
 
 def find_relevant_terms(
@@ -184,9 +249,7 @@ def find_relevant_terms(
     source_lang: str,
     fuzzy_threshold: int = 80
 ) -> list[tuple[str, str]]:
-    """텍스트에서 관련 용어 추출
-
-    부분 문자열 매칭과 퍼지 매칭을 결합하여 관련 용어를 찾습니다.
+    """텍스트에서 관련 용어 추출 (하위 호환성 유지)
 
     Args:
         text: 검색할 텍스트
@@ -196,40 +259,162 @@ def find_relevant_terms(
     Returns:
         [(원본 용어, 번역된 용어), ...] 리스트
     """
-    kr_to_en, en_to_kr = get_term_mappings()
+    result = find_relevant_terms_v2(text, source_lang, fuzzy_threshold)
+    return result.matched_terms
 
-    # 원본 언어에 따라 매핑 선택
+
+def find_relevant_terms_v2(
+    text: str,
+    source_lang: str,
+    fuzzy_threshold: int = 80
+) -> GlossaryMatchResult:
+    """텍스트에서 관련 용어 추출 (개선된 버전, 디버그 정보 포함)
+
+    알고리즘:
+    1. 텍스트를 형태소 분석하여 명사 추출 (한국어) 또는 단어 분리 (영어)
+    2. 추출된 단어가 용어집 항목에 포함되는지 검색
+    3. 퍼지 매칭으로 유사 용어 추가 검색
+
+    Args:
+        text: 검색할 텍스트
+        source_lang: 원본 언어 ("ko" 또는 "en")
+        fuzzy_threshold: 퍼지 매칭 임계값 (기본 80)
+
+    Returns:
+        GlossaryMatchResult (매칭 결과, 추출된 단어, 디버그 정보)
+    """
+    entries = get_glossary_entries()
+    kr_index, en_index = _build_word_index()
+
+    # 언어별 단어 추출
     if source_lang == "ko":
-        source_terms = kr_to_en
+        words = _extract_korean_words(text)
+        word_index = kr_index
     else:
-        source_terms = en_to_kr
+        words = _extract_english_words(text)
+        word_index = en_index
 
     matched: list[tuple[str, str]] = []
-    matched_sources: set[str] = set()
+    matched_indices: set[int] = set()
+    exact_matches: list[str] = []
+    substring_matches: list[str] = []
+    fuzzy_matches: list[str] = []
 
-    # 1차: 부분 문자열 매칭 (정확한 포함)
-    for source_term, target_term in source_terms.items():
-        if source_term in text and source_term not in matched_sources:
-            matched.append((source_term, target_term))
-            matched_sources.add(source_term)
+    # 1단계: 역색인을 통한 정확한 단어 매칭
+    for word in words:
+        if word in word_index:
+            for idx in word_index[word]:
+                if idx not in matched_indices:
+                    kr_name, en_name = entries[idx]
+                    source_name = kr_name if source_lang == "ko" else en_name
+                    target_name = en_name if source_lang == "ko" else kr_name
+                    matched.append((source_name, target_name))
+                    matched_indices.add(idx)
+                    exact_matches.append(f"{word} → {source_name}")
 
-    # 2차: 퍼지 매칭 (rapidfuzz 사용)
+    # 2단계: 단어가 용어집 항목에 부분 포함되는지 검색
+    for word in words:
+        if len(word) < 2:
+            continue
+
+        for idx, (kr_name, en_name) in enumerate(entries):
+            if idx in matched_indices:
+                continue
+
+            source_name = kr_name if source_lang == "ko" else en_name
+            target_name = en_name if source_lang == "ko" else kr_name
+
+            if word in source_name:
+                matched.append((source_name, target_name))
+                matched_indices.add(idx)
+                substring_matches.append(f"{word} ⊂ {source_name}")
+
+    # 3단계: 퍼지 매칭
     try:
         from rapidfuzz import fuzz
 
-        for source_term, target_term in source_terms.items():
-            if source_term in matched_sources:
+        for word in words:
+            if len(word) < 3:  # 퍼지 매칭은 3글자 이상만
                 continue
 
-            # 긴 용어(4자 이상)에 대해서만 퍼지 매칭 적용
-            if len(source_term) >= 4:
-                ratio = fuzz.partial_ratio(source_term, text)
-                if ratio >= fuzzy_threshold:
-                    matched.append((source_term, target_term))
-                    matched_sources.add(source_term)
-    except ImportError:
-        # rapidfuzz가 없으면 부분 문자열 매칭만 사용
-        logger.debug("rapidfuzz 미설치, 부분 문자열 매칭만 사용")
+            for idx, (kr_name, en_name) in enumerate(entries):
+                if idx in matched_indices:
+                    continue
 
-    logger.debug(f"용어 매칭 결과: {len(matched)}개 - {matched[:5]}...")
-    return matched
+                source_name = kr_name if source_lang == "ko" else en_name
+                target_name = en_name if source_lang == "ko" else kr_name
+
+                # 짧은 이름들과 퍼지 매칭
+                for short_name in _extract_short_names(source_name):
+                    if len(short_name) < 3:
+                        continue
+
+                    ratio = fuzz.ratio(word, short_name)
+                    if ratio >= fuzzy_threshold:
+                        matched.append((source_name, target_name))
+                        matched_indices.add(idx)
+                        fuzzy_matches.append(f"{word} ≈ {short_name} ({ratio}%)")
+                        break
+
+    except ImportError:
+        logger.debug("rapidfuzz 미설치, 퍼지 매칭 건너뜀")
+
+    debug_info = {
+        "extracted_words": words,
+        "exact_matches": exact_matches,
+        "substring_matches": substring_matches,
+        "fuzzy_matches": fuzzy_matches,
+        "total_matched": len(matched),
+    }
+
+    logger.debug(f"용어 매칭: {len(words)}개 단어 → {len(matched)}개 매칭")
+
+    return GlossaryMatchResult(
+        matched_terms=matched,
+        extracted_words=words,
+        debug_info=debug_info
+    )
+
+
+# === 하위 호환성을 위한 기존 함수들 ===
+
+@lru_cache(maxsize=1)
+def get_term_mappings() -> tuple[dict[str, str], dict[str, str]]:
+    """용어 매핑 딕셔너리 생성 (하위 호환성 유지)
+
+    Returns:
+        (한→영 매핑, 영→한 매핑) 튜플
+    """
+    entries = get_glossary_entries()
+    kr_to_en: dict[str, str] = {}
+    en_to_kr: dict[str, str] = {}
+
+    for kr_name, en_name in entries:
+        kr_to_en[kr_name] = en_name
+        en_to_kr[en_name] = kr_name
+
+        # 짧은 이름들도 등록
+        short_kr = _extract_short_names(kr_name)
+        short_en = _extract_short_names(en_name)
+
+        for name in short_kr:
+            if name not in kr_to_en:
+                kr_to_en[name] = en_name
+
+        for name in short_en:
+            if name not in en_to_kr:
+                en_to_kr[name] = kr_name
+
+    logger.debug(f"용어 매핑: {len(kr_to_en)}개 한→영, {len(en_to_kr)}개 영→한")
+    return kr_to_en, en_to_kr
+
+
+def clear_cache() -> None:
+    """캐시 초기화 (테스트 또는 용어집 갱신 시 사용)"""
+    global _kiwi, _kiwi_initialized
+    _load_glossary_raw.cache_clear()
+    get_glossary_entries.cache_clear()
+    get_term_mappings.cache_clear()
+    _build_word_index.cache_clear()
+    _kiwi = None
+    _kiwi_initialized = False
