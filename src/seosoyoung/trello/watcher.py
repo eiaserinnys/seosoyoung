@@ -225,7 +225,7 @@ class TrelloWatcher:
                     try:
                         self.slack_client.chat_postMessage(
                             channel=self.notify_channel,
-                            text=f"✅ <{card.url}|*{card.name}*> 완료 처리됨 (Review → Done)"
+                            text=f"✅ <{card.url}|*{card.name}*>"
                         )
                     except Exception as e:
                         logger.error(f"완료 알림 전송 실패: {e}")
