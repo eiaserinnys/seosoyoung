@@ -56,6 +56,65 @@ def _extract_name_pair(item: dict) -> tuple[str, str] | None:
     return None
 
 
+def _extract_short_names(full_name: str, lang: str = "auto") -> list[str]:
+    """전체 이름에서 짧은 이름들을 추출
+
+    예시:
+    - "불사의 악마 사냥꾼, 펜릭스 헤이븐" -> ["불사의 악마 사냥꾼", "펜릭스 헤이븐", "펜릭스"]
+    - "(눈 먼 정의의 천사) 칼리엘" -> ["칼리엘"]
+    - "Fenrix Haven, the Immortal Demon Hunter" -> ["Fenrix Haven", "the Immortal Demon Hunter", "Fenrix"]
+    - "Kaliel (Angel of Blind Justice)" -> ["Kaliel"]
+
+    Args:
+        full_name: 전체 이름 문자열
+        lang: 언어 힌트 ("kr", "en", "auto")
+
+    Returns:
+        추출된 짧은 이름 리스트
+    """
+    import re
+
+    short_names = []
+
+    # 쉼표로 분리
+    if "," in full_name:
+        parts = [p.strip() for p in full_name.split(",")]
+        short_names.extend(parts)
+
+    # 괄호 제거 후 핵심 이름 추출
+    # "(이명) 이름" 또는 "이름 (이명)" 패턴
+    # 한국어: (눈 먼 정의의 천사) 칼리엘 -> 칼리엘
+    # 영어: Kaliel (Angel of Blind Justice) -> Kaliel
+    name_without_paren = re.sub(r"\([^)]*\)", "", full_name).strip()
+    if name_without_paren and name_without_paren != full_name:
+        # 쉼표로 다시 분리
+        if "," in name_without_paren:
+            parts = [p.strip() for p in name_without_paren.split(",") if p.strip()]
+            short_names.extend(parts)
+        elif name_without_paren.strip():
+            short_names.append(name_without_paren.strip())
+
+    # "이름 성" 패턴에서 "이름"만 추출 (영어)
+    # "펜릭스 헤이븐" -> "펜릭스", "Fenrix Haven" -> "Fenrix"
+    for name in list(short_names):  # 복사본으로 순회
+        words = name.split()
+        if len(words) == 2:
+            # 첫 번째 단어만 추출 (이름)
+            first_word = words[0]
+            if len(first_word) >= 2:  # 너무 짧은 것 제외
+                short_names.append(first_word)
+
+    # 중복 제거 및 원본과 동일한 것 제외
+    result = []
+    seen = set()
+    for name in short_names:
+        if name and name != full_name and name not in seen:
+            seen.add(name)
+            result.append(name)
+
+    return result
+
+
 @lru_cache(maxsize=1)
 def get_term_mappings() -> tuple[dict[str, str], dict[str, str]]:
     """용어 매핑 딕셔너리 생성 (캐싱)
@@ -85,13 +144,30 @@ def get_term_mappings() -> tuple[dict[str, str], dict[str, str]]:
                 kr_to_en[kr_name] = en_name
                 en_to_kr[en_name] = kr_name
 
-                # 짧은 이름도 등록 (예: "펜릭스 헤이븐" -> "Fenrix Haven")
-                # 쉼표 이전 이름만 추출
-                if "," in kr_name:
-                    short_kr = kr_name.split(",")[0].strip()
-                    short_en = en_name.split(",")[0].strip() if "," in en_name else en_name
-                    kr_to_en[short_kr] = short_en
-                    en_to_kr[short_en] = short_kr
+                # 짧은 이름들 추출 및 등록
+                short_kr_names = _extract_short_names(kr_name)
+                short_en_names = _extract_short_names(en_name)
+
+                # 짧은 한국어 이름 -> 대응하는 짧은 영어 이름 (또는 전체 영어 이름)
+                for i, short_kr in enumerate(short_kr_names):
+                    # 대응하는 짧은 영어 이름이 있으면 사용, 없으면 첫 번째 짧은 영어 이름 사용
+                    if i < len(short_en_names):
+                        target_en = short_en_names[i]
+                    elif short_en_names:
+                        target_en = short_en_names[0]
+                    else:
+                        target_en = en_name
+                    kr_to_en[short_kr] = target_en
+
+                # 짧은 영어 이름 -> 대응하는 짧은 한국어 이름
+                for i, short_en in enumerate(short_en_names):
+                    if i < len(short_kr_names):
+                        target_kr = short_kr_names[i]
+                    elif short_kr_names:
+                        target_kr = short_kr_names[0]
+                    else:
+                        target_kr = kr_name
+                    en_to_kr[short_en] = target_kr
 
     logger.debug(f"용어집 로드 완료: {len(kr_to_en)}개 한→영, {len(en_to_kr)}개 영→한")
     return kr_to_en, en_to_kr
