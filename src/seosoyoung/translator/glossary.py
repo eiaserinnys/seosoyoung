@@ -14,6 +14,24 @@ import yaml
 
 from seosoyoung.config import Config
 
+# 영어 불용어 (관사, 전치사, 접속사 등) - 개별 매칭에서 제외
+ENGLISH_STOPWORDS = frozenset({
+    # 관사
+    "a", "an", "the",
+    # 전치사
+    "of", "in", "on", "at", "to", "for", "with", "by", "from", "as",
+    "into", "onto", "upon", "about", "above", "below", "between", "among",
+    "through", "during", "before", "after", "over", "under", "around",
+    # 접속사
+    "and", "or", "but", "nor", "yet", "so",
+    # 대명사
+    "it", "its", "this", "that", "these", "those",
+    # 기타 기능어
+    "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did",
+    "will", "would", "could", "should", "may", "might", "must", "can",
+})
+
 logger = logging.getLogger(__name__)
 
 # kiwipiepy 싱글톤 인스턴스
@@ -212,10 +230,13 @@ def _extract_english_words(text: str) -> list[str]:
         text: 영어 텍스트
 
     Returns:
-        추출된 단어 리스트 (3글자 이상)
+        추출된 단어 리스트 (3글자 이상, 불용어 제외)
     """
     words = re.findall(r'[A-Za-z]+', text)
-    return [w for w in words if len(w) >= 3]
+    return [
+        w for w in words
+        if len(w) >= 3 and w.lower() not in ENGLISH_STOPWORDS
+    ]
 
 
 @lru_cache(maxsize=1)
