@@ -34,7 +34,7 @@ class Config:
 
     # Permissions
     ALLOWED_USERS = os.getenv("ALLOWED_USERS", "").split(",")
-    ADMIN_USERS = [u.strip() for u in os.getenv("ADMIN_USERS", "eias").split(",") if u.strip()]
+    ADMIN_USERS = [u.strip() for u in os.getenv("ADMIN_USERS", "").split(",") if u.strip()]
 
     # 역할별 도구 권한
     ROLE_TOOLS = {
@@ -55,26 +55,23 @@ class Config:
     # Trello
     TRELLO_API_KEY = os.getenv("TRELLO_API_KEY", "")
     TRELLO_TOKEN = os.getenv("TRELLO_TOKEN", "")
-    TRELLO_BOARD_ID = os.getenv("TRELLO_BOARD_ID", "696dd91e3c1e1a16b9c23ff7")  # 서소영의 일감 보드
-    TRELLO_NOTIFY_CHANNEL = os.getenv("TRELLO_NOTIFY_CHANNEL", "C0A9H2JJ4AX")  # #nl_서소영의-방
+    TRELLO_BOARD_ID = os.getenv("TRELLO_BOARD_ID", "")
+    TRELLO_NOTIFY_CHANNEL = os.getenv("TRELLO_NOTIFY_CHANNEL", "")
     TRELLO_WATCH_LISTS = {
-        "to_go": "696ddb71107016c16d1001ba",    # 🚀 To Go (단일 모니터링 포인트)
+        "to_go": os.getenv("TRELLO_TO_GO_LIST_ID", ""),
     }
-    TRELLO_BACKLOG_LIST_ID = "696ddb707a578b0021173f72"  # 📦 Backlog
-    TRELLO_IN_PROGRESS_LIST_ID = "696ddb72ba1278b514c0ae18"  # 🔨 In Progress
-    TRELLO_REVIEW_LIST_ID = "696ddb72e70fe807b0199746"  # 👀 Review
-    TRELLO_DONE_LIST_ID = "696ddb74cc52e4c5d5261ed4"    # ✅ Done
+    TRELLO_BACKLOG_LIST_ID = os.getenv("TRELLO_BACKLOG_LIST_ID", "")
+    TRELLO_IN_PROGRESS_LIST_ID = os.getenv("TRELLO_IN_PROGRESS_LIST_ID", "")
+    TRELLO_REVIEW_LIST_ID = os.getenv("TRELLO_REVIEW_LIST_ID", "")
+    TRELLO_DONE_LIST_ID = os.getenv("TRELLO_DONE_LIST_ID", "")
 
     # 번역 기능 설정
     # TRANSLATE_CHANNELS: 쉼표로 구분된 채널 ID 목록
     TRANSLATE_CHANNELS = [
-        ch.strip() for ch in os.getenv(
-            "TRANSLATE_CHANNELS",
-            "C09JQTDCV4G,C09HFD13UTH"  # lg_elite_qa, lg_elite_community
-        ).split(",") if ch.strip()
+        ch.strip() for ch in os.getenv("TRANSLATE_CHANNELS", "").split(",") if ch.strip()
     ]
-    TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "claude-sonnet-4-20250514")
-    TRANSLATE_CONTEXT_COUNT = int(os.getenv("TRANSLATE_CONTEXT_COUNT", "10"))
+    TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "")
+    TRANSLATE_CONTEXT_COUNT = int(os.getenv("TRANSLATE_CONTEXT_COUNT", "0") or "0")
     TRANSLATE_API_KEY = os.getenv("TRANSLATE_API_KEY")  # 번역 전용 API 키
 
     # 번역 응답 표시 옵션
@@ -82,7 +79,7 @@ class Config:
     TRANSLATE_SHOW_COST = os.getenv("TRANSLATE_SHOW_COST", "false").lower() == "true"
 
     # 번역 디버그 로그 채널 (비어있으면 비활성화)
-    TRANSLATE_DEBUG_CHANNEL = os.getenv("TRANSLATE_DEBUG_CHANNEL", "C0A9H2JJ4AX")
+    TRANSLATE_DEBUG_CHANNEL = os.getenv("TRANSLATE_DEBUG_CHANNEL", "")
 
     # 용어집 경로 (번역 시 고유명사 참조)
     @staticmethod
