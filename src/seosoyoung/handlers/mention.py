@@ -1,6 +1,5 @@
 """@seosoyoung 멘션 핸들러"""
 
-import asyncio
 import re
 import logging
 from pathlib import Path
@@ -8,7 +7,7 @@ from pathlib import Path
 from seosoyoung.config import Config
 from seosoyoung.restart import RestartType
 from seosoyoung.translator import detect_language, translate
-from seosoyoung.slack import download_files_from_event, build_file_context
+from seosoyoung.slack import download_files_sync, build_file_context
 
 logger = logging.getLogger(__name__)
 
@@ -224,9 +223,7 @@ def register_mention_handlers(app, dependencies: dict):
         file_context = ""
         if event.get("files"):
             try:
-                downloaded_files = asyncio.get_event_loop().run_until_complete(
-                    download_files_from_event(event, session_thread_ts)
-                )
+                downloaded_files = download_files_sync(event, session_thread_ts)
                 if downloaded_files:
                     file_context = build_file_context(downloaded_files)
                     logger.info(f"파일 {len(downloaded_files)}개 다운로드 완료")

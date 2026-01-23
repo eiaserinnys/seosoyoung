@@ -1,12 +1,11 @@
 """스레드 메시지 핸들러"""
 
-import asyncio
 import re
 import logging
 
 from seosoyoung.config import Config
 from seosoyoung.handlers.translate import process_translate_message
-from seosoyoung.slack import download_files_from_event, build_file_context
+from seosoyoung.slack import download_files_sync, build_file_context
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +75,7 @@ def register_message_handlers(app, dependencies: dict):
         file_context = ""
         if event.get("files"):
             try:
-                downloaded_files = asyncio.get_event_loop().run_until_complete(
-                    download_files_from_event(event, thread_ts)
-                )
+                downloaded_files = download_files_sync(event, thread_ts)
                 if downloaded_files:
                     file_context = build_file_context(downloaded_files)
                     logger.info(f"파일 {len(downloaded_files)}개 다운로드 완료")

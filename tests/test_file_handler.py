@@ -198,6 +198,94 @@ class TestDownloadFilesFromEvent:
         assert result == []
 
 
+class TestDownloadFilesSync:
+    """동기 환경에서 파일 다운로드 테스트 (ThreadPoolExecutor 시뮬레이션)"""
+
+    def test_download_in_thread_pool(self, tmp_path, monkeypatch):
+        """ThreadPoolExecutor에서 파일 다운로드 - 이벤트 루프 없는 환경"""
+        from concurrent.futures import ThreadPoolExecutor
+        from seosoyoung.slack.file_handler import download_files_sync
+
+        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+
+        file_content = "Hello from thread!"
+
+        # httpx 모킹
+        mock_response = MagicMock()
+        mock_response.content = file_content.encode("utf-8")
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        event = {
+            "files": [
+                {
+                    "id": "F123",
+                    "name": "test.txt",
+                    "mimetype": "text/plain",
+                    "filetype": "txt",
+                    "size": len(file_content),
+                    "url_private": "https://files.slack.com/test.txt",
+                }
+            ]
+        }
+
+        with patch("seosoyoung.slack.file_handler.httpx.AsyncClient", return_value=mock_client):
+            # ThreadPoolExecutor에서 실행 (Slack Bolt 환경 시뮬레이션)
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(download_files_sync, event, "1234567890.123456")
+                result = future.result(timeout=10)
+
+        assert len(result) == 1
+        assert result[0]["original_name"] == "test.txt"
+        assert result[0]["content"] == file_content
+
+    def test_download_image_in_thread_pool(self, tmp_path, monkeypatch):
+        """ThreadPoolExecutor에서 이미지 파일 다운로드"""
+        from concurrent.futures import ThreadPoolExecutor
+        from seosoyoung.slack.file_handler import download_files_sync
+
+        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+
+        # 가짜 PNG 데이터
+        image_content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+
+        mock_response = MagicMock()
+        mock_response.content = image_content
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        event = {
+            "files": [
+                {
+                    "id": "F456",
+                    "name": "screenshot.png",
+                    "mimetype": "image/png",
+                    "filetype": "png",
+                    "size": len(image_content),
+                    "url_private": "https://files.slack.com/screenshot.png",
+                }
+            ]
+        }
+
+        with patch("seosoyoung.slack.file_handler.httpx.AsyncClient", return_value=mock_client):
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(download_files_sync, event, "1234567890.123456")
+                result = future.result(timeout=10)
+
+        assert len(result) == 1
+        assert result[0]["original_name"] == "screenshot.png"
+        assert result[0]["file_type"] == "image"
+        assert Path(result[0]["local_path"]).exists()
+
+
 class TestBuildFileContext:
     """파일 컨텍스트 생성 테스트"""
 

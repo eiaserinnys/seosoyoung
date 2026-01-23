@@ -195,7 +195,7 @@ async def download_files_from_event(
     event: dict,
     thread_ts: str,
 ) -> list[DownloadedFile]:
-    """이벤트에서 파일들을 다운로드
+    """이벤트에서 파일들을 다운로드 (async 버전)
 
     Args:
         event: 슬랙 이벤트 (app_mention 또는 message)
@@ -215,6 +215,37 @@ async def download_files_from_event(
             downloaded.append(result)
 
     return downloaded
+
+
+def download_files_sync(
+    event: dict,
+    thread_ts: str,
+) -> list[DownloadedFile]:
+    """이벤트에서 파일들을 다운로드 (동기 버전)
+
+    ThreadPoolExecutor 환경(Slack Bolt 핸들러)에서 안전하게 사용할 수 있습니다.
+    새 이벤트 루프를 생성하여 async 함수를 실행합니다.
+
+    Args:
+        event: 슬랙 이벤트 (app_mention 또는 message)
+        thread_ts: 스레드 타임스탬프
+
+    Returns:
+        다운로드된 파일 목록
+    """
+    import asyncio
+
+    files = event.get("files", [])
+    if not files:
+        return []
+
+    # 새 이벤트 루프 생성하여 실행
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(download_files_from_event(event, thread_ts))
+    finally:
+        loop.close()
 
 
 def build_file_context(files: list[DownloadedFile]) -> str:
