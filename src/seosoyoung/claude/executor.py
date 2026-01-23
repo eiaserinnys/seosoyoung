@@ -159,6 +159,9 @@ class ClaudeExecutor:
             trello_card: 트렐로 워처에서 호출된 경우 TrackedCard 정보
         """
         thread_ts = session.thread_ts
+        # mark_session_running/stopped에 사용할 원래 thread_ts 보존
+        # (채널 최초 멘션 시 thread_ts가 변경되므로)
+        original_thread_ts = thread_ts
         effective_role = role or session.role
         is_trello_mode = trello_card is not None
 
@@ -169,7 +172,7 @@ class ClaudeExecutor:
             return
 
         # 실행 중 세션으로 표시
-        self.mark_session_running(thread_ts)
+        self.mark_session_running(original_thread_ts)
 
         # 마지막 메시지 ts 추적 (최종 답변으로 교체할 대상)
         last_msg_ts = None
@@ -313,7 +316,7 @@ class ClaudeExecutor:
                 )
 
         finally:
-            self.mark_session_stopped(thread_ts)
+            self.mark_session_stopped(original_thread_ts)
             lock.release()
 
     def _handle_success(
