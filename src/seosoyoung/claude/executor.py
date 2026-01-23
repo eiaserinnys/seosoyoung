@@ -374,12 +374,16 @@ class ClaudeExecutor:
         """일반 모드(멘션) 성공 처리"""
         continuation_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
 
+        # 응답에 이미 continuation hint가 있으면 추가하지 않음
+        has_hint = "이 대화를 이어가려면" in response or "댓글을 달아주세요" in response
+
         try:
             # continuation hint를 포함한 최대 응답 길이 계산
-            max_response_len = 3900 - len(continuation_hint) - 10  # 줄바꿈 여유
+            hint_len = len(continuation_hint) + 10 if not has_hint else 0
+            max_response_len = 3900 - hint_len
 
             if len(response) <= max_response_len:
-                final_text = f"{response}\n\n{continuation_hint}"
+                final_text = f"{response}\n\n{continuation_hint}" if not has_hint else response
                 client.chat_update(
                     channel=channel,
                     ts=last_msg_ts,
@@ -392,7 +396,7 @@ class ClaudeExecutor:
             else:
                 # 첫 번째 메시지에 잘린 응답 + continuation hint
                 truncated = response[:max_response_len]
-                first_part = f"{truncated}...\n\n{continuation_hint}"
+                first_part = f"{truncated}...\n\n{continuation_hint}" if not has_hint else f"{truncated}..."
                 client.chat_update(
                     channel=channel,
                     ts=last_msg_ts,
