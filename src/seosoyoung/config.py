@@ -19,6 +19,7 @@ class Config:
     # Slack
     SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
     SLACK_APP_TOKEN = os.getenv("SLACK_APP_TOKEN")
+    BOT_USER_ID: str | None = None  # 런타임에 auth.test()로 설정
 
     # Paths - 런타임에 평가 (환경변수 없으면 현재 경로 기준)
     @staticmethod

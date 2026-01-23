@@ -125,12 +125,23 @@ def start_trello_watcher():
     logger.info("Trello 워처 시작됨")
 
 
+def init_bot_user_id():
+    """봇 사용자 ID 초기화"""
+    try:
+        auth_result = app.client.auth_test()
+        Config.BOT_USER_ID = auth_result["user_id"]
+        logger.info(f"BOT_USER_ID: {Config.BOT_USER_ID}")
+    except Exception as e:
+        logger.error(f"봇 ID 조회 실패: {e}")
+
+
 if __name__ == "__main__":
     logger.info("SeoSoyoung 봇을 시작합니다...")
     logger.info(f"LOG_PATH: {Config.get_log_path()}")
     logger.info(f"ADMIN_USERS: {Config.ADMIN_USERS}")
     logger.info(f"ALLOWED_USERS: {Config.ALLOWED_USERS}")
     logger.info(f"DEBUG: {Config.DEBUG}")
+    init_bot_user_id()
     notify_startup()
     start_trello_watcher()
     handler = SocketModeHandler(app, Config.SLACK_APP_TOKEN)

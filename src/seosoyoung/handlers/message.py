@@ -10,6 +10,14 @@ from seosoyoung.slack import download_files_sync, build_file_context
 logger = logging.getLogger(__name__)
 
 
+def _contains_bot_mention(text: str) -> bool:
+    """텍스트에 봇 멘션이 포함되어 있는지 확인"""
+    if not Config.BOT_USER_ID:
+        # 봇 ID를 알 수 없으면 안전하게 모든 멘션을 봇 멘션으로 간주
+        return "<@" in text
+    return f"<@{Config.BOT_USER_ID}>" in text
+
+
 def register_message_handlers(app, dependencies: dict):
     """메시지 핸들러 등록
 
@@ -47,8 +55,9 @@ def register_message_handlers(app, dependencies: dict):
         if not thread_ts:
             return
 
-        # 멘션이 포함된 경우 handle_mention에서 처리 (중복 방지)
-        if "<@" in text:
+        # 봇 멘션이 포함된 경우 handle_mention에서 처리 (중복 방지)
+        # 다른 사람에 대한 멘션은 무시하지 않음
+        if _contains_bot_mention(text):
             return
 
         user_id = event["user"]
