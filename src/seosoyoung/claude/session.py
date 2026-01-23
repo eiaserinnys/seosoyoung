@@ -106,6 +106,42 @@ class SessionManager:
             logger.info(f"세션 ID 업데이트: thread_ts={thread_ts}, session_id={session_id}")
         return session
 
+    def update_thread_ts(self, old_thread_ts: str, new_thread_ts: str) -> Optional[Session]:
+        """세션의 thread_ts 변경 (멘션 응답 시 사용)
+
+        채널 멘션 후 응답 메시지가 새 스레드 부모가 되어야 할 때 사용합니다.
+        기존 파일을 삭제하고 새 thread_ts로 파일을 생성합니다.
+
+        Args:
+            old_thread_ts: 기존 thread_ts (멘션 메시지 ts)
+            new_thread_ts: 새 thread_ts (응답 메시지 ts)
+
+        Returns:
+            업데이트된 Session 또는 None
+        """
+        session = self.get(old_thread_ts)
+        if not session:
+            return None
+
+        # 기존 파일 삭제
+        old_file = self._get_session_file(old_thread_ts)
+        if old_file.exists():
+            old_file.unlink()
+
+        # 캐시에서도 제거
+        self._cache.pop(old_thread_ts, None)
+
+        # 새 thread_ts로 업데이트
+        session.thread_ts = new_thread_ts
+        session.updated_at = datetime.now().isoformat()
+
+        # 새 파일로 저장 및 캐시
+        self._save(session)
+        self._cache[new_thread_ts] = session
+
+        logger.info(f"세션 thread_ts 변경: {old_thread_ts} -> {new_thread_ts}")
+        return session
+
     def increment_message_count(self, thread_ts: str) -> Optional[Session]:
         """메시지 카운트 증가"""
         session = self.get(thread_ts)

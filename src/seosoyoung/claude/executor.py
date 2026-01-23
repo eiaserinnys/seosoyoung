@@ -178,6 +178,9 @@ class ClaudeExecutor:
         # 트렐로 모드에서 첫 번째 on_progress 호출 시 리액션 추가 여부 추적
         trello_reaction_added = False
 
+        # 멘션 응답 메시지 ts (세션 thread_ts 업데이트용)
+        mention_response_ts = None
+
         try:
             if is_trello_mode:
                 last_msg_ts = msg_ts
@@ -189,9 +192,9 @@ class ClaudeExecutor:
                     initial_text = "소영이 조회 전용 모드로 생각합니다..."
 
                 code_text = f"```\n{initial_text}\n```"
+                # 채널에 직접 메시지 생성 (스레드가 아닌 채널 루트에)
                 initial_msg = client.chat_postMessage(
                     channel=channel,
-                    thread_ts=thread_ts,
                     text=code_text,
                     blocks=[{
                         "type": "section",
@@ -199,6 +202,13 @@ class ClaudeExecutor:
                     }]
                 )
                 last_msg_ts = initial_msg["ts"]
+                mention_response_ts = last_msg_ts
+
+                # 세션의 thread_ts를 응답 메시지 ts로 업데이트
+                # (스레드로 대화를 이어가기 위해)
+                if mention_response_ts and mention_response_ts != thread_ts:
+                    self.session_manager.update_thread_ts(thread_ts, mention_response_ts)
+                    thread_ts = mention_response_ts  # 이후 로직에서 새 thread_ts 사용
 
             # 스트리밍 콜백
             async def on_progress(current_text: str):
@@ -361,20 +371,28 @@ class ClaudeExecutor:
     def _handle_normal_success(
         self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client
     ):
-        """일반 모드 성공 처리"""
+        """일반 모드(멘션) 성공 처리"""
+        continuation_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
+
         try:
-            if len(response) <= 3900:
+            # continuation hint를 포함한 최대 응답 길이 계산
+            max_response_len = 3900 - len(continuation_hint) - 10  # 줄바꿈 여유
+
+            if len(response) <= max_response_len:
+                final_text = f"{response}\n\n{continuation_hint}"
                 client.chat_update(
                     channel=channel,
                     ts=last_msg_ts,
-                    text=response,
+                    text=final_text,
                     blocks=[{
                         "type": "section",
-                        "text": {"type": "mrkdwn", "text": response}
+                        "text": {"type": "mrkdwn", "text": final_text}
                     }]
                 )
             else:
-                first_part = f"(1/?) {response[:3900]}"
+                # 첫 번째 메시지에 잘린 응답 + continuation hint
+                truncated = response[:max_response_len]
+                first_part = f"{truncated}...\n\n{continuation_hint}"
                 client.chat_update(
                     channel=channel,
                     ts=last_msg_ts,
@@ -384,7 +402,8 @@ class ClaudeExecutor:
                         "text": {"type": "mrkdwn", "text": first_part}
                     }]
                 )
-                remaining = response[3900:]
+                # 나머지는 스레드에 전송
+                remaining = response[max_response_len:]
                 self.send_long_message(say, remaining, thread_ts)
         except Exception:
             self.send_long_message(say, response, thread_ts)
@@ -445,19 +464,17 @@ class ClaudeExecutor:
                 }]
             )
         else:
+            continuation_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
+            error_text = f"❌ {error_msg}\n\n{continuation_hint}"
             client.chat_update(
                 channel=channel,
                 ts=last_msg_ts,
-                text=error_msg,
+                text=error_text,
                 blocks=[{
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": error_msg}
+                    "text": {"type": "mrkdwn", "text": error_text}
                 }]
             )
-            try:
-                client.reactions_add(channel=channel, timestamp=main_msg_ts, name="x")
-            except Exception:
-                pass
 
     def _handle_exception(
         self, e, is_trello_mode, trello_card, session,
@@ -484,10 +501,12 @@ class ClaudeExecutor:
                 say(text=f"❌ {error_msg}", thread_ts=thread_ts)
         else:
             try:
+                continuation_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
+                error_text = f"❌ {error_msg}\n\n{continuation_hint}"
                 client.chat_update(
                     channel=channel,
                     ts=last_msg_ts,
-                    text=error_msg
+                    text=error_text
                 )
             except Exception:
-                say(text=error_msg, thread_ts=thread_ts)
+                say(text=f"❌ {error_msg}", thread_ts=thread_ts)
