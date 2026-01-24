@@ -1,0 +1,25 @@
+#!/bin/sh
+# pre-commit hook: 자동 문서 생성
+# Python 소스 파일이 변경되면 .docs 문서를 자동으로 갱신합니다.
+
+# 변경된 Python 소스 파일 확인
+CHANGED_PY=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^src/seosoyoung/.*\.py$')
+
+if [ -n "$CHANGED_PY" ]; then
+    echo "Python 소스 변경 감지: 문서 자동 생성 중..."
+
+    # 문서 생성 스크립트 실행
+    python .docs/generate.py
+
+    if [ $? -ne 0 ]; then
+        echo "문서 생성 실패"
+        exit 1
+    fi
+
+    # 생성된 문서를 스테이징에 추가
+    git add .docs/INDEX.md .docs/modules/*.md
+
+    echo "문서 생성 완료: .docs/ 폴더가 커밋에 포함됩니다."
+fi
+
+exit 0
