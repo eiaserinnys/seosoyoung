@@ -4,7 +4,13 @@
 
 ## 설치
 
+```powershell
+# Windows
+.init\install.ps1
+```
+
 ```bash
+# Linux/Mac
 .init/install.sh
 ```
 
