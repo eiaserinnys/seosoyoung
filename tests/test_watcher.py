@@ -154,7 +154,7 @@ class TestTrelloWatcherTrackedCardLookup:
             claude_runner_factory=MagicMock()
         )
 
-        # TrackedCard 추가
+        # TrackedCard 추가 (To Go 감시용)
         tracked = TrackedCard(
             card_id="card123",
             card_name="테스트 카드",
@@ -167,7 +167,10 @@ class TestTrelloWatcherTrackedCardLookup:
         )
         watcher._tracked["card123"] = tracked
 
-        # 조회
+        # _register_thread_card 호출하여 _thread_cards에도 등록
+        watcher._register_thread_card(tracked)
+
+        # 조회 (이제 _thread_cards에서 조회)
         result = watcher.get_tracked_by_thread_ts("1234567890.123456")
         assert result is not None
         assert result.card_id == "card123"
@@ -205,7 +208,7 @@ class TestTrelloWatcherTrackedCardLookup:
         mock_config.TRELLO_REVIEW_LIST_ID = None
         mock_config.TRELLO_DONE_LIST_ID = None
 
-        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
+        from seosoyoung.trello.watcher import TrelloWatcher, ThreadCardInfo
 
         watcher = TrelloWatcher(
             slack_client=MagicMock(),
@@ -213,18 +216,16 @@ class TestTrelloWatcherTrackedCardLookup:
             claude_runner_factory=MagicMock()
         )
 
-        tracked = TrackedCard(
+        info = ThreadCardInfo(
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
             card_id="card123",
             card_name="기능 구현 작업",
             card_url="https://trello.com/c/abc123",
-            list_id="list123",
-            list_key="to_go",
-            thread_ts="1234567890.123456",
-            channel_id="C12345",
-            detected_at="2024-01-01T00:00:00"
+            created_at="2024-01-01T00:00:00"
         )
 
-        prompt = watcher.build_reaction_execute_prompt(tracked)
+        prompt = watcher.build_reaction_execute_prompt(info)
 
         assert "🚀 리액션으로 실행이 요청된" in prompt
         assert "기능 구현 작업" in prompt

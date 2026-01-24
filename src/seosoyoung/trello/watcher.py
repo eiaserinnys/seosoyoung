@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TrackedCard:
-    """추적 중인 카드 정보"""
+    """추적 중인 카드 정보 (To Go 리스트 감시용)"""
     card_id: str
     card_name: str
     card_url: str  # 카드 URL (슬랙 링크용)
@@ -28,6 +28,23 @@ class TrackedCard:
     detected_at: str
     session_id: Optional[str] = None  # Claude 세션 ID
     has_execute: bool = False  # Execute 레이블 유무
+
+
+@dataclass
+class ThreadCardInfo:
+    """스레드 ↔ 카드 매핑 정보 (리액션 처리용)
+
+    Claude 세션이 시작된 슬랙 스레드와 트렐로 카드의 연결을 유지합니다.
+    TrackedCard와 달리 Claude 실행 완료 후에도 유지되어 리액션 기반 실행을 지원합니다.
+    """
+    thread_ts: str
+    channel_id: str
+    card_id: str
+    card_name: str
+    card_url: str
+    session_id: Optional[str] = None
+    has_execute: bool = False
+    created_at: str = ""
 
 
 class TrelloWatcher:
@@ -76,10 +93,15 @@ class TrelloWatcher:
         self.data_dir = data_dir or Path(Config.get_session_path()).parent / "data"
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.tracked_file = self.data_dir / "tracked_cards.json"
+        self.thread_cards_file = self.data_dir / "thread_cards.json"
 
-        # 추적 중인 카드
+        # 추적 중인 카드 (To Go 리스트 감시용 - Claude 실행 완료 시 삭제)
         self._tracked: dict[str, TrackedCard] = {}
         self._load_tracked()
+
+        # 스레드 ↔ 카드 매핑 (리액션 처리용 - 영구 유지)
+        self._thread_cards: dict[str, ThreadCardInfo] = {}  # thread_ts -> ThreadCardInfo
+        self._load_thread_cards()
 
         # 워처 스레드
         self._thread: Optional[threading.Thread] = None
@@ -116,19 +138,77 @@ class TrelloWatcher:
         except Exception as e:
             logger.error(f"추적 상태 저장 실패: {e}")
 
-    def get_tracked_by_thread_ts(self, thread_ts: str) -> Optional[TrackedCard]:
-        """thread_ts로 TrackedCard 조회
+    def _load_thread_cards(self):
+        """스레드-카드 매핑 로드"""
+        if self.thread_cards_file.exists():
+            try:
+                data = json.loads(self.thread_cards_file.read_text(encoding="utf-8"))
+                for thread_ts, info_data in data.items():
+                    self._thread_cards[thread_ts] = ThreadCardInfo(**info_data)
+                logger.info(f"스레드-카드 매핑 로드: {len(self._thread_cards)}개")
+            except Exception as e:
+                logger.error(f"스레드-카드 매핑 로드 실패: {e}")
+
+    def _save_thread_cards(self):
+        """스레드-카드 매핑 저장"""
+        try:
+            data = {k: asdict(v) for k, v in self._thread_cards.items()}
+            self.thread_cards_file.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
+        except Exception as e:
+            logger.error(f"스레드-카드 매핑 저장 실패: {e}")
+
+    def _register_thread_card(self, tracked: TrackedCard):
+        """스레드-카드 매핑 등록"""
+        info = ThreadCardInfo(
+            thread_ts=tracked.thread_ts,
+            channel_id=tracked.channel_id,
+            card_id=tracked.card_id,
+            card_name=tracked.card_name,
+            card_url=tracked.card_url,
+            session_id=tracked.session_id,
+            has_execute=tracked.has_execute,
+            created_at=tracked.detected_at,
+        )
+        self._thread_cards[tracked.thread_ts] = info
+        self._save_thread_cards()
+        logger.debug(f"스레드-카드 매핑 등록: {tracked.thread_ts} -> {tracked.card_name}")
+
+    def _untrack_card(self, card_id: str):
+        """To Go 추적에서 카드 제거 (Claude 실행 완료 시 호출)"""
+        if card_id in self._tracked:
+            tracked = self._tracked.pop(card_id)
+            self._save_tracked()
+            logger.info(f"카드 추적 해제: {tracked.card_name} (Claude 실행 완료)")
+
+    def update_thread_card_session_id(self, thread_ts: str, session_id: str) -> bool:
+        """ThreadCardInfo의 session_id 업데이트
+
+        Args:
+            thread_ts: 스레드 타임스탬프
+            session_id: Claude 세션 ID
+
+        Returns:
+            업데이트 성공 여부
+        """
+        if thread_ts in self._thread_cards:
+            self._thread_cards[thread_ts].session_id = session_id
+            self._save_thread_cards()
+            return True
+        return False
+
+    def get_tracked_by_thread_ts(self, thread_ts: str) -> Optional[ThreadCardInfo]:
+        """thread_ts로 ThreadCardInfo 조회 (리액션 처리용)
 
         Args:
             thread_ts: 슬랙 메시지 타임스탬프
 
         Returns:
-            해당 thread_ts를 가진 TrackedCard 또는 None
+            해당 thread_ts를 가진 ThreadCardInfo 또는 None
         """
-        for tracked in self._tracked.values():
-            if tracked.thread_ts == thread_ts:
-                return tracked
-        return None
+        return self._thread_cards.get(thread_ts)
 
     def update_tracked_session_id(self, card_id: str, session_id: str) -> bool:
         """TrackedCard의 session_id 업데이트
@@ -221,20 +301,10 @@ class TrelloWatcher:
                 logger.info(f"새 카드 감지: [{list_key}] {card.name}")
                 self._handle_new_card(card, list_key)
 
-        # 2. 더 이상 감시 리스트에 없는 카드 정리
-        removed = []
-        for card_id in self._tracked:
-            if card_id not in current_cards:
-                removed.append(card_id)
+        # NOTE: _tracked 삭제는 폴링에서 하지 않음
+        # Claude 실행 완료 시 _untrack_card()로 삭제됨
 
-        for card_id in removed:
-            tracked = self._tracked.pop(card_id)
-            logger.info(f"카드 추적 해제: {tracked.card_name} (리스트 이동)")
-
-        if removed:
-            self._save_tracked()
-
-        # 3. Review 리스트에서 dueComplete된 카드를 Done으로 이동
+        # 2. Review 리스트에서 dueComplete된 카드를 Done으로 이동
         self._check_review_list_for_completion()
 
     def _check_review_list_for_completion(self):
@@ -360,6 +430,9 @@ class TrelloWatcher:
         self._tracked[card.id] = tracked
         self._save_tracked()
 
+        # 5-1. 스레드-카드 매핑 등록 (리액션 처리용)
+        self._register_thread_card(tracked)
+
         # 6. 세션 생성
         session = self.session_manager.create(
             thread_ts=thread_ts,
@@ -407,6 +480,8 @@ class TrelloWatcher:
                     logger.info(f"🌀 prefix 제거: {card.name}")
                 else:
                     logger.warning(f"🌀 prefix 제거 실패: {card.name}")
+                # To Go 추적에서 제거 (새 카드 감지용)
+                self._untrack_card(card_id_for_cleanup)
                 # 락 해제
                 if lock:
                     lock.release()
@@ -460,24 +535,24 @@ class TrelloWatcher:
 """
         return prompt
 
-    def build_reaction_execute_prompt(self, tracked: TrackedCard) -> str:
+    def build_reaction_execute_prompt(self, info: ThreadCardInfo) -> str:
         """리액션 기반 실행용 프롬프트 생성
 
         사용자가 계획 수립 완료 메시지에 실행 리액션을 달았을 때 사용합니다.
         Execute 레이블이 있는 To Go 카드와 동일한 프롬프트를 생성합니다.
 
         Args:
-            tracked: TrackedCard 정보
+            info: ThreadCardInfo 정보
 
         Returns:
             실행 프롬프트 문자열
         """
-        prompt = f"""🚀 리액션으로 실행이 요청된 '{tracked.card_name}' 태스크를 실행해주세요.
+        prompt = f"""🚀 리액션으로 실행이 요청된 '{info.card_name}' 태스크를 실행해주세요.
 
 이전에 계획 수립이 완료된 태스크입니다.
 체크리스트와 코멘트를 확인하고 계획에 따라 작업을 수행하세요.
 
-카드 ID: {tracked.card_id}
-카드 URL: {tracked.card_url}
+카드 ID: {info.card_id}
+카드 URL: {info.card_url}
 {self._build_task_context_hint()}"""
         return prompt

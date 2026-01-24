@@ -152,13 +152,13 @@ def register_message_handlers(app, dependencies: dict):
             logger.debug("트렐로 워처가 없습니다.")
             return
 
-        # 3. TrackedCard 조회 (해당 메시지가 트렐로 워처 결과인지 확인)
+        # 3. ThreadCardInfo 조회 (해당 메시지가 트렐로 워처 결과인지 확인)
         tracked = trello_watcher.get_tracked_by_thread_ts(item_ts)
         if not tracked:
-            logger.debug(f"TrackedCard를 찾을 수 없습니다: {item_ts}")
+            logger.debug(f"ThreadCardInfo를 찾을 수 없습니다: {item_ts}")
             return
 
-        logger.info(f"TrackedCard 발견: {tracked.card_name} (card_id={tracked.card_id})")
+        logger.info(f"ThreadCardInfo 발견: {tracked.card_name} (card_id={tracked.card_id})")
 
         # 4. 기존 세션 조회
         session = session_manager.get(item_ts)

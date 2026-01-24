@@ -59,8 +59,9 @@
 - `GlossaryMatchResult` (seosoyoung/translator/glossary.py:43): 용어 매칭 결과
 - `TrelloCard` (seosoyoung/trello/client.py:16): 트렐로 카드 정보
 - `TrelloClient` (seosoyoung/trello/client.py:28): Trello API 클라이언트
-- `TrackedCard` (seosoyoung/trello/watcher.py:19): 추적 중인 카드 정보
-- `TrelloWatcher` (seosoyoung/trello/watcher.py:33): Trello 리스트 감시자
+- `TrackedCard` (seosoyoung/trello/watcher.py:19): 추적 중인 카드 정보 (To Go 리스트 감시용)
+- `ThreadCardInfo` (seosoyoung/trello/watcher.py:34): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
+- `TrelloWatcher` (seosoyoung/trello/watcher.py:50): Trello 리스트 감시자
 
 ### 주요 함수
 
