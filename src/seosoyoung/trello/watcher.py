@@ -116,6 +116,36 @@ class TrelloWatcher:
         except Exception as e:
             logger.error(f"추적 상태 저장 실패: {e}")
 
+    def get_tracked_by_thread_ts(self, thread_ts: str) -> Optional[TrackedCard]:
+        """thread_ts로 TrackedCard 조회
+
+        Args:
+            thread_ts: 슬랙 메시지 타임스탬프
+
+        Returns:
+            해당 thread_ts를 가진 TrackedCard 또는 None
+        """
+        for tracked in self._tracked.values():
+            if tracked.thread_ts == thread_ts:
+                return tracked
+        return None
+
+    def update_tracked_session_id(self, card_id: str, session_id: str) -> bool:
+        """TrackedCard의 session_id 업데이트
+
+        Args:
+            card_id: 카드 ID
+            session_id: Claude 세션 ID
+
+        Returns:
+            업데이트 성공 여부
+        """
+        if card_id in self._tracked:
+            self._tracked[card_id].session_id = session_id
+            self._save_tracked()
+            return True
+        return False
+
     def start(self):
         """워처 시작 (백그라운드 스레드)"""
         if not self.trello.is_configured():
@@ -428,4 +458,26 @@ class TrelloWatcher:
 {card.desc}
 ---
 """
+        return prompt
+
+    def build_reaction_execute_prompt(self, tracked: TrackedCard) -> str:
+        """리액션 기반 실행용 프롬프트 생성
+
+        사용자가 계획 수립 완료 메시지에 실행 리액션을 달았을 때 사용합니다.
+        Execute 레이블이 있는 To Go 카드와 동일한 프롬프트를 생성합니다.
+
+        Args:
+            tracked: TrackedCard 정보
+
+        Returns:
+            실행 프롬프트 문자열
+        """
+        prompt = f"""🚀 리액션으로 실행이 요청된 '{tracked.card_name}' 태스크를 실행해주세요.
+
+이전에 계획 수립이 완료된 태스크입니다.
+체크리스트와 코멘트를 확인하고 계획에 따라 작업을 수행하세요.
+
+카드 ID: {tracked.card_id}
+카드 URL: {tracked.card_url}
+{self._build_task_context_hint()}"""
         return prompt

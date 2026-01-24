@@ -82,6 +82,9 @@ class Config:
     # 번역 디버그 로그 채널 (비어있으면 비활성화)
     TRANSLATE_DEBUG_CHANNEL = os.getenv("TRANSLATE_DEBUG_CHANNEL", "")
 
+    # 리액션 기반 실행 트리거 이모지 (슬랙 리액션 이름, 콜론 없이)
+    EXECUTE_EMOJI = os.getenv("EXECUTE_EMOJI", "rocket")
+
     # 용어집 경로 (번역 시 고유명사 참조)
     @staticmethod
     def get_glossary_path() -> str:

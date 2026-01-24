@@ -2,10 +2,13 @@
 
 import re
 import logging
+import threading
+import asyncio
 
 from seosoyoung.config import Config
 from seosoyoung.handlers.translate import process_translate_message
 from seosoyoung.slack import download_files_sync, build_file_context
+from seosoyoung.claude import get_claude_runner
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +122,162 @@ def register_message_handlers(app, dependencies: dict):
 
     @app.event("reaction_added")
     def handle_reaction(event, client):
-        """이모지 리액션 처리"""
-        # TODO: 리액션 기반 동작 구현
-        pass
+        """이모지 리액션 처리
+
+        트렐로 워처가 계획 수립 후 Backlog로 이동한 카드의 슬랙 메시지에
+        사용자가 실행 리액션(rocket)을 달면, 해당 스레드에서 세션을 이어서 실행합니다.
+
+        워크플로우:
+        1. 리액션이 EXECUTE_EMOJI인지 확인
+        2. 리액션된 메시지가 트렐로 워처의 결과인지 TrackedCard로 확인
+        3. 기존 세션 조회 및 compact 처리
+        4. Execute 레이블이 있는 것과 동일한 프롬프트로 실행
+        5. 원본 메시지의 스레드에 응답
+        """
+        reaction = event.get("reaction", "")
+        item = event.get("item", {})
+        item_ts = item.get("ts", "")
+        item_channel = item.get("channel", "")
+        user_id = event.get("user", "")
+
+        # 1. 실행 리액션인지 확인
+        if reaction != Config.EXECUTE_EMOJI:
+            return
+
+        logger.info(f"실행 리액션 감지: {reaction} on {item_ts} by {user_id}")
+
+        # 2. 트렐로 워처 참조 가져오기
+        trello_watcher = dependencies.get("trello_watcher_ref", lambda: None)()
+        if not trello_watcher:
+            logger.debug("트렐로 워처가 없습니다.")
+            return
+
+        # 3. TrackedCard 조회 (해당 메시지가 트렐로 워처 결과인지 확인)
+        tracked = trello_watcher.get_tracked_by_thread_ts(item_ts)
+        if not tracked:
+            logger.debug(f"TrackedCard를 찾을 수 없습니다: {item_ts}")
+            return
+
+        logger.info(f"TrackedCard 발견: {tracked.card_name} (card_id={tracked.card_id})")
+
+        # 4. 기존 세션 조회
+        session = session_manager.get(item_ts)
+        if not session:
+            logger.warning(f"세션을 찾을 수 없습니다: {item_ts}")
+            # 세션이 없으면 새로 생성
+            session = session_manager.create(
+                thread_ts=item_ts,
+                channel_id=item_channel,
+                user_id=user_id,
+                username="reaction_executor",
+                role="admin"
+            )
+
+        # 5. 재시작 대기 중이면 무시
+        if restart_manager.is_pending:
+            try:
+                client.chat_postMessage(
+                    channel=item_channel,
+                    thread_ts=item_ts,
+                    text="재시작을 대기하는 중입니다. 재시작이 완료되면 다시 시도해주세요."
+                )
+            except Exception as e:
+                logger.error(f"리액션 실행 거부 메시지 전송 실패: {e}")
+            return
+
+        # 6. 스레드에 실행 시작 알림 (원본 메시지의 스레드에)
+        try:
+            start_msg = client.chat_postMessage(
+                channel=item_channel,
+                thread_ts=item_ts,
+                text="`🚀 리액션으로 실행을 시작합니다. 세션을 정리하는 중...`"
+            )
+            start_msg_ts = start_msg["ts"]
+        except Exception as e:
+            logger.error(f"실행 시작 알림 전송 실패: {e}")
+            return
+
+        # 7. 실행 프롬프트 생성
+        prompt = trello_watcher.build_reaction_execute_prompt(tracked)
+
+        # 8. 실행을 위해 TrackedCard에 has_execute 플래그 설정
+        tracked.has_execute = True
+
+        # 9. 별도 스레드에서 compact + 실행
+        def run_with_compact():
+            lock = None
+            get_session_lock = dependencies.get("get_session_lock")
+            if get_session_lock:
+                lock = get_session_lock(item_ts)
+                if not lock.acquire(blocking=False):
+                    try:
+                        client.chat_update(
+                            channel=item_channel,
+                            ts=start_msg_ts,
+                            text="이전 요청을 처리 중이에요. 잠시 후 다시 시도해주세요."
+                        )
+                    except Exception:
+                        pass
+                    return
+
+            try:
+                # Compact 처리
+                if session.session_id:
+                    try:
+                        client.chat_update(
+                            channel=item_channel,
+                            ts=start_msg_ts,
+                            text="`🚀 세션 정리 중... (compact)`"
+                        )
+
+                        runner = get_claude_runner()
+                        compact_result = asyncio.run(runner.compact_session(session.session_id))
+
+                        if compact_result.success:
+                            logger.info(f"세션 컴팩트 성공: {session.session_id}")
+                        else:
+                            logger.warning(f"세션 컴팩트 실패: {compact_result.error}")
+
+                        # 컴팩트 후 세션 ID가 변경될 수 있음
+                        if compact_result.session_id:
+                            session_manager.update_session_id(item_ts, compact_result.session_id)
+
+                    except Exception as e:
+                        logger.error(f"세션 컴팩트 오류: {e}")
+
+                # say 함수 정의
+                def say(text, thread_ts=None):
+                    client.chat_postMessage(
+                        channel=item_channel,
+                        thread_ts=thread_ts or item_ts,
+                        text=text
+                    )
+
+                # Claude 실행 (trello_card 정보 전달)
+                run_claude_in_session(
+                    session=session,
+                    prompt=prompt,
+                    msg_ts=start_msg_ts,
+                    channel=item_channel,
+                    say=say,
+                    client=client,
+                    trello_card=tracked
+                )
+
+            except Exception as e:
+                logger.exception(f"리액션 기반 실행 오류: {e}")
+                try:
+                    client.chat_update(
+                        channel=item_channel,
+                        ts=start_msg_ts,
+                        text=f"❌ 실행 오류: {str(e)}"
+                    )
+                except Exception:
+                    pass
+            finally:
+                if lock:
+                    lock.release()
+
+        # 백그라운드 스레드에서 실행
+        execute_thread = threading.Thread(target=run_with_compact, daemon=True)
+        execute_thread.start()

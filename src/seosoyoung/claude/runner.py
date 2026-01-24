@@ -396,6 +396,40 @@ class ClaudeRunner:
         )
 
 
+    async def compact_session(self, session_id: str) -> ClaudeResult:
+        """세션 컴팩트 처리
+
+        세션의 대화 내역을 압축하여 토큰 사용량을 줄입니다.
+        Claude Code CLI의 `--resume {session_id}` 옵션과 `/compact` 명령을 사용합니다.
+
+        Args:
+            session_id: 컴팩트할 세션 ID
+
+        Returns:
+            ClaudeResult (compact 결과)
+        """
+        if not session_id:
+            return ClaudeResult(
+                success=False,
+                output="",
+                error="세션 ID가 없습니다."
+            )
+
+        # /compact 명령어 전송 (Claude Code CLI 내장 명령)
+        # 세션을 이어서 /compact를 실행
+        prompt = "/compact"
+
+        logger.info(f"세션 컴팩트 시작: {session_id}")
+        result = await self._execute(prompt, session_id)
+
+        if result.success:
+            logger.info(f"세션 컴팩트 완료: {session_id}")
+        else:
+            logger.error(f"세션 컴팩트 실패: {session_id}, {result.error}")
+
+        return result
+
+
 # 테스트용
 async def main():
     runner = ClaudeRunner()

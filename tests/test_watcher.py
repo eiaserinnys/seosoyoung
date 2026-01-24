@@ -133,5 +133,104 @@ class TestTrelloWatcherPauseResume:
         mock_trello.get_cards_in_list.assert_called()
 
 
+class TestTrelloWatcherTrackedCardLookup:
+    """TrackedCard 조회 기능 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_get_tracked_by_thread_ts_found(self, mock_config, mock_trello_client):
+        """thread_ts로 TrackedCard 조회 - 찾음"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock()
+        )
+
+        # TrackedCard 추가
+        tracked = TrackedCard(
+            card_id="card123",
+            card_name="테스트 카드",
+            card_url="https://trello.com/c/abc123",
+            list_id="list123",
+            list_key="to_go",
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+            detected_at="2024-01-01T00:00:00"
+        )
+        watcher._tracked["card123"] = tracked
+
+        # 조회
+        result = watcher.get_tracked_by_thread_ts("1234567890.123456")
+        assert result is not None
+        assert result.card_id == "card123"
+        assert result.card_name == "테스트 카드"
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_get_tracked_by_thread_ts_not_found(self, mock_config, mock_trello_client):
+        """thread_ts로 TrackedCard 조회 - 못 찾음"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock()
+        )
+
+        # 조회 (없음)
+        result = watcher.get_tracked_by_thread_ts("nonexistent_ts")
+        assert result is None
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_build_reaction_execute_prompt(self, mock_config, mock_trello_client):
+        """리액션 기반 실행 프롬프트 생성"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock()
+        )
+
+        tracked = TrackedCard(
+            card_id="card123",
+            card_name="기능 구현 작업",
+            card_url="https://trello.com/c/abc123",
+            list_id="list123",
+            list_key="to_go",
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+            detected_at="2024-01-01T00:00:00"
+        )
+
+        prompt = watcher.build_reaction_execute_prompt(tracked)
+
+        assert "🚀 리액션으로 실행이 요청된" in prompt
+        assert "기능 구현 작업" in prompt
+        assert "card123" in prompt
+        assert "https://trello.com/c/abc123" in prompt
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
