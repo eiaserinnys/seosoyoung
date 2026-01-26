@@ -16,7 +16,6 @@ from seosoyoung.slack.file_handler import (
     download_files_from_event,
     build_file_context,
     TMP_DIR,
-    MAX_FILE_SIZE,
 )
 
 
@@ -140,25 +139,6 @@ class TestDownloadFile:
         assert result["original_name"] == "test.txt"
         assert result["file_type"] == "text"
         assert result["content"] == file_content
-
-    @pytest.mark.asyncio
-    async def test_skip_large_file(self, tmp_path, monkeypatch):
-        """크기 초과 파일 스킵"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
-
-        result = await download_file(
-            {
-                "id": "F123",
-                "name": "large.bin",
-                "mimetype": "application/octet-stream",
-                "filetype": "bin",
-                "size": MAX_FILE_SIZE + 1,
-                "url_private": "https://files.slack.com/large.bin",
-            },
-            "1234567890.123456",
-        )
-
-        assert result is None
 
     @pytest.mark.asyncio
     async def test_skip_missing_url(self, tmp_path, monkeypatch):

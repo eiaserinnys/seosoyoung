@@ -15,9 +15,6 @@ from seosoyoung.config import Config
 
 logger = logging.getLogger(__name__)
 
-# 파일 크기 제한 (10MB)
-MAX_FILE_SIZE = 10 * 1024 * 1024
-
 # 임시 파일 저장 경로
 TMP_DIR = Path.cwd() / "tmp" / "slack_files"
 
@@ -120,23 +117,15 @@ async def download_file(
         logger.warning(f"파일 URL 없음: {file_name}")
         return None
 
-    # 파일 크기 체크
-    if file_size > MAX_FILE_SIZE:
-        logger.warning(f"파일 크기 초과: {file_name} ({file_size} bytes > {MAX_FILE_SIZE})")
-        return None
-
     try:
         # 임시 폴더 확보
         tmp_dir = ensure_tmp_dir(thread_ts)
-        local_path = tmp_dir / file_name
 
-        # 동일 파일명 충돌 방지
-        counter = 1
-        while local_path.exists():
-            stem = Path(file_name).stem
-            suffix = Path(file_name).suffix
-            local_path = tmp_dir / f"{stem}_{counter}{suffix}"
-            counter += 1
+        # 파일명에 슬랙 file_id를 포함하여 중복 방지
+        # 예: image.png -> image_F0AAVCNQ4K0.png
+        stem = Path(file_name).stem
+        suffix = Path(file_name).suffix
+        local_path = tmp_dir / f"{stem}_{file_id}{suffix}"
 
         # 파일 다운로드 (Bot Token 인증)
         async with httpx.AsyncClient() as client:

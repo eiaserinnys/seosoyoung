@@ -53,8 +53,8 @@
 - `DialogueMetadata` (seosoyoung/search/reference.py:11): dlgId에 대한 메타데이터.
 - `DialogueReferenceMap` (seosoyoung/search/reference.py:19): 대화 구조 파일을 스캔하여 dlgId → 메타데이터 역참조 맵 생성.
 - `DialogueSearcher` (seosoyoung/search/searcher.py:14): 대사 검색 API.
-- `SlackFile` (seosoyoung/slack/file_handler.py:38): 슬랙 파일 정보
-- `DownloadedFile` (seosoyoung/slack/file_handler.py:48): 다운로드된 파일 정보
+- `SlackFile` (seosoyoung/slack/file_handler.py:35): 슬랙 파일 정보
+- `DownloadedFile` (seosoyoung/slack/file_handler.py:45): 다운로드된 파일 정보
 - `Language` (seosoyoung/translator/detector.py:9): 
 - `GlossaryMatchResult` (seosoyoung/translator/glossary.py:43): 용어 매칭 결과
 - `TrelloCard` (seosoyoung/trello/client.py:16): 트렐로 카드 정보
@@ -91,14 +91,14 @@
 - `get_default_index_path()` (seosoyoung/search/searcher.py:197): 기본 인덱스 경로 반환.
 - `format_results()` (seosoyoung/search/searcher.py:202): 결과 포맷팅.
 - `main()` (seosoyoung/search/searcher.py:222): CLI 진입점.
-- `get_file_type()` (seosoyoung/slack/file_handler.py:57): 파일 확장자로 타입 분류
-- `ensure_tmp_dir()` (seosoyoung/slack/file_handler.py:70): 스레드별 임시 폴더 생성
-- `cleanup_thread_files()` (seosoyoung/slack/file_handler.py:79): 스레드의 임시 파일 정리
-- `cleanup_all_files()` (seosoyoung/slack/file_handler.py:91): 모든 임시 파일 정리
-- `async download_file()` (seosoyoung/slack/file_handler.py:101): 슬랙 파일 다운로드
-- `async download_files_from_event()` (seosoyoung/slack/file_handler.py:194): 이벤트에서 파일들을 다운로드 (async 버전)
-- `download_files_sync()` (seosoyoung/slack/file_handler.py:220): 이벤트에서 파일들을 다운로드 (동기 버전)
-- `build_file_context()` (seosoyoung/slack/file_handler.py:251): 파일 정보를 프롬프트 컨텍스트로 구성
+- `get_file_type()` (seosoyoung/slack/file_handler.py:54): 파일 확장자로 타입 분류
+- `ensure_tmp_dir()` (seosoyoung/slack/file_handler.py:67): 스레드별 임시 폴더 생성
+- `cleanup_thread_files()` (seosoyoung/slack/file_handler.py:76): 스레드의 임시 파일 정리
+- `cleanup_all_files()` (seosoyoung/slack/file_handler.py:88): 모든 임시 파일 정리
+- `async download_file()` (seosoyoung/slack/file_handler.py:98): 슬랙 파일 다운로드
+- `async download_files_from_event()` (seosoyoung/slack/file_handler.py:183): 이벤트에서 파일들을 다운로드 (async 버전)
+- `download_files_sync()` (seosoyoung/slack/file_handler.py:209): 이벤트에서 파일들을 다운로드 (동기 버전)
+- `build_file_context()` (seosoyoung/slack/file_handler.py:240): 파일 정보를 프롬프트 컨텍스트로 구성
 - `upload_file_to_slack()` (seosoyoung/slack/helpers.py:12): 파일을 슬랙에 첨부
 - `send_long_message()` (seosoyoung/slack/helpers.py:47): 긴 메시지를 분할해서 전송 (thread_ts가 None이면 채널에 응답)
 - `main()` (seosoyoung/translator/__main__.py:18): 
