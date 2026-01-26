@@ -144,7 +144,8 @@ class ClaudeExecutor:
         say,
         client,
         role: str = None,
-        trello_card: TrackedCard = None
+        trello_card: TrackedCard = None,
+        is_existing_thread: bool = False
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -157,6 +158,7 @@ class ClaudeExecutor:
             client: Slack client
             role: 실행할 역할 (None이면 session.role 사용)
             trello_card: 트렐로 워처에서 호출된 경우 TrackedCard 정보
+            is_existing_thread: 기존 스레드에서 호출된 경우 True (세션 없이 스레드에서 처음 호출)
         """
         thread_ts = session.thread_ts
         # mark_session_running/stopped에 사용할 원래 thread_ts 보존
@@ -184,8 +186,10 @@ class ClaudeExecutor:
         # 멘션 응답 메시지 ts (세션 thread_ts 업데이트용)
         mention_response_ts = None
 
-        # 스레드 내 후속 대화인지 판단 (최초 호출이면 message_count가 0)
-        is_thread_reply = session.message_count > 0
+        # 스레드 내 후속 대화인지 판단
+        # - message_count > 0: 세션 내 후속 대화
+        # - is_existing_thread: 기존 스레드에서 처음 호출 (세션 없이)
+        is_thread_reply = session.message_count > 0 or is_existing_thread
 
         try:
             if is_trello_mode:

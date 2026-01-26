@@ -205,7 +205,7 @@ def register_mention_handlers(app, dependencies: dict):
 
         # 세션 생성 위치 결정
         session_thread_ts = thread_ts or ts
-        is_oneshot = thread_ts is not None  # 스레드 내 원샷 호출
+        is_existing_thread = thread_ts is not None  # 기존 스레드에서 호출됨
 
         # 세션 생성 (역할 정보 포함)
         session = session_manager.create(
@@ -251,4 +251,7 @@ def register_mention_handlers(app, dependencies: dict):
         prompt = "\n".join(prompt_parts)
 
         # Claude 실행 (스레드 락으로 동시 실행 방지)
-        run_claude_in_session(session, prompt, ts, channel, say, client)
+        run_claude_in_session(
+            session, prompt, ts, channel, say, client,
+            is_existing_thread=is_existing_thread
+        )
