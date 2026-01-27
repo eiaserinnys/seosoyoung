@@ -433,7 +433,7 @@ class ClaudeRunner:
 # 테스트용
 async def main():
     runner = ClaudeRunner()
-    result = await runner.run("eb_renpy 프로젝트 구조를 간단히 설명해줘. 3줄 이내로.")
+    result = await runner.run("eb_lore 프로젝트 구조를 간단히 설명해줘. 3줄 이내로.")
     print(f"Success: {result.success}")
     print(f"Session ID: {result.session_id}")
     print(f"Output:\n{result.output}")
