@@ -14,7 +14,7 @@ class TestDialogueSearcher:
 
         index_path = get_default_index_path()
         if not index_path.exists():
-            pytest.skip("Index not found. Run indexer first.")
+            pytest.skip("Index not found. Run build-dialogue-index tool first.")
 
         return DialogueSearcher(index_path)
 
@@ -74,54 +74,17 @@ class TestDialogueSearcher:
             assert r["speaker"] == "ar"
 
 
-class TestDialogueIndexer:
-    """DialogueIndexer 테스트."""
+class TestGetDefaultIndexPath:
+    """get_default_index_path 테스트."""
 
-    def test_get_default_paths(self):
-        """기본 경로 반환 테스트."""
-        from seosoyoung.search import get_default_paths
+    def test_get_default_index_path(self):
+        """기본 인덱스 경로 반환 테스트."""
+        from seosoyoung.search import get_default_index_path
 
-        narrative_path, index_path = get_default_paths()
-        assert "eb_narrative" in str(narrative_path)
-        assert "narrative" in str(narrative_path)
-        assert "internal" in str(index_path)
+        index_path = get_default_index_path()
+        assert ".local" in str(index_path)
+        assert "index" in str(index_path)
         assert "dialogues" in str(index_path)
-
-
-class TestDialogueReferenceMap:
-    """DialogueReferenceMap 테스트."""
-
-    @pytest.fixture
-    def ref_map(self):
-        """역참조 맵 fixture."""
-        from seosoyoung.search.reference import build_reference_map
-
-        narrative_path = Path.cwd() / "eb_narrative" / "narrative"
-        if not narrative_path.exists():
-            pytest.skip("Narrative path not found")
-
-        return build_reference_map(narrative_path)
-
-    def test_build_reference_map(self, ref_map):
-        """역참조 맵 빌드 테스트."""
-        stats = ref_map.get_stats()
-        assert stats["total_dlgids"] > 0
-        assert stats["unique_labels"] > 0
-
-    def test_get_metadata(self, ref_map):
-        """메타데이터 조회 테스트."""
-        # 아무 dlgId나 가져오기
-        if not ref_map._ref_map:
-            pytest.skip("Reference map is empty")
-
-        dlgId = next(iter(ref_map._ref_map.keys()))
-        meta = ref_map.get(dlgId)
-
-        assert meta is not None
-        assert hasattr(meta, "labels")
-        assert hasattr(meta, "revisions")
-        assert hasattr(meta, "acts")
-        assert hasattr(meta, "triggers")
 
 
 class TestFormatResults:

@@ -15,8 +15,8 @@ from seosoyoung.config import Config
 
 logger = logging.getLogger(__name__)
 
-# 임시 파일 저장 경로
-TMP_DIR = Path.cwd() / "tmp" / "slack_files"
+# 임시 파일 저장 경로 (.local/tmp/slack_files)
+TMP_DIR = Path.cwd() / ".local" / "tmp" / "slack_files"
 
 # 지원 파일 타입 분류
 TEXT_EXTENSIONS = {

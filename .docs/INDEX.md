@@ -19,8 +19,6 @@
 - [`seosoyoung/logging_config.py`](modules/seosoyoung_logging_config.md): 로깅 설정 모듈
 - [`seosoyoung/main.py`](modules/seosoyoung_main.md): SeoSoyoung 슬랙 봇 메인
 - [`seosoyoung/restart.py`](modules/seosoyoung_restart.md): 재시작 관리
-- [`search/indexer.py`](modules/search_indexer.md): Whoosh indexer for dialogue data.
-- [`search/reference.py`](modules/search_reference.md): 대화 구조 파일에서 dlgId → 메타데이터 역참조 맵 생성.
 - [`search/schema.py`](modules/search_schema.md): Whoosh schema definition for dialogue search.
 - [`search/searcher.py`](modules/search_searcher.md): Whoosh searcher for dialogue data.
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
@@ -49,9 +47,6 @@
 - `RestartType` (seosoyoung/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
-- `DialogueIndexer` (seosoyoung/search/indexer.py:14): dlglist YAML 파일을 Whoosh 인덱스로 변환.
-- `DialogueMetadata` (seosoyoung/search/reference.py:11): dlgId에 대한 메타데이터.
-- `DialogueReferenceMap` (seosoyoung/search/reference.py:19): 대화 구조 파일을 스캔하여 dlgId → 메타데이터 역참조 맵 생성.
 - `DialogueSearcher` (seosoyoung/search/searcher.py:14): 대사 검색 API.
 - `SlackFile` (seosoyoung/slack/file_handler.py:35): 슬랙 파일 정보
 - `DownloadedFile` (seosoyoung/slack/file_handler.py:45): 다운로드된 파일 정보
@@ -85,9 +80,6 @@
 - `notify_shutdown()` (seosoyoung/main.py:98): 봇 종료 알림
 - `start_trello_watcher()` (seosoyoung/main.py:109): Trello 워처 시작
 - `init_bot_user_id()` (seosoyoung/main.py:128): 봇 사용자 ID 초기화
-- `get_default_paths()` (seosoyoung/search/indexer.py:144): 기본 경로 반환.
-- `build_index()` (seosoyoung/search/indexer.py:156): 인덱스 빌드 CLI 진입점.
-- `build_reference_map()` (seosoyoung/search/reference.py:222): 역참조 맵 빌드 헬퍼.
 - `get_default_index_path()` (seosoyoung/search/searcher.py:197): 기본 인덱스 경로 반환.
 - `format_results()` (seosoyoung/search/searcher.py:202): 결과 포맷팅.
 - `main()` (seosoyoung/search/searcher.py:222): CLI 진입점.

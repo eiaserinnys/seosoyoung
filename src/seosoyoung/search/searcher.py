@@ -196,7 +196,7 @@ class DialogueSearcher:
 
 def get_default_index_path() -> Path:
     """기본 인덱스 경로 반환."""
-    return Path.cwd() / "internal" / "index" / "dialogues"
+    return Path.cwd() / ".local" / "index" / "dialogues"
 
 
 def format_results(results: list[dict], format_type: str = "json") -> str:
