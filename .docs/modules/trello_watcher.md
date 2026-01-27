@@ -57,8 +57,12 @@ To Go 리스트에 새 카드가 들어오면:
 - `_build_header(self, card_name, card_url, session_id)` (줄 356): 슬랙 메시지 헤더 생성
 - `_handle_new_card(self, card, list_key)` (줄 372): 새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행
 - `_build_task_context_hint(self)` (줄 493): 태스크 컨텍스트 힌트 생성
-- `_build_to_go_prompt(self, card, has_execute)` (줄 500): To Go 카드용 프롬프트 생성
-- `build_reaction_execute_prompt(self, info)` (줄 538): 리액션 기반 실행용 프롬프트 생성
+- `_build_list_ids_context(self)` (줄 500): 자주 사용하는 리스트 ID 컨텍스트 생성
+- `_format_checklists(self, checklists)` (줄 510): 체크리스트를 프롬프트용 문자열로 포맷
+- `_format_comments(self, comments)` (줄 523): 코멘트를 프롬프트용 문자열로 포맷
+- `_build_card_context(self, card_id, desc)` (줄 541): 카드의 체크리스트, 코멘트, 리스트 ID 컨텍스트를 조합
+- `_build_to_go_prompt(self, card, has_execute)` (줄 566): To Go 카드용 프롬프트 생성
+- `build_reaction_execute_prompt(self, info)` (줄 603): 리액션 기반 실행용 프롬프트 생성
 
 ## 내부 의존성
 

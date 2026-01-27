@@ -494,8 +494,74 @@ class TrelloWatcher:
         """태스크 컨텍스트 힌트 생성"""
         return """
 태스크는 여러가지 이유로 중단되거나 재개될 수 있습니다.
-제목, 본문과 함께 체크리스트와 코멘트를 확인하세요.
+아래 체크리스트와 코멘트를 참고하세요.
 """
+
+    def _build_list_ids_context(self) -> str:
+        """자주 사용하는 리스트 ID 컨텍스트 생성"""
+        return """
+## 리스트 ID (MCP 검색 불필요)
+- 📥 Draft: 696ddb607d7a2be9fef20614
+- 📦 Backlog: 696ddb707a578b0021173f72
+- 🚧 Blocked: 696ddb735d4b4b17cdc67a2e
+- 👀 Review: 696ddb72e70fe807b0199746
+"""
+
+    def _format_checklists(self, checklists: list[dict]) -> str:
+        """체크리스트를 프롬프트용 문자열로 포맷"""
+        if not checklists:
+            return "(체크리스트 없음)"
+
+        lines = []
+        for cl in checklists:
+            lines.append(f"### {cl['name']}")
+            for item in cl.get("items", []):
+                mark = "x" if item["state"] == "complete" else " "
+                lines.append(f"- [{mark}] {item['name']}")
+        return "\n".join(lines)
+
+    def _format_comments(self, comments: list[dict]) -> str:
+        """코멘트를 프롬프트용 문자열로 포맷"""
+        if not comments:
+            return "(코멘트 없음)"
+
+        lines = []
+        for c in comments:
+            # 날짜에서 시간 부분만 추출 (2026-01-27T05:10:41.387Z -> 01-27 05:10)
+            date_str = c.get("date", "")[:16].replace("T", " ") if c.get("date") else ""
+            author = c.get("author", "Unknown")
+            text = c.get("text", "").strip()
+            # 첫 3줄만 미리보기
+            preview = "\n".join(text.split("\n")[:3])
+            if len(text.split("\n")) > 3:
+                preview += "\n..."
+            lines.append(f"**[{date_str}] {author}**\n{preview}")
+        return "\n\n".join(lines)
+
+    def _build_card_context(self, card_id: str, desc: str = "") -> str:
+        """카드의 체크리스트, 코멘트, 리스트 ID 컨텍스트를 조합"""
+        # 체크리스트 조회
+        checklists = self.trello.get_card_checklists(card_id)
+        checklists_text = self._format_checklists(checklists)
+
+        # 코멘트 조회
+        comments = self.trello.get_card_comments(card_id)
+        comments_text = self._format_comments(comments)
+
+        # 리스트 ID 컨텍스트
+        list_ids_text = self._build_list_ids_context()
+
+        context = f"""
+## 카드 본문
+{desc if desc else "(본문 없음)"}
+
+## 체크리스트
+{checklists_text}
+
+## 코멘트
+{comments_text}
+{list_ids_text}"""
+        return context
 
     def _build_to_go_prompt(self, card: TrelloCard, has_execute: bool = False) -> str:
         """To Go 카드용 프롬프트 생성
@@ -506,13 +572,17 @@ class TrelloWatcher:
                 - True: 실행 모드 (계획 수립 후 바로 실행)
                 - False: 계획 모드 (계획 수립만 하고 Backlog로 이동)
         """
+        # 카드 컨텍스트 (체크리스트, 코멘트, 리스트 ID) 조회
+        card_context = self._build_card_context(card.id, card.desc)
+
         if has_execute:
             # 실행 모드: 계획 수립 후 바로 실행
             prompt = f"""🚀 To Go 리스트에 들어온 '{card.name}' 태스크를 실행해주세요.
 
 카드 ID: {card.id}
 카드 URL: {card.url}
-{self._build_task_context_hint()}"""
+{self._build_task_context_hint()}
+{card_context}"""
         else:
             # 계획 모드: 계획 수립만 하고 Backlog로 이동
             prompt = f"""📋 To Go 리스트에 들어온 '{card.name}' 태스크의 계획을 수립해주세요.
@@ -526,13 +596,8 @@ class TrelloWatcher:
 
 카드 ID: {card.id}
 카드 URL: {card.url}
-{self._build_task_context_hint()}"""
-        if card.desc:
-            prompt += f"""
----
-{card.desc}
----
-"""
+{self._build_task_context_hint()}
+{card_context}"""
         return prompt
 
     def build_reaction_execute_prompt(self, info: ThreadCardInfo) -> str:
@@ -547,6 +612,13 @@ class TrelloWatcher:
         Returns:
             실행 프롬프트 문자열
         """
+        # 카드의 본문 조회
+        card = self.trello.get_card(info.card_id)
+        desc = card.desc if card else ""
+
+        # 카드 컨텍스트 (체크리스트, 코멘트, 리스트 ID) 조회
+        card_context = self._build_card_context(info.card_id, desc)
+
         prompt = f"""🚀 리액션으로 실행이 요청된 '{info.card_name}' 태스크를 실행해주세요.
 
 이전에 계획 수립이 완료된 태스크입니다.
@@ -554,5 +626,6 @@ class TrelloWatcher:
 
 카드 ID: {info.card_id}
 카드 URL: {info.card_url}
-{self._build_task_context_hint()}"""
+{self._build_task_context_hint()}
+{card_context}"""
         return prompt

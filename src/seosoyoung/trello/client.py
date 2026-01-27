@@ -116,6 +116,82 @@ class TrelloClient:
         result = self._request("PUT", f"/cards/{card_id}", params={"idList": list_id})
         return result is not None
 
+    def get_card_checklists(self, card_id: str) -> list[dict]:
+        """카드의 체크리스트 목록 조회
+
+        Args:
+            card_id: 카드 ID
+
+        Returns:
+            체크리스트 목록 (각 체크리스트는 items 포함)
+            [
+                {
+                    "id": "...",
+                    "name": "체크리스트명",
+                    "items": [
+                        {"id": "...", "name": "항목명", "state": "complete|incomplete"}
+                    ]
+                }
+            ]
+        """
+        data = self._request("GET", f"/cards/{card_id}/checklists")
+        if not data:
+            return []
+
+        checklists = []
+        for checklist in data:
+            items = []
+            for item in checklist.get("checkItems", []):
+                items.append({
+                    "id": item["id"],
+                    "name": item["name"],
+                    "state": item["state"],  # "complete" or "incomplete"
+                })
+            checklists.append({
+                "id": checklist["id"],
+                "name": checklist["name"],
+                "items": items,
+            })
+        return checklists
+
+    def get_card_comments(self, card_id: str, limit: int = 50) -> list[dict]:
+        """카드의 코멘트 목록 조회
+
+        Args:
+            card_id: 카드 ID
+            limit: 최대 코멘트 수 (기본 50)
+
+        Returns:
+            코멘트 목록 (최신순)
+            [
+                {
+                    "id": "...",
+                    "text": "코멘트 내용",
+                    "date": "2024-01-01T00:00:00.000Z",
+                    "author": "작성자명"
+                }
+            ]
+        """
+        # filter=commentCard로 코멘트만 조회
+        data = self._request(
+            "GET",
+            f"/cards/{card_id}/actions",
+            params={"filter": "commentCard", "limit": limit}
+        )
+        if not data:
+            return []
+
+        comments = []
+        for action in data:
+            if action.get("type") == "commentCard":
+                comments.append({
+                    "id": action["id"],
+                    "text": action.get("data", {}).get("text", ""),
+                    "date": action.get("date", ""),
+                    "author": action.get("memberCreator", {}).get("fullName", "Unknown"),
+                })
+        return comments
+
     def is_configured(self) -> bool:
         """API 설정 여부 확인"""
         return bool(self.api_key and self.token)
