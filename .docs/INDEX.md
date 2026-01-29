@@ -36,7 +36,7 @@
 
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:42): Claude Code 실행 결과
 - `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:54): Claude Code SDK 기반 실행기
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:144): Claude Code 실행기
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:168): Claude Code 실행기
 - `ClaudeResult` (seosoyoung/claude/runner.py:43): Claude Code 실행 결과
 - `ClaudeRunner` (seosoyoung/claude/runner.py:55): Claude Code CLI 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러

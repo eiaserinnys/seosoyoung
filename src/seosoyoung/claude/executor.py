@@ -76,6 +76,30 @@ def _parse_summary_details(response: str) -> tuple[str | None, str | None, str]:
     return summary, details, remainder
 
 
+def _strip_summary_details_markers(response: str) -> str:
+    """응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
+
+    스레드 내 후속 대화에서 마커 태그를 제거할 때 사용.
+    마커 제거 후 빈 줄만 남으면 해당 줄도 삭제.
+
+    Args:
+        response: Claude 응답 텍스트
+
+    Returns:
+        마커가 제거된 텍스트
+    """
+    # 마커 태그만 제거 (내용은 유지)
+    result = re.sub(r'<!-- SUMMARY -->\s*', '', response)
+    result = re.sub(r'\s*<!-- /SUMMARY -->', '', result)
+    result = re.sub(r'<!-- DETAILS -->\s*', '', result)
+    result = re.sub(r'\s*<!-- /DETAILS -->', '', result)
+
+    # 빈 줄만 남은 경우 정리 (연속된 빈 줄을 하나로)
+    result = re.sub(r'\n\s*\n\s*\n', '\n\n', result)
+
+    return result.strip()
+
+
 # 트렐로 모드 이모지 리액션 매핑
 TRELLO_REACTIONS = {
     "planning": "thought_balloon",  # 💭 계획 중
@@ -397,10 +421,18 @@ class ClaudeExecutor:
         header = _build_trello_header(trello_card, final_session_id)
         continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
 
-        # 헤더-응답-continuation_hint 사이에 빈 줄 추가
-        max_response_len = 3900 - len(header) - len(continuation_hint) - 20  # 줄바꿈 추가 분량 반영
-        if len(response) <= max_response_len:
-            final_text = f"{header}\n\n{response}\n\n{continuation_hint}"
+        # 요약/상세 분리 파싱 (멘션과 동일하게 처리)
+        summary, details, remainder = _parse_summary_details(response)
+
+        if summary:
+            # 요약/상세 마커가 있는 경우: 메인 메시지에 요약, 스레드에 상세
+            max_summary_len = 3900 - len(header) - len(continuation_hint) - 20
+            if len(summary) <= max_summary_len:
+                final_text = f"{header}\n\n{summary}\n\n{continuation_hint}"
+            else:
+                truncated = summary[:max_summary_len]
+                final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
+
             client.chat_update(
                 channel=channel,
                 ts=main_msg_ts,
@@ -410,19 +442,41 @@ class ClaudeExecutor:
                     "text": {"type": "mrkdwn", "text": final_text}
                 }]
             )
+
+            # 스레드에 상세 내용 전송
+            if details:
+                self.send_long_message(say, details, thread_ts)
+
+            # 나머지 내용이 있으면 추가 전송
+            if remainder:
+                self.send_long_message(say, remainder, thread_ts)
         else:
-            truncated = response[:max_response_len]
-            final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
-            client.chat_update(
-                channel=channel,
-                ts=main_msg_ts,
-                text=final_text,
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": final_text}
-                }]
-            )
-            self.send_long_message(say, response, thread_ts)
+            # 기존 로직: 마커가 없는 경우
+            max_response_len = 3900 - len(header) - len(continuation_hint) - 20
+            if len(response) <= max_response_len:
+                final_text = f"{header}\n\n{response}\n\n{continuation_hint}"
+                client.chat_update(
+                    channel=channel,
+                    ts=main_msg_ts,
+                    text=final_text,
+                    blocks=[{
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": final_text}
+                    }]
+                )
+            else:
+                truncated = response[:max_response_len]
+                final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
+                client.chat_update(
+                    channel=channel,
+                    ts=main_msg_ts,
+                    text=final_text,
+                    blocks=[{
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": final_text}
+                    }]
+                )
+                self.send_long_message(say, response, thread_ts)
 
         # 첨부 파일은 스레드에 전송
         if result.attachments:
@@ -472,8 +526,11 @@ class ClaudeExecutor:
                 self.send_long_message(say, response, thread_ts)
         else:
             # 기존 로직: 마커가 없거나 스레드 내 후속 대화
+            # 스레드 내 후속 대화에서 마커가 있으면 태그만 제거
+            display_response = _strip_summary_details_markers(response) if is_thread_reply else response
+
             # 응답에 이미 continuation hint가 있으면 추가하지 않음
-            has_hint = "이 대화를 이어가려면" in response or "댓글을 달아주세요" in response or "스레드를 확인" in response
+            has_hint = "이 대화를 이어가려면" in display_response or "댓글을 달아주세요" in display_response or "스레드를 확인" in display_response
             should_add_hint = show_hint and not has_hint
             hint_to_use = simple_hint
 
@@ -482,8 +539,8 @@ class ClaudeExecutor:
                 hint_len = len(hint_to_use) + 10 if should_add_hint else 0
                 max_response_len = 3900 - hint_len
 
-                if len(response) <= max_response_len:
-                    final_text = f"{response}\n\n{hint_to_use}" if should_add_hint else response
+                if len(display_response) <= max_response_len:
+                    final_text = f"{display_response}\n\n{hint_to_use}" if should_add_hint else display_response
                     client.chat_update(
                         channel=channel,
                         ts=last_msg_ts,
@@ -495,7 +552,7 @@ class ClaudeExecutor:
                     )
                 else:
                     # 첫 번째 메시지에 잘린 응답 + continuation hint
-                    truncated = response[:max_response_len]
+                    truncated = display_response[:max_response_len]
                     first_part = f"{truncated}...\n\n{hint_to_use}" if should_add_hint else f"{truncated}..."
                     client.chat_update(
                         channel=channel,
@@ -507,10 +564,10 @@ class ClaudeExecutor:
                         }]
                     )
                     # 나머지는 스레드에 전송
-                    remaining = response[max_response_len:]
+                    remaining = display_response[max_response_len:]
                     self.send_long_message(say, remaining, thread_ts)
             except Exception:
-                self.send_long_message(say, response, thread_ts)
+                self.send_long_message(say, display_response, thread_ts)
 
         # 첨부 파일 처리
         if result.attachments:
