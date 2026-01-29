@@ -11,21 +11,21 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 ## 클래스
 
 ### `ClaudeExecutor`
-- 위치: 줄 110
+- 위치: 줄 144
 - 설명: Claude Code 실행기
 
 세션 내에서 Claude Code를 실행하고 결과를 처리합니다.
 
 #### 메서드
 
-- `__init__(self, session_manager, get_session_lock, mark_session_running, mark_session_stopped, get_running_session_count, restart_manager, upload_file_to_slack, send_long_message, send_restart_confirmation)` (줄 116): 
-- `run(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread)` (줄 138): 세션 내에서 Claude Code 실행 (공통 로직)
-- `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 326): 성공 결과 처리
-- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client)` (줄 352): 트렐로 모드 성공 처리
-- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply)` (줄 400): 일반 모드(멘션) 성공 처리
-- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 455): 재기동 마커 처리
-- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 478): 오류 결과 처리
-- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 521): 예외 처리
+- `__init__(self, session_manager, get_session_lock, mark_session_running, mark_session_stopped, get_running_session_count, restart_manager, upload_file_to_slack, send_long_message, send_restart_confirmation)` (줄 150): 
+- `run(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread)` (줄 172): 세션 내에서 Claude Code 실행 (공통 로직)
+- `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 360): 성공 결과 처리
+- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client)` (줄 386): 트렐로 모드 성공 처리
+- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply)` (줄 434): 일반 모드(멘션) 성공 처리
+- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 522): 재기동 마커 처리
+- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 545): 오류 결과 처리
+- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 588): 예외 처리
 
 ## 함수
 
@@ -44,8 +44,19 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 변환 규칙:
 - ` (모든 백틱) → ˋ (U+02CB, modifier letter grave accent)
 
+### `_parse_summary_details(response)`
+- 위치: 줄 45
+- 설명: 응답에서 요약과 상세 내용을 파싱
+
+Args:
+    response: Claude 응답 텍스트
+
+Returns:
+    (summary, details, remainder): 요약, 상세, 나머지 텍스트
+    - 마커가 없으면 (None, None, response) 반환
+
 ### `_add_reaction(client, channel, ts, emoji)`
-- 위치: 줄 54
+- 위치: 줄 88
 - 설명: 슬랙 메시지에 이모지 리액션 추가
 
 Args:
@@ -58,7 +69,7 @@ Returns:
     성공 여부
 
 ### `_remove_reaction(client, channel, ts, emoji)`
-- 위치: 줄 74
+- 위치: 줄 108
 - 설명: 슬랙 메시지에서 이모지 리액션 제거
 
 Args:
@@ -71,7 +82,7 @@ Returns:
     성공 여부
 
 ### `_build_trello_header(card, session_id)`
-- 위치: 줄 94
+- 위치: 줄 128
 - 설명: 트렐로 카드용 슬랙 메시지 헤더 생성
 
 진행 상태(계획/실행/완료)는 헤더가 아닌 슬랙 이모지 리액션으로 표시합니다.

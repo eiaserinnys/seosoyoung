@@ -42,6 +42,40 @@ def _escape_backticks(text: str) -> str:
     return text.replace('`', 'ˋ')
 
 
+def _parse_summary_details(response: str) -> tuple[str | None, str | None, str]:
+    """응답에서 요약과 상세 내용을 파싱
+
+    Args:
+        response: Claude 응답 텍스트
+
+    Returns:
+        (summary, details, remainder): 요약, 상세, 나머지 텍스트
+        - 마커가 없으면 (None, None, response) 반환
+    """
+    summary = None
+    details = None
+    remainder = response
+
+    # SUMMARY 파싱
+    summary_pattern = r'<!-- SUMMARY -->\s*(.*?)\s*<!-- /SUMMARY -->'
+    summary_match = re.search(summary_pattern, response, re.DOTALL)
+    if summary_match:
+        summary = summary_match.group(1).strip()
+        remainder = re.sub(summary_pattern, '', remainder, flags=re.DOTALL)
+
+    # DETAILS 파싱
+    details_pattern = r'<!-- DETAILS -->\s*(.*?)\s*<!-- /DETAILS -->'
+    details_match = re.search(details_pattern, response, re.DOTALL)
+    if details_match:
+        details = details_match.group(1).strip()
+        remainder = re.sub(details_pattern, '', remainder, flags=re.DOTALL)
+
+    # 나머지 정리
+    remainder = remainder.strip()
+
+    return summary, details, remainder
+
+
 # 트렐로 모드 이모지 리액션 매핑
 TRELLO_REACTIONS = {
     "planning": "thought_balloon",  # 💭 계획 중
@@ -404,19 +438,17 @@ class ClaudeExecutor:
         """일반 모드(멘션) 성공 처리"""
         # 스레드 내 후속 대화에는 continuation hint 불필요
         show_hint = not is_thread_reply
-        continuation_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
+        continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
+        simple_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
 
-        # 응답에 이미 continuation hint가 있으면 추가하지 않음
-        has_hint = "이 대화를 이어가려면" in response or "댓글을 달아주세요" in response
-        should_add_hint = show_hint and not has_hint
+        # 요약/상세 분리 파싱 (채널 최초 응답 시만 적용)
+        summary, details, remainder = _parse_summary_details(response)
 
-        try:
-            # continuation hint를 포함한 최대 응답 길이 계산
-            hint_len = len(continuation_hint) + 10 if should_add_hint else 0
-            max_response_len = 3900 - hint_len
-
-            if len(response) <= max_response_len:
-                final_text = f"{response}\n\n{continuation_hint}" if should_add_hint else response
+        # 요약/상세 마커가 있고, 채널 최초 응답인 경우
+        if summary and not is_thread_reply:
+            try:
+                # 메인 메시지: 요약 + continuation hint
+                final_text = f"{summary}\n\n{continuation_hint}"
                 client.chat_update(
                     channel=channel,
                     ts=last_msg_ts,
@@ -426,24 +458,59 @@ class ClaudeExecutor:
                         "text": {"type": "mrkdwn", "text": final_text}
                     }]
                 )
-            else:
-                # 첫 번째 메시지에 잘린 응답 + continuation hint
-                truncated = response[:max_response_len]
-                first_part = f"{truncated}...\n\n{continuation_hint}" if should_add_hint else f"{truncated}..."
-                client.chat_update(
-                    channel=channel,
-                    ts=last_msg_ts,
-                    text=first_part,
-                    blocks=[{
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": first_part}
-                    }]
-                )
-                # 나머지는 스레드에 전송
-                remaining = response[max_response_len:]
-                self.send_long_message(say, remaining, thread_ts)
-        except Exception:
-            self.send_long_message(say, response, thread_ts)
+
+                # 스레드에 상세 내용 전송
+                if details:
+                    self.send_long_message(say, details, thread_ts)
+
+                # 나머지 내용이 있으면 추가 전송
+                if remainder:
+                    self.send_long_message(say, remainder, thread_ts)
+
+            except Exception:
+                # 실패 시 기존 방식으로 폴백
+                self.send_long_message(say, response, thread_ts)
+        else:
+            # 기존 로직: 마커가 없거나 스레드 내 후속 대화
+            # 응답에 이미 continuation hint가 있으면 추가하지 않음
+            has_hint = "이 대화를 이어가려면" in response or "댓글을 달아주세요" in response or "스레드를 확인" in response
+            should_add_hint = show_hint and not has_hint
+            hint_to_use = simple_hint
+
+            try:
+                # continuation hint를 포함한 최대 응답 길이 계산
+                hint_len = len(hint_to_use) + 10 if should_add_hint else 0
+                max_response_len = 3900 - hint_len
+
+                if len(response) <= max_response_len:
+                    final_text = f"{response}\n\n{hint_to_use}" if should_add_hint else response
+                    client.chat_update(
+                        channel=channel,
+                        ts=last_msg_ts,
+                        text=final_text,
+                        blocks=[{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": final_text}
+                        }]
+                    )
+                else:
+                    # 첫 번째 메시지에 잘린 응답 + continuation hint
+                    truncated = response[:max_response_len]
+                    first_part = f"{truncated}...\n\n{hint_to_use}" if should_add_hint else f"{truncated}..."
+                    client.chat_update(
+                        channel=channel,
+                        ts=last_msg_ts,
+                        text=first_part,
+                        blocks=[{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": first_part}
+                        }]
+                    )
+                    # 나머지는 스레드에 전송
+                    remaining = response[max_response_len:]
+                    self.send_long_message(say, remaining, thread_ts)
+            except Exception:
+                self.send_long_message(say, response, thread_ts)
 
         # 첨부 파일 처리
         if result.attachments:
