@@ -22,10 +22,10 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 - `run(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread)` (줄 196): 세션 내에서 Claude Code 실행 (공통 로직)
 - `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 384): 성공 결과 처리
 - `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client)` (줄 410): 트렐로 모드 성공 처리
-- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply)` (줄 488): 일반 모드(멘션) 성공 처리
-- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 579): 재기동 마커 처리
-- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 602): 오류 결과 처리
-- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 645): 예외 처리
+- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply)` (줄 491): 일반 모드(멘션) 성공 처리
+- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 582): 재기동 마커 처리
+- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 605): 오류 결과 처리
+- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 648): 예외 처리
 
 ## 함수
 

@@ -423,6 +423,9 @@ class ClaudeExecutor:
 
         # 요약/상세 분리 파싱 (멘션과 동일하게 처리)
         summary, details, remainder = _parse_summary_details(response)
+        logger.info(f"[Trello] 파싱 결과 - summary: {summary is not None}, details: {details is not None}, response 길이: {len(response)}")
+        if summary:
+            logger.debug(f"[Trello] summary 내용: {summary[:100]}...")
 
         if summary:
             # 요약/상세 마커가 있는 경우: 메인 메시지에 요약, 스레드에 상세
