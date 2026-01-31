@@ -1128,5 +1128,227 @@ class TestRunNextWithPause:
             assert "검증 실패" in (updated_session.error_message or "")
 
 
+class TestRunListLabelTrigger:
+    """Phase 5: 트렐로 레이블 트리거 테스트 (🏃 Run List)"""
+
+    def test_has_run_list_label_returns_true(self):
+        """🏃 Run List 레이블 있는 카드 감지"""
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+        from unittest.mock import MagicMock
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        card = TrelloCard(
+            id="card_123",
+            name="Test Card",
+            desc="",
+            url="",
+            list_id="list_abc",
+            labels=[
+                {"id": "label_1", "name": "🏃 Run List", "color": "green"},
+            ],
+        )
+
+        assert watcher._has_run_list_label(card) is True
+
+    def test_has_run_list_label_returns_false(self):
+        """🏃 Run List 레이블 없는 카드"""
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+        from unittest.mock import MagicMock
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        card = TrelloCard(
+            id="card_123",
+            name="Test Card",
+            desc="",
+            url="",
+            list_id="list_abc",
+            labels=[
+                {"id": "label_1", "name": "Execute", "color": "red_dark"},
+            ],
+        )
+
+        assert watcher._has_run_list_label(card) is False
+
+
+class TestTrelloClientRemoveLabel:
+    """TrelloClient 레이블 제거 메서드 테스트"""
+
+    def test_remove_label_from_card_success(self):
+        """카드에서 레이블 제거 성공"""
+        from seosoyoung.trello.client import TrelloClient
+        from unittest.mock import MagicMock, patch
+
+        client = TrelloClient(api_key="test_key", token="test_token")
+
+        with patch.object(client, "_request") as mock_request:
+            mock_request.return_value = {}
+
+            result = client.remove_label_from_card("card_123", "label_456")
+
+            assert result is True
+            mock_request.assert_called_once_with(
+                "DELETE",
+                "/cards/card_123/idLabels/label_456"
+            )
+
+    def test_remove_label_from_card_failure(self):
+        """카드에서 레이블 제거 실패"""
+        from seosoyoung.trello.client import TrelloClient
+        from unittest.mock import MagicMock, patch
+
+        client = TrelloClient(api_key="test_key", token="test_token")
+
+        with patch.object(client, "_request") as mock_request:
+            mock_request.return_value = None
+
+            result = client.remove_label_from_card("card_123", "label_456")
+
+            assert result is False
+
+
+class TestCheckRunListLabels:
+    """_check_run_list_labels() 메서드 테스트"""
+
+    def test_check_run_list_labels_triggers_list_run(self):
+        """🏃 Run List 레이블 발견 시 리스트 정주행 시작"""
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+        from unittest.mock import MagicMock, patch
+
+        mock_trello = MagicMock()
+
+        # 리스트에 3개의 카드, 첫 번째만 🏃 Run List 레이블 있음
+        mock_trello.get_lists.return_value = [
+            {"id": "list_backlog", "name": "📦 Backlog"},
+        ]
+        mock_trello.get_cards_in_list.return_value = [
+            TrelloCard(
+                id="card_1",
+                name="First Card",
+                desc="",
+                url="https://trello.com/c/abc",
+                list_id="list_backlog",
+                labels=[{"id": "run_label", "name": "🏃 Run List", "color": "green"}],
+            ),
+            TrelloCard(
+                id="card_2",
+                name="Second Card",
+                desc="",
+                url="https://trello.com/c/def",
+                list_id="list_backlog",
+                labels=[],
+            ),
+            TrelloCard(
+                id="card_3",
+                name="Third Card",
+                desc="",
+                url="https://trello.com/c/ghi",
+                list_id="list_backlog",
+                labels=[],
+            ),
+        ]
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+        watcher.trello = mock_trello
+
+        with patch.object(watcher, "_start_list_run") as mock_start:
+            watcher._check_run_list_labels()
+
+            # _start_list_run이 호출되어야 함
+            mock_start.assert_called_once()
+            call_args = mock_start.call_args
+            # 첫 번째 인자: list_id, list_name, cards
+            assert call_args[0][0] == "list_backlog"
+            assert call_args[0][1] == "📦 Backlog"
+            assert len(call_args[0][2]) == 3  # 전체 카드 목록
+
+    def test_check_run_list_labels_removes_label(self):
+        """레이블 감지 후 첫 카드에서 레이블 제거"""
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+        from unittest.mock import MagicMock, patch
+
+        mock_trello = MagicMock()
+        mock_trello.get_lists.return_value = [
+            {"id": "list_backlog", "name": "📦 Backlog"},
+        ]
+        mock_trello.get_cards_in_list.return_value = [
+            TrelloCard(
+                id="card_1",
+                name="First Card",
+                desc="",
+                url="",
+                list_id="list_backlog",
+                labels=[{"id": "run_label_id", "name": "🏃 Run List", "color": "green"}],
+            ),
+        ]
+        mock_trello.remove_label_from_card.return_value = True
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+        watcher.trello = mock_trello
+
+        with patch.object(watcher, "_start_list_run"):
+            watcher._check_run_list_labels()
+
+            # 레이블 제거 호출 확인
+            mock_trello.remove_label_from_card.assert_called_once_with(
+                "card_1", "run_label_id"
+            )
+
+    def test_check_run_list_labels_no_trigger(self):
+        """🏃 Run List 레이블 없으면 정주행 시작 안 함"""
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+        from unittest.mock import MagicMock, patch
+
+        mock_trello = MagicMock()
+        mock_trello.get_lists.return_value = [
+            {"id": "list_backlog", "name": "📦 Backlog"},
+        ]
+        mock_trello.get_cards_in_list.return_value = [
+            TrelloCard(
+                id="card_1",
+                name="First Card",
+                desc="",
+                url="",
+                list_id="list_backlog",
+                labels=[],  # 레이블 없음
+            ),
+        ]
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+        watcher.trello = mock_trello
+
+        with patch.object(watcher, "_start_list_run") as mock_start:
+            watcher._check_run_list_labels()
+
+            # _start_list_run이 호출되지 않아야 함
+            mock_start.assert_not_called()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

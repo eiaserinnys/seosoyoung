@@ -192,6 +192,34 @@ class TrelloClient:
                 })
         return comments
 
+    def get_lists(self) -> list[dict]:
+        """보드의 리스트 목록 조회
+
+        Returns:
+            리스트 목록 [{"id": "...", "name": "..."}, ...]
+        """
+        data = self._request("GET", f"/boards/{self.board_id}/lists")
+        if not data:
+            return []
+
+        return [
+            {"id": lst["id"], "name": lst["name"]}
+            for lst in data
+        ]
+
+    def remove_label_from_card(self, card_id: str, label_id: str) -> bool:
+        """카드에서 레이블 제거
+
+        Args:
+            card_id: 카드 ID
+            label_id: 제거할 레이블 ID
+
+        Returns:
+            성공 여부
+        """
+        result = self._request("DELETE", f"/cards/{card_id}/idLabels/{label_id}")
+        return result is not None
+
     def is_configured(self) -> bool:
         """API 설정 여부 확인"""
         return bool(self.api_key and self.token)

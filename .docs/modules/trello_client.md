@@ -26,7 +26,9 @@ Trello API 클라이언트
 - `move_card(self, card_id, list_id)` (줄 106): 카드를 다른 리스트로 이동
 - `get_card_checklists(self, card_id)` (줄 119): 카드의 체크리스트 목록 조회
 - `get_card_comments(self, card_id, limit)` (줄 157): 카드의 코멘트 목록 조회
-- `is_configured(self)` (줄 195): API 설정 여부 확인
+- `get_lists(self)` (줄 195): 보드의 리스트 목록 조회
+- `remove_label_from_card(self, card_id, label_id)` (줄 210): 카드에서 레이블 제거
+- `is_configured(self)` (줄 223): API 설정 여부 확인
 
 ## 내부 의존성
 

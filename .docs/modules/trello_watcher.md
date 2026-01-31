@@ -50,19 +50,23 @@ To Go 리스트에 새 카드가 들어오면:
 - `is_paused(self)` (줄 264): 일시 중단 상태인지 확인
 - `_run(self)` (줄 269): 워처 메인 루프
 - `_poll(self)` (줄 280): 리스트 폴링
-- `_check_review_list_for_completion(self)` (줄 310): Review 리스트에서 dueComplete된 카드를 Done으로 자동 이동
-- `_add_spinner_prefix(self, card)` (줄 335): 카드 제목에 🌀 prefix 추가
-- `_remove_spinner_prefix(self, card_id, card_name)` (줄 342): 카드 제목에서 🌀 prefix 제거
-- `_has_execute_label(self, card)` (줄 349): 카드에 Execute 레이블이 있는지 확인
-- `_build_header(self, card_name, card_url, session_id)` (줄 356): 슬랙 메시지 헤더 생성
-- `_handle_new_card(self, card, list_key)` (줄 372): 새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행
-- `_build_task_context_hint(self)` (줄 493): 태스크 컨텍스트 힌트 생성
-- `_build_list_ids_context(self)` (줄 500): 자주 사용하는 리스트 ID 컨텍스트 생성
-- `_format_checklists(self, checklists)` (줄 510): 체크리스트를 프롬프트용 문자열로 포맷
-- `_format_comments(self, comments)` (줄 523): 코멘트를 프롬프트용 문자열로 포맷
-- `_build_card_context(self, card_id, desc)` (줄 541): 카드의 체크리스트, 코멘트, 리스트 ID 컨텍스트를 조합
-- `_build_to_go_prompt(self, card, has_execute)` (줄 566): To Go 카드용 프롬프트 생성
-- `build_reaction_execute_prompt(self, info)` (줄 603): 리액션 기반 실행용 프롬프트 생성
+- `_check_review_list_for_completion(self)` (줄 313): Review 리스트에서 dueComplete된 카드를 Done으로 자동 이동
+- `_add_spinner_prefix(self, card)` (줄 338): 카드 제목에 🌀 prefix 추가
+- `_remove_spinner_prefix(self, card_id, card_name)` (줄 345): 카드 제목에서 🌀 prefix 제거
+- `_has_execute_label(self, card)` (줄 352): 카드에 Execute 레이블이 있는지 확인
+- `_has_run_list_label(self, card)` (줄 359): 카드에 🏃 Run List 레이블이 있는지 확인
+- `_get_run_list_label_id(self, card)` (줄 366): 카드에서 🏃 Run List 레이블 ID 반환
+- `_build_header(self, card_name, card_url, session_id)` (줄 373): 슬랙 메시지 헤더 생성
+- `_handle_new_card(self, card, list_key)` (줄 389): 새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행
+- `_build_task_context_hint(self)` (줄 510): 태스크 컨텍스트 힌트 생성
+- `_build_list_ids_context(self)` (줄 517): 자주 사용하는 리스트 ID 컨텍스트 생성
+- `_format_checklists(self, checklists)` (줄 527): 체크리스트를 프롬프트용 문자열로 포맷
+- `_format_comments(self, comments)` (줄 540): 코멘트를 프롬프트용 문자열로 포맷
+- `_build_card_context(self, card_id, desc)` (줄 558): 카드의 체크리스트, 코멘트, 리스트 ID 컨텍스트를 조합
+- `_build_to_go_prompt(self, card, has_execute)` (줄 583): To Go 카드용 프롬프트 생성
+- `build_reaction_execute_prompt(self, info)` (줄 620): 리액션 기반 실행용 프롬프트 생성
+- `_check_run_list_labels(self)` (줄 650): 🏃 Run List 레이블을 가진 카드 감지 및 리스트 정주행 시작
+- `_start_list_run(self, list_id, list_name, cards)` (줄 688): 리스트 정주행 시작
 
 ## 내부 의존성
 

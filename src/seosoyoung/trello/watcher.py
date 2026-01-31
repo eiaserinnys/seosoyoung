@@ -307,6 +307,9 @@ class TrelloWatcher:
         # 2. Review 리스트에서 dueComplete된 카드를 Done으로 이동
         self._check_review_list_for_completion()
 
+        # 3. 🏃 Run List 레이블 감지
+        self._check_run_list_labels()
+
     def _check_review_list_for_completion(self):
         """Review 리스트에서 dueComplete된 카드를 Done으로 자동 이동"""
         review_list_id = Config.TRELLO_REVIEW_LIST_ID
@@ -352,6 +355,20 @@ class TrelloWatcher:
             if label.get("name", "").lower() == "execute":
                 return True
         return False
+
+    def _has_run_list_label(self, card: TrelloCard) -> bool:
+        """카드에 🏃 Run List 레이블이 있는지 확인"""
+        for label in card.labels:
+            if label.get("name", "") == "🏃 Run List":
+                return True
+        return False
+
+    def _get_run_list_label_id(self, card: TrelloCard) -> Optional[str]:
+        """카드에서 🏃 Run List 레이블 ID 반환"""
+        for label in card.labels:
+            if label.get("name", "") == "🏃 Run List":
+                return label.get("id")
+        return None
 
     def _build_header(self, card_name: str, card_url: str, session_id: str = "") -> str:
         """슬랙 메시지 헤더 생성
@@ -629,3 +646,61 @@ class TrelloWatcher:
 {self._build_task_context_hint()}
 {card_context}"""
         return prompt
+
+    def _check_run_list_labels(self):
+        """🏃 Run List 레이블을 가진 카드 감지 및 리스트 정주행 시작
+
+        모든 리스트의 첫 번째 카드에서 🏃 Run List 레이블을 확인합니다.
+        레이블이 발견되면:
+        1. 해당 리스트의 정주행을 시작
+        2. 첫 카드에서 레이블 제거
+        """
+        lists = self.trello.get_lists()
+
+        for lst in lists:
+            list_id = lst["id"]
+            list_name = lst["name"]
+
+            # 리스트의 모든 카드 조회
+            cards = self.trello.get_cards_in_list(list_id)
+            if not cards:
+                continue
+
+            # 첫 번째 카드만 확인
+            first_card = cards[0]
+            if not self._has_run_list_label(first_card):
+                continue
+
+            # 🏃 Run List 레이블 발견!
+            logger.info(f"🏃 Run List 레이블 감지: {list_name} - {first_card.name}")
+
+            # 레이블 제거
+            label_id = self._get_run_list_label_id(first_card)
+            if label_id:
+                if self.trello.remove_label_from_card(first_card.id, label_id):
+                    logger.info(f"🏃 Run List 레이블 제거: {first_card.name}")
+                else:
+                    logger.warning(f"🏃 Run List 레이블 제거 실패: {first_card.name}")
+
+            # 리스트 정주행 시작
+            self._start_list_run(list_id, list_name, cards)
+
+    def _start_list_run(
+        self,
+        list_id: str,
+        list_name: str,
+        cards: list[TrelloCard],
+    ):
+        """리스트 정주행 시작
+
+        Args:
+            list_id: 리스트 ID
+            list_name: 리스트 이름
+            cards: 리스트의 카드 목록
+        """
+        logger.info(f"리스트 정주행 시작: {list_name} ({len(cards)}개 카드)")
+
+        # TODO: Phase 6에서 구현
+        # - ListRunner와 연동하여 세션 생성
+        # - 슬랙에 정주행 시작 알림
+        # - 첫 번째 카드부터 순차 실행
