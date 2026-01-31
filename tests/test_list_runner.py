@@ -304,5 +304,134 @@ class TestListRunnerPersistence:
             assert runner.sessions == {}
 
 
+class TestStartRunByName:
+    """start_run_by_name() 메서드 테스트"""
+
+    def test_start_run_by_name_found(self):
+        """리스트 이름으로 정주행 시작 - 성공"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            # Mock trello client
+            mock_trello = MagicMock()
+            mock_trello.get_lists = AsyncMock(return_value=[
+                {"id": "list_123", "name": "📦 Backlog"},
+                {"id": "list_456", "name": "🔨 In Progress"},
+            ])
+            mock_trello.get_cards_by_list = AsyncMock(return_value=[
+                {"id": "card_a", "name": "Task A"},
+                {"id": "card_b", "name": "Task B"},
+            ])
+
+            import asyncio
+            result = asyncio.run(runner.start_run_by_name(
+                list_name="📦 Backlog",
+                trello_client=mock_trello,
+            ))
+
+            assert result is not None
+            assert result.list_id == "list_123"
+            assert result.list_name == "📦 Backlog"
+            assert result.card_ids == ["card_a", "card_b"]
+            assert result.status == SessionStatus.PENDING
+
+    def test_start_run_by_name_not_found(self):
+        """리스트 이름으로 정주행 시작 - 리스트 없음"""
+        from seosoyoung.trello.list_runner import ListRunner, ListNotFoundError
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            # Mock trello client
+            mock_trello = MagicMock()
+            mock_trello.get_lists = AsyncMock(return_value=[
+                {"id": "list_123", "name": "📦 Backlog"},
+            ])
+
+            import asyncio
+            with pytest.raises(ListNotFoundError) as exc_info:
+                asyncio.run(runner.start_run_by_name(
+                    list_name="존재하지 않는 리스트",
+                    trello_client=mock_trello,
+                ))
+
+            assert "존재하지 않는 리스트" in str(exc_info.value)
+
+    def test_start_run_by_name_empty_list(self):
+        """리스트 이름으로 정주행 시작 - 빈 리스트"""
+        from seosoyoung.trello.list_runner import ListRunner, EmptyListError
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            # Mock trello client
+            mock_trello = MagicMock()
+            mock_trello.get_lists = AsyncMock(return_value=[
+                {"id": "list_123", "name": "📦 Backlog"},
+            ])
+            mock_trello.get_cards_by_list = AsyncMock(return_value=[])
+
+            import asyncio
+            with pytest.raises(EmptyListError):
+                asyncio.run(runner.start_run_by_name(
+                    list_name="📦 Backlog",
+                    trello_client=mock_trello,
+                ))
+
+
+class TestListRunMarkupParsing:
+    """LIST_RUN 마크업 파싱 테스트"""
+
+    def test_parse_list_run_markup_simple(self):
+        """단순 LIST_RUN 마크업 파싱"""
+        from seosoyoung.claude.runner import ClaudeRunner
+
+        output = "정주행을 시작하겠습니다.\n<!-- LIST_RUN: 📦 Backlog -->"
+
+        runner = ClaudeRunner()
+        list_run = runner._extract_list_run_markup(output)
+
+        assert list_run == "📦 Backlog"
+
+    def test_parse_list_run_markup_with_spaces(self):
+        """공백이 포함된 리스트명 파싱"""
+        from seosoyoung.claude.runner import ClaudeRunner
+
+        output = "<!-- LIST_RUN: 🔨 In Progress -->\n다른 내용"
+
+        runner = ClaudeRunner()
+        list_run = runner._extract_list_run_markup(output)
+
+        assert list_run == "🔨 In Progress"
+
+    def test_parse_list_run_markup_none(self):
+        """마크업이 없는 경우"""
+        from seosoyoung.claude.runner import ClaudeRunner
+
+        output = "일반 응답입니다."
+
+        runner = ClaudeRunner()
+        list_run = runner._extract_list_run_markup(output)
+
+        assert list_run is None
+
+    def test_claude_result_has_list_run_field(self):
+        """ClaudeResult에 list_run 필드 존재"""
+        from seosoyoung.claude.runner import ClaudeResult
+
+        result = ClaudeResult(
+            success=True,
+            output="test",
+            list_run="📦 Backlog"
+        )
+
+        assert result.list_run == "📦 Backlog"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

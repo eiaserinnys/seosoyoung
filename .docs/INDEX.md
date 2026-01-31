@@ -39,7 +39,7 @@
 - `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:54): Claude Code SDK 기반 실행기
 - `ClaudeExecutor` (seosoyoung/claude/executor.py:168): Claude Code 실행기
 - `ClaudeResult` (seosoyoung/claude/runner.py:43): Claude Code 실행 결과
-- `ClaudeRunner` (seosoyoung/claude/runner.py:55): Claude Code CLI 실행기
+- `ClaudeRunner` (seosoyoung/claude/runner.py:56): Claude Code CLI 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
@@ -55,9 +55,11 @@
 - `GlossaryMatchResult` (seosoyoung/translator/glossary.py:43): 용어 매칭 결과
 - `TrelloCard` (seosoyoung/trello/client.py:16): 트렐로 카드 정보
 - `TrelloClient` (seosoyoung/trello/client.py:28): Trello API 클라이언트
-- `SessionStatus` (seosoyoung/trello/list_runner.py:19): 리스트 정주행 세션 상태
-- `ListRunSession` (seosoyoung/trello/list_runner.py:30): 리스트 정주행 세션 정보
-- `ListRunner` (seosoyoung/trello/list_runner.py:75): 리스트 정주행 관리자
+- `ListNotFoundError` (seosoyoung/trello/list_runner.py:19): 리스트를 찾을 수 없을 때 발생하는 예외
+- `EmptyListError` (seosoyoung/trello/list_runner.py:24): 리스트에 카드가 없을 때 발생하는 예외
+- `SessionStatus` (seosoyoung/trello/list_runner.py:29): 리스트 정주행 세션 상태
+- `ListRunSession` (seosoyoung/trello/list_runner.py:40): 리스트 정주행 세션 정보
+- `ListRunner` (seosoyoung/trello/list_runner.py:85): 리스트 정주행 관리자
 - `TrackedCard` (seosoyoung/trello/watcher.py:19): 추적 중인 카드 정보 (To Go 리스트 감시용)
 - `ThreadCardInfo` (seosoyoung/trello/watcher.py:34): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
 - `TrelloWatcher` (seosoyoung/trello/watcher.py:50): Trello 리스트 감시자
@@ -69,7 +71,7 @@
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:15): Claude 실행기 인스턴스를 반환하는 팩토리 함수
 - `async main()` (seosoyoung/claude/agent_runner.py:223): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:20): 역할에 맞는 ClaudeRunner/ClaudeAgentRunner 반환
-- `async main()` (seosoyoung/claude/runner.py:434): 
+- `async main()` (seosoyoung/claude/runner.py:462): 
 - `register_all_handlers()` (seosoyoung/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록

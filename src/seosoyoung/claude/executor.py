@@ -407,6 +407,12 @@ class ClaudeExecutor:
                     result, session, thread_ts, say
                 )
 
+        # LIST_RUN 마커 감지 (admin 역할만 허용)
+        if effective_role == "admin" and result.list_run:
+            self._handle_list_run_marker(
+                result.list_run, channel, thread_ts, say, client
+            )
+
     def _handle_trello_success(
         self, result, response, session, trello_card,
         channel, thread_ts, main_msg_ts, say, client
@@ -601,6 +607,48 @@ class ClaudeExecutor:
             logger.info(f"{type_name} 마커 감지 - 다른 실행 중인 세션 없음, 즉시 {type_name}")
             say(text=f"코드가 변경되었습니다. {type_name}합니다...", thread_ts=thread_ts)
             self.restart_manager.force_restart(restart_type)
+
+    def _handle_list_run_marker(
+        self, list_name: str, channel: str, thread_ts: str, say, client
+    ):
+        """LIST_RUN 마커 처리 - 정주행 스레드 생성
+
+        Args:
+            list_name: 정주행할 리스트 이름
+            channel: 슬랙 채널 ID
+            thread_ts: 스레드 타임스탬프
+            say: Slack say 함수
+            client: Slack client
+        """
+        logger.info(f"리스트 정주행 요청: {list_name}")
+
+        # 정주행 시작 알림 (현재 스레드에 답글로)
+        say(
+            text=f"📋 리스트 정주행을 시작합니다: *{list_name}*\n"
+                 f"정주행 상태는 별도 스레드에서 확인하실 수 있습니다.",
+            thread_ts=thread_ts
+        )
+
+        # 정주행 전용 스레드 생성 (채널 루트에 새 메시지)
+        try:
+            result = client.chat_postMessage(
+                channel=channel,
+                text=f"🚀 *리스트 정주행*: {list_name}\n"
+                     f"```\n정주행을 준비하고 있습니다...\n```"
+            )
+            run_thread_ts = result["ts"]
+            logger.info(f"정주행 스레드 생성: {run_thread_ts}")
+
+            # TODO: 실제 정주행 시작 로직 연결 (Phase 3에서 구현)
+            # - ListRunner.start_run_by_name() 호출
+            # - TrelloWatcher와 연동하여 카드 처리
+
+        except Exception as e:
+            logger.error(f"정주행 스레드 생성 실패: {e}")
+            say(
+                text=f"❌ 정주행 스레드 생성에 실패했습니다: {e}",
+                thread_ts=thread_ts
+            )
 
     def _handle_error(
         self, error, is_trello_mode, trello_card, session,

@@ -16,6 +16,16 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+class ListNotFoundError(Exception):
+    """리스트를 찾을 수 없을 때 발생하는 예외"""
+    pass
+
+
+class EmptyListError(Exception):
+    """리스트에 카드가 없을 때 발생하는 예외"""
+    pass
+
+
 class SessionStatus(Enum):
     """리스트 정주행 세션 상태"""
     PENDING = "pending"      # 대기 중 (시작 전)
@@ -257,3 +267,50 @@ class ListRunner:
             return None
 
         return session.card_ids[session.current_index]
+
+    async def start_run_by_name(
+        self,
+        list_name: str,
+        trello_client,
+    ) -> ListRunSession:
+        """리스트 이름으로 정주행 세션 시작
+
+        Args:
+            list_name: 트렐로 리스트 이름
+            trello_client: 트렐로 클라이언트 (get_lists, get_cards_by_list 메서드 필요)
+
+        Returns:
+            생성된 세션
+
+        Raises:
+            ListNotFoundError: 리스트를 찾을 수 없는 경우
+            EmptyListError: 리스트에 카드가 없는 경우
+        """
+        # 리스트 이름으로 ID 조회
+        lists = await trello_client.get_lists()
+        list_id = None
+        for lst in lists:
+            if lst.get("name") == list_name:
+                list_id = lst.get("id")
+                break
+
+        if not list_id:
+            raise ListNotFoundError(f"리스트를 찾을 수 없습니다: {list_name}")
+
+        # 리스트의 카드 목록 조회
+        cards = await trello_client.get_cards_by_list(list_id)
+        if not cards:
+            raise EmptyListError(f"리스트에 카드가 없습니다: {list_name}")
+
+        # 카드 ID 목록 추출
+        card_ids = [card.get("id") for card in cards]
+
+        # 세션 생성
+        session = self.create_session(
+            list_id=list_id,
+            list_name=list_name,
+            card_ids=card_ids,
+        )
+
+        logger.info(f"리스트 정주행 시작: {list_name} ({len(card_ids)}개 카드)")
+        return session

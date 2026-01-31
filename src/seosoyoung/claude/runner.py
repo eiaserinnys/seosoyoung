@@ -50,6 +50,7 @@ class ClaudeResult:
     attachments: list[str] = field(default_factory=list)  # ATTACH 마커로 추출된 첨부 파일 경로들
     update_requested: bool = False  # <!-- UPDATE --> 마커 감지 (exit 42)
     restart_requested: bool = False  # <!-- RESTART --> 마커 감지 (exit 43)
+    list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
 
 
 class ClaudeRunner:
@@ -74,6 +75,21 @@ class ClaudeRunner:
             k: v for k, v in os.environ.items()
             if k not in SENSITIVE_ENV_KEYS
         }
+
+    def _extract_list_run_markup(self, output: str) -> Optional[str]:
+        """LIST_RUN 마크업에서 리스트 이름 추출
+
+        Args:
+            output: Claude 응답 텍스트
+
+        Returns:
+            리스트 이름 또는 None
+        """
+        pattern = r"<!-- LIST_RUN: (.+?) -->"
+        match = re.search(pattern, output)
+        if match:
+            return match.group(1).strip()
+        return None
 
     def _build_command(
         self,
@@ -295,6 +311,11 @@ class ClaudeRunner:
             if restart_requested:
                 logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
 
+            # LIST_RUN 마커 추출
+            list_run = self._extract_list_run_markup(output)
+            if list_run:
+                logger.info(f"리스트 정주행 요청 마커 감지: {list_run}")
+
             if stderr:
                 logger.warning(f"Claude Code stderr: {stderr[:500]}")
 
@@ -306,6 +327,7 @@ class ClaudeRunner:
                 attachments=attachments,
                 update_requested=update_requested,
                 restart_requested=restart_requested,
+                list_run=list_run,
             )
 
         except FileNotFoundError:
@@ -382,6 +404,11 @@ class ClaudeRunner:
         if restart_requested:
             logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
 
+        # LIST_RUN 마커 추출
+        list_run = self._extract_list_run_markup(output)
+        if list_run:
+            logger.info(f"리스트 정주행 요청 마커 감지: {list_run}")
+
         if stderr:
             logger.warning(f"Claude Code stderr: {stderr[:500]}")
 
@@ -393,6 +420,7 @@ class ClaudeRunner:
             attachments=attachments,
             update_requested=update_requested,
             restart_requested=restart_requested,
+            list_run=list_run,
         )
 
 
