@@ -262,6 +262,100 @@ class ListRunner:
             if session.status in active_statuses
         ]
 
+    def get_paused_sessions(self) -> list[ListRunSession]:
+        """중단된 세션 목록 조회
+
+        PAUSED 상태인 세션만 반환합니다.
+
+        Returns:
+            중단된 세션 목록
+        """
+        return [
+            session for session in self.sessions.values()
+            if session.status == SessionStatus.PAUSED
+        ]
+
+    def find_session_by_list_name(
+        self,
+        list_name: str,
+    ) -> Optional[ListRunSession]:
+        """리스트 이름으로 활성 세션 검색
+
+        COMPLETED, FAILED가 아닌 세션 중 리스트 이름이 일치하는 세션을 반환합니다.
+
+        Args:
+            list_name: 검색할 리스트 이름
+
+        Returns:
+            세션 또는 None
+        """
+        excluded_statuses = {SessionStatus.COMPLETED, SessionStatus.FAILED}
+        for session in self.sessions.values():
+            if (session.list_name == list_name and
+                session.status not in excluded_statuses):
+                return session
+        return None
+
+    def pause_run(
+        self,
+        session_id: str,
+        reason: str,
+    ) -> bool:
+        """정주행 세션 중단
+
+        RUNNING 또는 VERIFYING 상태인 세션만 중단할 수 있습니다.
+
+        Args:
+            session_id: 세션 ID
+            reason: 중단 사유
+
+        Returns:
+            중단 성공 여부
+        """
+        session = self.get_session(session_id)
+        if not session:
+            return False
+
+        # RUNNING 또는 VERIFYING 상태에서만 중단 가능
+        pausable_statuses = {SessionStatus.RUNNING, SessionStatus.VERIFYING}
+        if session.status not in pausable_statuses:
+            return False
+
+        session.status = SessionStatus.PAUSED
+        session.error_message = reason
+        self.save_sessions()
+        logger.info(f"세션 중단: {session_id} - {reason}")
+        return True
+
+    def resume_run(
+        self,
+        session_id: str,
+    ) -> bool:
+        """중단된 정주행 세션 재개
+
+        PAUSED 또는 FAILED 상태인 세션만 재개할 수 있습니다.
+
+        Args:
+            session_id: 세션 ID
+
+        Returns:
+            재개 성공 여부
+        """
+        session = self.get_session(session_id)
+        if not session:
+            return False
+
+        # PAUSED 또는 FAILED 상태에서만 재개 가능
+        resumable_statuses = {SessionStatus.PAUSED, SessionStatus.FAILED}
+        if session.status not in resumable_statuses:
+            return False
+
+        session.status = SessionStatus.RUNNING
+        session.error_message = None
+        self.save_sessions()
+        logger.info(f"세션 재개: {session_id}")
+        return True
+
     def mark_card_processed(
         self,
         session_id: str,
@@ -526,6 +620,7 @@ VALIDATION_RESULT: PASS (또는 FAIL)
         session_id: str,
         trello_client,
         claude_runner,
+        auto_pause_on_fail: bool = False,
     ) -> Optional[CardRunResult]:
         """다음 카드 실행 및 검증
 
@@ -535,6 +630,7 @@ VALIDATION_RESULT: PASS (또는 FAIL)
             session_id: 세션 ID
             trello_client: 트렐로 클라이언트
             claude_runner: Claude Code 실행기
+            auto_pause_on_fail: 검증 실패 시 자동 중단 여부
 
         Returns:
             CardRunResult 또는 None (모든 카드 처리 완료 시)
@@ -547,6 +643,7 @@ VALIDATION_RESULT: PASS (또는 FAIL)
             return None
 
         card_id = card_info.get("id", "")
+        card_name = card_info.get("name", "")
 
         # 카드 실행
         exec_result = await self.execute_card(session_id, card_info, claude_runner)
@@ -554,6 +651,8 @@ VALIDATION_RESULT: PASS (또는 FAIL)
         if not exec_result.success:
             # 실행 실패 시 실패로 표시하고 반환
             self.mark_card_processed(session_id, card_id, "failed")
+            if auto_pause_on_fail:
+                self.pause_run(session_id, f"실행 실패: {card_name}")
             return CardRunResult(
                 card_id=card_id,
                 execution_success=False,
@@ -573,12 +672,16 @@ VALIDATION_RESULT: PASS (또는 FAIL)
             claude_runner,
         )
 
-        # 검증 완료 후 다시 실행 상태로
-        self.update_session_status(session_id, SessionStatus.RUNNING)
-
         # 카드 처리 완료 표시
         result_status = "passed" if val_result.status == ValidationStatus.PASS else "failed"
         self.mark_card_processed(session_id, card_id, result_status)
+
+        # 검증 실패 시 자동 중단
+        if auto_pause_on_fail and val_result.status == ValidationStatus.FAIL:
+            self.pause_run(session_id, f"검증 실패: {card_name}")
+        else:
+            # 검증 완료 후 다시 실행 상태로
+            self.update_session_status(session_id, SessionStatus.RUNNING)
 
         return CardRunResult(
             card_id=card_id,

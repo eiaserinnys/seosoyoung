@@ -17,6 +17,7 @@ from seosoyoung.handlers import register_all_handlers
 from seosoyoung.handlers.actions import send_restart_confirmation
 from seosoyoung.restart import RestartManager, RestartType
 from seosoyoung.trello.watcher import TrelloWatcher
+from seosoyoung.trello.list_runner import ListRunner
 
 # 로깅 설정
 logger = setup_logging()
@@ -30,6 +31,9 @@ session_runtime = SessionRuntime()
 
 # Trello 워처 (나중에 초기화)
 trello_watcher: TrelloWatcher | None = None
+
+# 리스트 러너 (리스트 정주행 기능)
+list_runner: ListRunner | None = None
 
 
 def _perform_restart(restart_type: RestartType) -> None:
@@ -78,6 +82,7 @@ dependencies = {
     "get_user_role": get_user_role,
     "send_restart_confirmation": send_restart_confirmation,
     "trello_watcher_ref": lambda: trello_watcher,
+    "list_runner_ref": lambda: list_runner,
 }
 
 # 핸들러 등록
@@ -125,6 +130,16 @@ def start_trello_watcher():
     logger.info("Trello 워처 시작됨")
 
 
+def start_list_runner():
+    """리스트 러너 초기화"""
+    global list_runner
+
+    from pathlib import Path
+    data_dir = Path(Config.get_session_path()).parent / "data"
+    list_runner = ListRunner(data_dir=data_dir)
+    logger.info("리스트 러너 초기화 완료")
+
+
 def init_bot_user_id():
     """봇 사용자 ID 초기화"""
     try:
@@ -144,5 +159,6 @@ if __name__ == "__main__":
     init_bot_user_id()
     notify_startup()
     start_trello_watcher()
+    start_list_runner()
     handler = SocketModeHandler(app, Config.SLACK_APP_TOKEN)
     handler.start()

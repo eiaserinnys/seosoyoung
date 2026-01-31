@@ -783,5 +783,350 @@ class TestFullExecutionFlow:
             assert "card_a" in updated_session.processed_cards
 
 
+class TestPauseRun:
+    """Phase 4: 중단 기능 테스트"""
+
+    def test_pause_run_changes_status_to_paused(self):
+        """pause_run 호출 시 상태가 PAUSED로 변경"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a", "card_b"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            result = runner.pause_run(
+                session_id=session.session_id,
+                reason="검증 실패로 중단",
+            )
+
+            assert result is True
+            updated = runner.get_session(session.session_id)
+            assert updated.status == SessionStatus.PAUSED
+            assert updated.error_message == "검증 실패로 중단"
+
+    def test_pause_run_invalid_session(self):
+        """존재하지 않는 세션 중단 시도"""
+        from seosoyoung.trello.list_runner import ListRunner
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            result = runner.pause_run(
+                session_id="nonexistent",
+                reason="테스트",
+            )
+
+            assert result is False
+
+    def test_pause_run_from_verifying_state(self):
+        """VERIFYING 상태에서도 중단 가능"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.VERIFYING)
+
+            result = runner.pause_run(
+                session_id=session.session_id,
+                reason="검증 중 오류",
+            )
+
+            assert result is True
+            assert runner.get_session(session.session_id).status == SessionStatus.PAUSED
+
+    def test_pause_run_from_completed_state_fails(self):
+        """COMPLETED 상태에서는 중단 불가"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.COMPLETED)
+
+            result = runner.pause_run(
+                session_id=session.session_id,
+                reason="완료된 세션 중단 시도",
+            )
+
+            assert result is False
+            # 상태 변경 없음
+            assert runner.get_session(session.session_id).status == SessionStatus.COMPLETED
+
+
+class TestResumeRun:
+    """Phase 4: 재개 기능 테스트"""
+
+    def test_resume_run_changes_status_to_running(self):
+        """resume_run 호출 시 상태가 RUNNING으로 변경"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a", "card_b"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.PAUSED)
+
+            result = runner.resume_run(session_id=session.session_id)
+
+            assert result is True
+            updated = runner.get_session(session.session_id)
+            assert updated.status == SessionStatus.RUNNING
+            # 에러 메시지 초기화
+            assert updated.error_message is None
+
+    def test_resume_run_invalid_session(self):
+        """존재하지 않는 세션 재개 시도"""
+        from seosoyoung.trello.list_runner import ListRunner
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            result = runner.resume_run(session_id="nonexistent")
+
+            assert result is False
+
+    def test_resume_run_from_running_state_fails(self):
+        """이미 RUNNING 상태에서는 재개 불가 (이미 실행 중)"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            result = runner.resume_run(session_id=session.session_id)
+
+            assert result is False
+
+    def test_resume_run_from_completed_state_fails(self):
+        """COMPLETED 상태에서는 재개 불가"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.COMPLETED)
+
+            result = runner.resume_run(session_id=session.session_id)
+
+            assert result is False
+
+    def test_resume_run_from_failed_state(self):
+        """FAILED 상태에서도 재개 가능 (재시도)"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.FAILED)
+
+            result = runner.resume_run(session_id=session.session_id)
+
+            assert result is True
+            assert runner.get_session(session.session_id).status == SessionStatus.RUNNING
+
+
+class TestGetPausedSessions:
+    """중단된 세션 조회 테스트"""
+
+    def test_get_paused_sessions(self):
+        """PAUSED 상태인 세션만 조회"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            # 여러 세션 생성
+            s1 = runner.create_session("list1", "List 1", ["card1"])
+            s2 = runner.create_session("list2", "List 2", ["card2"])
+            s3 = runner.create_session("list3", "List 3", ["card3"])
+
+            # 상태 변경
+            runner.update_session_status(s1.session_id, SessionStatus.RUNNING)
+            runner.update_session_status(s2.session_id, SessionStatus.PAUSED)
+            runner.update_session_status(s3.session_id, SessionStatus.PAUSED)
+
+            paused = runner.get_paused_sessions()
+
+            assert len(paused) == 2
+            session_ids = [s.session_id for s in paused]
+            assert s2.session_id in session_ids
+            assert s3.session_id in session_ids
+
+
+class TestFindSessionByListName:
+    """리스트 이름으로 세션 검색 테스트"""
+
+    def test_find_session_by_list_name(self):
+        """리스트 이름으로 활성 세션 검색"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.PAUSED)
+
+            found = runner.find_session_by_list_name("📦 Backlog")
+
+            assert found is not None
+            assert found.session_id == session.session_id
+
+    def test_find_session_by_list_name_not_found(self):
+        """존재하지 않는 리스트 이름 검색"""
+        from seosoyoung.trello.list_runner import ListRunner
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            found = runner.find_session_by_list_name("존재하지 않는 리스트")
+
+            assert found is None
+
+    def test_find_session_by_list_name_excludes_completed(self):
+        """COMPLETED 세션은 검색 제외"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.COMPLETED)
+
+            found = runner.find_session_by_list_name("📦 Backlog")
+
+            assert found is None
+
+
+class TestStateTransitions:
+    """상태 전환 테스트"""
+
+    def test_valid_state_transitions(self):
+        """유효한 상태 전환"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+
+            # PENDING -> RUNNING
+            assert session.status == SessionStatus.PENDING
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+            assert runner.get_session(session.session_id).status == SessionStatus.RUNNING
+
+            # RUNNING -> PAUSED (via pause_run)
+            runner.pause_run(session.session_id, "테스트 중단")
+            assert runner.get_session(session.session_id).status == SessionStatus.PAUSED
+
+            # PAUSED -> RUNNING (via resume_run)
+            runner.resume_run(session.session_id)
+            assert runner.get_session(session.session_id).status == SessionStatus.RUNNING
+
+            # RUNNING -> VERIFYING
+            runner.update_session_status(session.session_id, SessionStatus.VERIFYING)
+            assert runner.get_session(session.session_id).status == SessionStatus.VERIFYING
+
+            # VERIFYING -> RUNNING
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+            assert runner.get_session(session.session_id).status == SessionStatus.RUNNING
+
+            # RUNNING -> COMPLETED
+            runner.update_session_status(session.session_id, SessionStatus.COMPLETED)
+            assert runner.get_session(session.session_id).status == SessionStatus.COMPLETED
+
+
+class TestRunNextWithPause:
+    """run_next_card에서 검증 실패 시 자동 중단 테스트"""
+
+    def test_run_next_pauses_on_validation_fail(self):
+        """검증 실패 시 자동으로 세션 중단"""
+        from seosoyoung.trello.list_runner import (
+            ListRunner, SessionStatus, ValidationStatus
+        )
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a", "card_b"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            # Mock trello client
+            mock_trello = MagicMock()
+            mock_trello.get_card = AsyncMock(return_value={
+                "id": "card_a",
+                "name": "Test Task",
+                "desc": "Do something",
+            })
+
+            # Mock claude runner - 실행 성공, 검증 실패
+            mock_claude = MagicMock()
+            mock_claude.run = AsyncMock(side_effect=[
+                # First call: execution
+                MagicMock(success=True, output="작업 완료", session_id="exec_session"),
+                # Second call: validation - FAIL
+                MagicMock(success=True, output="VALIDATION_RESULT: FAIL\n테스트 실패", session_id="verify_session"),
+            ])
+
+            import asyncio
+            result = asyncio.run(runner.run_next_card(
+                session_id=session.session_id,
+                trello_client=mock_trello,
+                claude_runner=mock_claude,
+                auto_pause_on_fail=True,
+            ))
+
+            assert result.validation_status == ValidationStatus.FAIL
+
+            # 세션이 PAUSED 상태여야 함
+            updated_session = runner.get_session(session.session_id)
+            assert updated_session.status == SessionStatus.PAUSED
+            assert "검증 실패" in (updated_session.error_message or "")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

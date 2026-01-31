@@ -80,16 +80,17 @@
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록
 - `extract_command()` (seosoyoung/handlers/mention.py:15): 멘션에서 명령어 추출
-- `get_channel_history()` (seosoyoung/handlers/mention.py:21): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-- `register_mention_handlers()` (seosoyoung/handlers/mention.py:42): 멘션 핸들러 등록
+- `get_channel_history()` (seosoyoung/handlers/mention.py:41): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
+- `register_mention_handlers()` (seosoyoung/handlers/mention.py:62): 멘션 핸들러 등록
 - `register_message_handlers()` (seosoyoung/handlers/message.py:24): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/logging_config.py:10): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/main.py:87): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/main.py:98): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/main.py:109): Trello 워처 시작
-- `init_bot_user_id()` (seosoyoung/main.py:128): 봇 사용자 ID 초기화
+- `notify_startup()` (seosoyoung/main.py:92): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/main.py:103): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/main.py:114): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/main.py:133): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/main.py:143): 봇 사용자 ID 초기화
 - `get_default_index_path()` (seosoyoung/search/searcher.py:197): 기본 인덱스 경로 반환.
 - `format_results()` (seosoyoung/search/searcher.py:202): 결과 포맷팅.
 - `main()` (seosoyoung/search/searcher.py:222): CLI 진입점.

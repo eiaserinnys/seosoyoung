@@ -18,6 +18,26 @@ def extract_command(text: str) -> str:
     return match.lower()
 
 
+def _is_resume_list_run_command(command: str) -> bool:
+    """정주행 재개 명령어인지 확인
+
+    다음과 같은 패턴을 인식합니다:
+    - 정주행 재개해줘
+    - 정주행 재개
+    - 리스트런 재개
+    - resume list run
+    """
+    resume_patterns = [
+        r"정주행\s*(을\s*)?재개",
+        r"리스트런\s*(을\s*)?재개",
+        r"resume\s*(list\s*)?run",
+    ]
+    for pattern in resume_patterns:
+        if re.search(pattern, command, re.IGNORECASE):
+            return True
+    return False
+
+
 def get_channel_history(client, channel: str, limit: int = 20) -> str:
     """채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환"""
     try:
@@ -53,6 +73,7 @@ def register_mention_handlers(app, dependencies: dict):
     check_permission = dependencies["check_permission"]
     get_user_role = dependencies["get_user_role"]
     send_restart_confirmation = dependencies["send_restart_confirmation"]
+    list_runner_ref = dependencies.get("list_runner_ref", lambda: None)
 
     @app.event("app_mention")
     def handle_mention(event, say, client):
@@ -76,6 +97,34 @@ def register_mention_handlers(app, dependencies: dict):
         # 관리자 명령어는 스레드/세션 여부와 관계없이 항상 처리
         admin_commands = ["help", "status", "update", "restart"]
         is_admin_command = command in admin_commands
+
+        # 정주행 재개 명령어 처리
+        if _is_resume_list_run_command(command):
+            list_runner = list_runner_ref()
+            if not list_runner:
+                say(text="리스트 러너가 초기화되지 않았습니다.", thread_ts=ts)
+                return
+
+            paused_sessions = list_runner.get_paused_sessions()
+            if not paused_sessions:
+                say(text="현재 중단된 정주행 세션이 없습니다.", thread_ts=ts)
+                return
+
+            # 가장 최근 중단된 세션 재개
+            session_to_resume = paused_sessions[-1]
+            if list_runner.resume_run(session_to_resume.session_id):
+                say(
+                    text=(
+                        f"✅ *정주행 재개*\n"
+                        f"• 리스트: {session_to_resume.list_name}\n"
+                        f"• 세션 ID: {session_to_resume.session_id}\n"
+                        f"• 진행률: {session_to_resume.current_index}/{len(session_to_resume.card_ids)} 카드"
+                    ),
+                    thread_ts=ts
+                )
+            else:
+                say(text="정주행 재개에 실패했습니다.", thread_ts=ts)
+            return
 
         # 스레드에서 멘션된 경우 (관리자 명령어가 아닐 때만 세션 체크)
         if thread_ts and not is_admin_command:
