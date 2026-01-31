@@ -31,6 +31,7 @@
 - [`trello/list_runner.py`](modules/trello_list_runner.md): ListRunner - 리스트 정주행 기능
 - [`trello/watcher.py`](modules/trello_watcher.md): Trello 워처 - To Go 리스트 감시 및 처리
 - [`web/cache.py`](modules/web_cache.md): 웹 콘텐츠 캐시 관리
+- [`web/fetcher.py`](modules/web_fetcher.md): Selenium 기반 HTML 페처
 
 ## 빠른 참조
 
@@ -69,6 +70,7 @@
 - `ThreadCardInfo` (seosoyoung/trello/watcher.py:34): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
 - `TrelloWatcher` (seosoyoung/trello/watcher.py:50): Trello 리스트 감시자
 - `WebCache` (seosoyoung/web/cache.py:10): URL 기반 웹 콘텐츠 캐시 관리자
+- `HtmlFetcher` (seosoyoung/web/fetcher.py:14): Selenium을 사용한 동적 웹 페이지 HTML 페처
 
 ### 주요 함수
 
