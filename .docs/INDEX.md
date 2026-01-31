@@ -28,6 +28,7 @@
 - [`translator/glossary.py`](modules/translator_glossary.md): 용어집 로더 모듈
 - [`translator/translator.py`](modules/translator_translator.md): 번역 모듈
 - [`trello/client.py`](modules/trello_client.md): Trello API 클라이언트
+- [`trello/list_runner.py`](modules/trello_list_runner.md): ListRunner - 리스트 정주행 기능
 - [`trello/watcher.py`](modules/trello_watcher.md): Trello 워처 - To Go 리스트 감시 및 처리
 
 ## 빠른 참조
@@ -54,6 +55,9 @@
 - `GlossaryMatchResult` (seosoyoung/translator/glossary.py:43): 용어 매칭 결과
 - `TrelloCard` (seosoyoung/trello/client.py:16): 트렐로 카드 정보
 - `TrelloClient` (seosoyoung/trello/client.py:28): Trello API 클라이언트
+- `SessionStatus` (seosoyoung/trello/list_runner.py:19): 리스트 정주행 세션 상태
+- `ListRunSession` (seosoyoung/trello/list_runner.py:30): 리스트 정주행 세션 정보
+- `ListRunner` (seosoyoung/trello/list_runner.py:75): 리스트 정주행 관리자
 - `TrackedCard` (seosoyoung/trello/watcher.py:19): 추적 중인 카드 정보 (To Go 리스트 감시용)
 - `ThreadCardInfo` (seosoyoung/trello/watcher.py:34): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
 - `TrelloWatcher` (seosoyoung/trello/watcher.py:50): Trello 리스트 감시자
