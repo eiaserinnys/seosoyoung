@@ -100,3 +100,8 @@ class Config:
     def get_search_index_path() -> str:
         """검색 인덱스 경로 (internal/index/dialogues)"""
         return _get_path("SEARCH_INDEX_PATH", "internal/index/dialogues")
+
+    @staticmethod
+    def get_web_cache_path() -> str:
+        """웹 콘텐츠 캐시 경로 (.local/cache/web)"""
+        return _get_path("WEB_CACHE_PATH", ".local/cache/web")

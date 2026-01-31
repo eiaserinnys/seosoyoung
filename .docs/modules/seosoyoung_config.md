@@ -18,6 +18,7 @@
 - `get_glossary_path()` (줄 90): 
 - `get_narrative_path()` (줄 95): 대사 데이터 경로 (eb_narrative/narrative)
 - `get_search_index_path()` (줄 100): 검색 인덱스 경로 (internal/index/dialogues)
+- `get_web_cache_path()` (줄 105): 웹 콘텐츠 캐시 경로 (.local/cache/web)
 
 ## 함수
 
