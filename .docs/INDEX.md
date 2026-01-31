@@ -55,11 +55,15 @@
 - `GlossaryMatchResult` (seosoyoung/translator/glossary.py:43): 용어 매칭 결과
 - `TrelloCard` (seosoyoung/trello/client.py:16): 트렐로 카드 정보
 - `TrelloClient` (seosoyoung/trello/client.py:28): Trello API 클라이언트
-- `ListNotFoundError` (seosoyoung/trello/list_runner.py:19): 리스트를 찾을 수 없을 때 발생하는 예외
-- `EmptyListError` (seosoyoung/trello/list_runner.py:24): 리스트에 카드가 없을 때 발생하는 예외
-- `SessionStatus` (seosoyoung/trello/list_runner.py:29): 리스트 정주행 세션 상태
-- `ListRunSession` (seosoyoung/trello/list_runner.py:40): 리스트 정주행 세션 정보
-- `ListRunner` (seosoyoung/trello/list_runner.py:85): 리스트 정주행 관리자
+- `ListNotFoundError` (seosoyoung/trello/list_runner.py:20): 리스트를 찾을 수 없을 때 발생하는 예외
+- `EmptyListError` (seosoyoung/trello/list_runner.py:25): 리스트에 카드가 없을 때 발생하는 예외
+- `ValidationStatus` (seosoyoung/trello/list_runner.py:30): 검증 결과 상태
+- `SessionStatus` (seosoyoung/trello/list_runner.py:37): 리스트 정주행 세션 상태
+- `CardExecutionResult` (seosoyoung/trello/list_runner.py:48): 카드 실행 결과
+- `ValidationResult` (seosoyoung/trello/list_runner.py:58): 검증 결과
+- `CardRunResult` (seosoyoung/trello/list_runner.py:67): 카드 실행 및 검증 전체 결과
+- `ListRunSession` (seosoyoung/trello/list_runner.py:78): 리스트 정주행 세션 정보
+- `ListRunner` (seosoyoung/trello/list_runner.py:123): 리스트 정주행 관리자
 - `TrackedCard` (seosoyoung/trello/watcher.py:19): 추적 중인 카드 정보 (To Go 리스트 감시용)
 - `ThreadCardInfo` (seosoyoung/trello/watcher.py:34): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
 - `TrelloWatcher` (seosoyoung/trello/watcher.py:50): Trello 리스트 감시자

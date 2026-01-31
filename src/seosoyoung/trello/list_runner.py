@@ -6,6 +6,7 @@
 
 import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -26,6 +27,13 @@ class EmptyListError(Exception):
     pass
 
 
+class ValidationStatus(Enum):
+    """검증 결과 상태"""
+    PASS = "pass"
+    FAIL = "fail"
+    UNKNOWN = "unknown"
+
+
 class SessionStatus(Enum):
     """리스트 정주행 세션 상태"""
     PENDING = "pending"      # 대기 중 (시작 전)
@@ -34,6 +42,36 @@ class SessionStatus(Enum):
     VERIFYING = "verifying"  # 검증 세션 실행 중
     COMPLETED = "completed"  # 완료
     FAILED = "failed"        # 실패
+
+
+@dataclass
+class CardExecutionResult:
+    """카드 실행 결과"""
+    success: bool
+    card_id: str
+    output: str = ""
+    error: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+@dataclass
+class ValidationResult:
+    """검증 결과"""
+    status: ValidationStatus
+    card_id: str
+    output: str = ""
+    session_id: Optional[str] = None
+
+
+@dataclass
+class CardRunResult:
+    """카드 실행 및 검증 전체 결과"""
+    card_id: str
+    execution_success: bool
+    validation_status: ValidationStatus
+    execution_output: str = ""
+    validation_output: str = ""
+    error: Optional[str] = None
 
 
 @dataclass
@@ -314,3 +352,238 @@ class ListRunner:
 
         logger.info(f"리스트 정주행 시작: {list_name} ({len(card_ids)}개 카드)")
         return session
+
+    @staticmethod
+    def _parse_validation_result(output: str) -> ValidationStatus:
+        """검증 결과 마커 파싱
+
+        VALIDATION_RESULT: PASS 또는 VALIDATION_RESULT: FAIL 형식의
+        마커를 찾아 검증 상태를 반환합니다.
+
+        Args:
+            output: Claude 응답 텍스트
+
+        Returns:
+            ValidationStatus (PASS, FAIL, UNKNOWN)
+        """
+        pattern = r"VALIDATION_RESULT:\s*(PASS|FAIL)"
+        match = re.search(pattern, output, re.IGNORECASE)
+
+        if not match:
+            return ValidationStatus.UNKNOWN
+
+        result = match.group(1).upper()
+        if result == "PASS":
+            return ValidationStatus.PASS
+        elif result == "FAIL":
+            return ValidationStatus.FAIL
+        return ValidationStatus.UNKNOWN
+
+    async def process_next_card(
+        self,
+        session_id: str,
+        trello_client,
+    ) -> Optional[dict]:
+        """다음 처리할 카드 정보 조회
+
+        Args:
+            session_id: 세션 ID
+            trello_client: 트렐로 클라이언트 (get_card 메서드 필요)
+
+        Returns:
+            카드 정보 딕셔너리 또는 None (모두 처리된 경우)
+        """
+        card_id = self.get_next_card_id(session_id)
+        if not card_id:
+            return None
+
+        card_info = await trello_client.get_card(card_id)
+        return card_info
+
+    async def execute_card(
+        self,
+        session_id: str,
+        card_info: dict,
+        claude_runner,
+    ) -> CardExecutionResult:
+        """카드 실행
+
+        Args:
+            session_id: 세션 ID
+            card_info: 카드 정보 딕셔너리
+            claude_runner: Claude Code 실행기
+
+        Returns:
+            CardExecutionResult
+        """
+        card_id = card_info.get("id", "")
+        card_name = card_info.get("name", "")
+        card_desc = card_info.get("desc", "")
+
+        # 카드 내용으로 프롬프트 구성
+        prompt = f"""다음 트렐로 카드의 작업을 수행해주세요.
+
+## 카드 제목
+{card_name}
+
+## 카드 설명
+{card_desc}
+
+작업을 완료하면 결과를 알려주세요.
+"""
+
+        logger.info(f"카드 실행 시작: {card_id} - {card_name}")
+
+        result = await claude_runner.run(prompt)
+
+        if result.success:
+            logger.info(f"카드 실행 완료: {card_id}")
+            return CardExecutionResult(
+                success=True,
+                card_id=card_id,
+                output=result.output,
+                session_id=result.session_id,
+            )
+        else:
+            logger.error(f"카드 실행 실패: {card_id} - {result.error}")
+            return CardExecutionResult(
+                success=False,
+                card_id=card_id,
+                output=result.output,
+                error=result.error,
+                session_id=result.session_id,
+            )
+
+    async def validate_completion(
+        self,
+        session_id: str,
+        card_info: dict,
+        execution_output: str,
+        claude_runner,
+    ) -> ValidationResult:
+        """카드 완료 검증
+
+        Args:
+            session_id: 세션 ID
+            card_info: 카드 정보 딕셔너리
+            execution_output: 카드 실행 결과
+            claude_runner: Claude Code 실행기
+
+        Returns:
+            ValidationResult
+        """
+        card_id = card_info.get("id", "")
+        card_name = card_info.get("name", "")
+        card_desc = card_info.get("desc", "")
+
+        # 검증 프롬프트 구성
+        prompt = f"""다음 작업의 완료 여부를 검증해주세요.
+
+## 원래 작업
+**제목**: {card_name}
+**설명**: {card_desc}
+
+## 실행 결과
+{execution_output}
+
+## 검증 요청
+위 작업이 올바르게 완료되었는지 검증하고,
+결과를 다음 형식으로 알려주세요:
+
+VALIDATION_RESULT: PASS (또는 FAIL)
+
+검증 항목:
+1. 요청된 작업이 수행되었는가?
+2. 테스트가 통과하는가? (해당되는 경우)
+3. 코드 품질이 적절한가? (해당되는 경우)
+"""
+
+        logger.info(f"카드 검증 시작: {card_id}")
+
+        result = await claude_runner.run(prompt)
+
+        if not result.success:
+            logger.error(f"카드 검증 실행 실패: {card_id}")
+            return ValidationResult(
+                status=ValidationStatus.UNKNOWN,
+                card_id=card_id,
+                output=result.error or "",
+                session_id=result.session_id,
+            )
+
+        status = self._parse_validation_result(result.output)
+        logger.info(f"카드 검증 결과: {card_id} - {status.value}")
+
+        return ValidationResult(
+            status=status,
+            card_id=card_id,
+            output=result.output,
+            session_id=result.session_id,
+        )
+
+    async def run_next_card(
+        self,
+        session_id: str,
+        trello_client,
+        claude_runner,
+    ) -> Optional[CardRunResult]:
+        """다음 카드 실행 및 검증
+
+        카드를 실행하고 검증까지 완료하는 전체 플로우를 수행합니다.
+
+        Args:
+            session_id: 세션 ID
+            trello_client: 트렐로 클라이언트
+            claude_runner: Claude Code 실행기
+
+        Returns:
+            CardRunResult 또는 None (모든 카드 처리 완료 시)
+        """
+        # 다음 카드 조회
+        card_info = await self.process_next_card(session_id, trello_client)
+        if not card_info:
+            logger.info(f"세션 {session_id}: 모든 카드 처리 완료")
+            self.update_session_status(session_id, SessionStatus.COMPLETED)
+            return None
+
+        card_id = card_info.get("id", "")
+
+        # 카드 실행
+        exec_result = await self.execute_card(session_id, card_info, claude_runner)
+
+        if not exec_result.success:
+            # 실행 실패 시 실패로 표시하고 반환
+            self.mark_card_processed(session_id, card_id, "failed")
+            return CardRunResult(
+                card_id=card_id,
+                execution_success=False,
+                validation_status=ValidationStatus.UNKNOWN,
+                execution_output=exec_result.output,
+                error=exec_result.error,
+            )
+
+        # 검증 세션 상태로 변경
+        self.update_session_status(session_id, SessionStatus.VERIFYING)
+
+        # 검증 실행
+        val_result = await self.validate_completion(
+            session_id,
+            card_info,
+            exec_result.output,
+            claude_runner,
+        )
+
+        # 검증 완료 후 다시 실행 상태로
+        self.update_session_status(session_id, SessionStatus.RUNNING)
+
+        # 카드 처리 완료 표시
+        result_status = "passed" if val_result.status == ValidationStatus.PASS else "failed"
+        self.mark_card_processed(session_id, card_id, result_status)
+
+        return CardRunResult(
+            card_id=card_id,
+            execution_success=True,
+            validation_status=val_result.status,
+            execution_output=exec_result.output,
+            validation_output=val_result.output,
+        )

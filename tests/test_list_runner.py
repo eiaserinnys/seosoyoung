@@ -433,5 +433,355 @@ class TestListRunMarkupParsing:
         assert result.list_run == "📦 Backlog"
 
 
+class TestCardExecution:
+    """Phase 3: 카드 순차 실행 및 검증 세션 테스트"""
+
+    def test_process_next_card_returns_card_info(self):
+        """다음 카드 처리 시 카드 정보 반환"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a", "card_b", "card_c"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            # Mock trello client
+            mock_trello = MagicMock()
+            mock_trello.get_card = AsyncMock(return_value={
+                "id": "card_a",
+                "name": "First Task",
+                "desc": "Task description",
+            })
+
+            import asyncio
+            result = asyncio.run(runner.process_next_card(
+                session_id=session.session_id,
+                trello_client=mock_trello,
+            ))
+
+            assert result is not None
+            assert result["id"] == "card_a"
+            assert result["name"] == "First Task"
+            mock_trello.get_card.assert_called_once_with("card_a")
+
+    def test_process_next_card_returns_none_when_done(self):
+        """모든 카드 처리 완료 시 None 반환"""
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+            runner.mark_card_processed(session.session_id, "card_a", "completed")
+
+            import asyncio
+            result = asyncio.run(runner.process_next_card(
+                session_id=session.session_id,
+                trello_client=MagicMock(),
+            ))
+
+            assert result is None
+
+    def test_execute_card_calls_workflow(self):
+        """카드 실행 시 워크플로우 호출"""
+        from seosoyoung.trello.list_runner import ListRunner, CardExecutionResult
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+
+            # Mock claude runner
+            mock_claude = MagicMock()
+            mock_claude.run = AsyncMock(return_value=MagicMock(
+                success=True,
+                output="작업 완료",
+                session_id="session_xyz",
+            ))
+
+            card_info = {
+                "id": "card_a",
+                "name": "Test Task",
+                "desc": "Do something",
+            }
+
+            import asyncio
+            result = asyncio.run(runner.execute_card(
+                session_id=session.session_id,
+                card_info=card_info,
+                claude_runner=mock_claude,
+            ))
+
+            assert result.success is True
+            assert result.card_id == "card_a"
+            mock_claude.run.assert_called_once()
+
+    def test_execute_card_handles_failure(self):
+        """카드 실행 실패 처리"""
+        from seosoyoung.trello.list_runner import ListRunner, CardExecutionResult
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+
+            # Mock claude runner that fails
+            mock_claude = MagicMock()
+            mock_claude.run = AsyncMock(return_value=MagicMock(
+                success=False,
+                output="",
+                error="Timeout",
+            ))
+
+            card_info = {
+                "id": "card_a",
+                "name": "Test Task",
+                "desc": "Do something",
+            }
+
+            import asyncio
+            result = asyncio.run(runner.execute_card(
+                session_id=session.session_id,
+                card_info=card_info,
+                claude_runner=mock_claude,
+            ))
+
+            assert result.success is False
+            assert result.error == "Timeout"
+
+
+class TestValidationSession:
+    """검증 세션 테스트"""
+
+    def test_validate_completion_pass(self):
+        """검증 세션 통과"""
+        from seosoyoung.trello.list_runner import (
+            ListRunner, ValidationResult, ValidationStatus
+        )
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+
+            # Mock claude runner returning PASS
+            mock_claude = MagicMock()
+            mock_claude.run = AsyncMock(return_value=MagicMock(
+                success=True,
+                output="검증 결과입니다.\nVALIDATION_RESULT: PASS\n모든 항목 통과",
+                session_id="verify_session",
+            ))
+
+            card_info = {
+                "id": "card_a",
+                "name": "Test Task",
+                "desc": "Do something",
+            }
+
+            import asyncio
+            result = asyncio.run(runner.validate_completion(
+                session_id=session.session_id,
+                card_info=card_info,
+                execution_output="작업 완료",
+                claude_runner=mock_claude,
+            ))
+
+            assert result.status == ValidationStatus.PASS
+            assert result.card_id == "card_a"
+
+    def test_validate_completion_fail(self):
+        """검증 세션 실패"""
+        from seosoyoung.trello.list_runner import (
+            ListRunner, ValidationResult, ValidationStatus
+        )
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+
+            # Mock claude runner returning FAIL
+            mock_claude = MagicMock()
+            mock_claude.run = AsyncMock(return_value=MagicMock(
+                success=True,
+                output="검증 실패.\nVALIDATION_RESULT: FAIL\n테스트 미통과",
+                session_id="verify_session",
+            ))
+
+            card_info = {
+                "id": "card_a",
+                "name": "Test Task",
+                "desc": "Do something",
+            }
+
+            import asyncio
+            result = asyncio.run(runner.validate_completion(
+                session_id=session.session_id,
+                card_info=card_info,
+                execution_output="작업 완료",
+                claude_runner=mock_claude,
+            ))
+
+            assert result.status == ValidationStatus.FAIL
+            assert "테스트 미통과" in result.output
+
+    def test_validate_completion_no_marker(self):
+        """검증 결과 마커가 없는 경우 UNKNOWN 처리"""
+        from seosoyoung.trello.list_runner import (
+            ListRunner, ValidationResult, ValidationStatus
+        )
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+
+            # Mock claude runner without VALIDATION_RESULT marker
+            mock_claude = MagicMock()
+            mock_claude.run = AsyncMock(return_value=MagicMock(
+                success=True,
+                output="검증을 수행했습니다. 결과가 명확하지 않습니다.",
+                session_id="verify_session",
+            ))
+
+            card_info = {
+                "id": "card_a",
+                "name": "Test Task",
+                "desc": "Do something",
+            }
+
+            import asyncio
+            result = asyncio.run(runner.validate_completion(
+                session_id=session.session_id,
+                card_info=card_info,
+                execution_output="작업 완료",
+                claude_runner=mock_claude,
+            ))
+
+            assert result.status == ValidationStatus.UNKNOWN
+
+
+class TestValidationResultParsing:
+    """검증 결과 파싱 테스트"""
+
+    def test_parse_validation_result_pass(self):
+        """PASS 결과 파싱"""
+        from seosoyoung.trello.list_runner import ListRunner, ValidationStatus
+
+        output = "검증 완료.\nVALIDATION_RESULT: PASS\n모든 테스트 통과"
+        result = ListRunner._parse_validation_result(output)
+        assert result == ValidationStatus.PASS
+
+    def test_parse_validation_result_fail(self):
+        """FAIL 결과 파싱"""
+        from seosoyoung.trello.list_runner import ListRunner, ValidationStatus
+
+        output = "VALIDATION_RESULT: FAIL\n일부 테스트 실패"
+        result = ListRunner._parse_validation_result(output)
+        assert result == ValidationStatus.FAIL
+
+    def test_parse_validation_result_case_insensitive(self):
+        """대소문자 구분 없이 파싱"""
+        from seosoyoung.trello.list_runner import ListRunner, ValidationStatus
+
+        output1 = "validation_result: pass"
+        output2 = "VALIDATION_RESULT: pass"
+        output3 = "Validation_Result: PASS"
+
+        assert ListRunner._parse_validation_result(output1) == ValidationStatus.PASS
+        assert ListRunner._parse_validation_result(output2) == ValidationStatus.PASS
+        assert ListRunner._parse_validation_result(output3) == ValidationStatus.PASS
+
+    def test_parse_validation_result_unknown(self):
+        """마커가 없는 경우 UNKNOWN"""
+        from seosoyoung.trello.list_runner import ListRunner, ValidationStatus
+
+        output = "검증을 수행했지만 결과 마커가 없습니다."
+        result = ListRunner._parse_validation_result(output)
+        assert result == ValidationStatus.UNKNOWN
+
+
+class TestFullExecutionFlow:
+    """전체 실행 플로우 테스트"""
+
+    def test_run_next_with_validation(self):
+        """카드 실행 후 검증까지 전체 플로우"""
+        from seosoyoung.trello.list_runner import (
+            ListRunner, SessionStatus, ValidationStatus
+        )
+        from unittest.mock import AsyncMock, MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            # Mock trello client
+            mock_trello = MagicMock()
+            mock_trello.get_card = AsyncMock(return_value={
+                "id": "card_a",
+                "name": "Test Task",
+                "desc": "Do something",
+            })
+
+            # Mock claude runner - 실행과 검증 모두 성공
+            mock_claude = MagicMock()
+            mock_claude.run = AsyncMock(side_effect=[
+                # First call: execution
+                MagicMock(success=True, output="작업 완료", session_id="exec_session"),
+                # Second call: validation
+                MagicMock(success=True, output="VALIDATION_RESULT: PASS", session_id="verify_session"),
+            ])
+
+            import asyncio
+            result = asyncio.run(runner.run_next_card(
+                session_id=session.session_id,
+                trello_client=mock_trello,
+                claude_runner=mock_claude,
+            ))
+
+            assert result.execution_success is True
+            assert result.validation_status == ValidationStatus.PASS
+            assert result.card_id == "card_a"
+
+            # 카드가 처리 완료로 표시되었는지 확인
+            updated_session = runner.get_session(session.session_id)
+            assert "card_a" in updated_session.processed_cards
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
