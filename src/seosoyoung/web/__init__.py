@@ -2,5 +2,6 @@
 
 from .cache import WebCache
 from .fetcher import HtmlFetcher
+from .extractor import ContentExtractor
 
-__all__ = ["WebCache", "HtmlFetcher"]
+__all__ = ["WebCache", "HtmlFetcher", "ContentExtractor"]
