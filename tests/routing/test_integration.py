@@ -90,14 +90,14 @@ class ABTestLogger:
 
 # API 키 확인
 def has_api_key() -> bool:
-    """ANTHROPIC_API_KEY 환경변수 존재 여부"""
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
+    """RECALL_API_KEY 환경변수 존재 여부 (계정 과금 모드)"""
+    return bool(os.environ.get("RECALL_API_KEY"))
 
 
 # pytest 마커
 requires_api_key = pytest.mark.skipif(
     not has_api_key(),
-    reason="ANTHROPIC_API_KEY 환경변수가 필요합니다",
+    reason="RECALL_API_KEY 환경변수가 필요합니다 (계정 과금 모드)",
 )
 
 # 통합 테스트 마커 (CI에서 스킵하려면 pytest -m "not integration" 사용)
@@ -118,14 +118,16 @@ def ab_logger():
 
 @pytest.fixture(scope="module")
 def pre_router(workspace_path):
-    """PreRouter 인스턴스 (실제 API 사용)"""
+    """PreRouter 인스턴스 (실제 API 사용 - 계정 과금 모드)"""
     if not has_api_key():
-        pytest.skip("ANTHROPIC_API_KEY 필요")
+        pytest.skip("RECALL_API_KEY 필요 (계정 과금 모드)")
 
     from anthropic import AsyncAnthropic
     from seosoyoung.routing import PreRouter
 
-    client = AsyncAnthropic()
+    # RECALL_API_KEY 사용 (계정 과금 모드)
+    api_key = os.environ.get("RECALL_API_KEY")
+    client = AsyncAnthropic(api_key=api_key)
     return PreRouter(
         workspace_path=workspace_path,
         client=client,

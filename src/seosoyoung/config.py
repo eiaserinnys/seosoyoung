@@ -33,6 +33,9 @@ class Config:
     # Claude
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
+    # Routing (계정 과금 모드 - RECALL_API_KEY 사용)
+    RECALL_API_KEY = os.getenv("RECALL_API_KEY")
+
     # Permissions
     ALLOWED_USERS = os.getenv("ALLOWED_USERS", "").split(",")
     ADMIN_USERS = [u.strip() for u in os.getenv("ADMIN_USERS", "").split(",") if u.strip()]
