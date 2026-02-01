@@ -33,11 +33,11 @@ class TestRankResults:
         assert ranked[2].tool_name == "tool_a"  # 5점
 
     def test_rank_handles_tie_by_name(self):
-        """동점 시 이름 순으로 정렬 (일관성 보장)"""
+        """동점 시 같은 타입이면 이름 순으로 정렬 (일관성 보장)"""
         results = [
-            EvaluationResult("zz_tool", 8, "이유", "접근"),
-            EvaluationResult("aa_tool", 8, "이유", "접근"),
-            EvaluationResult("mm_tool", 8, "이유", "접근"),
+            EvaluationResult("zz_tool", 8, "이유", "접근", tool_type="agent"),
+            EvaluationResult("aa_tool", 8, "이유", "접근", tool_type="agent"),
+            EvaluationResult("mm_tool", 8, "이유", "접근", tool_type="agent"),
         ]
 
         ranked = rank_results(results)
@@ -46,6 +46,21 @@ class TestRankResults:
         assert ranked[0].tool_name == "aa_tool"
         assert ranked[1].tool_name == "mm_tool"
         assert ranked[2].tool_name == "zz_tool"
+
+    def test_rank_handles_tie_agent_over_skill(self):
+        """동점 시 에이전트가 스킬보다 우선"""
+        results = [
+            EvaluationResult("skill_a", 9, "이유", "접근", tool_type="skill"),
+            EvaluationResult("agent_z", 9, "이유", "접근", tool_type="agent"),
+            EvaluationResult("skill_b", 9, "이유", "접근", tool_type="skill"),
+        ]
+
+        ranked = rank_results(results)
+
+        # 동점일 경우 에이전트 우선, 그 다음 이름 순
+        assert ranked[0].tool_name == "agent_z"  # agent 우선
+        assert ranked[1].tool_name == "skill_a"  # 스킬 중 이름 순
+        assert ranked[2].tool_name == "skill_b"
 
     def test_rank_empty_list(self):
         """빈 리스트 처리"""

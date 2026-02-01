@@ -57,10 +57,10 @@
 - `RestartType` (seosoyoung/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
-- `AggregationResult` (seosoyoung/routing/aggregator.py:112): 집계 결과
-- `ResultAggregator` (seosoyoung/routing/aggregator.py:202): 결과 집계기
-- `EvaluationResult` (seosoyoung/routing/evaluator.py:173): 도구 평가 결과
-- `ToolEvaluator` (seosoyoung/routing/evaluator.py:197): 도구 적합도 평가기
+- `AggregationResult` (seosoyoung/routing/aggregator.py:121): 집계 결과
+- `ResultAggregator` (seosoyoung/routing/aggregator.py:211): 결과 집계기
+- `EvaluationResult` (seosoyoung/routing/evaluator.py:181): 도구 평가 결과
+- `ToolEvaluator` (seosoyoung/routing/evaluator.py:207): 도구 적합도 평가기
 - `ToolDefinition` (seosoyoung/routing/loader.py:51): 도구 정의 기본 클래스
 - `AgentDefinition` (seosoyoung/routing/loader.py:73): 에이전트 정의
 - `SkillDefinition` (seosoyoung/routing/loader.py:95): 스킬 정의
@@ -120,9 +120,9 @@
 - `start_trello_watcher()` (seosoyoung/main.py:114): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:133): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:143): 봇 사용자 ID 초기화
-- `rank_results()` (seosoyoung/routing/aggregator.py:18): 평가 결과를 점수 기준으로 정렬.
-- `select_best_tool()` (seosoyoung/routing/aggregator.py:33): 최적 도구 선택.
-- `build_summary_prompt()` (seosoyoung/routing/aggregator.py:58): 요약 생성 프롬프트.
+- `rank_results()` (seosoyoung/routing/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
+- `select_best_tool()` (seosoyoung/routing/aggregator.py:42): 최적 도구 선택.
+- `build_summary_prompt()` (seosoyoung/routing/aggregator.py:67): 요약 생성 프롬프트.
 - `build_evaluation_prompt()` (seosoyoung/routing/evaluator.py:27): 도구 평가를 위한 프롬프트 생성.
 - `parse_evaluation_response()` (seosoyoung/routing/evaluator.py:89): 평가 응답 파싱.
 - `parse_frontmatter()` (seosoyoung/routing/loader.py:19): YAML frontmatter와 본문을 분리하여 파싱.

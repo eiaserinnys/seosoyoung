@@ -86,12 +86,15 @@ def build_evaluation_prompt(tool: ToolDefinition, user_request: str) -> str:
 - 관련 부분이 3개 미만이면 빈 문자열로 채우세요"""
 
 
-def parse_evaluation_response(response: str, tool_name: str) -> "EvaluationResult":
+def parse_evaluation_response(
+    response: str, tool_name: str, tool_type: str = "unknown"
+) -> "EvaluationResult":
     """평가 응답 파싱.
 
     Args:
         response: 모델 응답 텍스트
         tool_name: 도구 이름
+        tool_type: 도구 타입 (agent, skill, unknown)
 
     Returns:
         EvaluationResult 객체
@@ -120,18 +123,22 @@ def parse_evaluation_response(response: str, tool_name: str) -> "EvaluationResul
             score=score,
             reason=excerpts_text,
             approach=approach,
+            tool_type=tool_type,
         )
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         logger.warning(f"JSON 파싱 실패, 정규식 폴백 시도: {e}")
-        return _parse_with_regex_fallback(response, tool_name)
+        return _parse_with_regex_fallback(response, tool_name, tool_type)
 
 
-def _parse_with_regex_fallback(response: str, tool_name: str) -> "EvaluationResult":
+def _parse_with_regex_fallback(
+    response: str, tool_name: str, tool_type: str = "unknown"
+) -> "EvaluationResult":
     """정규식을 사용한 폴백 파싱.
 
     Args:
         response: 모델 응답 텍스트
         tool_name: 도구 이름
+        tool_type: 도구 타입 (agent, skill, unknown)
 
     Returns:
         EvaluationResult 객체
@@ -166,6 +173,7 @@ def _parse_with_regex_fallback(response: str, tool_name: str) -> "EvaluationResu
         score=score,
         reason=excerpts_formatted,
         approach=approach,
+        tool_type=tool_type,
     )
 
 
@@ -177,6 +185,7 @@ class EvaluationResult:
     score: int
     reason: str
     approach: str
+    tool_type: str = "unknown"  # agent, skill, unknown
     threshold: int = DEFAULT_SUITABILITY_THRESHOLD
 
     @property
@@ -191,6 +200,7 @@ class EvaluationResult:
             "score": self.score,
             "reason": self.reason,
             "approach": self.approach,
+            "tool_type": self.tool_type,
         }
 
 
@@ -249,7 +259,7 @@ class ToolEvaluator:
                         self._call_api(prompt),
                         timeout=self.timeout,
                     )
-                return parse_evaluation_response(response, tool.name)
+                return parse_evaluation_response(response, tool.name, tool.tool_type)
 
             except asyncio.TimeoutError:
                 logger.warning(f"도구 평가 타임아웃: {tool.name}")
@@ -258,6 +268,7 @@ class ToolEvaluator:
                     score=0,
                     reason="평가 타임아웃",
                     approach="",
+                    tool_type=tool.tool_type,
                 )
 
             except Exception as e:
@@ -276,6 +287,7 @@ class ToolEvaluator:
                     score=0,
                     reason=f"평가 오류: {str(e)[:50]}",
                     approach="",
+                    tool_type=tool.tool_type,
                 )
 
         return EvaluationResult(
@@ -283,6 +295,7 @@ class ToolEvaluator:
             score=0,
             reason="최대 재시도 초과",
             approach="",
+            tool_type=tool.tool_type,
         )
 
     async def _call_api(self, prompt: str) -> str:
@@ -332,6 +345,7 @@ class ToolEvaluator:
                         score=0,
                         reason=f"평가 실패: {str(result)[:50]}",
                         approach="",
+                        tool_type=tools[i].tool_type,
                     )
                 )
             else:

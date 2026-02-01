@@ -15,6 +15,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_THRESHOLD = 5
 
 
+def _tool_type_priority(tool_type: str) -> int:
+    """도구 타입 우선순위 반환 (낮을수록 우선).
+
+    에이전트를 스킬보다 우선합니다.
+    """
+    priorities = {"agent": 0, "skill": 1, "unknown": 2}
+    return priorities.get(tool_type, 2)
+
+
 def rank_results(results: list[EvaluationResult]) -> list[EvaluationResult]:
     """평가 결과를 점수 기준으로 정렬.
 
@@ -22,11 +31,11 @@ def rank_results(results: list[EvaluationResult]) -> list[EvaluationResult]:
         results: 평가 결과 리스트
 
     Returns:
-        점수 내림차순 정렬된 리스트 (동점 시 이름 순)
+        점수 내림차순 정렬된 리스트 (동점 시 에이전트 우선, 그 다음 이름 순)
     """
     return sorted(
         results,
-        key=lambda r: (-r.score, r.tool_name),
+        key=lambda r: (-r.score, _tool_type_priority(r.tool_type), r.tool_name),
     )
 
 
