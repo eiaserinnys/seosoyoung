@@ -11,11 +11,23 @@ from .loader import (
     ToolLoader,
     parse_frontmatter,
 )
+from .evaluator import (
+    EvaluationResult,
+    ToolEvaluator,
+    build_evaluation_prompt,
+    parse_evaluation_response,
+)
 
 __all__ = [
+    # loader
     "ToolDefinition",
     "AgentDefinition",
     "SkillDefinition",
     "ToolLoader",
     "parse_frontmatter",
+    # evaluator
+    "EvaluationResult",
+    "ToolEvaluator",
+    "build_evaluation_prompt",
+    "parse_evaluation_response",
 ]
