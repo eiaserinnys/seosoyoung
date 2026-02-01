@@ -8,6 +8,7 @@ from typing import Any
 import asyncio
 import json
 import logging
+import os
 import re
 
 from .loader import ToolDefinition
@@ -16,7 +17,7 @@ from .loader import ToolDefinition
 logger = logging.getLogger(__name__)
 
 # 기본 설정
-DEFAULT_MODEL = "claude-3-5-haiku-latest"
+DEFAULT_MODEL = os.getenv("RECALL_MODEL", "claude-haiku-4-5-20250514")
 DEFAULT_TIMEOUT = 10.0
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_DELAY = 0.5

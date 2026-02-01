@@ -12,26 +12,26 @@ loader, evaluator, aggregator를 조합하여 사용자 요청에 가장 적합�
 ## 클래스
 
 ### `RoutingResult`
-- 위치: 줄 29
+- 위치: 줄 30
 - 설명: 라우팅 결과
 
 #### 메서드
 
-- `has_recommendation(self)` (줄 43): 추천 도구가 있는지 여부
-- `to_dict(self)` (줄 47): 딕셔너리 변환
-- `to_prompt_injection(self)` (줄 61): Claude Code 프롬프트에 주입할 텍스트 생성
+- `has_recommendation(self)` (줄 44): 추천 도구가 있는지 여부
+- `to_dict(self)` (줄 48): 딕셔너리 변환
+- `to_prompt_injection(self)` (줄 62): Claude Code 프롬프트에 주입할 텍스트 생성
 
 ### `PreRouter`
-- 위치: 줄 94
+- 위치: 줄 95
 - 설명: 사전 라우팅 파이프라인
 
 사용자 요청을 분석하여 가장 적합한 에이전트/스킬을 결정합니다.
 
 #### 메서드
 
-- `__init__(self, workspace_path, client, model, timeout, threshold, max_concurrent, enabled)` (줄 100): Args:
-- `get_tools(self)` (줄 132): 도구 목록 로드 (캐싱)
-- `refresh_tools(self)` (줄 138): 도구 목록 캐시 갱신
-- `async route(self, user_request)` (줄 142): 사용자 요청에 대한 최적 도구 결정.
-- `async _route_internal(self, user_request)` (줄 200): 내부 라우팅 로직
-- `route_sync(self, user_request)` (줄 270): 동기 버전의 라우팅.
+- `__init__(self, workspace_path, client, model, timeout, threshold, max_concurrent, enabled)` (줄 101): Args:
+- `get_tools(self)` (줄 133): 도구 목록 로드 (캐싱)
+- `refresh_tools(self)` (줄 139): 도구 목록 캐시 갱신
+- `async route(self, user_request)` (줄 143): 사용자 요청에 대한 최적 도구 결정.
+- `async _route_internal(self, user_request)` (줄 201): 내부 라우팅 로직
+- `route_sync(self, user_request)` (줄 271): 동기 버전의 라우팅.

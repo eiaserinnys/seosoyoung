@@ -36,7 +36,7 @@ class ABTestResult:
     all_scores: dict
     evaluation_time_ms: float
     is_correct: bool
-    model: str = "claude-3-5-haiku-latest"
+    model: str = os.getenv("RECALL_MODEL", "claude-haiku-4-5-20250514")
     threshold: int = 5
     error: Optional[str] = None
 
@@ -128,10 +128,11 @@ def pre_router(workspace_path):
     # RECALL_API_KEY 사용 (계정 과금 모드)
     api_key = os.environ.get("RECALL_API_KEY")
     client = AsyncAnthropic(api_key=api_key)
+    model = os.getenv("RECALL_MODEL", "claude-haiku-4-5-20250514")
     return PreRouter(
         workspace_path=workspace_path,
         client=client,
-        model="claude-3-5-haiku-latest",
+        model=model,
         threshold=5,
         timeout=60.0,  # 도구 수에 따라 충분한 시간 확보
     )
