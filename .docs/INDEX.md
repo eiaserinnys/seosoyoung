@@ -22,6 +22,7 @@
 - [`routing/aggregator.py`](modules/routing_aggregator.md): 결과 집계기
 - [`routing/evaluator.py`](modules/routing_evaluator.md): 하이쿠 평가 클라이언트
 - [`routing/loader.py`](modules/routing_loader.md): 도구 정의 로더
+- [`routing/pre_router.py`](modules/routing_pre_router.md): PreRouter - 전체 사전 라우팅 파이프라인
 - [`search/schema.py`](modules/search_schema.md): Whoosh schema definition for dialogue search.
 - [`search/searcher.py`](modules/search_searcher.md): Whoosh searcher for dialogue data.
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
@@ -62,6 +63,8 @@
 - `AgentDefinition` (seosoyoung/routing/loader.py:73): 에이전트 정의
 - `SkillDefinition` (seosoyoung/routing/loader.py:95): 스킬 정의
 - `ToolLoader` (seosoyoung/routing/loader.py:125): 도구 정의 로더
+- `RoutingResult` (seosoyoung/routing/pre_router.py:29): 라우팅 결과
+- `PreRouter` (seosoyoung/routing/pre_router.py:74): 사전 라우팅 파이프라인
 - `DialogueSearcher` (seosoyoung/search/searcher.py:14): 대사 검색 API.
 - `SlackFile` (seosoyoung/slack/file_handler.py:35): 슬랙 파일 정보
 - `DownloadedFile` (seosoyoung/slack/file_handler.py:45): 다운로드된 파일 정보
