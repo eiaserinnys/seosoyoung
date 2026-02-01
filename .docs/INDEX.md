@@ -100,8 +100,9 @@
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록
 - `extract_command()` (seosoyoung/handlers/mention.py:15): 멘션에서 명령어 추출
-- `get_channel_history()` (seosoyoung/handlers/mention.py:41): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-- `register_mention_handlers()` (seosoyoung/handlers/mention.py:62): 멘션 핸들러 등록
+- `build_prompt_with_routing()` (seosoyoung/handlers/mention.py:41): 라우팅 결과를 포함한 프롬프트 구성.
+- `get_channel_history()` (seosoyoung/handlers/mention.py:77): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
+- `register_mention_handlers()` (seosoyoung/handlers/mention.py:98): 멘션 핸들러 등록
 - `register_message_handlers()` (seosoyoung/handlers/message.py:24): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.

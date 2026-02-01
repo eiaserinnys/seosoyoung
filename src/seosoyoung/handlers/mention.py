@@ -38,6 +38,42 @@ def _is_resume_list_run_command(command: str) -> bool:
     return False
 
 
+def build_prompt_with_routing(
+    context: str,
+    question: str,
+    file_context: str,
+    routing_result=None,
+) -> str:
+    """라우팅 결과를 포함한 프롬프트 구성.
+
+    Args:
+        context: 채널 히스토리 컨텍스트
+        question: 사용자 질문
+        file_context: 첨부 파일 컨텍스트
+        routing_result: RoutingResult 객체 (선택사항)
+
+    Returns:
+        구성된 프롬프트 문자열
+    """
+    prompt_parts = [f"아래는 Slack 채널의 최근 대화입니다:\n\n{context}"]
+
+    # 라우팅 결과 주입
+    if routing_result and routing_result.has_recommendation:
+        routing_injection = routing_result.to_prompt_injection()
+        if routing_injection:
+            prompt_parts.append(f"\n{routing_injection}")
+
+    if question:
+        prompt_parts.append(f"\n사용자의 질문: {question}")
+
+    if file_context:
+        prompt_parts.append(file_context)
+
+    prompt_parts.append("\n위 컨텍스트를 참고하여 질문에 답변해주세요.")
+
+    return "\n".join(prompt_parts)
+
+
 def get_channel_history(client, channel: str, limit: int = 20) -> str:
     """채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환"""
     try:
