@@ -8,12 +8,26 @@
 
 ## 함수
 
+### `_get_pre_router()`
+- 위치: 줄 20
+- 설명: 사전 라우터 싱글톤 반환 (지연 초기화)
+
+### `_run_pre_routing(user_request)`
+- 위치: 줄 51
+- 설명: 사전 라우팅 실행 (동기 래퍼)
+
+Args:
+    user_request: 사용자 요청
+
+Returns:
+    RoutingResult 또는 None
+
 ### `extract_command(text)`
-- 위치: 줄 15
+- 위치: 줄 80
 - 설명: 멘션에서 명령어 추출
 
 ### `_is_resume_list_run_command(command)`
-- 위치: 줄 21
+- 위치: 줄 86
 - 설명: 정주행 재개 명령어인지 확인
 
 다음과 같은 패턴을 인식합니다:
@@ -23,7 +37,7 @@
 - resume list run
 
 ### `build_prompt_with_routing(context, question, file_context, routing_result)`
-- 위치: 줄 41
+- 위치: 줄 106
 - 설명: 라우팅 결과를 포함한 프롬프트 구성.
 
 Args:
@@ -36,11 +50,11 @@ Returns:
     구성된 프롬프트 문자열
 
 ### `get_channel_history(client, channel, limit)`
-- 위치: 줄 77
+- 위치: 줄 142
 - 설명: 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 98
+- 위치: 줄 163
 - 설명: 멘션 핸들러 등록
 
 Args:

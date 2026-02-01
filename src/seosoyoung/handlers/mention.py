@@ -1,5 +1,7 @@
 """@seosoyoung 멘션 핸들러"""
 
+import asyncio
+import os
 import re
 import logging
 from pathlib import Path
@@ -10,6 +12,69 @@ from seosoyoung.translator import detect_language, translate
 from seosoyoung.slack import download_files_sync, build_file_context
 
 logger = logging.getLogger(__name__)
+
+# 사전 라우터 지연 임포트 (의존성 순환 방지)
+_pre_router = None
+
+
+def _get_pre_router():
+    """사전 라우터 싱글톤 반환 (지연 초기화)"""
+    global _pre_router
+    if _pre_router is None and Config.get_pre_routing_enabled():
+        try:
+            from anthropic import AsyncAnthropic
+            from seosoyoung.routing.pre_router import PreRouter
+
+            api_key = os.getenv("RECALL_API_KEY")
+            if not api_key:
+                logger.warning("RECALL_API_KEY가 설정되지 않아 사전 라우팅 비활성화")
+                return None
+
+            workspace_path = Path.cwd()
+            client = AsyncAnthropic(api_key=api_key)
+            model = os.getenv("RECALL_MODEL", "claude-haiku-4-5")
+
+            _pre_router = PreRouter(
+                workspace_path=workspace_path,
+                client=client,
+                model=model,
+                threshold=Config.get_pre_routing_threshold(),
+                timeout=Config.get_pre_routing_timeout(),
+            )
+            logger.info(f"사전 라우터 초기화 완료 (모델: {model})")
+        except Exception as e:
+            logger.error(f"사전 라우터 초기화 실패: {e}")
+            return None
+    return _pre_router
+
+
+def _run_pre_routing(user_request: str):
+    """사전 라우팅 실행 (동기 래퍼)
+
+    Args:
+        user_request: 사용자 요청
+
+    Returns:
+        RoutingResult 또는 None
+    """
+    router = _get_pre_router()
+    if not router:
+        return None
+
+    try:
+        result = asyncio.run(router.route(user_request))
+        if result.suitable_tools:
+            logger.info(
+                f"사전 라우팅 완료: {len(result.suitable_tools)}개 도구 적합, "
+                f"최고점={result.selected_tool}({result.confidence*10:.0f}점), "
+                f"시간={result.evaluation_time_ms:.0f}ms"
+            )
+        else:
+            logger.info(f"사전 라우팅 완료: 적합한 도구 없음")
+        return result
+    except Exception as e:
+        logger.error(f"사전 라우팅 실패: {e}")
+        return None
 
 
 def extract_command(text: str) -> str:
@@ -319,21 +384,21 @@ def register_mention_handlers(app, dependencies: dict):
             logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")
             return
 
+        # 사전 라우팅 실행 (활성화된 경우)
+        routing_result = None
+        if Config.get_pre_routing_enabled() and clean_text:
+            routing_result = _run_pre_routing(clean_text)
+
         # 채널 컨텍스트 가져오기
         context = get_channel_history(client, channel, limit=20)
 
-        # 프롬프트 구성
-        prompt_parts = [f"아래는 Slack 채널의 최근 대화입니다:\n\n{context}"]
-
-        if clean_text:
-            prompt_parts.append(f"\n사용자의 질문: {clean_text}")
-
-        if file_context:
-            prompt_parts.append(file_context)
-
-        prompt_parts.append("\n위 컨텍스트를 참고하여 질문에 답변해주세요.")
-
-        prompt = "\n".join(prompt_parts)
+        # 프롬프트 구성 (라우팅 결과 포함)
+        prompt = build_prompt_with_routing(
+            context=context,
+            question=clean_text,
+            file_context=file_context,
+            routing_result=routing_result,
+        )
 
         # Claude 실행 (스레드 락으로 동시 실행 방지)
         run_claude_in_session(
