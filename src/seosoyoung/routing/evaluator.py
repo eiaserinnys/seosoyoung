@@ -61,10 +61,13 @@ def build_evaluation_prompt(tool: ToolDefinition, user_request: str) -> str:
 ```json
 {{
     "score": <1-10 사이의 정수>,
-    "reason": "<적합도 점수의 이유를 1-2문장으로 설명>",
+    "relevant_description": "<도구 설명에서 이 요청과 관련된 부분을 그대로 인용. 관련 부분이 없으면 빈 문자열>",
     "approach": "<이 도구로 요청을 처리한다면 어떤 접근 방식을 취할지 간략히 설명>"
 }}
-```"""
+```
+
+**중요**: `relevant_description`은 반드시 도구 설명에서 관련된 부분을 **그대로 복사**해야 합니다.
+자신의 판단이나 해석을 추가하지 말고, 원문 그대로 인용하세요."""
 
 
 def parse_evaluation_response(response: str, tool_name: str) -> "EvaluationResult":
@@ -85,7 +88,7 @@ def parse_evaluation_response(response: str, tool_name: str) -> "EvaluationResul
     try:
         data = json.loads(response.strip())
         score = data.get("score", 0)
-        reason = data.get("reason", "평가 이유 없음")
+        relevant_description = data.get("relevant_description", "")
         approach = data.get("approach", "접근 방식 미정")
 
         # 점수 클램핑
@@ -94,7 +97,7 @@ def parse_evaluation_response(response: str, tool_name: str) -> "EvaluationResul
         return EvaluationResult(
             tool_name=tool_name,
             score=score,
-            reason=reason,
+            reason=relevant_description,
             approach=approach,
         )
     except (json.JSONDecodeError, ValueError, TypeError) as e:
@@ -117,11 +120,11 @@ def _parse_with_regex_fallback(response: str, tool_name: str) -> "EvaluationResu
     score = int(score_match.group(1)) if score_match else 0
     score = max(0, min(10, score))
 
-    # 이유 추출 시도
-    reason_match = re.search(
-        r"(?:reason|이유)[:\s]*([^\n]+)", response, re.IGNORECASE
+    # relevant_description 추출 시도
+    desc_match = re.search(
+        r"(?:relevant_description|관련[_\s]?설명)[:\s]*\"?([^\"]+)\"?", response, re.IGNORECASE
     )
-    reason = reason_match.group(1).strip() if reason_match else "파싱 실패"
+    relevant_description = desc_match.group(1).strip() if desc_match else ""
 
     # 접근 방식 추출 시도
     approach_match = re.search(
@@ -132,7 +135,7 @@ def _parse_with_regex_fallback(response: str, tool_name: str) -> "EvaluationResu
     return EvaluationResult(
         tool_name=tool_name,
         score=score,
-        reason=reason,
+        reason=relevant_description,
         approach=approach,
     )
 

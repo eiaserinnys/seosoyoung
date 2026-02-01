@@ -11,26 +11,26 @@ Anthropic SDK로 하이쿠 모델을 호출하여 도구 적합도를 평가하�
 ## 클래스
 
 ### `EvaluationResult`
-- 위치: 줄 141
+- 위치: 줄 144
 - 설명: 도구 평가 결과
 
 #### 메서드
 
-- `is_suitable(self)` (줄 151): 임계값 이상이면 적합
-- `to_dict(self)` (줄 155): 딕셔너리 변환
+- `is_suitable(self)` (줄 154): 임계값 이상이면 적합
+- `to_dict(self)` (줄 158): 딕셔너리 변환
 
 ### `ToolEvaluator`
-- 위치: 줄 165
+- 위치: 줄 168
 - 설명: 도구 적합도 평가기
 
 Anthropic SDK를 사용하여 하이쿠 모델로 도구 적합도를 평가합니다.
 
 #### 메서드
 
-- `__init__(self, client, model, timeout, max_retries, retry_delay, max_concurrent)` (줄 171): Args:
-- `async evaluate_tool(self, tool, user_request)` (줄 197): 단일 도구 평가.
-- `async _call_api(self, prompt)` (줄 256): API 호출.
-- `async evaluate_all(self, tools, user_request)` (줄 272): 모든 도구 병렬 평가.
+- `__init__(self, client, model, timeout, max_retries, retry_delay, max_concurrent)` (줄 174): Args:
+- `async evaluate_tool(self, tool, user_request)` (줄 200): 단일 도구 평가.
+- `async _call_api(self, prompt)` (줄 259): API 호출.
+- `async evaluate_all(self, tools, user_request)` (줄 275): 모든 도구 병렬 평가.
 
 ## 함수
 
@@ -46,7 +46,7 @@ Returns:
     평가 프롬프트 문자열
 
 ### `parse_evaluation_response(response, tool_name)`
-- 위치: 줄 70
+- 위치: 줄 73
 - 설명: 평가 응답 파싱.
 
 Args:
@@ -57,7 +57,7 @@ Returns:
     EvaluationResult 객체
 
 ### `_parse_with_regex_fallback(response, tool_name)`
-- 위치: 줄 105
+- 위치: 줄 108
 - 설명: 정규식을 사용한 폴백 파싱.
 
 Args:

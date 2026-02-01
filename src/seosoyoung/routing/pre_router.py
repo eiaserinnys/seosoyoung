@@ -67,10 +67,14 @@ class RoutingResult:
         tools_list = []
         for i, tool_info in enumerate(self.suitable_tools, 1):
             marker = "👉" if tool_info["name"] == self.selected_tool else "  "
+
+            # reason이 비어있으면 표시하지 않음
+            reason_line = f"   - 도구 설명: {tool_info['reason']}\n" if tool_info['reason'] else ""
+
             tools_list.append(
                 f"{marker} {i}. **{tool_info['name']}** ({tool_info['type']}) - {tool_info['score']}점\n"
-                f"   - 이유: {tool_info['reason']}\n"
-                f"   - 접근법: {tool_info['approach']}"
+                f"{reason_line}"
+                f"   - 제안 접근법: {tool_info['approach']}"
             )
 
         tools_text = "\n".join(tools_list)
