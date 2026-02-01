@@ -66,7 +66,7 @@
 - `SkillDefinition` (seosoyoung/routing/loader.py:95): 스킬 정의
 - `ToolLoader` (seosoyoung/routing/loader.py:125): 도구 정의 로더
 - `RoutingResult` (seosoyoung/routing/pre_router.py:30): 라우팅 결과
-- `PreRouter` (seosoyoung/routing/pre_router.py:95): 사전 라우팅 파이프라인
+- `PreRouter` (seosoyoung/routing/pre_router.py:102): 사전 라우팅 파이프라인
 - `DialogueSearcher` (seosoyoung/search/searcher.py:14): 대사 검색 API.
 - `SlackFile` (seosoyoung/slack/file_handler.py:35): 슬랙 파일 정보
 - `DownloadedFile` (seosoyoung/slack/file_handler.py:45): 다운로드된 파일 정보

@@ -64,32 +64,39 @@ class RoutingResult:
         if not self.suitable_tools:
             return ""
 
-        # 임계값 이상 도구 목록
-        tools_list = []
-        for i, tool_info in enumerate(self.suitable_tools, 1):
-            marker = "👉" if tool_info["name"] == self.selected_tool else "  "
+        # 도구별 섹션 생성
+        tool_sections = []
+        for tool_info in self.suitable_tools:
+            section_lines = [
+                f"## {tool_info['name']} ({tool_info['type']})",
+                "",
+                "### 설명",
+                tool_info['approach'],
+            ]
 
-            # reason이 비어있으면 표시하지 않음
-            reason_line = f"   - 도구 설명: {tool_info['reason']}\n" if tool_info['reason'] else ""
+            # 발췌가 있으면 추가
+            if tool_info.get('reason'):
+                section_lines.extend([
+                    "",
+                    "### 발췌",
+                    "```",
+                    tool_info['reason'],
+                    "```",
+                ])
 
-            tools_list.append(
-                f"{marker} {i}. **{tool_info['name']}** ({tool_info['type']}) - {tool_info['score']}점\n"
-                f"{reason_line}"
-                f"   - 제안 접근법: {tool_info['approach']}"
-            )
+            tool_sections.append("\n".join(section_lines))
 
-        tools_text = "\n".join(tools_list)
+        tools_text = "\n\n".join(tool_sections)
 
-        return f"""## 사전 라우팅 결과
+        return f"""# 질문에 관련된 도구
 
-### 추천 도구 (임계값 이상, 점수 순)
+아래는 에이전트와 스킬 정의 중 사용자의 요청과 연관된 맥락을 발췌한 것입니다.
+사용자의 질문에 항상 정확하게 부합하는 에이전트나 도구가 존재하지 않는 경우가 있습니다.
+그러나 그런 경우에도 기존의 에이전트나 도구가 사용자의 요청과 관련된 정보를 담고 있을 수 있습니다.
+따라서 아래 발췌를 살펴보고 적절한 도구를 선택하여 작업을 진행합니다.
+하나의 도구가 아니라 적합하다고 판단되는 도구를 모두 살펴보고 작업하는 것을 권장합니다.
 
-{tools_text}
-
-### 요약
-{self.summary}
-
-위 정보를 참고하여 가장 적합한 도구나 접근 방식을 선택하세요."""
+{tools_text}"""
 
 
 class PreRouter:
