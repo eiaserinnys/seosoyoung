@@ -261,7 +261,7 @@ class TestPreRouterConfiguration:
 
         # 환경변수 RECALL_MODEL이 있으면 그 값, 없으면 기본값
         import os
-        expected_model = os.getenv("RECALL_MODEL", "claude-haiku-4-5-20250514")
+        expected_model = os.getenv("RECALL_MODEL", "claude-haiku-4-5")
         assert router.model == expected_model
         assert router.timeout == 10.0
         assert router.threshold == 5

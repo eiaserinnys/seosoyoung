@@ -36,7 +36,7 @@ class ABTestResult:
     all_scores: dict
     evaluation_time_ms: float
     is_correct: bool
-    model: str = os.getenv("RECALL_MODEL", "claude-haiku-4-5-20250514")
+    model: str = os.getenv("RECALL_MODEL", "claude-haiku-4-5")
     threshold: int = 5
     error: Optional[str] = None
 
@@ -128,7 +128,7 @@ def pre_router(workspace_path):
     # RECALL_API_KEY 사용 (계정 과금 모드)
     api_key = os.environ.get("RECALL_API_KEY")
     client = AsyncAnthropic(api_key=api_key)
-    model = os.getenv("RECALL_MODEL", "claude-haiku-4-5-20250514")
+    model = os.getenv("RECALL_MODEL", "claude-haiku-4-5")
     return PreRouter(
         workspace_path=workspace_path,
         client=client,

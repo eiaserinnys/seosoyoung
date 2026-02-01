@@ -20,7 +20,7 @@ from .aggregator import ResultAggregator, AggregationResult
 logger = logging.getLogger(__name__)
 
 # 기본 설정
-DEFAULT_MODEL = os.getenv("RECALL_MODEL", "claude-haiku-4-5-20250514")
+DEFAULT_MODEL = os.getenv("RECALL_MODEL", "claude-haiku-4-5")
 DEFAULT_TIMEOUT = 10.0
 DEFAULT_THRESHOLD = 5
 DEFAULT_MAX_CONCURRENT = 5
