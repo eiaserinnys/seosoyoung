@@ -515,14 +515,20 @@ class TrelloWatcher:
 """
 
     def _build_list_ids_context(self) -> str:
-        """자주 사용하는 리스트 ID 컨텍스트 생성"""
-        return """
-## 리스트 ID (MCP 검색 불필요)
-- 📥 Draft: 696ddb607d7a2be9fef20614
-- 📦 Backlog: 696ddb707a578b0021173f72
-- 🚧 Blocked: 696ddb735d4b4b17cdc67a2e
-- 👀 Review: 696ddb72e70fe807b0199746
-"""
+        """자주 사용하는 리스트 ID 컨텍스트 생성 (Config에서 동적으로 조회)"""
+        from seosoyoung.config import Config
+
+        lines = ["## 리스트 ID (MCP 검색 불필요)"]
+        if Config.TRELLO_DRAFT_LIST_ID:
+            lines.append(f"- 📥 Draft: {Config.TRELLO_DRAFT_LIST_ID}")
+        if Config.TRELLO_BACKLOG_LIST_ID:
+            lines.append(f"- 📦 Backlog: {Config.TRELLO_BACKLOG_LIST_ID}")
+        if Config.TRELLO_BLOCKED_LIST_ID:
+            lines.append(f"- 🚧 Blocked: {Config.TRELLO_BLOCKED_LIST_ID}")
+        if Config.TRELLO_REVIEW_LIST_ID:
+            lines.append(f"- 👀 Review: {Config.TRELLO_REVIEW_LIST_ID}")
+
+        return "\n".join(lines) + "\n"
 
     def _format_checklists(self, checklists: list[dict]) -> str:
         """체크리스트를 프롬프트용 문자열로 포맷"""

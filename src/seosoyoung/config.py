@@ -61,7 +61,10 @@ class Config:
     TRELLO_WATCH_LISTS = {
         "to_go": os.getenv("TRELLO_TO_GO_LIST_ID", ""),
     }
+    # 리스트 ID (환경변수 없으면 빈 문자열)
+    TRELLO_DRAFT_LIST_ID = os.getenv("TRELLO_DRAFT_LIST_ID", "")
     TRELLO_BACKLOG_LIST_ID = os.getenv("TRELLO_BACKLOG_LIST_ID", "")
+    TRELLO_BLOCKED_LIST_ID = os.getenv("TRELLO_BLOCKED_LIST_ID", "")
     TRELLO_IN_PROGRESS_LIST_ID = os.getenv("TRELLO_IN_PROGRESS_LIST_ID", "")
     TRELLO_REVIEW_LIST_ID = os.getenv("TRELLO_REVIEW_LIST_ID", "")
     TRELLO_DONE_LIST_ID = os.getenv("TRELLO_DONE_LIST_ID", "")
