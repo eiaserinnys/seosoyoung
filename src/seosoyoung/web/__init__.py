@@ -49,9 +49,9 @@ async def get_article(
         from seosoyoung.config import Config
         cache_dir = Config.get_web_cache_path()
 
-    # API 키
+    # API 키 (계정 과금 모드 - RECALL_API_KEY 사용)
     if anthropic_api_key is None:
-        anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        anthropic_api_key = os.getenv("RECALL_API_KEY")
 
     cache = WebCache(cache_dir)
 

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 SENSITIVE_ENV_KEYS = {
     "SLACK_BOT_TOKEN",
     "SLACK_APP_TOKEN",
-    "ANTHROPIC_API_KEY",
+    # ANTHROPIC_API_KEY는 제거 (Claude Code CLI 로그인 세션 사용)
 }
 
 # Claude Code 허용 도구

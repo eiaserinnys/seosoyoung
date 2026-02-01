@@ -75,6 +75,9 @@ class TestMentionHandlerWithRouting:
             approach="설정 파일에서 정보를 조회합니다.",
             all_scores={"lore": 9, "slackbot-dev": 3},
             evaluation_time_ms=150.0,
+            suitable_tools=[
+                {"name": "lore", "type": "agent", "score": 9, "reason": "캐릭터 정보", "approach": "설정 파일 조회"}
+            ],
         )
 
         router = MagicMock()
@@ -94,6 +97,9 @@ class TestMentionHandlerWithRouting:
             approach="설정 파일 조회",
             all_scores={"lore": 9},
             evaluation_time_ms=100.0,
+            suitable_tools=[
+                {"name": "lore", "type": "agent", "score": 9, "reason": "캐릭터 정보", "approach": "설정 파일 조회"}
+            ],
         )
 
         injection = result.to_prompt_injection()
@@ -101,7 +107,7 @@ class TestMentionHandlerWithRouting:
         # 프롬프트에 필수 정보 포함
         assert "lore" in injection
         assert "agent" in injection.lower() or "에이전트" in injection
-        assert "90%" in injection or "0.9" in injection or "90" in injection
+        assert "9점" in injection  # 점수 표시
 
     def test_routing_disabled_no_injection(self):
         """라우팅 비활성화 시 주입 없음"""
@@ -139,6 +145,9 @@ class TestBuildPromptWithRouting:
             approach="설정 조회",
             all_scores={"lore": 9},
             evaluation_time_ms=100.0,
+            suitable_tools=[
+                {"name": "lore", "type": "agent", "score": 9, "reason": "캐릭터 정보", "approach": "설정 조회"}
+            ],
         )
 
         prompt = build_prompt_with_routing(

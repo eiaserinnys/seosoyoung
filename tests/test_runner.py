@@ -24,7 +24,6 @@ class TestClaudeRunnerUnit:
         with patch.dict(os.environ, {
             "SLACK_BOT_TOKEN": "xoxb-secret",
             "SLACK_APP_TOKEN": "xapp-secret",
-            "ANTHROPIC_API_KEY": "sk-ant-secret",
             "PATH": "/usr/bin",
             "HOME": "/home/user",
         }, clear=True):
@@ -33,7 +32,6 @@ class TestClaudeRunnerUnit:
             # 민감 정보는 제외되어야 함
             assert "SLACK_BOT_TOKEN" not in filtered
             assert "SLACK_APP_TOKEN" not in filtered
-            assert "ANTHROPIC_API_KEY" not in filtered
 
             # 일반 환경 변수는 포함되어야 함
             assert filtered.get("PATH") == "/usr/bin"

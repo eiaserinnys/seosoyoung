@@ -71,7 +71,10 @@ class TestParseEvaluationResponse:
         """유효한 JSON 응답 파싱"""
         response = json.dumps({
             "score": 8,
-            "reason": "사용자가 캐릭터 정보를 요청했으므로 lore 에이전트가 적합합니다.",
+            "relevant_excerpts": [
+                "캐릭터 정보를 관리합니다.",
+                "설정 파일을 조회합니다."
+            ],
             "approach": "캐릭터 설정 파일을 조회하여 정보를 제공합니다.",
         })
 
@@ -87,7 +90,7 @@ class TestParseEvaluationResponse:
         response = """```json
 {
     "score": 7,
-    "reason": "적합한 도구입니다.",
+    "relevant_excerpts": ["적합한 도구입니다."],
     "approach": "직접 처리합니다."
 }
 ```"""
@@ -99,11 +102,11 @@ class TestParseEvaluationResponse:
 
     def test_parse_score_out_of_range_clamped(self):
         """범위 밖 점수는 클램핑"""
-        response = json.dumps({"score": 15, "reason": "테스트", "approach": "테스트"})
+        response = json.dumps({"score": 15, "relevant_excerpts": ["테스트"], "approach": "테스트"})
         result = parse_evaluation_response(response, "test")
         assert result.score == 10  # 최대값으로 클램핑
 
-        response = json.dumps({"score": -5, "reason": "테스트", "approach": "테스트"})
+        response = json.dumps({"score": -5, "relevant_excerpts": ["테스트"], "approach": "테스트"})
         result = parse_evaluation_response(response, "test")
         assert result.score == 0  # 최소값으로 클램핑
 
@@ -128,8 +131,9 @@ class TestParseEvaluationResponse:
         result = parse_evaluation_response(response, "test")
 
         assert result.score == 5
-        assert result.reason != ""  # 기본값 사용
-        assert result.approach != ""  # 기본값 사용
+        # relevant_excerpts 없으면 빈 문자열
+        assert result.reason == ""
+        assert result.approach == "접근 방식 미정"  # 기본값
 
 
 class TestEvaluationResult:

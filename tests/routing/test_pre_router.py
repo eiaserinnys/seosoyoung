@@ -76,6 +76,9 @@ class TestRoutingResult:
             approach="설정 파일 조회",
             all_scores={"lore": 9, "search": 6},
             evaluation_time_ms=100.0,
+            suitable_tools=[
+                {"name": "lore", "type": "agent", "score": 9, "reason": "캐릭터 정보 관리", "approach": "설정 파일 조회"}
+            ],
         )
 
         injection = result.to_prompt_injection()

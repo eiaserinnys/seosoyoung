@@ -30,10 +30,8 @@ class Config:
     def get_session_path() -> str:
         return _get_path("SESSION_PATH", "sessions")
 
-    # Claude
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-
     # Routing (계정 과금 모드 - RECALL_API_KEY 사용)
+    # ANTHROPIC_API_KEY는 사용하지 않음 (Claude Code CLI 로그인 세션 사용)
     RECALL_API_KEY = os.getenv("RECALL_API_KEY")
 
     # Permissions
