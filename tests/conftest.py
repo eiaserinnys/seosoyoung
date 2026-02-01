@@ -4,6 +4,10 @@ import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
+from dotenv import load_dotenv
+
+# .env 로드 (RECALL_API_KEY 등)
+load_dotenv()
 
 # 테스트 환경 변수 설정
 os.environ["SLACK_BOT_TOKEN"] = "xoxb-test-token"

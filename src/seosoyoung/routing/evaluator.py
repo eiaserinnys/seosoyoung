@@ -37,19 +37,28 @@ def build_evaluation_prompt(tool: ToolDefinition, user_request: str) -> str:
     tool_type = tool.tool_type
     tool_name = tool.name
     tool_description = tool.description
+    tool_body = tool.body
 
     return f"""당신은 AI 도구 라우팅 전문가입니다. 사용자의 요청이 주어진 도구에 얼마나 적합한지 평가해주세요.
 
 ## 도구 정보
 - **이름**: {tool_name}
 - **유형**: {tool_type}
-- **설명**: {tool_description}
+- **요약**: {tool_description}
+
+## 도구 문서 전체 내용
+{tool_body}
 
 ## 사용자 요청
 "{user_request}"
 
-## 평가 기준
-1-10점 척도로 적합도를 평가하세요:
+## 평가 절차
+1. 도구 문서의 각 부분을 읽으면서 사용자 요청과의 연관도를 평가하세요
+2. 요청에 **직접적이고 구체적인** 정보를 제공하는 부분에 높은 점수를 부여하세요
+3. 가장 연관도가 높은 상위 3개 부분을 선정하세요
+4. 선정된 부분들을 바탕으로 전체 적합도 점수(1-10)를 매기세요
+
+## 적합도 점수 기준
 - 9-10점: 이 도구가 요청을 처리하기에 완벽하게 적합
 - 7-8점: 높은 적합도, 도구가 요청을 잘 처리할 수 있음
 - 5-6점: 중간 적합도, 도구가 부분적으로 도움이 될 수 있음
@@ -61,13 +70,20 @@ def build_evaluation_prompt(tool: ToolDefinition, user_request: str) -> str:
 ```json
 {{
     "score": <1-10 사이의 정수>,
-    "relevant_description": "<도구 설명에서 이 요청과 관련된 부분을 그대로 인용. 관련 부분이 없으면 빈 문자열>",
+    "relevant_excerpts": [
+        "<문서에서 발췌한 첫 번째로 연관도 높은 부분>",
+        "<문서에서 발췌한 두 번째로 연관도 높은 부분>",
+        "<문서에서 발췌한 세 번째로 연관도 높은 부분>"
+    ],
     "approach": "<이 도구로 요청을 처리한다면 어떤 접근 방식을 취할지 간략히 설명>"
 }}
 ```
 
-**중요**: `relevant_description`은 반드시 도구 설명에서 관련된 부분을 **그대로 복사**해야 합니다.
-자신의 판단이나 해석을 추가하지 말고, 원문 그대로 인용하세요."""
+**중요**:
+- `relevant_excerpts`는 반드시 문서 본문에서 **그대로 복사**해야 합니다
+- 각 발췌 부분은 1-3줄 정도의 짧은 텍스트로 제한하세요
+- 자신의 판단이나 해석을 추가하지 말고, 원문 그대로 인용하세요
+- 관련 부분이 3개 미만이면 빈 문자열로 채우세요"""
 
 
 def parse_evaluation_response(response: str, tool_name: str) -> "EvaluationResult":
@@ -88,16 +104,21 @@ def parse_evaluation_response(response: str, tool_name: str) -> "EvaluationResul
     try:
         data = json.loads(response.strip())
         score = data.get("score", 0)
-        relevant_description = data.get("relevant_description", "")
+        relevant_excerpts = data.get("relevant_excerpts", [])
         approach = data.get("approach", "접근 방식 미정")
 
         # 점수 클램핑
         score = max(0, min(10, int(score)))
 
+        # 발췌 부분을 개행으로 연결
+        excerpts_text = "\n\n".join(
+            f"• {excerpt}" for excerpt in relevant_excerpts if excerpt
+        )
+
         return EvaluationResult(
             tool_name=tool_name,
             score=score,
-            reason=relevant_description,
+            reason=excerpts_text,
             approach=approach,
         )
     except (json.JSONDecodeError, ValueError, TypeError) as e:
@@ -120,11 +141,19 @@ def _parse_with_regex_fallback(response: str, tool_name: str) -> "EvaluationResu
     score = int(score_match.group(1)) if score_match else 0
     score = max(0, min(10, score))
 
-    # relevant_description 추출 시도
-    desc_match = re.search(
-        r"(?:relevant_description|관련[_\s]?설명)[:\s]*\"?([^\"]+)\"?", response, re.IGNORECASE
+    # relevant_excerpts 배열 추출 시도
+    excerpts_match = re.search(
+        r"(?:relevant_excerpts|관련[_\s]?발췌)[:\s]*\[(.*?)\]",
+        response,
+        re.IGNORECASE | re.DOTALL
     )
-    relevant_description = desc_match.group(1).strip() if desc_match else ""
+    if excerpts_match:
+        # 간단한 파싱: 따옴표로 감싼 부분들을 추출
+        excerpts_text = excerpts_match.group(1)
+        excerpts = re.findall(r'"([^"]+)"', excerpts_text)
+        excerpts_formatted = "\n\n".join(f"• {e}" for e in excerpts if e)
+    else:
+        excerpts_formatted = ""
 
     # 접근 방식 추출 시도
     approach_match = re.search(
@@ -135,7 +164,7 @@ def _parse_with_regex_fallback(response: str, tool_name: str) -> "EvaluationResu
     return EvaluationResult(
         tool_name=tool_name,
         score=score,
-        reason=relevant_description,
+        reason=excerpts_formatted,
         approach=approach,
     )
 
@@ -267,7 +296,7 @@ class ToolEvaluator:
         """
         response = await self.client.messages.create(
             model=self.model,
-            max_tokens=500,
+            max_tokens=800,  # 발췌 부분을 담기 위해 증가
             messages=[{"role": "user", "content": prompt}],
         )
         return response.content[0].text
