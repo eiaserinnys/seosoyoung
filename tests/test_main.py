@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 from seosoyoung.handlers.mention import extract_command, get_channel_history
 from seosoyoung.slack.helpers import send_long_message
 from seosoyoung.auth import check_permission, get_user_role
-from seosoyoung.claude.executor import get_runner_for_role, _escape_backticks, _build_trello_header
+from seosoyoung.claude.executor import get_runner_for_role
+from seosoyoung.claude.message_formatter import escape_backticks, build_trello_header
 from seosoyoung.trello.watcher import TrackedCard
 
 
@@ -244,55 +245,55 @@ class TestGetChannelHistory:
 
 
 class TestEscapeBackticks:
-    """_escape_backticks 함수 테스트 - 모든 백틱 이스케이프"""
+    """escape_backticks 함수 테스트 - 모든 백틱 이스케이프"""
 
     def test_single_backtick_escaped(self):
         """단일 백틱도 이스케이프"""
-        result = _escape_backticks("Hello `world`")
+        result = escape_backticks("Hello `world`")
         assert result == "Hello ˋworldˋ"
         assert "`" not in result
 
     def test_double_backtick_escaped(self):
         """이중 백틱 이스케이프"""
-        result = _escape_backticks("Use ``code`` here")
+        result = escape_backticks("Use ``code`` here")
         assert result == "Use ˋˋcodeˋˋ here"
         assert "`" not in result
 
     def test_triple_backticks_escaped(self):
         """삼중 백틱(코드 블록)은 이스케이프"""
-        result = _escape_backticks("```python\nprint('hello')\n```")
+        result = escape_backticks("```python\nprint('hello')\n```")
         assert "`" not in result
         assert "ˋˋˋ" in result
         assert "print('hello')" in result
 
     def test_quadruple_backticks_escaped(self):
         """4개 백틱도 이스케이프"""
-        result = _escape_backticks("````markdown\n# Title\n````")
+        result = escape_backticks("````markdown\n# Title\n````")
         assert "`" not in result
         assert "ˋˋˋˋ" in result
 
     def test_mixed_backticks(self):
         """혼합된 백틱 패턴"""
         text = "Use `inline` and ```block``` code"
-        result = _escape_backticks(text)
+        result = escape_backticks(text)
         assert "`" not in result  # 모든 백틱 이스케이프
         assert "ˋinlineˋ" in result
         assert "ˋˋˋblockˋˋˋ" in result
 
     def test_no_backticks(self):
         """백틱이 없는 텍스트"""
-        result = _escape_backticks("Hello world")
+        result = escape_backticks("Hello world")
         assert result == "Hello world"
 
     def test_empty_string(self):
         """빈 문자열"""
-        result = _escape_backticks("")
+        result = escape_backticks("")
         assert result == ""
 
     def test_code_block_with_language(self):
         """언어 지정된 코드 블록"""
         text = "```javascript\nconst x = 1;\n```"
-        result = _escape_backticks(text)
+        result = escape_backticks(text)
         assert "`" not in result
         assert "ˋˋˋjavascript" in result
         assert "const x = 1;" in result
@@ -306,7 +307,7 @@ Use triple backticks:
 print("hello")
 ```
 ```"""
-        result = _escape_backticks(text)
+        result = escape_backticks(text)
         assert "`" not in result
         # 모든 삼중 백틱이 이스케이프되어야 함
         assert result.count("ˋˋˋ") >= 3
@@ -323,20 +324,20 @@ def hello():
 ```bash
 python main.py
 ```"""
-        result = _escape_backticks(text)
+        result = escape_backticks(text)
         assert "`" not in result
         assert result.count("ˋˋˋ") == 4  # 시작/끝 각 2개씩
 
     def test_backticks_at_line_start(self):
         """줄 시작에 백틱이 있는 경우"""
         text = "설명:\n```\ncode here\n```"
-        result = _escape_backticks(text)
+        result = escape_backticks(text)
         assert "`" not in result
 
     def test_consecutive_code_blocks(self):
         """연속된 코드 블록"""
         text = "```\nblock1\n``````\nblock2\n```"
-        result = _escape_backticks(text)
+        result = escape_backticks(text)
         assert "`" not in result
         # 6개 연속 백틱도 처리
         assert "ˋˋˋˋˋˋ" in result
@@ -361,7 +362,7 @@ if DEBUG:
 ```
 
 수정이 필요하시면 말씀해주세요."""
-        result = _escape_backticks(text)
+        result = escape_backticks(text)
         # 모든 백틱이 이스케이프됨
         assert "`" not in result
         assert "ˋconfig.pyˋ" in result
@@ -370,31 +371,31 @@ if DEBUG:
 
     def test_only_backticks(self):
         """백틱만 있는 경우"""
-        result = _escape_backticks("```")
+        result = escape_backticks("```")
         assert result == "ˋˋˋ"
 
     def test_many_consecutive_backticks(self):
         """매우 많은 연속 백틱"""
-        result = _escape_backticks("``````````")  # 10개
+        result = escape_backticks("``````````")  # 10개
         assert "`" not in result
         assert "ˋ" * 10 == result
 
     def test_special_characters_preserved(self):
         """특수 문자는 영향 없음"""
         text = "```\n<>&\"'\n```"
-        result = _escape_backticks(text)
+        result = escape_backticks(text)
         assert "<>&\"'" in result
 
     def test_unicode_preserved(self):
         """유니코드 문자 보존"""
         text = "```\n한글 테스트 🎉\n```"
-        result = _escape_backticks(text)
+        result = escape_backticks(text)
         assert "한글 테스트 🎉" in result
         assert "`" not in result
 
 
 class TestBuildTrelloHeader:
-    """_build_trello_header 함수 테스트
+    """build_trello_header 함수 테스트
 
     NOTE: mode 파라미터가 제거됨 (진행 상태는 슬랙 이모지 리액션으로 표시)
     """
@@ -419,7 +420,7 @@ class TestBuildTrelloHeader:
     def test_header_basic(self):
         """기본 헤더 생성 (모드 없음)"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card)
+        result = build_trello_header(card)
 
         assert "🎫" in result
         assert "테스트 카드" in result
@@ -434,7 +435,7 @@ class TestBuildTrelloHeader:
     def test_header_no_mode_emoji(self):
         """헤더에 모드 이모지가 포함되지 않음"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card)
+        result = build_trello_header(card)
 
         # 모드 관련 이모지가 없어야 함
         assert "💭" not in result
@@ -443,7 +444,7 @@ class TestBuildTrelloHeader:
     def test_header_no_mode_text(self):
         """헤더에 모드 텍스트가 포함되지 않음"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card)
+        result = build_trello_header(card)
 
         assert "계획 중" not in result
         assert "실행 중" not in result
@@ -452,7 +453,7 @@ class TestBuildTrelloHeader:
     def test_header_with_session_id(self):
         """세션 ID가 있는 헤더"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card, session_id="abcd1234efgh5678")
+        result = build_trello_header(card, session_id="abcd1234efgh5678")
 
         assert "#️⃣" in result
         assert "abcd1234" in result  # 8자까지만 표시
@@ -460,14 +461,14 @@ class TestBuildTrelloHeader:
     def test_header_without_session_id(self):
         """세션 ID가 없는 헤더"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card, session_id="")
+        result = build_trello_header(card, session_id="")
 
         assert "#️⃣" not in result
 
     def test_header_contains_card_link(self):
         """헤더에 카드 링크 포함"""
         card = self._create_tracked_card()
-        result = _build_trello_header(card)
+        result = build_trello_header(card)
 
         assert "https://trello.com/c/abc123" in result
         assert "<https://trello.com/c/abc123|테스트 카드>" in result

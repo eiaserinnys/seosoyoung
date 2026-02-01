@@ -1,19 +1,19 @@
 """executor.py 유틸리티 함수 테스트"""
 
 import pytest
-from seosoyoung.claude.executor import (
-    _parse_summary_details,
-    _strip_summary_details_markers,
+from seosoyoung.claude.message_formatter import (
+    parse_summary_details,
+    strip_summary_details_markers,
 )
 
 
 class TestParseSummaryDetails:
-    """_parse_summary_details 함수 테스트"""
+    """parse_summary_details 함수 테스트"""
 
     def test_no_markers(self):
         """마커가 없는 경우 원본 반환"""
         response = "일반 응답 텍스트입니다."
-        summary, details, remainder = _parse_summary_details(response)
+        summary, details, remainder = parse_summary_details(response)
 
         assert summary is None
         assert details is None
@@ -27,7 +27,7 @@ class TestParseSummaryDetails:
 <!-- /SUMMARY -->
 
 추가 내용"""
-        summary, details, remainder = _parse_summary_details(response)
+        summary, details, remainder = parse_summary_details(response)
 
         assert summary == "• 요약 첫 번째\n• 요약 두 번째"
         assert details is None
@@ -41,7 +41,7 @@ class TestParseSummaryDetails:
 <!-- /DETAILS -->
 
 나머지"""
-        summary, details, remainder = _parse_summary_details(response)
+        summary, details, remainder = parse_summary_details(response)
 
         assert summary is None
         assert details == "상세 내용입니다.\n여러 줄로 작성."
@@ -56,7 +56,7 @@ class TestParseSummaryDetails:
 <!-- DETAILS -->
 상세한 설명
 <!-- /DETAILS -->"""
-        summary, details, remainder = _parse_summary_details(response)
+        summary, details, remainder = parse_summary_details(response)
 
         assert summary == "• 요약 포인트"
         assert details == "상세한 설명"
@@ -77,7 +77,7 @@ class TestParseSummaryDetails:
 <!-- /DETAILS -->
 
 뒷부분"""
-        summary, details, remainder = _parse_summary_details(response)
+        summary, details, remainder = parse_summary_details(response)
 
         assert summary == "요약"
         assert details == "상세"
@@ -92,19 +92,19 @@ class TestParseSummaryDetails:
    요약 내용
 
 <!-- /SUMMARY -->"""
-        summary, details, remainder = _parse_summary_details(response)
+        summary, details, remainder = parse_summary_details(response)
 
         assert summary == "요약 내용"
         assert details is None
 
 
 class TestStripSummaryDetailsMarkers:
-    """_strip_summary_details_markers 함수 테스트"""
+    """strip_summary_details_markers 함수 테스트"""
 
     def test_no_markers(self):
         """마커가 없는 경우 원본 반환"""
         response = "일반 응답입니다."
-        result = _strip_summary_details_markers(response)
+        result = strip_summary_details_markers(response)
 
         assert result == response
 
@@ -113,7 +113,7 @@ class TestStripSummaryDetailsMarkers:
         response = """<!-- SUMMARY -->
 요약 내용
 <!-- /SUMMARY -->"""
-        result = _strip_summary_details_markers(response)
+        result = strip_summary_details_markers(response)
 
         assert "<!-- SUMMARY -->" not in result
         assert "<!-- /SUMMARY -->" not in result
@@ -124,7 +124,7 @@ class TestStripSummaryDetailsMarkers:
         response = """<!-- DETAILS -->
 상세 내용
 <!-- /DETAILS -->"""
-        result = _strip_summary_details_markers(response)
+        result = strip_summary_details_markers(response)
 
         assert "<!-- DETAILS -->" not in result
         assert "<!-- /DETAILS -->" not in result
@@ -139,7 +139,7 @@ class TestStripSummaryDetailsMarkers:
 <!-- DETAILS -->
 상세
 <!-- /DETAILS -->"""
-        result = _strip_summary_details_markers(response)
+        result = strip_summary_details_markers(response)
 
         assert "<!-- SUMMARY -->" not in result
         assert "<!-- /SUMMARY -->" not in result
@@ -157,7 +157,7 @@ class TestStripSummaryDetailsMarkers:
 
 
 추가 텍스트"""
-        result = _strip_summary_details_markers(response)
+        result = strip_summary_details_markers(response)
 
         # 연속된 빈 줄 3개 이상이 2개로 줄어듦
         assert "\n\n\n" not in result
@@ -173,7 +173,7 @@ class TestStripSummaryDetailsMarkers:
 <!-- /SUMMARY -->
 
 """
-        result = _strip_summary_details_markers(response)
+        result = strip_summary_details_markers(response)
 
         assert not result.startswith("\n")
         assert not result.endswith("\n")
@@ -194,7 +194,7 @@ class TestStripSummaryDetailsMarkers:
 print("hello")
 ```
 <!-- /DETAILS -->"""
-        result = _strip_summary_details_markers(response)
+        result = strip_summary_details_markers(response)
 
         assert "• 포인트 1" in result
         assert "• 포인트 2" in result

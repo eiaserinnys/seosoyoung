@@ -3,7 +3,6 @@
 _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 """
 
-import re
 import asyncio
 import logging
 from typing import Callable, Optional
@@ -11,6 +10,17 @@ from typing import Callable, Optional
 from seosoyoung.config import Config
 from seosoyoung.claude import get_claude_runner
 from seosoyoung.claude.session import Session, SessionManager
+from seosoyoung.claude.message_formatter import (
+    escape_backticks,
+    parse_summary_details,
+    strip_summary_details_markers,
+    build_trello_header
+)
+from seosoyoung.claude.reaction_manager import (
+    TRELLO_REACTIONS,
+    add_reaction,
+    remove_reaction
+)
 from seosoyoung.trello.watcher import TrackedCard
 from seosoyoung.restart import RestartType
 
@@ -27,142 +37,6 @@ def get_runner_for_role(role: str):
             disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"]
         )
     return get_claude_runner(allowed_tools=allowed_tools)
-
-
-def _escape_backticks(text: str) -> str:
-    """텍스트 내 모든 백틱을 이스케이프
-
-    슬랙에서 백틱은 인라인 코드(`)나 코드 블록(```)을 만드므로,
-    텍스트 내부에 백틱이 있으면 포맷팅이 깨집니다.
-    모든 백틱을 유사 문자(ˋ, modifier letter grave accent)로 대체합니다.
-
-    변환 규칙:
-    - ` (모든 백틱) → ˋ (U+02CB, modifier letter grave accent)
-    """
-    return text.replace('`', 'ˋ')
-
-
-def _parse_summary_details(response: str) -> tuple[str | None, str | None, str]:
-    """응답에서 요약과 상세 내용을 파싱
-
-    Args:
-        response: Claude 응답 텍스트
-
-    Returns:
-        (summary, details, remainder): 요약, 상세, 나머지 텍스트
-        - 마커가 없으면 (None, None, response) 반환
-    """
-    summary = None
-    details = None
-    remainder = response
-
-    # SUMMARY 파싱
-    summary_pattern = r'<!-- SUMMARY -->\s*(.*?)\s*<!-- /SUMMARY -->'
-    summary_match = re.search(summary_pattern, response, re.DOTALL)
-    if summary_match:
-        summary = summary_match.group(1).strip()
-        remainder = re.sub(summary_pattern, '', remainder, flags=re.DOTALL)
-
-    # DETAILS 파싱
-    details_pattern = r'<!-- DETAILS -->\s*(.*?)\s*<!-- /DETAILS -->'
-    details_match = re.search(details_pattern, response, re.DOTALL)
-    if details_match:
-        details = details_match.group(1).strip()
-        remainder = re.sub(details_pattern, '', remainder, flags=re.DOTALL)
-
-    # 나머지 정리
-    remainder = remainder.strip()
-
-    return summary, details, remainder
-
-
-def _strip_summary_details_markers(response: str) -> str:
-    """응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
-
-    스레드 내 후속 대화에서 마커 태그를 제거할 때 사용.
-    마커 제거 후 빈 줄만 남으면 해당 줄도 삭제.
-
-    Args:
-        response: Claude 응답 텍스트
-
-    Returns:
-        마커가 제거된 텍스트
-    """
-    # 마커 태그만 제거 (내용은 유지)
-    result = re.sub(r'<!-- SUMMARY -->\s*', '', response)
-    result = re.sub(r'\s*<!-- /SUMMARY -->', '', result)
-    result = re.sub(r'<!-- DETAILS -->\s*', '', result)
-    result = re.sub(r'\s*<!-- /DETAILS -->', '', result)
-
-    # 빈 줄만 남은 경우 정리 (연속된 빈 줄을 하나로)
-    result = re.sub(r'\n\s*\n\s*\n', '\n\n', result)
-
-    return result.strip()
-
-
-# 트렐로 모드 이모지 리액션 매핑
-TRELLO_REACTIONS = {
-    "planning": "thought_balloon",  # 💭 계획 중
-    "executing": "arrow_forward",   # ▶️ 실행 중
-    "success": "white_check_mark",  # ✅ 완료
-    "error": "x",                   # ❌ 오류
-}
-
-
-def _add_reaction(client, channel: str, ts: str, emoji: str) -> bool:
-    """슬랙 메시지에 이모지 리액션 추가
-
-    Args:
-        client: Slack client
-        channel: 채널 ID
-        ts: 메시지 타임스탬프
-        emoji: 이모지 이름 (콜론 없이, 예: "thought_balloon")
-
-    Returns:
-        성공 여부
-    """
-    try:
-        client.reactions_add(channel=channel, timestamp=ts, name=emoji)
-        return True
-    except Exception as e:
-        logger.debug(f"이모지 리액션 추가 실패 ({emoji}): {e}")
-        return False
-
-
-def _remove_reaction(client, channel: str, ts: str, emoji: str) -> bool:
-    """슬랙 메시지에서 이모지 리액션 제거
-
-    Args:
-        client: Slack client
-        channel: 채널 ID
-        ts: 메시지 타임스탬프
-        emoji: 이모지 이름 (콜론 없이, 예: "thought_balloon")
-
-    Returns:
-        성공 여부
-    """
-    try:
-        client.reactions_remove(channel=channel, timestamp=ts, name=emoji)
-        return True
-    except Exception as e:
-        logger.debug(f"이모지 리액션 제거 실패 ({emoji}): {e}")
-        return False
-
-
-def _build_trello_header(card: TrackedCard, session_id: str = "") -> str:
-    """트렐로 카드용 슬랙 메시지 헤더 생성
-
-    진행 상태(계획/실행/완료)는 헤더가 아닌 슬랙 이모지 리액션으로 표시합니다.
-
-    Args:
-        card: TrackedCard 정보
-        session_id: 세션 ID (표시용)
-
-    Returns:
-        헤더 문자열
-    """
-    session_display = f" | #️⃣ {session_id[:8]}" if session_id else ""
-    return f"*🎫 <{card.card_url}|{card.card_name}>{session_display}*"
 
 
 class ClaudeExecutor:
@@ -304,11 +178,11 @@ class ClaudeExecutor:
                         # 첫 호출 시 상태 이모지 리액션 추가
                         if not trello_reaction_added:
                             reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
-                            _add_reaction(client, channel, main_msg_ts, reaction)
+                            add_reaction(client, channel, main_msg_ts, reaction)
                             trello_reaction_added = True
 
-                        header = _build_trello_header(trello_card, session.session_id or "")
-                        escaped_text = _escape_backticks(display_text)
+                        header = build_trello_header(trello_card, session.session_id or "")
+                        escaped_text = escape_backticks(display_text)
                         # 헤더와 코드블록 사이에 빈 줄 추가
                         update_text = f"{header}\n\n```\n{escaped_text}\n```"
 
@@ -323,7 +197,7 @@ class ClaudeExecutor:
                         )
                     else:
                         # 일반 모드: chat_update로 기존 메시지 갱신 (트렐로 모드와 동일)
-                        escaped_text = _escape_backticks(display_text)
+                        escaped_text = escape_backticks(display_text)
                         code_text = f"```\n{escaped_text}\n```"
                         client.chat_update(
                             channel=channel,
@@ -420,15 +294,15 @@ class ClaudeExecutor:
         """트렐로 모드 성공 처리"""
         # 이전 상태 리액션 제거 후 완료 리액션 추가
         prev_reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
-        _remove_reaction(client, channel, main_msg_ts, prev_reaction)
-        _add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["success"])
+        remove_reaction(client, channel, main_msg_ts, prev_reaction)
+        add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["success"])
 
         final_session_id = result.session_id or session.session_id or ""
-        header = _build_trello_header(trello_card, final_session_id)
+        header = build_trello_header(trello_card, final_session_id)
         continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
 
         # 요약/상세 분리 파싱 (멘션과 동일하게 처리)
-        summary, details, remainder = _parse_summary_details(response)
+        summary, details, remainder = parse_summary_details(response)
         logger.info(f"[Trello] 파싱 결과 - summary: {summary is not None}, details: {details is not None}, response 길이: {len(response)}")
         if summary:
             logger.debug(f"[Trello] summary 내용: {summary[:100]}...")
@@ -505,7 +379,7 @@ class ClaudeExecutor:
         simple_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
 
         # 요약/상세 분리 파싱 (채널 최초 응답 시만 적용)
-        summary, details, remainder = _parse_summary_details(response)
+        summary, details, remainder = parse_summary_details(response)
 
         # 요약/상세 마커가 있고, 채널 최초 응답인 경우
         if summary and not is_thread_reply:
@@ -536,7 +410,7 @@ class ClaudeExecutor:
         else:
             # 기존 로직: 마커가 없거나 스레드 내 후속 대화
             # 스레드 내 후속 대화에서 마커가 있으면 태그만 제거
-            display_response = _strip_summary_details_markers(response) if is_thread_reply else response
+            display_response = strip_summary_details_markers(response) if is_thread_reply else response
 
             # 응답에 이미 continuation hint가 있으면 추가하지 않음
             has_hint = "이 대화를 이어가려면" in display_response or "댓글을 달아주세요" in display_response or "스레드를 확인" in display_response
@@ -661,10 +535,10 @@ class ClaudeExecutor:
         if is_trello_mode:
             # 이전 상태 리액션 제거 후 에러 리액션 추가
             prev_reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
-            _remove_reaction(client, channel, main_msg_ts, prev_reaction)
-            _add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["error"])
+            remove_reaction(client, channel, main_msg_ts, prev_reaction)
+            add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["error"])
 
-            header = _build_trello_header(trello_card, session.session_id or "")
+            header = build_trello_header(trello_card, session.session_id or "")
             continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
             error_text = f"{header}\n\n❌ {error_msg}\n\n{continuation_hint}"
             client.chat_update(
@@ -705,10 +579,10 @@ class ClaudeExecutor:
             try:
                 # 이전 상태 리액션 제거 후 에러 리액션 추가
                 prev_reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
-                _remove_reaction(client, channel, main_msg_ts, prev_reaction)
-                _add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["error"])
+                remove_reaction(client, channel, main_msg_ts, prev_reaction)
+                add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["error"])
 
-                header = _build_trello_header(trello_card, session.session_id or "")
+                header = build_trello_header(trello_card, session.session_id or "")
                 continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
                 client.chat_update(
                     channel=channel,
