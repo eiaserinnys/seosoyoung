@@ -77,7 +77,8 @@ class ClaudeExecutor:
         client,
         role: str = None,
         trello_card: TrackedCard = None,
-        is_existing_thread: bool = False
+        is_existing_thread: bool = False,
+        initial_msg_ts: str = None
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -91,6 +92,7 @@ class ClaudeExecutor:
             role: 실행할 역할 (None이면 session.role 사용)
             trello_card: 트렐로 워처에서 호출된 경우 TrackedCard 정보
             is_existing_thread: 기존 스레드에서 호출된 경우 True (세션 없이 스레드에서 처음 호출)
+            initial_msg_ts: 이미 생성된 초기 메시지 ts (있으면 새로 생성하지 않음)
         """
         thread_ts = session.thread_ts
         # mark_session_running/stopped에 사용할 원래 thread_ts 보존
@@ -126,6 +128,15 @@ class ClaudeExecutor:
         try:
             if is_trello_mode:
                 last_msg_ts = msg_ts
+            elif initial_msg_ts:
+                # 이미 초기 메시지가 있으면 재사용
+                last_msg_ts = initial_msg_ts
+                if not is_thread_reply:
+                    mention_response_ts = initial_msg_ts
+                    # 세션의 thread_ts를 응답 메시지 ts로 업데이트
+                    if mention_response_ts and mention_response_ts != thread_ts:
+                        self.session_manager.update_thread_ts(thread_ts, mention_response_ts)
+                        thread_ts = mention_response_ts
             else:
                 # 초기 메시지: 코드 블럭 형태로 생각 과정 표시
                 if effective_role == "admin":

@@ -384,10 +384,58 @@ def register_mention_handlers(app, dependencies: dict):
             logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")
             return
 
+        # 초기 메시지 표시 (리콜 시작 전)
+        initial_text = "```\n소영이 생각합니다...\n```"
+        if is_existing_thread:
+            # 스레드 내 후속 대화: 해당 스레드에 응답
+            initial_msg = client.chat_postMessage(
+                channel=channel,
+                thread_ts=session_thread_ts,
+                text=initial_text,
+                blocks=[{
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": initial_text}
+                }]
+            )
+            initial_msg_ts = initial_msg["ts"]
+        else:
+            # 채널에서 최초 멘션: 채널 루트에 응답
+            initial_msg = client.chat_postMessage(
+                channel=channel,
+                text=initial_text,
+                blocks=[{
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": initial_text}
+                }]
+            )
+            initial_msg_ts = initial_msg["ts"]
+
         # 사전 라우팅 실행 (활성화된 경우)
         routing_result = None
         if Config.get_pre_routing_enabled() and clean_text:
             routing_result = _run_pre_routing(clean_text)
+
+            # 디버깅용: 리콜 결과를 스레드에 blockquote로 답글
+            if routing_result and routing_result.suitable_tools:
+                recall_debug_lines = ["*🔍 사전 라우팅 결과*", ""]
+                for tool_info in routing_result.suitable_tools:
+                    recall_debug_lines.append(f"*{tool_info['name']}* ({tool_info['type']}) - {tool_info['score']}점")
+                    if tool_info.get('approach'):
+                        recall_debug_lines.append(f"> {tool_info['approach']}")
+                    if tool_info.get('reason'):
+                        # reason의 각 줄을 blockquote로
+                        for line in tool_info['reason'].split('\n'):
+                            if line.strip():
+                                recall_debug_lines.append(f"> {line}")
+                    recall_debug_lines.append("")
+
+                recall_debug_lines.append(f"`⏱️ {routing_result.evaluation_time_ms:.0f}ms`")
+
+                client.chat_postMessage(
+                    channel=channel,
+                    thread_ts=initial_msg_ts,
+                    text="\n".join(recall_debug_lines),
+                )
 
         # 채널 컨텍스트 가져오기
         context = get_channel_history(client, channel, limit=20)
@@ -403,5 +451,6 @@ def register_mention_handlers(app, dependencies: dict):
         # Claude 실행 (스레드 락으로 동시 실행 방지)
         run_claude_in_session(
             session, prompt, ts, channel, say, client,
-            is_existing_thread=is_existing_thread
+            is_existing_thread=is_existing_thread,
+            initial_msg_ts=initial_msg_ts
         )
