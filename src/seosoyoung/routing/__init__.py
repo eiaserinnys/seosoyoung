@@ -17,6 +17,13 @@ from .evaluator import (
     build_evaluation_prompt,
     parse_evaluation_response,
 )
+from .aggregator import (
+    AggregationResult,
+    ResultAggregator,
+    rank_results,
+    select_best_tool,
+    build_summary_prompt,
+)
 
 __all__ = [
     # loader
@@ -30,4 +37,10 @@ __all__ = [
     "ToolEvaluator",
     "build_evaluation_prompt",
     "parse_evaluation_response",
+    # aggregator
+    "AggregationResult",
+    "ResultAggregator",
+    "rank_results",
+    "select_best_tool",
+    "build_summary_prompt",
 ]
