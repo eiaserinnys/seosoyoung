@@ -22,12 +22,25 @@
 - 리스트런 재개
 - resume list run
 
-### `get_channel_history(client, channel, limit)`
+### `build_prompt_with_routing(context, question, file_context, routing_result)`
 - 위치: 줄 41
+- 설명: 라우팅 결과를 포함한 프롬프트 구성.
+
+Args:
+    context: 채널 히스토리 컨텍스트
+    question: 사용자 질문
+    file_context: 첨부 파일 컨텍스트
+    routing_result: RoutingResult 객체 (선택사항)
+
+Returns:
+    구성된 프롬프트 문자열
+
+### `get_channel_history(client, channel, limit)`
+- 위치: 줄 77
 - 설명: 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 62
+- 위치: 줄 98
 - 설명: 멘션 핸들러 등록
 
 Args:

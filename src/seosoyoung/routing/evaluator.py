@@ -1,0 +1,308 @@
+"""하이쿠 평가 클라이언트
+
+Anthropic SDK로 하이쿠 모델을 호출하여 도구 적합도를 평가하는 모듈.
+"""
+
+from dataclasses import dataclass
+from typing import Any
+import asyncio
+import json
+import logging
+import re
+
+from .loader import ToolDefinition
+
+
+logger = logging.getLogger(__name__)
+
+# 기본 설정
+DEFAULT_MODEL = "claude-3-5-haiku-latest"
+DEFAULT_TIMEOUT = 10.0
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_RETRY_DELAY = 0.5
+DEFAULT_MAX_CONCURRENT = 5
+DEFAULT_SUITABILITY_THRESHOLD = 5
+
+
+def build_evaluation_prompt(tool: ToolDefinition, user_request: str) -> str:
+    """도구 평가를 위한 프롬프트 생성.
+
+    Args:
+        tool: 평가할 도구 정의
+        user_request: 사용자 요청
+
+    Returns:
+        평가 프롬프트 문자열
+    """
+    tool_type = tool.tool_type
+    tool_name = tool.name
+    tool_description = tool.description
+
+    return f"""당신은 AI 도구 라우팅 전문가입니다. 사용자의 요청이 주어진 도구에 얼마나 적합한지 평가해주세요.
+
+## 도구 정보
+- **이름**: {tool_name}
+- **유형**: {tool_type}
+- **설명**: {tool_description}
+
+## 사용자 요청
+"{user_request}"
+
+## 평가 기준
+1-10점 척도로 적합도를 평가하세요:
+- 9-10점: 이 도구가 요청을 처리하기에 완벽하게 적합
+- 7-8점: 높은 적합도, 도구가 요청을 잘 처리할 수 있음
+- 5-6점: 중간 적합도, 도구가 부분적으로 도움이 될 수 있음
+- 3-4점: 낮은 적합도, 도구가 요청과 약간만 관련됨
+- 1-2점: 매우 낮은 적합도, 도구가 요청과 거의 무관함
+
+## 응답 형식
+반드시 다음 JSON 형식으로만 응답하세요:
+```json
+{{
+    "score": <1-10 사이의 정수>,
+    "reason": "<적합도 점수의 이유를 1-2문장으로 설명>",
+    "approach": "<이 도구로 요청을 처리한다면 어떤 접근 방식을 취할지 간략히 설명>"
+}}
+```"""
+
+
+def parse_evaluation_response(response: str, tool_name: str) -> "EvaluationResult":
+    """평가 응답 파싱.
+
+    Args:
+        response: 모델 응답 텍스트
+        tool_name: 도구 이름
+
+    Returns:
+        EvaluationResult 객체
+    """
+    # 마크다운 코드 펜스 제거
+    json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response)
+    if json_match:
+        response = json_match.group(1)
+
+    try:
+        data = json.loads(response.strip())
+        score = data.get("score", 0)
+        reason = data.get("reason", "평가 이유 없음")
+        approach = data.get("approach", "접근 방식 미정")
+
+        # 점수 클램핑
+        score = max(0, min(10, int(score)))
+
+        return EvaluationResult(
+            tool_name=tool_name,
+            score=score,
+            reason=reason,
+            approach=approach,
+        )
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
+        logger.warning(f"JSON 파싱 실패, 정규식 폴백 시도: {e}")
+        return _parse_with_regex_fallback(response, tool_name)
+
+
+def _parse_with_regex_fallback(response: str, tool_name: str) -> "EvaluationResult":
+    """정규식을 사용한 폴백 파싱.
+
+    Args:
+        response: 모델 응답 텍스트
+        tool_name: 도구 이름
+
+    Returns:
+        EvaluationResult 객체
+    """
+    # 점수 추출 시도
+    score_match = re.search(r"(?:score|점수)[:\s]*(\d+)", response, re.IGNORECASE)
+    score = int(score_match.group(1)) if score_match else 0
+    score = max(0, min(10, score))
+
+    # 이유 추출 시도
+    reason_match = re.search(
+        r"(?:reason|이유)[:\s]*([^\n]+)", response, re.IGNORECASE
+    )
+    reason = reason_match.group(1).strip() if reason_match else "파싱 실패"
+
+    # 접근 방식 추출 시도
+    approach_match = re.search(
+        r"(?:approach|접근)[:\s]*([^\n]+)", response, re.IGNORECASE
+    )
+    approach = approach_match.group(1).strip() if approach_match else "파싱 실패"
+
+    return EvaluationResult(
+        tool_name=tool_name,
+        score=score,
+        reason=reason,
+        approach=approach,
+    )
+
+
+@dataclass
+class EvaluationResult:
+    """도구 평가 결과"""
+
+    tool_name: str
+    score: int
+    reason: str
+    approach: str
+    threshold: int = DEFAULT_SUITABILITY_THRESHOLD
+
+    @property
+    def is_suitable(self) -> bool:
+        """임계값 이상이면 적합"""
+        return self.score >= self.threshold
+
+    def to_dict(self) -> dict[str, Any]:
+        """딕셔너리 변환"""
+        return {
+            "tool_name": self.tool_name,
+            "score": self.score,
+            "reason": self.reason,
+            "approach": self.approach,
+        }
+
+
+class ToolEvaluator:
+    """도구 적합도 평가기
+
+    Anthropic SDK를 사용하여 하이쿠 모델로 도구 적합도를 평가합니다.
+    """
+
+    def __init__(
+        self,
+        client: Any,
+        model: str = DEFAULT_MODEL,
+        timeout: float = DEFAULT_TIMEOUT,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_delay: float = DEFAULT_RETRY_DELAY,
+        max_concurrent: int = DEFAULT_MAX_CONCURRENT,
+    ):
+        """
+        Args:
+            client: Anthropic 클라이언트 (AsyncAnthropic 또는 모킹된 객체)
+            model: 사용할 모델 이름
+            timeout: 요청 타임아웃 (초)
+            max_retries: 최대 재시도 횟수
+            retry_delay: 재시도 간격 (초)
+            max_concurrent: 최대 동시 요청 수
+        """
+        self.client = client
+        self.model = model
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.max_concurrent = max_concurrent
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def evaluate_tool(
+        self,
+        tool: ToolDefinition,
+        user_request: str,
+    ) -> EvaluationResult:
+        """단일 도구 평가.
+
+        Args:
+            tool: 평가할 도구
+            user_request: 사용자 요청
+
+        Returns:
+            EvaluationResult 객체
+        """
+        prompt = build_evaluation_prompt(tool, user_request)
+
+        for attempt in range(self.max_retries):
+            try:
+                async with self._semaphore:
+                    response = await asyncio.wait_for(
+                        self._call_api(prompt),
+                        timeout=self.timeout,
+                    )
+                return parse_evaluation_response(response, tool.name)
+
+            except asyncio.TimeoutError:
+                logger.warning(f"도구 평가 타임아웃: {tool.name}")
+                return EvaluationResult(
+                    tool_name=tool.name,
+                    score=0,
+                    reason="평가 타임아웃",
+                    approach="",
+                )
+
+            except Exception as e:
+                error_str = str(e).lower()
+                is_rate_limit = "rate_limit" in error_str or "rate limit" in error_str
+
+                if is_rate_limit and attempt < self.max_retries - 1:
+                    delay = self.retry_delay * (2**attempt)  # 지수 백오프
+                    logger.info(f"Rate limit, {delay}초 후 재시도: {tool.name}")
+                    await asyncio.sleep(delay)
+                    continue
+
+                logger.warning(f"도구 평가 오류 ({tool.name}): {e}")
+                return EvaluationResult(
+                    tool_name=tool.name,
+                    score=0,
+                    reason=f"평가 오류: {str(e)[:50]}",
+                    approach="",
+                )
+
+        return EvaluationResult(
+            tool_name=tool.name,
+            score=0,
+            reason="최대 재시도 초과",
+            approach="",
+        )
+
+    async def _call_api(self, prompt: str) -> str:
+        """API 호출.
+
+        Args:
+            prompt: 프롬프트
+
+        Returns:
+            모델 응답 텍스트
+        """
+        response = await self.client.messages.create(
+            model=self.model,
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return response.content[0].text
+
+    async def evaluate_all(
+        self,
+        tools: list[ToolDefinition],
+        user_request: str,
+    ) -> list[EvaluationResult]:
+        """모든 도구 병렬 평가.
+
+        Args:
+            tools: 평가할 도구 목록
+            user_request: 사용자 요청
+
+        Returns:
+            EvaluationResult 리스트
+        """
+        tasks = [
+            self.evaluate_tool(tool, user_request)
+            for tool in tools
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 예외를 기본 결과로 변환
+        processed_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.warning(f"평가 실패 ({tools[i].name}): {result}")
+                processed_results.append(
+                    EvaluationResult(
+                        tool_name=tools[i].name,
+                        score=0,
+                        reason=f"평가 실패: {str(result)[:50]}",
+                        approach="",
+                    )
+                )
+            else:
+                processed_results.append(result)
+
+        return processed_results

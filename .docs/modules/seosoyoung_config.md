@@ -19,6 +19,10 @@
 - `get_narrative_path()` (줄 95): 대사 데이터 경로 (eb_narrative/narrative)
 - `get_search_index_path()` (줄 100): 검색 인덱스 경로 (internal/index/dialogues)
 - `get_web_cache_path()` (줄 105): 웹 콘텐츠 캐시 경로 (.local/cache/web)
+- `get_pre_routing_enabled()` (줄 111): 사전 라우팅 활성화 여부
+- `get_pre_routing_model()` (줄 116): 사전 라우팅에 사용할 모델
+- `get_pre_routing_threshold()` (줄 121): 사전 라우팅 적합도 임계값 (1-10)
+- `get_pre_routing_timeout()` (줄 126): 사전 라우팅 타임아웃 (초)
 
 ## 함수
 
