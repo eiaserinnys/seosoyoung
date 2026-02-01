@@ -58,7 +58,7 @@
 - `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
 - `AggregationResult` (seosoyoung/routing/aggregator.py:112): 집계 결과
-- `ResultAggregator` (seosoyoung/routing/aggregator.py:183): 결과 집계기
+- `ResultAggregator` (seosoyoung/routing/aggregator.py:202): 결과 집계기
 - `EvaluationResult` (seosoyoung/routing/evaluator.py:141): 도구 평가 결과
 - `ToolEvaluator` (seosoyoung/routing/evaluator.py:165): 도구 적합도 평가기
 - `ToolDefinition` (seosoyoung/routing/loader.py:51): 도구 정의 기본 클래스
@@ -66,7 +66,7 @@
 - `SkillDefinition` (seosoyoung/routing/loader.py:95): 스킬 정의
 - `ToolLoader` (seosoyoung/routing/loader.py:125): 도구 정의 로더
 - `RoutingResult` (seosoyoung/routing/pre_router.py:29): 라우팅 결과
-- `PreRouter` (seosoyoung/routing/pre_router.py:74): 사전 라우팅 파이프라인
+- `PreRouter` (seosoyoung/routing/pre_router.py:90): 사전 라우팅 파이프라인
 - `DialogueSearcher` (seosoyoung/search/searcher.py:14): 대사 검색 API.
 - `SlackFile` (seosoyoung/slack/file_handler.py:35): 슬랙 파일 정보
 - `DownloadedFile` (seosoyoung/slack/file_handler.py:45): 다운로드된 파일 정보

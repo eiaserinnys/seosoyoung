@@ -117,6 +117,7 @@ class AggregationResult:
     summary: str
     all_scores: dict[str, int]
     recommended_approach: str = ""
+    suitable_tools: list[dict[str, Any]] = field(default_factory=list)  # 임계값 이상 도구들
 
     @property
     def has_suitable_tool(self) -> bool:
@@ -131,6 +132,7 @@ class AggregationResult:
             "summary": self.summary,
             "all_scores": self.all_scores,
             "recommended_approach": self.recommended_approach,
+            "suitable_tools": self.suitable_tools,
         }
 
     @classmethod
@@ -157,14 +159,30 @@ class AggregationResult:
                 summary="평가할 도구가 없습니다.",
                 all_scores={},
                 recommended_approach="",
+                suitable_tools=[],
             )
 
         best = select_best_tool(results, threshold)
         all_scores = {r.tool_name: r.score for r in results}
 
+        # 임계값 이상인 모든 도구 수집 (점수 순)
+        ranked = rank_results(results)
+        suitable_tools = [
+            {
+                "name": r.tool_name,
+                "score": r.score,
+                "reason": r.reason,
+                "approach": r.approach,
+            }
+            for r in ranked if r.score >= threshold
+        ]
+
         if best:
             confidence = best.score / 10.0
-            summary = f"{best.tool_name}이(가) 가장 적합합니다. ({best.score}점)"
+            if len(suitable_tools) > 1:
+                summary = f"{len(suitable_tools)}개 도구가 적합합니다. 최고점: {best.tool_name} ({best.score}점)"
+            else:
+                summary = f"{best.tool_name}이(가) 가장 적합합니다. ({best.score}점)"
             approach = best.approach
         else:
             confidence = 0.0
@@ -177,6 +195,7 @@ class AggregationResult:
             summary=summary,
             all_scores=all_scores,
             recommended_approach=approach,
+            suitable_tools=suitable_tools,
         )
 
 

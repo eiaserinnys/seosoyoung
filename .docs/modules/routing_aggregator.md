@@ -16,21 +16,21 @@
 
 #### 메서드
 
-- `has_suitable_tool(self)` (줄 122): 적합한 도구가 있는지 여부
-- `to_dict(self)` (줄 126): 딕셔너리 변환
-- `from_evaluation_results(cls, results, user_request, threshold)` (줄 137): 평가 결과에서 집계 결과 생성.
+- `has_suitable_tool(self)` (줄 123): 적합한 도구가 있는지 여부
+- `to_dict(self)` (줄 127): 딕셔너리 변환
+- `from_evaluation_results(cls, results, user_request, threshold)` (줄 139): 평가 결과에서 집계 결과 생성.
 
 ### `ResultAggregator`
-- 위치: 줄 183
+- 위치: 줄 202
 - 설명: 결과 집계기
 
 평가 결과를 종합하여 최적 도구를 선택하고 요약을 생성합니다.
 
 #### 메서드
 
-- `__init__(self, client, model, threshold)` (줄 189): Args:
-- `aggregate(self, results, user_request)` (줄 205): 평가 결과 집계 (요약 생성 없이).
-- `async aggregate_with_summary(self, results, user_request)` (줄 223): 평가 결과 집계 및 요약 생성.
+- `__init__(self, client, model, threshold)` (줄 208): Args:
+- `aggregate(self, results, user_request)` (줄 224): 평가 결과 집계 (요약 생성 없이).
+- `async aggregate_with_summary(self, results, user_request)` (줄 242): 평가 결과 집계 및 요약 생성.
 
 ## 함수
 

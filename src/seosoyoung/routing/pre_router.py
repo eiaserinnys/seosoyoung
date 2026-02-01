@@ -37,6 +37,7 @@ class RoutingResult:
     all_scores: dict[str, int]
     evaluation_time_ms: float
     error: str | None = None
+    suitable_tools: list[dict[str, Any]] = field(default_factory=list)  # 임계값 이상 도구들
 
     @property
     def has_recommendation(self) -> bool:
@@ -54,21 +55,36 @@ class RoutingResult:
             "all_scores": self.all_scores,
             "evaluation_time_ms": self.evaluation_time_ms,
             "error": self.error,
+            "suitable_tools": self.suitable_tools,
         }
 
     def to_prompt_injection(self) -> str:
         """Claude Code 프롬프트에 주입할 텍스트 생성"""
-        if not self.has_recommendation:
+        if not self.suitable_tools:
             return ""
+
+        # 임계값 이상 도구 목록
+        tools_list = []
+        for i, tool_info in enumerate(self.suitable_tools, 1):
+            marker = "👉" if tool_info["name"] == self.selected_tool else "  "
+            tools_list.append(
+                f"{marker} {i}. **{tool_info['name']}** ({tool_info['type']}) - {tool_info['score']}점\n"
+                f"   - 이유: {tool_info['reason']}\n"
+                f"   - 접근법: {tool_info['approach']}"
+            )
+
+        tools_text = "\n".join(tools_list)
 
         return f"""## 사전 라우팅 결과
 
-추천 도구: `{self.selected_tool}` ({self.tool_type})
-신뢰도: {self.confidence:.0%}
-요약: {self.summary}
-권장 접근 방식: {self.approach}
+### 추천 도구 (임계값 이상, 점수 순)
 
-위 정보를 참고하여 작업을 진행하세요."""
+{tools_text}
+
+### 요약
+{self.summary}
+
+위 정보를 참고하여 가장 적합한 도구나 접근 방식을 선택하세요."""
 
 
 class PreRouter:
@@ -137,6 +153,7 @@ class PreRouter:
                 approach="",
                 all_scores={},
                 evaluation_time_ms=0.0,
+                suitable_tools=[],
             )
 
         start_time = time.perf_counter()
@@ -159,6 +176,7 @@ class PreRouter:
                 all_scores={},
                 evaluation_time_ms=elapsed_ms,
                 error="timeout",
+                suitable_tools=[],
             )
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -172,6 +190,7 @@ class PreRouter:
                 all_scores={},
                 evaluation_time_ms=elapsed_ms,
                 error=str(e),
+                suitable_tools=[],
             )
 
     async def _route_internal(self, user_request: str) -> RoutingResult:
@@ -190,6 +209,7 @@ class PreRouter:
                 approach="",
                 all_scores={},
                 evaluation_time_ms=0.0,
+                suitable_tools=[],
             )
 
         # 2. 평가 수행
@@ -222,6 +242,16 @@ class PreRouter:
                     tool_type = tool.tool_type
                     break
 
+        # suitable_tools에 타입 정보 추가
+        tools_dict = {tool.name: tool.tool_type for tool in tools}
+        suitable_tools_with_type = [
+            {
+                **tool_info,
+                "type": tools_dict.get(tool_info["name"], "unknown"),
+            }
+            for tool_info in agg_result.suitable_tools
+        ]
+
         return RoutingResult(
             selected_tool=agg_result.selected_tool,
             tool_type=tool_type,
@@ -230,6 +260,7 @@ class PreRouter:
             approach=agg_result.recommended_approach,
             all_scores=agg_result.all_scores,
             evaluation_time_ms=elapsed_ms,
+            suitable_tools=suitable_tools_with_type,
         )
 
     def route_sync(self, user_request: str) -> RoutingResult:

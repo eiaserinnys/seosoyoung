@@ -228,9 +228,17 @@ class TestRoutingIntegration:
         )
         ab_logger.log(ab_result)
 
+        # suitable_tools 출력 (디버깅용)
+        print(f"\n=== Suitable Tools ({len(result.suitable_tools)}) ===")
+        for tool in result.suitable_tools:
+            print(f"  {tool['name']} ({tool['type']}) - {tool['score']}점")
+            print(f"    이유: {tool['reason']}")
+            print(f"    접근법: {tool['approach']}")
+
         assert result.selected_tool == expected_tool, (
             f"Expected {expected_tool}, got {result.selected_tool}. "
-            f"Scores: {result.all_scores}"
+            f"Scores: {result.all_scores}\n"
+            f"Suitable tools: {[t['name'] for t in result.suitable_tools]}"
         )
 
     @requires_api_key
