@@ -49,6 +49,7 @@ class ClaudeResult:
     attachments: list[str] = field(default_factory=list)
     update_requested: bool = False
     restart_requested: bool = False
+    list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
 
 
 class ClaudeAgentRunner:
@@ -177,12 +178,18 @@ class ClaudeAgentRunner:
             update_requested = "<!-- UPDATE -->" in output
             restart_requested = "<!-- RESTART -->" in output
 
+            # LIST_RUN 마커 추출
+            list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
+            list_run = list_run_match.group(1).strip() if list_run_match else None
+
             if attachments:
                 logger.info(f"첨부 파일 요청: {attachments}")
             if update_requested:
                 logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
             if restart_requested:
                 logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
+            if list_run:
+                logger.info(f"리스트 정주행 요청 마커 감지: {list_run}")
 
             return ClaudeResult(
                 success=True,
@@ -192,6 +199,7 @@ class ClaudeAgentRunner:
                 attachments=attachments,
                 update_requested=update_requested,
                 restart_requested=restart_requested,
+                list_run=list_run,
             )
 
         except asyncio.TimeoutError:
