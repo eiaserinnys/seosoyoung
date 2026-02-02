@@ -110,23 +110,23 @@ class Config:
         """웹 콘텐츠 캐시 경로 (.local/cache/web)"""
         return _get_path("WEB_CACHE_PATH", ".local/cache/web")
 
-    # 사전 라우팅 설정
+    # Recall 설정 (도구 선택 사전 분석)
     @staticmethod
-    def get_pre_routing_enabled() -> bool:
-        """사전 라우팅 활성화 여부"""
-        return os.getenv("PRE_ROUTING_ENABLED", "false").lower() == "true"
+    def get_recall_enabled() -> bool:
+        """Recall 활성화 여부"""
+        return os.getenv("RECALL_ENABLED", "false").lower() == "true"
 
     @staticmethod
-    def get_pre_routing_model() -> str:
-        """사전 라우팅에 사용할 모델"""
-        return os.getenv("PRE_ROUTING_MODEL", "claude-3-5-haiku-latest")
+    def get_recall_model() -> str:
+        """Recall에 사용할 모델"""
+        return os.getenv("RECALL_MODEL", "claude-3-5-haiku-latest")
 
     @staticmethod
-    def get_pre_routing_threshold() -> int:
-        """사전 라우팅 적합도 임계값 (1-10)"""
-        return int(os.getenv("PRE_ROUTING_THRESHOLD", "5"))
+    def get_recall_threshold() -> int:
+        """Recall 적합도 임계값 (1-10)"""
+        return int(os.getenv("RECALL_THRESHOLD", "5"))
 
     @staticmethod
-    def get_pre_routing_timeout() -> float:
-        """사전 라우팅 타임아웃 (초)"""
-        return float(os.getenv("PRE_ROUTING_TIMEOUT", "10.0"))
+    def get_recall_timeout() -> float:
+        """Recall 타임아웃 (초)"""
+        return float(os.getenv("RECALL_TIMEOUT", "10.0"))

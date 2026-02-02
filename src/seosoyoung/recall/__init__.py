@@ -1,4 +1,4 @@
-"""사전 라우팅 모듈
+"""Recall 모듈 - 도구 선택 사전 분석
 
 Claude Code 호출 전에 하이쿠 모델로 에이전트/스킬 적합도를 평가하여
 최적의 접근 방식을 미리 결정하는 파이프라인.
@@ -24,7 +24,10 @@ from .aggregator import (
     select_best_tool,
     build_summary_prompt,
 )
-from .pre_router import (
+from .recall import (
+    Recall,
+    RecallResult,
+    # 하위 호환성을 위한 별칭
     PreRouter,
     RoutingResult,
 )
@@ -47,7 +50,10 @@ __all__ = [
     "rank_results",
     "select_best_tool",
     "build_summary_prompt",
-    # pre_router
+    # recall
+    "Recall",
+    "RecallResult",
+    # 하위 호환성을 위한 별칭
     "PreRouter",
     "RoutingResult",
 ]

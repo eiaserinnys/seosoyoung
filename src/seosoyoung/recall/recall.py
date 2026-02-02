@@ -1,4 +1,4 @@
-"""PreRouter - 전체 사전 라우팅 파이프라인
+"""Recall - 도구 선택 사전 분석 파이프라인
 
 loader, evaluator, aggregator를 조합하여 사용자 요청에 가장 적합한
 도구를 결정하는 오케스트레이션 클래스.
@@ -27,8 +27,8 @@ DEFAULT_MAX_CONCURRENT = 5
 
 
 @dataclass
-class RoutingResult:
-    """라우팅 결과"""
+class RecallResult:
+    """Recall 결과"""
 
     selected_tool: str | None
     tool_type: str | None
@@ -99,8 +99,12 @@ class RoutingResult:
 {tools_text}"""
 
 
-class PreRouter:
-    """사전 라우팅 파이프라인
+# 하위 호환성을 위한 별칭
+RoutingResult = RecallResult
+
+
+class Recall:
+    """Recall - 도구 선택 사전 분석 파이프라인
 
     사용자 요청을 분석하여 가장 적합한 에이전트/스킬을 결정합니다.
     """
@@ -123,7 +127,7 @@ class PreRouter:
             timeout: 전체 파이프라인 타임아웃 (초)
             threshold: 적합도 임계값
             max_concurrent: 최대 동시 평가 수
-            enabled: 라우팅 활성화 여부
+            enabled: Recall 활성화 여부
         """
         self.workspace_path = Path(workspace_path)
         self.client = client
@@ -147,21 +151,21 @@ class PreRouter:
         """도구 목록 캐시 갱신"""
         self._tools_cache = None
 
-    async def route(self, user_request: str) -> RoutingResult:
+    async def analyze(self, user_request: str) -> RecallResult:
         """사용자 요청에 대한 최적 도구 결정.
 
         Args:
             user_request: 사용자 요청 텍스트
 
         Returns:
-            RoutingResult 객체
+            RecallResult 객체
         """
         if not self.enabled:
-            return RoutingResult(
+            return RecallResult(
                 selected_tool=None,
                 tool_type=None,
                 confidence=0.0,
-                summary="라우팅이 비활성화되어 있습니다.",
+                summary="Recall이 비활성화되어 있습니다.",
                 approach="",
                 all_scores={},
                 evaluation_time_ms=0.0,
@@ -172,18 +176,18 @@ class PreRouter:
 
         try:
             result = await asyncio.wait_for(
-                self._route_internal(user_request),
+                self._analyze_internal(user_request),
                 timeout=self.timeout,
             )
             return result
         except asyncio.TimeoutError:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            logger.warning(f"라우팅 타임아웃: {elapsed_ms:.1f}ms")
-            return RoutingResult(
+            logger.warning(f"Recall 타임아웃: {elapsed_ms:.1f}ms")
+            return RecallResult(
                 selected_tool=None,
                 tool_type=None,
                 confidence=0.0,
-                summary="라우팅 타임아웃이 발생했습니다.",
+                summary="Recall 타임아웃이 발생했습니다.",
                 approach="",
                 all_scores={},
                 evaluation_time_ms=elapsed_ms,
@@ -192,12 +196,12 @@ class PreRouter:
             )
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"라우팅 오류: {e}")
-            return RoutingResult(
+            logger.error(f"Recall 오류: {e}")
+            return RecallResult(
                 selected_tool=None,
                 tool_type=None,
                 confidence=0.0,
-                summary=f"라우팅 오류: {str(e)[:100]}",
+                summary=f"Recall 오류: {str(e)[:100]}",
                 approach="",
                 all_scores={},
                 evaluation_time_ms=elapsed_ms,
@@ -205,15 +209,15 @@ class PreRouter:
                 suitable_tools=[],
             )
 
-    async def _route_internal(self, user_request: str) -> RoutingResult:
-        """내부 라우팅 로직"""
+    async def _analyze_internal(self, user_request: str) -> RecallResult:
+        """내부 분석 로직"""
         start_time = time.perf_counter()
 
         # 1. 도구 목록 로드
         tools = self.get_tools()
 
         if not tools:
-            return RoutingResult(
+            return RecallResult(
                 selected_tool=None,
                 tool_type=None,
                 confidence=0.0,
@@ -264,7 +268,7 @@ class PreRouter:
             for tool_info in agg_result.suitable_tools
         ]
 
-        return RoutingResult(
+        return RecallResult(
             selected_tool=agg_result.selected_tool,
             tool_type=tool_type,
             confidence=agg_result.confidence,
@@ -275,13 +279,26 @@ class PreRouter:
             suitable_tools=suitable_tools_with_type,
         )
 
-    def route_sync(self, user_request: str) -> RoutingResult:
-        """동기 버전의 라우팅.
+    def analyze_sync(self, user_request: str) -> RecallResult:
+        """동기 버전의 분석.
 
         Args:
             user_request: 사용자 요청 텍스트
 
         Returns:
-            RoutingResult 객체
+            RecallResult 객체
         """
-        return asyncio.run(self.route(user_request))
+        return asyncio.run(self.analyze(user_request))
+
+    # 하위 호환성을 위한 별칭
+    async def route(self, user_request: str) -> RecallResult:
+        """analyze()의 별칭 (하위 호환성)"""
+        return await self.analyze(user_request)
+
+    def route_sync(self, user_request: str) -> RecallResult:
+        """analyze_sync()의 별칭 (하위 호환성)"""
+        return self.analyze_sync(user_request)
+
+
+# 하위 호환성을 위한 별칭
+PreRouter = Recall

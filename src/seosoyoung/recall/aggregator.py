@@ -101,7 +101,7 @@ def build_summary_prompt(
         instruction = """적합한 도구가 없는 이유와 사용자 요청을 어떻게 처리해야 할지
 1-2문장으로 설명해주세요."""
 
-    return f"""다음 정보를 바탕으로 라우팅 결정을 요약해주세요.
+    return f"""다음 정보를 바탕으로 Recall 결정을 요약해주세요.
 
 ## 사용자 요청
 "{user_request}"

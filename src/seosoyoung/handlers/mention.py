@@ -13,67 +13,67 @@ from seosoyoung.slack import download_files_sync, build_file_context
 
 logger = logging.getLogger(__name__)
 
-# 사전 라우터 지연 임포트 (의존성 순환 방지)
-_pre_router = None
+# Recall 지연 임포트 (의존성 순환 방지)
+_recall = None
 
 
-def _get_pre_router():
-    """사전 라우터 싱글톤 반환 (지연 초기화)"""
-    global _pre_router
-    if _pre_router is None and Config.get_pre_routing_enabled():
+def _get_recall():
+    """Recall 싱글톤 반환 (지연 초기화)"""
+    global _recall
+    if _recall is None and Config.get_recall_enabled():
         try:
             from anthropic import AsyncAnthropic
-            from seosoyoung.routing.pre_router import PreRouter
+            from seosoyoung.recall import Recall
 
             api_key = os.getenv("RECALL_API_KEY")
             if not api_key:
-                logger.warning("RECALL_API_KEY가 설정되지 않아 사전 라우팅 비활성화")
+                logger.warning("RECALL_API_KEY가 설정되지 않아 Recall 비활성화")
                 return None
 
             workspace_path = Path.cwd()
             client = AsyncAnthropic(api_key=api_key)
             model = os.getenv("RECALL_MODEL", "claude-haiku-4-5")
 
-            _pre_router = PreRouter(
+            _recall = Recall(
                 workspace_path=workspace_path,
                 client=client,
                 model=model,
-                threshold=Config.get_pre_routing_threshold(),
-                timeout=Config.get_pre_routing_timeout(),
+                threshold=Config.get_recall_threshold(),
+                timeout=Config.get_recall_timeout(),
             )
-            logger.info(f"사전 라우터 초기화 완료 (모델: {model})")
+            logger.info(f"Recall 초기화 완료 (모델: {model})")
         except Exception as e:
-            logger.error(f"사전 라우터 초기화 실패: {e}")
+            logger.error(f"Recall 초기화 실패: {e}")
             return None
-    return _pre_router
+    return _recall
 
 
-def _run_pre_routing(user_request: str):
-    """사전 라우팅 실행 (동기 래퍼)
+def _run_recall(user_request: str):
+    """Recall 실행 (동기 래퍼)
 
     Args:
         user_request: 사용자 요청
 
     Returns:
-        RoutingResult 또는 None
+        RecallResult 또는 None
     """
-    router = _get_pre_router()
-    if not router:
+    recall = _get_recall()
+    if not recall:
         return None
 
     try:
-        result = asyncio.run(router.route(user_request))
+        result = asyncio.run(recall.analyze(user_request))
         if result.suitable_tools:
             logger.info(
-                f"사전 라우팅 완료: {len(result.suitable_tools)}개 도구 적합, "
+                f"Recall 완료: {len(result.suitable_tools)}개 도구 적합, "
                 f"최고점={result.selected_tool}({result.confidence*10:.0f}점), "
                 f"시간={result.evaluation_time_ms:.0f}ms"
             )
         else:
-            logger.info(f"사전 라우팅 완료: 적합한 도구 없음")
+            logger.info(f"Recall 완료: 적합한 도구 없음")
         return result
     except Exception as e:
-        logger.error(f"사전 라우팅 실패: {e}")
+        logger.error(f"Recall 실패: {e}")
         return None
 
 
@@ -103,30 +103,30 @@ def _is_resume_list_run_command(command: str) -> bool:
     return False
 
 
-def build_prompt_with_routing(
+def build_prompt_with_recall(
     context: str,
     question: str,
     file_context: str,
-    routing_result=None,
+    recall_result=None,
 ) -> str:
-    """라우팅 결과를 포함한 프롬프트 구성.
+    """Recall 결과를 포함한 프롬프트 구성.
 
     Args:
         context: 채널 히스토리 컨텍스트
         question: 사용자 질문
         file_context: 첨부 파일 컨텍스트
-        routing_result: RoutingResult 객체 (선택사항)
+        recall_result: RecallResult 객체 (선택사항)
 
     Returns:
         구성된 프롬프트 문자열
     """
     prompt_parts = [f"아래는 Slack 채널의 최근 대화입니다:\n\n{context}"]
 
-    # 라우팅 결과 주입
-    if routing_result and routing_result.has_recommendation:
-        routing_injection = routing_result.to_prompt_injection()
-        if routing_injection:
-            prompt_parts.append(f"\n{routing_injection}")
+    # Recall 결과 주입
+    if recall_result and recall_result.has_recommendation:
+        recall_injection = recall_result.to_prompt_injection()
+        if recall_injection:
+            prompt_parts.append(f"\n{recall_injection}")
 
     if question:
         prompt_parts.append(f"\n사용자의 질문: {question}")
@@ -410,15 +410,15 @@ def register_mention_handlers(app, dependencies: dict):
             )
             initial_msg_ts = initial_msg["ts"]
 
-        # 사전 라우팅 실행 (활성화된 경우)
-        routing_result = None
-        if Config.get_pre_routing_enabled() and clean_text:
-            routing_result = _run_pre_routing(clean_text)
+        # Recall 실행 (활성화된 경우)
+        recall_result = None
+        if Config.get_recall_enabled() and clean_text:
+            recall_result = _run_recall(clean_text)
 
-            # 디버깅용: 리콜 결과를 스레드에 blockquote로 답글
-            if routing_result and routing_result.suitable_tools:
-                recall_debug_lines = ["*🔍 사전 라우팅 결과*", ""]
-                for tool_info in routing_result.suitable_tools:
+            # 디버깅용: Recall 결과를 스레드에 blockquote로 답글
+            if recall_result and recall_result.suitable_tools:
+                recall_debug_lines = ["*🔍 Recall 결과*", ""]
+                for tool_info in recall_result.suitable_tools:
                     recall_debug_lines.append(f"*{tool_info['name']}* ({tool_info['type']}) - {tool_info['score']}점")
                     if tool_info.get('approach'):
                         recall_debug_lines.append(f"> {tool_info['approach']}")
@@ -429,7 +429,7 @@ def register_mention_handlers(app, dependencies: dict):
                                 recall_debug_lines.append(f"> {line}")
                     recall_debug_lines.append("")
 
-                recall_debug_lines.append(f"`⏱️ {routing_result.evaluation_time_ms:.0f}ms`")
+                recall_debug_lines.append(f"`⏱️ {recall_result.evaluation_time_ms:.0f}ms`")
 
                 client.chat_postMessage(
                     channel=channel,
@@ -440,12 +440,12 @@ def register_mention_handlers(app, dependencies: dict):
         # 채널 컨텍스트 가져오기
         context = get_channel_history(client, channel, limit=20)
 
-        # 프롬프트 구성 (라우팅 결과 포함)
-        prompt = build_prompt_with_routing(
+        # 프롬프트 구성 (Recall 결과 포함)
+        prompt = build_prompt_with_recall(
             context=context,
             question=clean_text,
             file_context=file_context,
-            routing_result=routing_result,
+            recall_result=recall_result,
         )
 
         # Claude 실행 (스레드 락으로 동시 실행 방지)

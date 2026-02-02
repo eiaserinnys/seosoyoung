@@ -1,18 +1,18 @@
-"""결과 집계기 테스트 (TDD RED 단계)"""
+"""결과 집계기 테스트"""
 
 import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
 
-from seosoyoung.routing.aggregator import (
+from seosoyoung.recall.aggregator import (
     AggregationResult,
     ResultAggregator,
     rank_results,
     select_best_tool,
     build_summary_prompt,
 )
-from seosoyoung.routing.evaluator import EvaluationResult
+from seosoyoung.recall.evaluator import EvaluationResult
 
 
 class TestRankResults:

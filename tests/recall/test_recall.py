@@ -1,4 +1,4 @@
-"""PreRouter 클래스 테스트 (TDD RED 단계)"""
+"""Recall 클래스 테스트"""
 
 import pytest
 import asyncio
@@ -6,21 +6,24 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
 
-from seosoyoung.routing.pre_router import (
+from seosoyoung.recall import (
+    Recall,
+    RecallResult,
+    # 하위 호환성 별칭
     PreRouter,
     RoutingResult,
 )
-from seosoyoung.routing.loader import AgentDefinition, SkillDefinition
-from seosoyoung.routing.evaluator import EvaluationResult
-from seosoyoung.routing.aggregator import AggregationResult
+from seosoyoung.recall.loader import AgentDefinition, SkillDefinition
+from seosoyoung.recall.evaluator import EvaluationResult
+from seosoyoung.recall.aggregator import AggregationResult
 
 
-class TestRoutingResult:
-    """RoutingResult 데이터 클래스 테스트"""
+class TestRecallResult:
+    """RecallResult 데이터 클래스 테스트"""
 
-    def test_create_routing_result(self):
-        """RoutingResult 생성"""
-        result = RoutingResult(
+    def test_create_recall_result(self):
+        """RecallResult 생성"""
+        result = RecallResult(
             selected_tool="lore",
             tool_type="agent",
             confidence=0.9,
@@ -37,7 +40,7 @@ class TestRoutingResult:
 
     def test_no_recommendation(self):
         """추천 도구가 없는 경우"""
-        result = RoutingResult(
+        result = RecallResult(
             selected_tool=None,
             tool_type=None,
             confidence=0.0,
@@ -51,7 +54,7 @@ class TestRoutingResult:
 
     def test_to_dict(self):
         """딕셔너리 변환"""
-        result = RoutingResult(
+        result = RecallResult(
             selected_tool="lore",
             tool_type="agent",
             confidence=0.85,
@@ -68,7 +71,7 @@ class TestRoutingResult:
 
     def test_to_prompt_injection(self):
         """Claude Code 프롬프트에 주입할 텍스트 생성"""
-        result = RoutingResult(
+        result = RecallResult(
             selected_tool="lore",
             tool_type="agent",
             confidence=0.9,
@@ -87,8 +90,8 @@ class TestRoutingResult:
         assert "agent" in injection.lower() or "에이전트" in injection
 
 
-class TestPreRouter:
-    """PreRouter 테스트"""
+class TestRecall:
+    """Recall 테스트"""
 
     @pytest.fixture
     def mock_client(self):
@@ -138,7 +141,7 @@ allowed-tools: Read, Glob
         return tmp_path
 
     @pytest.mark.asyncio
-    async def test_route_full_pipeline(self, mock_client, sample_workspace):
+    async def test_analyze_full_pipeline(self, mock_client, sample_workspace):
         """전체 파이프라인 테스트"""
         # 평가 응답 모킹
         call_count = 0
@@ -160,12 +163,12 @@ allowed-tools: Read, Glob
 
         mock_client.messages.create = AsyncMock(side_effect=mock_create)
 
-        router = PreRouter(
+        recall = Recall(
             workspace_path=sample_workspace,
             client=mock_client,
         )
 
-        result = await router.route("펜릭스 성격 알려줘")
+        result = await recall.analyze("펜릭스 성격 알려줘")
 
         assert result.selected_tool == "lore"
         assert result.tool_type == "agent"
@@ -173,7 +176,7 @@ allowed-tools: Read, Glob
         assert result.evaluation_time_ms > 0
 
     @pytest.mark.asyncio
-    async def test_route_no_suitable_tool(self, mock_client, sample_workspace):
+    async def test_analyze_no_suitable_tool(self, mock_client, sample_workspace):
         """적합한 도구가 없을 때"""
         async def low_score_create(*args, **kwargs):
             mock_response = MagicMock()
@@ -188,32 +191,32 @@ allowed-tools: Read, Glob
 
         mock_client.messages.create = AsyncMock(side_effect=low_score_create)
 
-        router = PreRouter(
+        recall = Recall(
             workspace_path=sample_workspace,
             client=mock_client,
             threshold=5,
         )
 
-        result = await router.route("특이한 요청")
+        result = await recall.analyze("특이한 요청")
 
         assert result.selected_tool is None
         assert not result.has_recommendation
 
     @pytest.mark.asyncio
-    async def test_route_with_timeout(self, mock_client, sample_workspace):
+    async def test_analyze_with_timeout(self, mock_client, sample_workspace):
         """전체 파이프라인 타임아웃"""
         async def slow_create(*args, **kwargs):
             await asyncio.sleep(10)
 
         mock_client.messages.create = AsyncMock(side_effect=slow_create)
 
-        router = PreRouter(
+        recall = Recall(
             workspace_path=sample_workspace,
             client=mock_client,
             timeout=0.1,
         )
 
-        result = await router.route("테스트")
+        result = await recall.analyze("테스트")
 
         # 타임아웃 시 폴백 결과 (개별 도구 타임아웃 또는 전체 타임아웃)
         assert result.selected_tool is None
@@ -221,75 +224,75 @@ allowed-tools: Read, Glob
         assert all(score == 0 for score in result.all_scores.values())
 
     @pytest.mark.asyncio
-    async def test_route_with_api_failure_fallback(self, mock_client, sample_workspace):
+    async def test_analyze_with_api_failure_fallback(self, mock_client, sample_workspace):
         """API 실패 시 폴백"""
         mock_client.messages.create = AsyncMock(
             side_effect=Exception("API Error")
         )
 
-        router = PreRouter(
+        recall = Recall(
             workspace_path=sample_workspace,
             client=mock_client,
         )
 
-        result = await router.route("테스트")
+        result = await recall.analyze("테스트")
 
         # API 실패 시에도 결과 반환 (모든 도구 점수 0)
         assert result is not None
         assert result.selected_tool is None
 
     @pytest.mark.asyncio
-    async def test_route_empty_workspace(self, mock_client, tmp_path):
+    async def test_analyze_empty_workspace(self, mock_client, tmp_path):
         """빈 워크스페이스"""
-        router = PreRouter(
+        recall = Recall(
             workspace_path=tmp_path,
             client=mock_client,
         )
 
-        result = await router.route("테스트")
+        result = await recall.analyze("테스트")
 
         assert result.selected_tool is None
         assert len(result.all_scores) == 0
 
 
-class TestPreRouterConfiguration:
-    """PreRouter 설정 테스트"""
+class TestRecallConfiguration:
+    """Recall 설정 테스트"""
 
     def test_default_configuration(self, tmp_path):
         """기본 설정"""
-        router = PreRouter(workspace_path=tmp_path)
+        recall = Recall(workspace_path=tmp_path)
 
         # 환경변수 RECALL_MODEL이 있으면 그 값, 없으면 기본값
         import os
         expected_model = os.getenv("RECALL_MODEL", "claude-haiku-4-5")
-        assert router.model == expected_model
-        assert router.timeout == 10.0
-        assert router.threshold == 5
+        assert recall.model == expected_model
+        assert recall.timeout == 10.0
+        assert recall.threshold == 5
 
     def test_custom_configuration(self, tmp_path):
         """커스텀 설정"""
-        router = PreRouter(
+        recall = Recall(
             workspace_path=tmp_path,
             model="claude-3-sonnet",
             timeout=5.0,
             threshold=7,
         )
 
-        assert router.model == "claude-3-sonnet"
-        assert router.timeout == 5.0
-        assert router.threshold == 7
+        assert recall.model == "claude-3-sonnet"
+        assert recall.timeout == 5.0
+        assert recall.threshold == 7
 
-    def test_disabled_routing(self, tmp_path):
-        """라우팅 비활성화"""
-        router = PreRouter(
+    def test_disabled_recall(self, tmp_path):
+        """Recall 비활성화"""
+        recall = Recall(
             workspace_path=tmp_path,
             enabled=False,
         )
 
-        assert not router.enabled
+        assert not recall.enabled
 
 
-class TestPreRouterSync:
+class TestRecallSync:
     """동기 인터페이스 테스트"""
 
     @pytest.fixture
@@ -297,8 +300,8 @@ class TestPreRouterSync:
         client = MagicMock()
         return client
 
-    def test_route_sync(self, mock_client, tmp_path):
-        """동기 route 메서드"""
+    def test_analyze_sync(self, mock_client, tmp_path):
+        """동기 analyze 메서드"""
         # 에이전트 설정
         agents_dir = tmp_path / ".claude" / "agents"
         agents_dir.mkdir(parents=True)
@@ -324,18 +327,18 @@ description: 테스트 에이전트
 
         mock_client.messages.create = AsyncMock(side_effect=mock_create)
 
-        router = PreRouter(
+        recall = Recall(
             workspace_path=tmp_path,
             client=mock_client,
         )
 
         # 동기 호출
-        result = router.route_sync("테스트 요청")
+        result = recall.analyze_sync("테스트 요청")
 
         assert result.selected_tool == "test"
 
 
-class TestPreRouterCaching:
+class TestRecallCaching:
     """도구 목록 캐싱 테스트"""
 
     @pytest.fixture
@@ -354,21 +357,85 @@ description: 테스트
 
     def test_tools_cached(self, sample_workspace):
         """도구 목록 캐싱"""
-        router = PreRouter(workspace_path=sample_workspace)
+        recall = Recall(workspace_path=sample_workspace)
 
         # 첫 번째 로드
-        tools1 = router.get_tools()
+        tools1 = recall.get_tools()
         # 두 번째 로드 (캐시 사용)
-        tools2 = router.get_tools()
+        tools2 = recall.get_tools()
 
         assert tools1 is tools2  # 같은 객체
 
     def test_cache_refresh(self, sample_workspace):
         """캐시 갱신"""
-        router = PreRouter(workspace_path=sample_workspace)
+        recall = Recall(workspace_path=sample_workspace)
 
-        tools1 = router.get_tools()
-        router.refresh_tools()
-        tools2 = router.get_tools()
+        tools1 = recall.get_tools()
+        recall.refresh_tools()
+        tools2 = recall.get_tools()
 
         assert tools1 is not tools2  # 다른 객체
+
+
+class TestBackwardsCompatibility:
+    """하위 호환성 테스트"""
+
+    def test_prerouter_alias(self, tmp_path):
+        """PreRouter 별칭"""
+        # PreRouter는 Recall의 별칭
+        recall = PreRouter(workspace_path=tmp_path)
+        assert isinstance(recall, Recall)
+
+    def test_routing_result_alias(self):
+        """RoutingResult 별칭"""
+        # RoutingResult는 RecallResult의 별칭
+        result = RoutingResult(
+            selected_tool="test",
+            tool_type="agent",
+            confidence=0.8,
+            summary="테스트",
+            approach="",
+            all_scores={},
+            evaluation_time_ms=100,
+        )
+        assert isinstance(result, RecallResult)
+
+    @pytest.fixture
+    def mock_client(self):
+        client = MagicMock()
+        return client
+
+    def test_route_method_alias(self, mock_client, tmp_path):
+        """route() 메서드는 analyze()의 별칭"""
+        agents_dir = tmp_path / ".claude" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "test.md").write_text(
+            """---
+name: test
+description: 테스트
+---
+""",
+            encoding="utf-8",
+        )
+
+        async def mock_create(*args, **kwargs):
+            mock_response = MagicMock()
+            mock_response.content = [
+                MagicMock(text=json.dumps({
+                    "score": 8,
+                    "reason": "적합",
+                    "approach": "처리",
+                }))
+            ]
+            return mock_response
+
+        mock_client.messages.create = AsyncMock(side_effect=mock_create)
+
+        recall = Recall(
+            workspace_path=tmp_path,
+            client=mock_client,
+        )
+
+        # route_sync는 analyze_sync의 별칭
+        result = recall.route_sync("테스트 요청")
+        assert result.selected_tool == "test"

@@ -20,11 +20,11 @@
 - [`handlers/translate.py`](modules/handlers_translate.md): 번역 핸들러
 - [`seosoyoung/logging_config.py`](modules/seosoyoung_logging_config.md): 로깅 설정 모듈
 - [`seosoyoung/main.py`](modules/seosoyoung_main.md): SeoSoyoung 슬랙 봇 메인
+- [`recall/aggregator.py`](modules/recall_aggregator.md): 결과 집계기
+- [`recall/evaluator.py`](modules/recall_evaluator.md): 하이쿠 평가 클라이언트
+- [`recall/loader.py`](modules/recall_loader.md): 도구 정의 로더
+- [`recall/recall.py`](modules/recall_recall.md): Recall - 도구 선택 사전 분석 파이프라인
 - [`seosoyoung/restart.py`](modules/seosoyoung_restart.md): 재시작 관리
-- [`routing/aggregator.py`](modules/routing_aggregator.md): 결과 집계기
-- [`routing/evaluator.py`](modules/routing_evaluator.md): 하이쿠 평가 클라이언트
-- [`routing/loader.py`](modules/routing_loader.md): 도구 정의 로더
-- [`routing/pre_router.py`](modules/routing_pre_router.md): PreRouter - 전체 사전 라우팅 파이프라인
 - [`search/schema.py`](modules/search_schema.md): Whoosh schema definition for dialogue search.
 - [`search/searcher.py`](modules/search_searcher.md): Whoosh searcher for dialogue data.
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
@@ -54,19 +54,19 @@
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
 - `SessionRuntime` (seosoyoung/claude/session.py:185): 세션 실행 상태 관리자
 - `Config` (seosoyoung/config.py:18): 
+- `AggregationResult` (seosoyoung/recall/aggregator.py:121): 집계 결과
+- `ResultAggregator` (seosoyoung/recall/aggregator.py:211): 결과 집계기
+- `EvaluationResult` (seosoyoung/recall/evaluator.py:182): 도구 평가 결과
+- `ToolEvaluator` (seosoyoung/recall/evaluator.py:208): 도구 적합도 평가기
+- `ToolDefinition` (seosoyoung/recall/loader.py:51): 도구 정의 기본 클래스
+- `AgentDefinition` (seosoyoung/recall/loader.py:73): 에이전트 정의
+- `SkillDefinition` (seosoyoung/recall/loader.py:95): 스킬 정의
+- `ToolLoader` (seosoyoung/recall/loader.py:125): 도구 정의 로더
+- `RecallResult` (seosoyoung/recall/recall.py:30): Recall 결과
+- `Recall` (seosoyoung/recall/recall.py:106): Recall - 도구 선택 사전 분석 파이프라인
 - `RestartType` (seosoyoung/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
-- `AggregationResult` (seosoyoung/routing/aggregator.py:121): 집계 결과
-- `ResultAggregator` (seosoyoung/routing/aggregator.py:211): 결과 집계기
-- `EvaluationResult` (seosoyoung/routing/evaluator.py:182): 도구 평가 결과
-- `ToolEvaluator` (seosoyoung/routing/evaluator.py:208): 도구 적합도 평가기
-- `ToolDefinition` (seosoyoung/routing/loader.py:51): 도구 정의 기본 클래스
-- `AgentDefinition` (seosoyoung/routing/loader.py:73): 에이전트 정의
-- `SkillDefinition` (seosoyoung/routing/loader.py:95): 스킬 정의
-- `ToolLoader` (seosoyoung/routing/loader.py:125): 도구 정의 로더
-- `RoutingResult` (seosoyoung/routing/pre_router.py:30): 라우팅 결과
-- `PreRouter` (seosoyoung/routing/pre_router.py:102): 사전 라우팅 파이프라인
 - `DialogueSearcher` (seosoyoung/search/searcher.py:14): 대사 검색 API.
 - `SlackFile` (seosoyoung/slack/file_handler.py:35): 슬랙 파일 정보
 - `DownloadedFile` (seosoyoung/slack/file_handler.py:45): 다운로드된 파일 정보
@@ -108,7 +108,7 @@
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록
 - `extract_command()` (seosoyoung/handlers/mention.py:80): 멘션에서 명령어 추출
-- `build_prompt_with_routing()` (seosoyoung/handlers/mention.py:106): 라우팅 결과를 포함한 프롬프트 구성.
+- `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:106): Recall 결과를 포함한 프롬프트 구성.
 - `get_channel_history()` (seosoyoung/handlers/mention.py:142): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 - `register_mention_handlers()` (seosoyoung/handlers/mention.py:163): 멘션 핸들러 등록
 - `register_message_handlers()` (seosoyoung/handlers/message.py:24): 메시지 핸들러 등록
@@ -120,12 +120,12 @@
 - `start_trello_watcher()` (seosoyoung/main.py:114): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:133): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:143): 봇 사용자 ID 초기화
-- `rank_results()` (seosoyoung/routing/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
-- `select_best_tool()` (seosoyoung/routing/aggregator.py:42): 최적 도구 선택.
-- `build_summary_prompt()` (seosoyoung/routing/aggregator.py:67): 요약 생성 프롬프트.
-- `build_evaluation_prompt()` (seosoyoung/routing/evaluator.py:28): 도구 평가를 위한 프롬프트 생성.
-- `parse_evaluation_response()` (seosoyoung/routing/evaluator.py:90): 평가 응답 파싱.
-- `parse_frontmatter()` (seosoyoung/routing/loader.py:19): YAML frontmatter와 본문을 분리하여 파싱.
+- `rank_results()` (seosoyoung/recall/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
+- `select_best_tool()` (seosoyoung/recall/aggregator.py:42): 최적 도구 선택.
+- `build_summary_prompt()` (seosoyoung/recall/aggregator.py:67): 요약 생성 프롬프트.
+- `build_evaluation_prompt()` (seosoyoung/recall/evaluator.py:28): 도구 평가를 위한 프롬프트 생성.
+- `parse_evaluation_response()` (seosoyoung/recall/evaluator.py:90): 평가 응답 파싱.
+- `parse_frontmatter()` (seosoyoung/recall/loader.py:19): YAML frontmatter와 본문을 분리하여 파싱.
 - `get_default_index_path()` (seosoyoung/search/searcher.py:197): 기본 인덱스 경로 반환.
 - `format_results()` (seosoyoung/search/searcher.py:202): 결과 포맷팅.
 - `main()` (seosoyoung/search/searcher.py:222): CLI 진입점.

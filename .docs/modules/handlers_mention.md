@@ -8,19 +8,19 @@
 
 ## 함수
 
-### `_get_pre_router()`
+### `_get_recall()`
 - 위치: 줄 20
-- 설명: 사전 라우터 싱글톤 반환 (지연 초기화)
+- 설명: Recall 싱글톤 반환 (지연 초기화)
 
-### `_run_pre_routing(user_request)`
+### `_run_recall(user_request)`
 - 위치: 줄 51
-- 설명: 사전 라우팅 실행 (동기 래퍼)
+- 설명: Recall 실행 (동기 래퍼)
 
 Args:
     user_request: 사용자 요청
 
 Returns:
-    RoutingResult 또는 None
+    RecallResult 또는 None
 
 ### `extract_command(text)`
 - 위치: 줄 80
@@ -36,15 +36,15 @@ Returns:
 - 리스트런 재개
 - resume list run
 
-### `build_prompt_with_routing(context, question, file_context, routing_result)`
+### `build_prompt_with_recall(context, question, file_context, recall_result)`
 - 위치: 줄 106
-- 설명: 라우팅 결과를 포함한 프롬프트 구성.
+- 설명: Recall 결과를 포함한 프롬프트 구성.
 
 Args:
     context: 채널 히스토리 컨텍스트
     question: 사용자 질문
     file_context: 첨부 파일 컨텍스트
-    routing_result: RoutingResult 객체 (선택사항)
+    recall_result: RecallResult 객체 (선택사항)
 
 Returns:
     구성된 프롬프트 문자열

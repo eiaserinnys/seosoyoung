@@ -1,8 +1,8 @@
-"""도구 정의 로더 테스트 (TDD RED 단계)"""
+"""도구 정의 로더 테스트"""
 
 import pytest
 from pathlib import Path
-from seosoyoung.routing.loader import (
+from seosoyoung.recall.loader import (
     ToolDefinition,
     AgentDefinition,
     SkillDefinition,

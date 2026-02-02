@@ -1,4 +1,4 @@
-"""하이쿠 평가 클라이언트 테스트 (TDD RED 단계)"""
+"""하이쿠 평가 클라이언트 테스트"""
 
 import pytest
 import asyncio
@@ -6,13 +6,13 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
 
-from seosoyoung.routing.evaluator import (
+from seosoyoung.recall.evaluator import (
     EvaluationResult,
     ToolEvaluator,
     build_evaluation_prompt,
     parse_evaluation_response,
 )
-from seosoyoung.routing.loader import ToolDefinition, AgentDefinition, SkillDefinition
+from seosoyoung.recall.loader import ToolDefinition, AgentDefinition, SkillDefinition
 
 
 class TestBuildEvaluationPrompt:
