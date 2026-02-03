@@ -1,10 +1,10 @@
 module.exports = {
   apps: [{
     name: 'seosoyoung',
-    script: 'scripts/start.ps1',
+    script: 'venv/Scripts/python.exe',
+    args: 'scripts/wrapper.py',
     cwd: 'D:/soyoung_root/seosoyoung_runtime',
-    interpreter: 'powershell',
-    interpreter_args: '-ExecutionPolicy Bypass -File',
+    interpreter: 'none',
     log_date_format: 'YYYY-MM-DD HH:mm:ss',
     error_file: 'logs/pm2-error.log',
     out_file: 'logs/pm2-out.log',
