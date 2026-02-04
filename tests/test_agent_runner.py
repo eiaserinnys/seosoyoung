@@ -285,6 +285,150 @@ class TestClaudeAgentRunnerProgress:
         assert result.success is True
 
 
+@pytest.mark.asyncio
+class TestClaudeAgentRunnerCompact:
+    """컴팩션 감지 및 콜백 테스트"""
+
+    async def test_build_options_with_compact_events(self):
+        """compact_events 전달 시 PreCompact 훅이 등록되는지 확인"""
+        runner = ClaudeAgentRunner()
+        compact_events = []
+        options = runner._build_options(compact_events=compact_events)
+
+        assert options.hooks is not None
+        assert "PreCompact" in options.hooks
+        assert len(options.hooks["PreCompact"]) == 1
+        assert options.hooks["PreCompact"][0].matcher is None
+
+    async def test_build_options_without_compact_events(self):
+        """compact_events 미전달 시 hooks가 None인지 확인"""
+        runner = ClaudeAgentRunner()
+        options = runner._build_options()
+
+        assert options.hooks is None
+
+    async def test_compact_callback_called(self):
+        """컴팩션 발생 시 on_compact 콜백이 호출되는지 확인"""
+        runner = ClaudeAgentRunner()
+        compact_calls = []
+
+        async def on_compact(trigger: str, message: str):
+            compact_calls.append({"trigger": trigger, "message": message})
+
+        async def mock_query(prompt, options):
+            # PreCompact 훅을 시뮬레이션하기 위해 compact_events에 직접 추가
+            # (실제로는 SDK 내부에서 훅을 호출하지만, 테스트에서는 직접 시뮬레이션)
+            yield MockSystemMessage(session_id="compact-test")
+            yield MockAssistantMessage(content=[MockTextBlock(text="작업 중...")])
+            yield MockResultMessage(result="완료", session_id="compact-test")
+
+        # compact_events 리스트에 직접 이벤트를 추가하는 방식으로 훅 시뮬레이션
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None):
+            options = original_build(session_id=session_id, compact_events=compact_events)
+            # 훅 시뮬레이션: compact_events에 이벤트 추가
+            if compact_events is not None:
+                compact_events.append({
+                    "trigger": "auto",
+                    "message": "컨텍스트 컴팩트 실행됨 (트리거: auto)",
+                })
+            return options
+
+        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
+                            with patch.object(runner, "_build_options", patched_build):
+                                result = await runner.run(
+                                    "테스트", on_compact=on_compact
+                                )
+
+        assert result.success is True
+        assert len(compact_calls) == 1
+        assert compact_calls[0]["trigger"] == "auto"
+        assert "auto" in compact_calls[0]["message"]
+
+    async def test_compact_callback_auto_and_manual(self):
+        """auto/manual 트리거 구분 확인"""
+        runner = ClaudeAgentRunner()
+        compact_calls = []
+
+        async def on_compact(trigger: str, message: str):
+            compact_calls.append({"trigger": trigger, "message": message})
+
+        async def mock_query(prompt, options):
+            yield MockResultMessage(result="완료", session_id="test")
+
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None):
+            options = original_build(session_id=session_id, compact_events=compact_events)
+            if compact_events is not None:
+                compact_events.append({
+                    "trigger": "auto",
+                    "message": "컨텍스트 컴팩트 실행됨 (트리거: auto)",
+                })
+                compact_events.append({
+                    "trigger": "manual",
+                    "message": "컨텍스트 컴팩트 실행됨 (트리거: manual)",
+                })
+            return options
+
+        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                with patch.object(runner, "_build_options", patched_build):
+                    result = await runner.run("테스트", on_compact=on_compact)
+
+        assert result.success is True
+        assert len(compact_calls) == 2
+        assert compact_calls[0]["trigger"] == "auto"
+        assert compact_calls[1]["trigger"] == "manual"
+
+    async def test_compact_callback_error_handled(self):
+        """on_compact 콜백 오류 시 실행이 중단되지 않는지 확인"""
+        runner = ClaudeAgentRunner()
+
+        async def failing_compact(trigger: str, message: str):
+            raise RuntimeError("콜백 오류")
+
+        async def mock_query(prompt, options):
+            yield MockResultMessage(result="완료", session_id="test")
+
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None):
+            options = original_build(session_id=session_id, compact_events=compact_events)
+            if compact_events is not None:
+                compact_events.append({
+                    "trigger": "auto",
+                    "message": "컴팩트 실행됨",
+                })
+            return options
+
+        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                with patch.object(runner, "_build_options", patched_build):
+                    result = await runner.run("테스트", on_compact=failing_compact)
+
+        # 콜백 오류에도 실행은 성공
+        assert result.success is True
+
+    async def test_no_compact_callback_no_error(self):
+        """on_compact 미전달 시에도 정상 동작 확인"""
+        runner = ClaudeAgentRunner()
+
+        async def mock_query(prompt, options):
+            yield MockResultMessage(result="완료", session_id="test")
+
+        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                result = await runner.run("테스트")
+
+        assert result.success is True
+
+
 class TestServiceFactory:
     """서비스 팩토리 테스트"""
 

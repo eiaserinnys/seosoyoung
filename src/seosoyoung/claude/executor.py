@@ -222,6 +222,17 @@ class ClaudeExecutor:
                 except Exception as e:
                     logger.warning(f"사고 과정 메시지 전송 실패: {e}")
 
+            # 컴팩션 알림 콜백
+            async def on_compact(trigger: str, message: str):
+                try:
+                    if trigger == "auto":
+                        text = "🔄 컨텍스트가 자동 압축됩니다..."
+                    else:
+                        text = "📦 컨텍스트를 압축하는 중입니다..."
+                    say(text=text, thread_ts=thread_ts)
+                except Exception as e:
+                    logger.warning(f"컴팩션 알림 전송 실패: {e}")
+
             # 역할에 맞는 runner 생성
             runner = get_runner_for_role(effective_role)
             logger.info(f"Claude 실행: thread={thread_ts}, role={effective_role}")
@@ -231,7 +242,8 @@ class ClaudeExecutor:
                 result = asyncio.run(runner.run(
                     prompt=prompt,
                     session_id=session.session_id,
-                    on_progress=on_progress
+                    on_progress=on_progress,
+                    on_compact=on_compact,
                 ))
 
                 # 세션 ID 업데이트

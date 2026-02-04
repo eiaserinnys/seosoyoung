@@ -7,9 +7,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
-from claude_code_sdk import query, ClaudeCodeOptions
+from claude_code_sdk import query, ClaudeCodeOptions, HookMatcher, HookContext
 from claude_code_sdk.types import (
     AssistantMessage,
+    HookJSONOutput,
     ResultMessage,
     SystemMessage,
     TextBlock,
@@ -72,6 +73,7 @@ class ClaudeAgentRunner:
     def _build_options(
         self,
         session_id: Optional[str] = None,
+        compact_events: Optional[list] = None,
     ) -> ClaudeCodeOptions:
         """ClaudeCodeOptions 생성
 
@@ -79,11 +81,34 @@ class ClaudeAgentRunner:
         Claude Code CLI가 현재 프로세스의 환경변수를 상속받습니다.
         이 방식이 API 키 등을 안전하게 전달하는 가장 간단한 방법입니다.
         """
+        # PreCompact 훅 설정
+        hooks = None
+        if compact_events is not None:
+            async def on_pre_compact(
+                hook_input: dict,
+                tool_use_id: Optional[str],
+                context: HookContext,
+            ) -> HookJSONOutput:
+                trigger = hook_input.get("trigger", "auto")
+                logger.info(f"PreCompact 훅 트리거: trigger={trigger}")
+                compact_events.append({
+                    "trigger": trigger,
+                    "message": f"컨텍스트 컴팩트 실행됨 (트리거: {trigger})",
+                })
+                return HookJSONOutput()  # 빈 응답 = 컴팩션 진행 허용
+
+            hooks = {
+                "PreCompact": [
+                    HookMatcher(matcher=None, hooks=[on_pre_compact])
+                ]
+            }
+
         options = ClaudeCodeOptions(
             allowed_tools=self.allowed_tools,
             disallowed_tools=self.disallowed_tools,
             permission_mode="bypassPermissions",  # dangerously-skip-permissions 대응
             cwd=self.working_dir,
+            hooks=hooks,
             # env는 명시적으로 전달하지 않음 (CLI가 상위 프로세스 환경 상속)
         )
 
@@ -102,6 +127,7 @@ class ClaudeAgentRunner:
         prompt: str,
         session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> ClaudeResult:
         """Claude Code 실행
 
@@ -109,18 +135,22 @@ class ClaudeAgentRunner:
             prompt: 실행할 프롬프트
             session_id: 이어갈 세션 ID (선택)
             on_progress: 진행 상황 콜백 (선택)
+            on_compact: 컴팩션 발생 콜백 (선택) - (trigger, message) 전달
         """
         async with self._lock:
-            return await self._execute(prompt, session_id, on_progress)
+            return await self._execute(prompt, session_id, on_progress, on_compact)
 
     async def _execute(
         self,
         prompt: str,
         session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> ClaudeResult:
         """실제 실행 로직"""
-        options = self._build_options(session_id)
+        compact_events: list[dict] = []
+        compact_notified_count = 0
+        options = self._build_options(session_id, compact_events=compact_events)
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
 
         result_session_id = None
@@ -164,6 +194,15 @@ class ClaudeAgentRunner:
                     # ResultMessage에서도 세션 ID 추출 시도
                     if hasattr(message, 'session_id') and message.session_id:
                         result_session_id = message.session_id
+
+                # 컴팩션 이벤트 확인 (PreCompact 훅에서 추가된 이벤트)
+                if on_compact and len(compact_events) > compact_notified_count:
+                    for event in compact_events[compact_notified_count:]:
+                        try:
+                            await on_compact(event["trigger"], event["message"])
+                        except Exception as e:
+                            logger.warning(f"컴팩션 콜백 오류: {e}")
+                    compact_notified_count = len(compact_events)
 
             # 출력 처리
             output = result_text or current_text
