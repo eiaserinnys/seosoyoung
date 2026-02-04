@@ -10,6 +10,7 @@ from seosoyoung.config import Config
 from seosoyoung.restart import RestartType
 from seosoyoung.translator import detect_language, translate
 from seosoyoung.slack import download_files_sync, build_file_context
+from seosoyoung.handlers.message import process_thread_message
 
 logger = logging.getLogger(__name__)
 
@@ -229,8 +230,23 @@ def register_mention_handlers(app, dependencies: dict):
 
         # 스레드에서 멘션된 경우 (관리자 명령어가 아닐 때만 세션 체크)
         if thread_ts and not is_admin_command:
-            if session_manager.exists(thread_ts):
-                logger.debug("스레드에서 멘션됨 (세션 있음) - handle_message에서 처리")
+            session = session_manager.get(thread_ts)
+            if session:
+                # 세션이 있는 스레드에서 멘션 → 직접 처리
+                # (message.py는 봇 멘션이 포함된 메시지를 무시하므로 여기서 처리)
+                logger.debug("스레드에서 멘션됨 (세션 있음) - 직접 처리")
+
+                if restart_manager.is_pending:
+                    say(
+                        text="재시작을 대기하는 중입니다.\n재시작이 완료되면 다시 대화를 요청해주세요.",
+                        thread_ts=thread_ts
+                    )
+                    return
+
+                process_thread_message(
+                    event, text, thread_ts, ts, channel, session, say, client,
+                    get_user_role, run_claude_in_session, log_prefix="스레드 멘션"
+                )
                 return
             logger.debug("스레드에서 멘션됨 (세션 없음) - 원샷 답변")
 

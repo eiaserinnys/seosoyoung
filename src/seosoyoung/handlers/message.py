@@ -13,6 +13,56 @@ from seosoyoung.claude import get_claude_runner
 logger = logging.getLogger(__name__)
 
 
+def process_thread_message(
+    event, text, thread_ts, ts, channel, session, say, client,
+    get_user_role, run_claude_in_session, log_prefix="메시지"
+):
+    """세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
+
+    mention.py와 message.py에서 공유합니다.
+
+    Returns:
+        True if processed, False if skipped (empty message)
+    """
+    user_id = event["user"]
+
+    clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+
+    file_context = ""
+    if event.get("files"):
+        try:
+            downloaded_files = download_files_sync(event, thread_ts)
+            if downloaded_files:
+                file_context = build_file_context(downloaded_files)
+                logger.info(f"파일 {len(downloaded_files)}개 다운로드 완료")
+        except Exception as e:
+            logger.error(f"파일 다운로드 실패: {e}")
+
+    if not clean_text and not file_context:
+        return False
+
+    user_info = get_user_role(user_id, client)
+    if not user_info:
+        say(text="사용자 정보를 확인할 수 없습니다.", thread_ts=thread_ts)
+        return True
+
+    prompt_parts = []
+    if clean_text:
+        prompt_parts.append(clean_text)
+    if file_context:
+        prompt_parts.append(file_context)
+    prompt = "\n".join(prompt_parts)
+
+    logger.info(
+        f"{log_prefix} 처리: thread_ts={thread_ts}, "
+        f"user={user_info['username']}, role={user_info['role']}, "
+        f"text={clean_text[:50] if clean_text else '(파일 첨부)'}"
+    )
+
+    run_claude_in_session(session, prompt, ts, channel, say, client, role=user_info["role"])
+    return True
+
+
 def _contains_bot_mention(text: str) -> bool:
     """텍스트에 봇 멘션이 포함되어 있는지 확인"""
     if not Config.BOT_USER_ID:
@@ -80,45 +130,10 @@ def register_message_handlers(app, dependencies: dict):
             )
             return
 
-        # 멘션 제거 (혹시 모를 경우 대비)
-        clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
-
-        # 첨부 파일 처리
-        file_context = ""
-        if event.get("files"):
-            try:
-                downloaded_files = download_files_sync(event, thread_ts)
-                if downloaded_files:
-                    file_context = build_file_context(downloaded_files)
-                    logger.info(f"파일 {len(downloaded_files)}개 다운로드 완료")
-            except Exception as e:
-                logger.error(f"파일 다운로드 실패: {e}")
-
-        if not clean_text and not file_context:
-            return
-
-        # 메시지 작성자의 역할 조회 (세션 생성자와 다를 수 있음)
-        user_info = get_user_role(user_id, client)
-        if not user_info:
-            say(text="사용자 정보를 확인할 수 없습니다.", thread_ts=thread_ts)
-            return
-
-        # 프롬프트 구성
-        prompt_parts = []
-        if clean_text:
-            prompt_parts.append(clean_text)
-        if file_context:
-            prompt_parts.append(file_context)
-        prompt = "\n".join(prompt_parts)
-
-        logger.info(
-            f"메시지 처리: thread_ts={thread_ts}, "
-            f"user={user_info['username']}, role={user_info['role']}, "
-            f"text={clean_text[:50] if clean_text else '(파일 첨부)'}"
+        process_thread_message(
+            event, text, thread_ts, ts, channel, session, say, client,
+            get_user_role, run_claude_in_session, log_prefix="메시지"
         )
-
-        # 메시지 작성자 권한으로 실행
-        run_claude_in_session(session, prompt, ts, channel, say, client, role=user_info["role"])
 
     @app.event("reaction_added")
     def handle_reaction(event, client):

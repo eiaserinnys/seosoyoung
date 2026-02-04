@@ -8,12 +8,21 @@
 
 ## 함수
 
-### `_contains_bot_mention(text)`
+### `process_thread_message(event, text, thread_ts, ts, channel, session, say, client, get_user_role, run_claude_in_session, log_prefix)`
 - 위치: 줄 16
+- 설명: 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
+
+mention.py와 message.py에서 공유합니다.
+
+Returns:
+    True if processed, False if skipped (empty message)
+
+### `_contains_bot_mention(text)`
+- 위치: 줄 66
 - 설명: 텍스트에 봇 멘션이 포함되어 있는지 확인
 
 ### `register_message_handlers(app, dependencies)`
-- 위치: 줄 24
+- 위치: 줄 74
 - 설명: 메시지 핸들러 등록
 
 Args:
