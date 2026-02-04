@@ -196,7 +196,7 @@ def register_mention_handlers(app, dependencies: dict):
         command = extract_command(text)
 
         # 관리자 명령어는 스레드/세션 여부와 관계없이 항상 처리
-        admin_commands = ["help", "status", "update", "restart"]
+        admin_commands = ["help", "status", "update", "restart", "compact"]
         is_admin_command = command in admin_commands
 
         # 정주행 재개 명령어 처리
@@ -253,6 +253,7 @@ def register_mention_handlers(app, dependencies: dict):
                     "• `@seosoyoung 번역 <텍스트>` - 번역 테스트\n"
                     "• `@seosoyoung help` - 도움말\n"
                     "• `@seosoyoung status` - 상태 확인\n"
+                    "• `@seosoyoung compact` - 스레드 세션 컴팩트\n"
                     "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
                     "• `@seosoyoung restart` - 봇 재시작 (관리자)"
                 ),
@@ -343,6 +344,36 @@ def register_mention_handlers(app, dependencies: dict):
             type_name = "업데이트" if command == "update" else "재시작"
             logger.info(f"{type_name} 요청 - 프로세스 종료")
             restart_manager.force_restart(restart_type)
+            return
+
+        # compact 명령어 처리
+        if command == "compact":
+            if not thread_ts:
+                say(text="스레드에서 사용해주세요.", thread_ts=ts)
+                return
+
+            session = session_manager.get(thread_ts)
+            if not session or not session.session_id:
+                say(text="활성 세션이 없습니다.", thread_ts=thread_ts)
+                return
+
+            say(text="컴팩트 중입니다...", thread_ts=thread_ts)
+
+            try:
+                from seosoyoung.claude import get_claude_runner
+
+                runner = get_claude_runner()
+                compact_result = asyncio.run(runner.compact_session(session.session_id))
+
+                if compact_result.success:
+                    if compact_result.session_id:
+                        session_manager.update_session_id(thread_ts, compact_result.session_id)
+                    say(text="컴팩트가 완료됐습니다.", thread_ts=thread_ts)
+                else:
+                    say(text=f"컴팩트에 실패했습니다: {compact_result.error}", thread_ts=thread_ts)
+            except Exception as e:
+                logger.error(f"compact 명령어 오류: {e}", exc_info=True)
+                say(text=f"컴팩트 중 오류가 발생했습니다: {e}", thread_ts=thread_ts)
             return
 
         # 일반 질문: 세션 생성 + Claude 실행
