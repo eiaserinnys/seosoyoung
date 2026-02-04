@@ -44,9 +44,6 @@ class Config:
         "viewer": ["Read", "Glob", "Grep"],
     }
 
-    # Claude Code SDK 모드 (True: SDK 사용, False: CLI 사용)
-    CLAUDE_USE_SDK = os.getenv("CLAUDE_USE_SDK", "false").lower() == "true"
-
     # Debug
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
     TRELLO_POLLING_DEBUG = os.getenv("TRELLO_POLLING_DEBUG", "false").lower() == "true"

@@ -161,7 +161,6 @@ ADMIN_USERS=slack_user_id1
 
 # Options
 DEBUG=false
-CLAUDE_USE_SDK=true
 NOTIFY_CHANNEL=C0123456789
 
 # Trello (선택)
@@ -234,7 +233,6 @@ pytest
 | `ALLOWED_USERS` | | 봇 사용 허용 사용자 ID (쉼표 구분) |
 | `ADMIN_USERS` | | 관리자 사용자 ID (쉼표 구분) |
 | `DEBUG` | | 디버그 모드 (true/false) |
-| `CLAUDE_USE_SDK` | | SDK 모드 사용 (true/false) |
 | `NOTIFY_CHANNEL` | | 알림 채널 ID |
 | `TRELLO_API_KEY` | | Trello API 키 |
 | `TRELLO_TOKEN` | | Trello 토큰 |

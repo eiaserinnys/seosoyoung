@@ -224,6 +224,28 @@ class TestClaudeAgentRunnerAsync:
         # Lock으로 인해 순차 실행
         assert call_order == ["start", "end", "start", "end"]
 
+    async def test_compact_session_success(self):
+        """compact_session 성공 테스트"""
+        runner = ClaudeAgentRunner()
+
+        async def mock_query(prompt, options):
+            yield MockResultMessage(result="Compacted.", session_id="compact-123")
+
+        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                result = await runner.compact_session("test-session-id")
+
+        assert result.success is True
+        assert result.session_id == "compact-123"
+
+    async def test_compact_session_no_session_id(self):
+        """compact_session 세션 ID 없음 테스트"""
+        runner = ClaudeAgentRunner()
+        result = await runner.compact_session("")
+
+        assert result.success is False
+        assert "세션 ID가 없습니다" in result.error
+
 
 @pytest.mark.asyncio
 class TestClaudeAgentRunnerProgress:
@@ -266,25 +288,11 @@ class TestClaudeAgentRunnerProgress:
 class TestServiceFactory:
     """서비스 팩토리 테스트"""
 
-    def test_factory_returns_cli_by_default(self):
-        """기본값은 CLI 모드 (CLAUDE_USE_SDK=False)"""
-        from seosoyoung.claude.runner import ClaudeRunner
-        from seosoyoung.config import Config
-
-        # Config.CLAUDE_USE_SDK를 직접 패치
-        with patch.object(Config, "CLAUDE_USE_SDK", False):
-            from seosoyoung.claude import get_claude_runner
-            runner = get_claude_runner()
-            assert isinstance(runner, ClaudeRunner)
-
-    def test_factory_returns_sdk_when_enabled(self):
-        """CLAUDE_USE_SDK=True이면 SDK 모드"""
-        from seosoyoung.config import Config
-
-        with patch.object(Config, "CLAUDE_USE_SDK", True):
-            from seosoyoung.claude import get_claude_runner
-            runner = get_claude_runner()
-            assert type(runner).__name__ == "ClaudeAgentRunner"
+    def test_factory_returns_agent_runner(self):
+        """팩토리가 항상 ClaudeAgentRunner를 반환"""
+        from seosoyoung.claude import get_claude_runner
+        runner = get_claude_runner()
+        assert isinstance(runner, ClaudeAgentRunner)
 
 
 @pytest.mark.integration

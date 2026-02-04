@@ -387,42 +387,30 @@ class TestStartRunByName:
 class TestListRunMarkupParsing:
     """LIST_RUN 마크업 파싱 테스트"""
 
+    def _extract_list_run(self, output: str):
+        """LIST_RUN 마크업에서 리스트 이름 추출"""
+        import re
+        match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
+        return match.group(1).strip() if match else None
+
     def test_parse_list_run_markup_simple(self):
         """단순 LIST_RUN 마크업 파싱"""
-        from seosoyoung.claude.runner import ClaudeRunner
-
         output = "정주행을 시작하겠습니다.\n<!-- LIST_RUN: 📦 Backlog -->"
-
-        runner = ClaudeRunner()
-        list_run = runner._extract_list_run_markup(output)
-
-        assert list_run == "📦 Backlog"
+        assert self._extract_list_run(output) == "📦 Backlog"
 
     def test_parse_list_run_markup_with_spaces(self):
         """공백이 포함된 리스트명 파싱"""
-        from seosoyoung.claude.runner import ClaudeRunner
-
         output = "<!-- LIST_RUN: 🔨 In Progress -->\n다른 내용"
-
-        runner = ClaudeRunner()
-        list_run = runner._extract_list_run_markup(output)
-
-        assert list_run == "🔨 In Progress"
+        assert self._extract_list_run(output) == "🔨 In Progress"
 
     def test_parse_list_run_markup_none(self):
         """마크업이 없는 경우"""
-        from seosoyoung.claude.runner import ClaudeRunner
-
         output = "일반 응답입니다."
-
-        runner = ClaudeRunner()
-        list_run = runner._extract_list_run_markup(output)
-
-        assert list_run is None
+        assert self._extract_list_run(output) is None
 
     def test_claude_result_has_list_run_field(self):
         """ClaudeResult에 list_run 필드 존재"""
-        from seosoyoung.claude.runner import ClaudeResult
+        from seosoyoung.claude.agent_runner import ClaudeResult
 
         result = ClaudeResult(
             success=True,

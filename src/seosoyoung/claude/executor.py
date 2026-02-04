@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_runner_for_role(role: str):
-    """역할에 맞는 ClaudeRunner/ClaudeAgentRunner 반환"""
+    """역할에 맞는 ClaudeAgentRunner 반환"""
     allowed_tools = Config.ROLE_TOOLS.get(role, Config.ROLE_TOOLS["viewer"])
     # viewer는 수정/실행 도구 명시적 차단
     if role == "viewer":

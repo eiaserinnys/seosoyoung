@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -53,10 +52,7 @@ class ClaudeResult:
 
 
 class ClaudeAgentRunner:
-    """Claude Code SDK 기반 실행기
-
-    기존 ClaudeRunner(CLI 방식)와 동일한 인터페이스를 제공합니다.
-    """
+    """Claude Code SDK 기반 실행기"""
 
     def __init__(
         self,
@@ -225,6 +221,34 @@ class ClaudeAgentRunner:
                 session_id=result_session_id,
                 error=str(e)
             )
+
+    async def compact_session(self, session_id: str) -> ClaudeResult:
+        """세션 컴팩트 처리
+
+        세션의 대화 내역을 압축하여 토큰 사용량을 줄입니다.
+
+        Args:
+            session_id: 컴팩트할 세션 ID
+
+        Returns:
+            ClaudeResult (compact 결과)
+        """
+        if not session_id:
+            return ClaudeResult(
+                success=False,
+                output="",
+                error="세션 ID가 없습니다."
+            )
+
+        logger.info(f"세션 컴팩트 시작: {session_id}")
+        result = await self._execute("/compact", session_id)
+
+        if result.success:
+            logger.info(f"세션 컴팩트 완료: {session_id}")
+        else:
+            logger.error(f"세션 컴팩트 실패: {session_id}, {result.error}")
+
+        return result
 
 
 # 테스트용

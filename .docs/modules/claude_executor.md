@@ -32,7 +32,7 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 
 ### `get_runner_for_role(role)`
 - 위치: 줄 30
-- 설명: 역할에 맞는 ClaudeRunner/ClaudeAgentRunner 반환
+- 설명: 역할에 맞는 ClaudeAgentRunner 반환
 
 ## 내부 의존성
 

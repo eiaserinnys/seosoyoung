@@ -10,7 +10,6 @@
 - [`claude/executor.py`](modules/claude_executor.md): Claude Code 실행 로직
 - [`claude/message_formatter.py`](modules/claude_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티
 - [`claude/reaction_manager.py`](modules/claude_reaction_manager.md): 슬랙 리액션 관리
-- [`claude/runner.py`](modules/claude_runner.md): Claude Code CLI 래퍼
 - [`claude/security.py`](modules/claude_security.md): 보안 레이어
 - [`claude/session.py`](modules/claude_session.md): Claude Code 세션 관리
 - [`seosoyoung/config.py`](modules/seosoyoung_config.md): 설정 관리
@@ -44,11 +43,9 @@
 
 ### 주요 클래스
 
-- `ClaudeResult` (seosoyoung/claude/agent_runner.py:42): Claude Code 실행 결과
-- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:55): Claude Code SDK 기반 실행기
+- `ClaudeResult` (seosoyoung/claude/agent_runner.py:41): Claude Code 실행 결과
+- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:54): Claude Code SDK 기반 실행기
 - `ClaudeExecutor` (seosoyoung/claude/executor.py:42): Claude Code 실행기
-- `ClaudeResult` (seosoyoung/claude/runner.py:43): Claude Code 실행 결과
-- `ClaudeRunner` (seosoyoung/claude/runner.py:56): Claude Code CLI 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
@@ -94,16 +91,15 @@
 
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
-- `get_claude_runner()` (seosoyoung/claude/__init__.py:15): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:231): 
-- `get_runner_for_role()` (seosoyoung/claude/executor.py:30): 역할에 맞는 ClaudeRunner/ClaudeAgentRunner 반환
+- `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
+- `async main()` (seosoyoung/claude/agent_runner.py:255): 
+- `get_runner_for_role()` (seosoyoung/claude/executor.py:30): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱
 - `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:63): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:87): 트렐로 카드용 슬랙 메시지 헤더 생성
 - `add_reaction()` (seosoyoung/claude/reaction_manager.py:20): 슬랙 메시지에 이모지 리액션 추가
 - `remove_reaction()` (seosoyoung/claude/reaction_manager.py:40): 슬랙 메시지에서 이모지 리액션 제거
-- `async main()` (seosoyoung/claude/runner.py:462): 
 - `register_all_handlers()` (seosoyoung/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록

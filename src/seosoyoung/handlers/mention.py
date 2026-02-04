@@ -261,14 +261,12 @@ def register_mention_handlers(app, dependencies: dict):
             return
 
         if command == "status":
-            sdk_mode = "SDK" if Config.CLAUDE_USE_SDK else "CLI"
             say(
                 text=(
                     f"📊 *상태*\n"
                     f"• 작업 폴더: `{Path.cwd()}`\n"
                     f"• 관리자: {', '.join(Config.ADMIN_USERS)}\n"
                     f"• 활성 세션: {session_manager.count()}개\n"
-                    f"• 클로드 모드: {sdk_mode}\n"
                     f"• 디버그 모드: {Config.DEBUG}"
                 )
             )
