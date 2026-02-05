@@ -197,8 +197,8 @@ def register_mention_handlers(app, dependencies: dict):
         command = extract_command(text)
 
         # 관리자 명령어는 스레드/세션 여부와 관계없이 항상 처리
-        admin_commands = ["help", "status", "update", "restart", "compact"]
-        is_admin_command = command in admin_commands
+        admin_commands = ["help", "status", "update", "restart", "compact", "profile"]
+        is_admin_command = command in admin_commands or command.startswith("profile ")
 
         # 정주행 재개 명령어 처리
         if _is_resume_list_run_command(command):
@@ -270,6 +270,7 @@ def register_mention_handlers(app, dependencies: dict):
                     "• `@seosoyoung help` - 도움말\n"
                     "• `@seosoyoung status` - 상태 확인\n"
                     "• `@seosoyoung compact` - 스레드 세션 컴팩트\n"
+                    "• `@seosoyoung profile` - 인증 프로필 관리 (관리자)\n"
                     "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
                     "• `@seosoyoung restart` - 봇 재시작 (관리자)"
                 ),
@@ -390,6 +391,80 @@ def register_mention_handlers(app, dependencies: dict):
             except Exception as e:
                 logger.error(f"compact 명령어 오류: {e}", exc_info=True)
                 say(text=f"컴팩트 중 오류가 발생했습니다: {e}", thread_ts=thread_ts)
+            return
+
+        # profile 명령어 처리
+        if command.startswith("profile"):
+            if not check_permission(user_id, client):
+                logger.warning(f"profile 권한 없음: user={user_id}")
+                say(text="관리자 권한이 필요합니다.", thread_ts=ts)
+                return
+
+            from seosoyoung.profile.manager import ProfileManager
+
+            # 프로필 경로 설정
+            profiles_dir = Path.cwd() / ".local" / "profiles"
+            credentials_path = Path.home() / ".claude" / ".credentials.json"
+            manager = ProfileManager(
+                profiles_dir=profiles_dir,
+                credentials_path=credentials_path,
+            )
+
+            # 서브커맨드 파싱
+            parts = command.split()
+            subcmd = parts[1] if len(parts) > 1 else None
+            arg = parts[2] if len(parts) > 2 else None
+
+            try:
+                if subcmd == "list":
+                    profiles = manager.list_profiles()
+                    if not profiles:
+                        say(text="저장된 프로필이 없습니다.", thread_ts=ts)
+                    else:
+                        lines = ["*📋 프로필 목록*"]
+                        for p in profiles:
+                            marker = "✅ " if p.is_active else "• "
+                            lines.append(f"{marker}`{p.name}`")
+                        say(text="\n".join(lines), thread_ts=ts)
+
+                elif subcmd == "save":
+                    if not arg:
+                        say(text="저장할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile save work`", thread_ts=ts)
+                    else:
+                        result = manager.save_profile(arg)
+                        say(text=f"✅ {result}", thread_ts=ts)
+
+                elif subcmd == "change":
+                    if not arg:
+                        say(text="전환할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile change work`", thread_ts=ts)
+                    else:
+                        result = manager.change_profile(arg)
+                        say(text=f"🔄 {result}", thread_ts=ts)
+
+                elif subcmd == "delete":
+                    if not arg:
+                        say(text="삭제할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile delete work`", thread_ts=ts)
+                    else:
+                        result = manager.delete_profile(arg)
+                        say(text=f"🗑️ {result}", thread_ts=ts)
+
+                else:
+                    say(
+                        text=(
+                            "📁 *profile 명령어 사용법*\n"
+                            "• `profile list` - 저장된 프로필 목록\n"
+                            "• `profile save <이름>` - 현재 인증을 프로필로 저장\n"
+                            "• `profile change <이름>` - 프로필로 전환\n"
+                            "• `profile delete <이름>` - 프로필 삭제"
+                        ),
+                        thread_ts=ts
+                    )
+
+            except (ValueError, FileNotFoundError, FileExistsError) as e:
+                say(text=f"❌ {e}", thread_ts=ts)
+            except Exception as e:
+                logger.error(f"profile 명령어 오류: {e}", exc_info=True)
+                say(text=f"❌ 오류가 발생했습니다: {e}", thread_ts=ts)
             return
 
         # 일반 질문: 세션 생성 + Claude 실행
