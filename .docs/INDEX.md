@@ -51,7 +51,8 @@
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
 - `SessionRuntime` (seosoyoung/claude/session.py:185): 세션 실행 상태 관리자
-- `Config` (seosoyoung/config.py:18): 
+- `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
+- `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ProfileInfo` (seosoyoung/profile/manager.py:14): 프로필 정보
 - `ProfileManager` (seosoyoung/profile/manager.py:24): Claude Code 인증 프로필 관리자
 - `AggregationResult` (seosoyoung/recall/aggregator.py:121): 집계 결과

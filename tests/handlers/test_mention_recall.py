@@ -9,54 +9,27 @@ from seosoyoung.config import Config
 
 
 class TestRecallConfig:
-    """Recall 설정 테스트"""
+    """Recall 설정 테스트
 
-    def test_recall_enabled_default_false(self):
-        """RECALL_ENABLED 기본값은 False"""
-        with patch.dict(os.environ, {}, clear=True):
-            # 환경변수가 없으면 False
-            assert Config.get_recall_enabled() is False
+    NOTE: 설정값 파싱 및 기본값 테스트는 test_config.py에서 수행.
+    여기서는 Config 클래스에 필요한 속성이 존재하는지만 확인.
+    """
 
-    def test_recall_enabled_true(self):
-        """RECALL_ENABLED=true 설정"""
-        with patch.dict(os.environ, {"RECALL_ENABLED": "true"}):
-            assert Config.get_recall_enabled() is True
+    def test_recall_config_attributes_exist(self):
+        """Recall 관련 설정 속성 존재 확인"""
+        # 클래스 변수로 접근 가능해야 함
+        assert hasattr(Config, "RECALL_ENABLED")
+        assert hasattr(Config, "RECALL_MODEL")
+        assert hasattr(Config, "RECALL_THRESHOLD")
+        assert hasattr(Config, "RECALL_TIMEOUT")
+        assert hasattr(Config, "RECALL_API_KEY")
 
-    def test_recall_enabled_false(self):
-        """RECALL_ENABLED=false 설정"""
-        with patch.dict(os.environ, {"RECALL_ENABLED": "false"}):
-            assert Config.get_recall_enabled() is False
-
-    def test_recall_model_default(self):
-        """RECALL_MODEL 기본값"""
-        with patch.dict(os.environ, {}, clear=True):
-            model = Config.get_recall_model()
-            assert "haiku" in model.lower()
-
-    def test_recall_model_custom(self):
-        """RECALL_MODEL 커스텀 설정"""
-        with patch.dict(os.environ, {"RECALL_MODEL": "claude-3-sonnet"}):
-            assert Config.get_recall_model() == "claude-3-sonnet"
-
-    def test_recall_threshold_default(self):
-        """RECALL_THRESHOLD 기본값은 5"""
-        with patch.dict(os.environ, {}, clear=True):
-            assert Config.get_recall_threshold() == 5
-
-    def test_recall_threshold_custom(self):
-        """RECALL_THRESHOLD 커스텀 설정"""
-        with patch.dict(os.environ, {"RECALL_THRESHOLD": "7"}):
-            assert Config.get_recall_threshold() == 7
-
-    def test_recall_timeout_default(self):
-        """RECALL_TIMEOUT 기본값은 10.0"""
-        with patch.dict(os.environ, {}, clear=True):
-            assert Config.get_recall_timeout() == 10.0
-
-    def test_recall_timeout_custom(self):
-        """RECALL_TIMEOUT 커스텀 설정"""
-        with patch.dict(os.environ, {"RECALL_TIMEOUT": "5.0"}):
-            assert Config.get_recall_timeout() == 5.0
+    def test_recall_config_types(self):
+        """Recall 설정 타입 확인"""
+        assert isinstance(Config.RECALL_ENABLED, bool)
+        assert isinstance(Config.RECALL_MODEL, str)
+        assert isinstance(Config.RECALL_THRESHOLD, int)
+        assert isinstance(Config.RECALL_TIMEOUT, float)
 
 
 class TestMentionHandlerWithRecall:

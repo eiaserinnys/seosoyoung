@@ -21,26 +21,26 @@ _recall = None
 def _get_recall():
     """Recall 싱글톤 반환 (지연 초기화)"""
     global _recall
-    if _recall is None and Config.get_recall_enabled():
+    if _recall is None and Config.RECALL_ENABLED:
         try:
             from anthropic import AsyncAnthropic
             from seosoyoung.recall import Recall
 
-            api_key = os.getenv("RECALL_API_KEY")
+            api_key = Config.RECALL_API_KEY
             if not api_key:
                 logger.warning("RECALL_API_KEY가 설정되지 않아 Recall 비활성화")
                 return None
 
             workspace_path = Path.cwd()
             client = AsyncAnthropic(api_key=api_key)
-            model = os.getenv("RECALL_MODEL", "claude-haiku-4-5")
+            model = Config.RECALL_MODEL
 
             _recall = Recall(
                 workspace_path=workspace_path,
                 client=client,
                 model=model,
-                threshold=Config.get_recall_threshold(),
-                timeout=Config.get_recall_timeout(),
+                threshold=Config.RECALL_THRESHOLD,
+                timeout=Config.RECALL_TIMEOUT,
             )
             logger.info(f"Recall 초기화 완료 (모델: {model})")
         except Exception as e:
@@ -532,7 +532,7 @@ def register_mention_handlers(app, dependencies: dict):
 
         # Recall 실행 (활성화된 경우)
         recall_result = None
-        if Config.get_recall_enabled() and clean_text:
+        if Config.RECALL_ENABLED and clean_text:
             recall_result = _run_recall(clean_text)
 
             # 디버깅용: Recall 결과를 스레드에 blockquote로 답글
