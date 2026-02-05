@@ -116,11 +116,11 @@
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/main.py:92): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/main.py:103): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/main.py:114): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/main.py:133): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/main.py:143): 봇 사용자 ID 초기화
+- `notify_startup()` (seosoyoung/main.py:94): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/main.py:105): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/main.py:116): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/main.py:136): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/main.py:146): 봇 사용자 ID 초기화
 - `rank_results()` (seosoyoung/recall/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
 - `select_best_tool()` (seosoyoung/recall/aggregator.py:42): 최적 도구 선택.
 - `build_summary_prompt()` (seosoyoung/recall/aggregator.py:67): 요약 생성 프롬프트.

@@ -68,6 +68,7 @@ class TrelloWatcher:
         notify_channel: Optional[str] = None,
         poll_interval: int = 60,  # 1분
         data_dir: Optional[Path] = None,
+        list_runner_ref: Optional[Callable] = None,
     ):
         """
         Args:
@@ -78,6 +79,7 @@ class TrelloWatcher:
             notify_channel: 알림 채널 ID
             poll_interval: 폴링 간격 (초)
             data_dir: 상태 파일 저장 디렉토리
+            list_runner_ref: ListRunner 인스턴스 참조 함수 (() -> ListRunner)
         """
         self.slack_client = slack_client
         self.session_manager = session_manager
@@ -85,6 +87,7 @@ class TrelloWatcher:
         self.get_session_lock = get_session_lock
         self.notify_channel = notify_channel or Config.TRELLO_NOTIFY_CHANNEL
         self.poll_interval = poll_interval
+        self.list_runner_ref = list_runner_ref
 
         self.trello = TrelloClient()
         self.watch_lists = Config.TRELLO_WATCH_LISTS
@@ -706,7 +709,217 @@ class TrelloWatcher:
         """
         logger.info(f"리스트 정주행 시작: {list_name} ({len(cards)}개 카드)")
 
-        # TODO: Phase 6에서 구현
-        # - ListRunner와 연동하여 세션 생성
-        # - 슬랙에 정주행 시작 알림
-        # - 첫 번째 카드부터 순차 실행
+        # ListRunner 참조 확인
+        list_runner = self.list_runner_ref() if self.list_runner_ref else None
+        if not list_runner:
+            logger.warning("ListRunner가 설정되지 않아 정주행을 시작할 수 없습니다.")
+            return
+
+        # 카드 ID 목록 추출
+        card_ids = [card.id for card in cards]
+
+        # 세션 생성
+        session = list_runner.create_session(
+            list_id=list_id,
+            list_name=list_name,
+            card_ids=card_ids,
+        )
+
+        # 슬랙에 정주행 시작 알림
+        try:
+            card_preview = "\n".join([f"  • {c.name}" for c in cards[:5]])
+            if len(cards) > 5:
+                card_preview += f"\n  ... 외 {len(cards) - 5}개"
+
+            msg_result = self.slack_client.chat_postMessage(
+                channel=self.notify_channel,
+                text=(
+                    f"🚀 *리스트 정주행 시작*\n"
+                    f"📋 리스트: *{list_name}*\n"
+                    f"🎫 카드 수: {len(cards)}개\n"
+                    f"🔖 세션 ID: `{session.session_id}`\n\n"
+                    f"*처리할 카드:*\n{card_preview}"
+                )
+            )
+            run_thread_ts = msg_result["ts"]
+            logger.info(f"정주행 시작 알림 전송: thread_ts={run_thread_ts}")
+
+            # 정주행 세션 시작 (첫 번째 카드 처리)
+            self._process_list_run_card(session.session_id, run_thread_ts)
+
+        except Exception as e:
+            logger.error(f"정주행 시작 알림 전송 실패: {e}")
+
+    def _process_list_run_card(self, session_id: str, thread_ts: str):
+        """리스트 정주행 카드 처리
+
+        Args:
+            session_id: 정주행 세션 ID
+            thread_ts: 슬랙 스레드 타임스탬프
+        """
+        list_runner = self.list_runner_ref() if self.list_runner_ref else None
+        if not list_runner:
+            return
+
+        from seosoyoung.trello.list_runner import SessionStatus
+
+        session = list_runner.get_session(session_id)
+        if not session:
+            logger.error(f"정주행 세션을 찾을 수 없습니다: {session_id}")
+            return
+
+        # 다음 카드 ID 조회
+        next_card_id = list_runner.get_next_card_id(session_id)
+        if not next_card_id:
+            # 모든 카드 처리 완료
+            list_runner.update_session_status(session_id, SessionStatus.COMPLETED)
+            self.slack_client.chat_postMessage(
+                channel=self.notify_channel,
+                thread_ts=thread_ts,
+                text=f"✅ *리스트 정주행 완료*\n세션 ID: `{session_id}`"
+            )
+            logger.info(f"리스트 정주행 완료: {session_id}")
+            return
+
+        # 세션 상태를 RUNNING으로 변경
+        list_runner.update_session_status(session_id, SessionStatus.RUNNING)
+
+        # 카드 정보 조회
+        card = self.trello.get_card(next_card_id)
+        if not card:
+            logger.error(f"카드를 찾을 수 없습니다: {next_card_id}")
+            list_runner.mark_card_processed(session_id, next_card_id, "skipped")
+            # 다음 카드로 진행
+            self._process_list_run_card(session_id, thread_ts)
+            return
+
+        # 카드를 In Progress로 이동
+        in_progress_list_id = Config.TRELLO_IN_PROGRESS_LIST_ID
+        if in_progress_list_id:
+            self.trello.move_card(card.id, in_progress_list_id)
+
+        # 🌀 prefix 추가
+        self._add_spinner_prefix(card)
+
+        # 진행 상황 알림
+        progress = f"{session.current_index + 1}/{len(session.card_ids)}"
+        self.slack_client.chat_postMessage(
+            channel=self.notify_channel,
+            thread_ts=thread_ts,
+            text=f"▶️ [{progress}] <{card.url}|{card.name}>"
+        )
+
+        # Claude 세션 생성 및 실행
+        claude_session = self.session_manager.create(
+            thread_ts=thread_ts,
+            channel_id=self.notify_channel,
+            user_id="list_runner",
+            username="list_runner",
+            role="admin"
+        )
+
+        # 프롬프트 생성
+        prompt = self._build_list_run_prompt(card, session_id, session.current_index + 1, len(session.card_ids))
+
+        # Claude 실행 (별도 스레드에서)
+        def run_claude():
+            lock = None
+            if self.get_session_lock:
+                lock = self.get_session_lock(thread_ts)
+                lock.acquire()
+            try:
+                def say(text, reply_thread_ts=None):
+                    self.slack_client.chat_postMessage(
+                        channel=self.notify_channel,
+                        thread_ts=reply_thread_ts or thread_ts,
+                        text=text
+                    )
+
+                # TrackedCard 유사 객체 생성 (정주행용)
+                tracked = TrackedCard(
+                    card_id=card.id,
+                    card_name=card.name,
+                    card_url=card.url,
+                    list_id=card.list_id,
+                    list_key="list_run",
+                    thread_ts=thread_ts,
+                    channel_id=self.notify_channel,
+                    detected_at=datetime.now().isoformat(),
+                    has_execute=True,
+                )
+
+                self.claude_runner_factory(
+                    session=claude_session,
+                    prompt=prompt,
+                    msg_ts=thread_ts,
+                    channel=self.notify_channel,
+                    say=say,
+                    client=self.slack_client,
+                    trello_card=tracked
+                )
+
+                # 카드 처리 완료 표시
+                list_runner.mark_card_processed(session_id, card.id, "completed")
+
+                # 🌀 prefix 제거
+                self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
+
+                # 다음 카드 처리 (별도 스레드로)
+                next_thread = threading.Thread(
+                    target=self._process_list_run_card,
+                    args=(session_id, thread_ts),
+                    daemon=True
+                )
+                next_thread.start()
+
+            except Exception as e:
+                logger.exception(f"정주행 카드 실행 오류: {e}")
+                list_runner.mark_card_processed(session_id, card.id, "failed")
+                list_runner.pause_run(session_id, str(e))
+
+                # 🌀 prefix 제거
+                self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
+
+                # 실패 알림
+                self.slack_client.chat_postMessage(
+                    channel=self.notify_channel,
+                    thread_ts=thread_ts,
+                    text=f"❌ 카드 처리 실패: {card.name}\n오류: {e}"
+                )
+            finally:
+                if lock:
+                    lock.release()
+
+        claude_thread = threading.Thread(target=run_claude, daemon=True)
+        claude_thread.start()
+
+    def _build_list_run_prompt(
+        self,
+        card: TrelloCard,
+        session_id: str,
+        current: int,
+        total: int
+    ) -> str:
+        """리스트 정주행용 프롬프트 생성
+
+        Args:
+            card: 처리할 카드
+            session_id: 정주행 세션 ID
+            current: 현재 카드 번호
+            total: 전체 카드 수
+
+        Returns:
+            프롬프트 문자열
+        """
+        card_context = self._build_card_context(card.id, card.desc)
+
+        return f"""📋 리스트 정주행 [{current}/{total}]
+
+**정주행 세션 ID**: `{session_id}`
+**카드**: {card.name}
+**카드 ID**: {card.id}
+**카드 URL**: {card.url}
+
+이 카드의 작업을 수행해주세요. 체크리스트와 코멘트를 확인하고 계획에 따라 작업하세요.
+{self._build_task_context_hint()}
+{card_context}"""

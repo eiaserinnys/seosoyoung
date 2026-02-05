@@ -1338,5 +1338,270 @@ class TestCheckRunListLabels:
             mock_start.assert_not_called()
 
 
+class TestStartListRunIntegration:
+    """_start_list_run() 통합 테스트"""
+
+    def test_start_list_run_creates_session(self):
+        """_start_list_run 호출 시 ListRunner 세션 생성"""
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.trello.client import TrelloCard
+        from unittest.mock import MagicMock, patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+
+            mock_slack = MagicMock()
+            mock_slack.chat_postMessage.return_value = {"ts": "1234567890.123456"}
+
+            watcher = TrelloWatcher(
+                slack_client=mock_slack,
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+            )
+
+            cards = [
+                TrelloCard(
+                    id="card_1",
+                    name="First Card",
+                    desc="",
+                    url="https://trello.com/c/abc",
+                    list_id="list_backlog",
+                    labels=[],
+                ),
+                TrelloCard(
+                    id="card_2",
+                    name="Second Card",
+                    desc="",
+                    url="https://trello.com/c/def",
+                    list_id="list_backlog",
+                    labels=[],
+                ),
+            ]
+
+            # _process_list_run_card를 모킹하여 실제 Claude 실행 방지
+            with patch.object(watcher, "_process_list_run_card"):
+                watcher._start_list_run("list_backlog", "📦 Backlog", cards)
+
+            # 세션이 생성되었는지 확인
+            sessions = list(list_runner.sessions.values())
+            assert len(sessions) == 1
+            session = sessions[0]
+            assert session.list_id == "list_backlog"
+            assert session.list_name == "📦 Backlog"
+            assert session.card_ids == ["card_1", "card_2"]
+            assert session.status == SessionStatus.PENDING
+
+    def test_start_list_run_without_list_runner(self):
+        """ListRunner 없이 _start_list_run 호출 시 경고 로그"""
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+        from unittest.mock import MagicMock
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+            list_runner_ref=None,  # ListRunner 없음
+        )
+
+        cards = [
+            TrelloCard(
+                id="card_1",
+                name="First Card",
+                desc="",
+                url="",
+                list_id="list_backlog",
+                labels=[],
+            ),
+        ]
+
+        # 예외 없이 종료되어야 함 (경고 로그만)
+        watcher._start_list_run("list_backlog", "📦 Backlog", cards)
+
+    def test_start_list_run_sends_slack_notification(self):
+        """_start_list_run 호출 시 슬랙 알림 전송"""
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.trello.client import TrelloCard
+        from unittest.mock import MagicMock, patch, call
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+
+            mock_slack = MagicMock()
+            mock_slack.chat_postMessage.return_value = {"ts": "1234567890.123456"}
+
+            watcher = TrelloWatcher(
+                slack_client=mock_slack,
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+                notify_channel="C12345",
+            )
+
+            cards = [
+                TrelloCard(
+                    id="card_1",
+                    name="First Card",
+                    desc="",
+                    url="",
+                    list_id="list_backlog",
+                    labels=[],
+                ),
+            ]
+
+            with patch.object(watcher, "_process_list_run_card"):
+                watcher._start_list_run("list_backlog", "📦 Backlog", cards)
+
+            # 슬랙 알림이 전송되었는지 확인
+            mock_slack.chat_postMessage.assert_called_once()
+            call_kwargs = mock_slack.chat_postMessage.call_args[1]
+            assert call_kwargs["channel"] == "C12345"
+            assert "📦 Backlog" in call_kwargs["text"]
+            assert "1개" in call_kwargs["text"]
+
+
+class TestHandleListRunMarkerIntegration:
+    """_handle_list_run_marker() 통합 테스트"""
+
+    def test_handle_list_run_marker_starts_list_run(self):
+        """LIST_RUN 마커 처리 시 정주행 시작"""
+        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.trello.client import TrelloCard
+        from unittest.mock import MagicMock, patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+
+            mock_trello = MagicMock()
+            mock_trello.get_lists.return_value = [
+                {"id": "list_123", "name": "📦 Backlog"},
+            ]
+            mock_trello.get_cards_in_list.return_value = [
+                TrelloCard(
+                    id="card_a",
+                    name="Task A",
+                    desc="",
+                    url="",
+                    list_id="list_123",
+                    labels=[],
+                ),
+            ]
+
+            mock_slack = MagicMock()
+            mock_slack.chat_postMessage.return_value = {"ts": "1234567890.123456"}
+
+            mock_watcher = MagicMock(spec=TrelloWatcher)
+            mock_watcher.trello = mock_trello
+
+            executor = ClaudeExecutor(
+                session_manager=MagicMock(),
+                get_session_lock=MagicMock(),
+                mark_session_running=MagicMock(),
+                mark_session_stopped=MagicMock(),
+                get_running_session_count=MagicMock(return_value=1),
+                restart_manager=MagicMock(),
+                upload_file_to_slack=MagicMock(),
+                send_long_message=MagicMock(),
+                send_restart_confirmation=MagicMock(),
+                trello_watcher_ref=lambda: mock_watcher,
+                list_runner_ref=lambda: list_runner,
+            )
+
+            mock_say = MagicMock()
+
+            executor._handle_list_run_marker(
+                list_name="📦 Backlog",
+                channel="C12345",
+                thread_ts="1234567890.123456",
+                say=mock_say,
+                client=mock_slack,
+            )
+
+            # TrelloWatcher._start_list_run이 호출되었는지 확인
+            mock_watcher._start_list_run.assert_called_once()
+
+    def test_handle_list_run_marker_without_watcher(self):
+        """TrelloWatcher 없이 LIST_RUN 마커 처리 시 에러 메시지"""
+        from seosoyoung.claude.executor import ClaudeExecutor
+        from unittest.mock import MagicMock
+
+        executor = ClaudeExecutor(
+            session_manager=MagicMock(),
+            get_session_lock=MagicMock(),
+            mark_session_running=MagicMock(),
+            mark_session_stopped=MagicMock(),
+            get_running_session_count=MagicMock(return_value=1),
+            restart_manager=MagicMock(),
+            upload_file_to_slack=MagicMock(),
+            send_long_message=MagicMock(),
+            send_restart_confirmation=MagicMock(),
+            trello_watcher_ref=None,  # 워처 없음
+            list_runner_ref=None,
+        )
+
+        mock_say = MagicMock()
+
+        executor._handle_list_run_marker(
+            list_name="📦 Backlog",
+            channel="C12345",
+            thread_ts="1234567890.123456",
+            say=mock_say,
+            client=MagicMock(),
+        )
+
+        # 에러 메시지가 전송되었는지 확인
+        mock_say.assert_called_once()
+        call_args = mock_say.call_args
+        assert "TrelloWatcher" in call_args[1]["text"]
+
+    def test_handle_list_run_marker_list_not_found(self):
+        """존재하지 않는 리스트로 LIST_RUN 마커 처리 시 에러 메시지"""
+        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from unittest.mock import MagicMock
+
+        mock_trello = MagicMock()
+        mock_trello.get_lists.return_value = [
+            {"id": "list_123", "name": "📦 Backlog"},
+        ]
+
+        mock_watcher = MagicMock(spec=TrelloWatcher)
+        mock_watcher.trello = mock_trello
+
+        executor = ClaudeExecutor(
+            session_manager=MagicMock(),
+            get_session_lock=MagicMock(),
+            mark_session_running=MagicMock(),
+            mark_session_stopped=MagicMock(),
+            get_running_session_count=MagicMock(return_value=1),
+            restart_manager=MagicMock(),
+            upload_file_to_slack=MagicMock(),
+            send_long_message=MagicMock(),
+            send_restart_confirmation=MagicMock(),
+            trello_watcher_ref=lambda: mock_watcher,
+            list_runner_ref=None,
+        )
+
+        mock_say = MagicMock()
+
+        executor._handle_list_run_marker(
+            list_name="존재하지 않는 리스트",
+            channel="C12345",
+            thread_ts="1234567890.123456",
+            say=mock_say,
+            client=MagicMock(),
+        )
+
+        # 에러 메시지가 전송되었는지 확인
+        mock_say.assert_called_once()
+        call_args = mock_say.call_args
+        assert "찾을 수 없습니다" in call_args[1]["text"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

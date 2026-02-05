@@ -18,15 +18,15 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 
 #### 메서드
 
-- `__init__(self, session_manager, get_session_lock, mark_session_running, mark_session_stopped, get_running_session_count, restart_manager, upload_file_to_slack, send_long_message, send_restart_confirmation)` (줄 48): 
-- `run(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts)` (줄 70): 세션 내에서 Claude Code 실행 (공통 로직)
-- `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 281): 성공 결과 처리
-- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client)` (줄 313): 트렐로 모드 성공 처리
-- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply)` (줄 394): 일반 모드(멘션) 성공 처리
-- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 485): 재기동 마커 처리
-- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 508): LIST_RUN 마커 처리 - 정주행 스레드 생성
-- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 550): 오류 결과 처리
-- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 593): 예외 처리
+- `__init__(self, session_manager, get_session_lock, mark_session_running, mark_session_stopped, get_running_session_count, restart_manager, upload_file_to_slack, send_long_message, send_restart_confirmation, trello_watcher_ref, list_runner_ref)` (줄 48): 
+- `run(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts)` (줄 74): 세션 내에서 Claude Code 실행 (공통 로직)
+- `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 285): 성공 결과 처리
+- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client)` (줄 317): 트렐로 모드 성공 처리
+- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply)` (줄 398): 일반 모드(멘션) 성공 처리
+- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 489): 재기동 마커 처리
+- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 512): LIST_RUN 마커 처리 - 정주행 시작
+- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 581): 오류 결과 처리
+- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 624): 예외 처리
 
 ## 함수
 

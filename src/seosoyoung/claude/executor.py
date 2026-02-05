@@ -56,6 +56,8 @@ class ClaudeExecutor:
         upload_file_to_slack: Callable,
         send_long_message: Callable,
         send_restart_confirmation: Callable,
+        trello_watcher_ref: Optional[Callable] = None,
+        list_runner_ref: Optional[Callable] = None,
     ):
         self.session_manager = session_manager
         self.get_session_lock = get_session_lock
@@ -66,6 +68,8 @@ class ClaudeExecutor:
         self.upload_file_to_slack = upload_file_to_slack
         self.send_long_message = send_long_message
         self.send_restart_confirmation = send_restart_confirmation
+        self.trello_watcher_ref = trello_watcher_ref
+        self.list_runner_ref = list_runner_ref
 
     def run(
         self,
@@ -508,7 +512,7 @@ class ClaudeExecutor:
     def _handle_list_run_marker(
         self, list_name: str, channel: str, thread_ts: str, say, client
     ):
-        """LIST_RUN 마커 처리 - 정주행 스레드 생성
+        """LIST_RUN 마커 처리 - 정주행 시작
 
         Args:
             list_name: 정주행할 리스트 이름
@@ -519,31 +523,58 @@ class ClaudeExecutor:
         """
         logger.info(f"리스트 정주행 요청: {list_name}")
 
-        # 정주행 시작 알림 (현재 스레드에 답글로)
-        say(
-            text=f"📋 리스트 정주행을 시작합니다: *{list_name}*\n"
-                 f"정주행 상태는 별도 스레드에서 확인하실 수 있습니다.",
-            thread_ts=thread_ts
-        )
-
-        # 정주행 전용 스레드 생성 (채널 루트에 새 메시지)
-        try:
-            result = client.chat_postMessage(
-                channel=channel,
-                text=f"🚀 *리스트 정주행*: {list_name}\n"
-                     f"```\n정주행을 준비하고 있습니다...\n```"
+        # TrelloWatcher 참조 확인
+        trello_watcher = self.trello_watcher_ref() if self.trello_watcher_ref else None
+        if not trello_watcher:
+            logger.warning("TrelloWatcher가 설정되지 않아 정주행을 시작할 수 없습니다.")
+            say(
+                text="❌ TrelloWatcher가 설정되지 않아 정주행을 시작할 수 없습니다.",
+                thread_ts=thread_ts
             )
-            run_thread_ts = result["ts"]
-            logger.info(f"정주행 스레드 생성: {run_thread_ts}")
+            return
 
-            # TODO: 실제 정주행 시작 로직 연결 (Phase 3에서 구현)
-            # - ListRunner.start_run_by_name() 호출
-            # - TrelloWatcher와 연동하여 카드 처리
+        # 리스트 이름으로 리스트 ID와 카드 목록 조회
+        try:
+            lists = trello_watcher.trello.get_lists()
+            target_list = None
+            for lst in lists:
+                if lst.get("name") == list_name:
+                    target_list = lst
+                    break
+
+            if not target_list:
+                logger.warning(f"리스트를 찾을 수 없습니다: {list_name}")
+                say(
+                    text=f"❌ 리스트를 찾을 수 없습니다: *{list_name}*",
+                    thread_ts=thread_ts
+                )
+                return
+
+            list_id = target_list["id"]
+            cards = trello_watcher.trello.get_cards_in_list(list_id)
+
+            if not cards:
+                logger.warning(f"리스트에 카드가 없습니다: {list_name}")
+                say(
+                    text=f"❌ 리스트에 카드가 없습니다: *{list_name}*",
+                    thread_ts=thread_ts
+                )
+                return
+
+            # 정주행 시작 알림 (현재 스레드에 답글로)
+            say(
+                text=f"📋 리스트 정주행을 시작합니다: *{list_name}* ({len(cards)}개 카드)\n"
+                     f"정주행 상태는 별도 스레드에서 확인하실 수 있습니다.",
+                thread_ts=thread_ts
+            )
+
+            # TrelloWatcher의 _start_list_run 호출
+            trello_watcher._start_list_run(list_id, list_name, cards)
 
         except Exception as e:
-            logger.error(f"정주행 스레드 생성 실패: {e}")
+            logger.error(f"정주행 시작 실패: {e}")
             say(
-                text=f"❌ 정주행 스레드 생성에 실패했습니다: {e}",
+                text=f"❌ 정주행 시작에 실패했습니다: {e}",
                 thread_ts=thread_ts
             )
 

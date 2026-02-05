@@ -69,6 +69,8 @@ executor = ClaudeExecutor(
     upload_file_to_slack=upload_file_to_slack,
     send_long_message=send_long_message,
     send_restart_confirmation=send_restart_confirmation,
+    trello_watcher_ref=lambda: trello_watcher,
+    list_runner_ref=lambda: list_runner,
 )
 
 # 핸들러 의존성
@@ -125,6 +127,7 @@ def start_trello_watcher():
         claude_runner_factory=executor.run,
         get_session_lock=session_runtime.get_session_lock,
         poll_interval=15,
+        list_runner_ref=lambda: list_runner,
     )
     trello_watcher.start()
     logger.info("Trello 워처 시작됨")
