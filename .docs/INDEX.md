@@ -19,6 +19,7 @@
 - [`handlers/translate.py`](modules/handlers_translate.md): 번역 핸들러
 - [`seosoyoung/logging_config.py`](modules/seosoyoung_logging_config.md): 로깅 설정 모듈
 - [`seosoyoung/main.py`](modules/seosoyoung_main.md): SeoSoyoung 슬랙 봇 메인
+- [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리
 - [`recall/aggregator.py`](modules/recall_aggregator.md): 결과 집계기
 - [`recall/evaluator.py`](modules/recall_evaluator.md): 하이쿠 평가 클라이언트
 - [`recall/loader.py`](modules/recall_loader.md): 도구 정의 로더
@@ -51,6 +52,8 @@
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
 - `SessionRuntime` (seosoyoung/claude/session.py:185): 세션 실행 상태 관리자
 - `Config` (seosoyoung/config.py:18): 
+- `ProfileInfo` (seosoyoung/profile/manager.py:14): 프로필 정보
+- `ProfileManager` (seosoyoung/profile/manager.py:24): Claude Code 인증 프로필 관리자
 - `AggregationResult` (seosoyoung/recall/aggregator.py:121): 집계 결과
 - `ResultAggregator` (seosoyoung/recall/aggregator.py:211): 결과 집계기
 - `EvaluationResult` (seosoyoung/recall/evaluator.py:182): 도구 평가 결과
