@@ -115,7 +115,7 @@
 - `register_message_handlers()` (seosoyoung/handlers/message.py:74): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
-- `setup_logging()` (seosoyoung/logging_config.py:10): 로깅 설정 및 로거 반환
+- `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
 - `notify_startup()` (seosoyoung/main.py:92): 봇 시작 알림
 - `notify_shutdown()` (seosoyoung/main.py:103): 봇 종료 알림
 - `start_trello_watcher()` (seosoyoung/main.py:114): Trello 워처 시작

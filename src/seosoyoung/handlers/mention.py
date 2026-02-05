@@ -328,7 +328,7 @@ def register_mention_handlers(app, dependencies: dict):
                 client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
 
             except Exception as e:
-                logger.error(f"번역 테스트 실패: {e}", exc_info=True)
+                logger.exception(f"번역 테스트 실패: {e}")
                 try:
                     client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
                 except Exception:
@@ -389,7 +389,7 @@ def register_mention_handlers(app, dependencies: dict):
                 else:
                     say(text=f"컴팩트에 실패했습니다: {compact_result.error}", thread_ts=thread_ts)
             except Exception as e:
-                logger.error(f"compact 명령어 오류: {e}", exc_info=True)
+                logger.exception(f"compact 명령어 오류: {e}")
                 say(text=f"컴팩트 중 오류가 발생했습니다: {e}", thread_ts=thread_ts)
             return
 
@@ -463,7 +463,7 @@ def register_mention_handlers(app, dependencies: dict):
             except (ValueError, FileNotFoundError, FileExistsError) as e:
                 say(text=f"❌ {e}", thread_ts=ts)
             except Exception as e:
-                logger.error(f"profile 명령어 오류: {e}", exc_info=True)
+                logger.exception(f"profile 명령어 오류: {e}")
                 say(text=f"❌ 오류가 발생했습니다: {e}", thread_ts=ts)
             return
 

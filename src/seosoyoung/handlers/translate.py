@@ -280,7 +280,7 @@ def process_translate_message(event: dict, client) -> bool:
         return True
 
     except Exception as e:
-        logger.error(f"번역 실패: {e}", exc_info=True)
+        logger.exception(f"번역 실패: {e}")
         # 실패 시 리액션 교체 (hn-curious -> hn-embarrass)
         try:
             client.reactions_remove(
