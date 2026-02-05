@@ -397,7 +397,7 @@ def register_mention_handlers(app, dependencies: dict):
         if command.startswith("profile"):
             if not check_permission(user_id, client):
                 logger.warning(f"profile 권한 없음: user={user_id}")
-                say(text="관리자 권한이 필요합니다.", thread_ts=ts)
+                say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts)
                 return
 
             from seosoyoung.profile.manager import ProfileManager
@@ -415,38 +415,41 @@ def register_mention_handlers(app, dependencies: dict):
             subcmd = parts[1] if len(parts) > 1 else None
             arg = parts[2] if len(parts) > 2 else None
 
+            # 응답 위치: 스레드에서 호출했으면 스레드, 채널에서 호출했으면 채널
+            reply_ts = thread_ts
+
             try:
                 if subcmd == "list":
                     profiles = manager.list_profiles()
                     if not profiles:
-                        say(text="저장된 프로필이 없습니다.", thread_ts=ts)
+                        say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
                     else:
                         lines = ["*📋 프로필 목록*"]
                         for p in profiles:
                             marker = "✅ " if p.is_active else "• "
                             lines.append(f"{marker}`{p.name}`")
-                        say(text="\n".join(lines), thread_ts=ts)
+                        say(text="\n".join(lines), thread_ts=reply_ts)
 
                 elif subcmd == "save":
                     if not arg:
-                        say(text="저장할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile save work`", thread_ts=ts)
+                        say(text="저장할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile save work`", thread_ts=reply_ts)
                     else:
                         result = manager.save_profile(arg)
-                        say(text=f"✅ {result}", thread_ts=ts)
+                        say(text=f"✅ {result}", thread_ts=reply_ts)
 
                 elif subcmd == "change":
                     if not arg:
-                        say(text="전환할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile change work`", thread_ts=ts)
+                        say(text="전환할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile change work`", thread_ts=reply_ts)
                     else:
                         result = manager.change_profile(arg)
-                        say(text=f"🔄 {result}", thread_ts=ts)
+                        say(text=f"🔄 {result}", thread_ts=reply_ts)
 
                 elif subcmd == "delete":
                     if not arg:
-                        say(text="삭제할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile delete work`", thread_ts=ts)
+                        say(text="삭제할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile delete work`", thread_ts=reply_ts)
                     else:
                         result = manager.delete_profile(arg)
-                        say(text=f"🗑️ {result}", thread_ts=ts)
+                        say(text=f"🗑️ {result}", thread_ts=reply_ts)
 
                 else:
                     say(
@@ -457,14 +460,14 @@ def register_mention_handlers(app, dependencies: dict):
                             "• `profile change <이름>` - 프로필로 전환\n"
                             "• `profile delete <이름>` - 프로필 삭제"
                         ),
-                        thread_ts=ts
+                        thread_ts=reply_ts
                     )
 
             except (ValueError, FileNotFoundError, FileExistsError) as e:
-                say(text=f"❌ {e}", thread_ts=ts)
+                say(text=f"❌ {e}", thread_ts=reply_ts)
             except Exception as e:
                 logger.exception(f"profile 명령어 오류: {e}")
-                say(text=f"❌ 오류가 발생했습니다: {e}", thread_ts=ts)
+                say(text=f"❌ 오류가 발생했습니다: {e}", thread_ts=reply_ts)
             return
 
         # 일반 질문: 세션 생성 + Claude 실행
