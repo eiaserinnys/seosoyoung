@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
 from claude_code_sdk import query, ClaudeCodeOptions, HookMatcher, HookContext
+from claude_code_sdk._errors import ProcessError
 from claude_code_sdk.types import (
     AssistantMessage,
     HookJSONOutput,
@@ -17,6 +18,40 @@ from claude_code_sdk.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _classify_process_error(e: ProcessError) -> str:
+    """ProcessError를 사용자 친화적 메시지로 변환.
+
+    Claude Code CLI는 다양한 이유로 exit code 1을 반환하지만,
+    SDK가 stderr를 캡처하지 않아 원인 구분이 어렵습니다.
+    exit_code와 stderr 패턴을 기반으로 최대한 분류합니다.
+    """
+    error_str = str(e).lower()
+    stderr = (e.stderr or "").lower()
+    combined = f"{error_str} {stderr}"
+
+    # 사용량 제한 관련 패턴
+    if any(kw in combined for kw in ["usage limit", "rate limit", "quota", "too many requests", "429"]):
+        return "사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요."
+
+    # 인증 관련 패턴
+    if any(kw in combined for kw in ["unauthorized", "401", "auth", "token", "credentials", "forbidden", "403"]):
+        return "인증에 실패했습니다. 관리자에게 문의해주세요."
+
+    # 네트워크 관련 패턴
+    if any(kw in combined for kw in ["network", "connection", "timeout", "econnrefused", "dns"]):
+        return "네트워크 연결에 문제가 있습니다. 잠시 후 다시 시도해주세요."
+
+    # exit code 1인데 구체적인 원인을 알 수 없는 경우
+    if e.exit_code == 1:
+        return (
+            "Claude Code가 비정상 종료했습니다. "
+            "사용량 제한이나 일시적 오류일 수 있으니 잠시 후 다시 시도해주세요."
+        )
+
+    # 기타
+    return f"Claude Code 실행 중 오류가 발생했습니다 (exit code: {e.exit_code})"
 
 
 # Claude Code 기본 허용 도구
@@ -251,6 +286,15 @@ class ClaudeAgentRunner:
                 success=False,
                 output="",
                 error="Claude Code CLI를 찾을 수 없습니다. claude 명령어가 PATH에 있는지 확인하세요."
+            )
+        except ProcessError as e:
+            friendly_msg = _classify_process_error(e)
+            logger.error(f"Claude Code CLI 프로세스 오류: exit_code={e.exit_code}, stderr={e.stderr}, friendly={friendly_msg}")
+            return ClaudeResult(
+                success=False,
+                output=current_text,
+                session_id=result_session_id,
+                error=friendly_msg,
             )
         except Exception as e:
             logger.exception(f"Claude Code SDK 실행 오류: {e}")

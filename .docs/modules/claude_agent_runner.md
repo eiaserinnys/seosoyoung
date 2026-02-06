@@ -9,22 +9,30 @@ Claude Code SDK 기반 실행기
 ## 클래스
 
 ### `ClaudeResult`
-- 위치: 줄 42
+- 위치: 줄 77
 - 설명: Claude Code 실행 결과
 
 ### `ClaudeAgentRunner`
-- 위치: 줄 55
+- 위치: 줄 90
 - 설명: Claude Code SDK 기반 실행기
 
 #### 메서드
 
-- `__init__(self, working_dir, timeout, allowed_tools, disallowed_tools, mcp_config_path)` (줄 58): 
-- `_build_options(self, session_id, compact_events)` (줄 73): ClaudeCodeOptions 생성
-- `async run(self, prompt, session_id, on_progress, on_compact)` (줄 125): Claude Code 실행
-- `async _execute(self, prompt, session_id, on_progress, on_compact)` (줄 143): 실제 실행 로직
-- `async compact_session(self, session_id)` (줄 264): 세션 컴팩트 처리
+- `__init__(self, working_dir, timeout, allowed_tools, disallowed_tools, mcp_config_path)` (줄 93): 
+- `_build_options(self, session_id, compact_events)` (줄 108): ClaudeCodeOptions 생성
+- `async run(self, prompt, session_id, on_progress, on_compact)` (줄 160): Claude Code 실행
+- `async _execute(self, prompt, session_id, on_progress, on_compact)` (줄 178): 실제 실행 로직
+- `async compact_session(self, session_id)` (줄 308): 세션 컴팩트 처리
 
 ## 함수
 
+### `_classify_process_error(e)`
+- 위치: 줄 23
+- 설명: ProcessError를 사용자 친화적 메시지로 변환.
+
+Claude Code CLI는 다양한 이유로 exit code 1을 반환하지만,
+SDK가 stderr를 캡처하지 않아 원인 구분이 어렵습니다.
+exit_code와 stderr 패턴을 기반으로 최대한 분류합니다.
+
 ### `async main()`
-- 위치: 줄 294
+- 위치: 줄 338

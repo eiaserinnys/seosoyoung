@@ -16,7 +16,9 @@ from seosoyoung.claude.agent_runner import (
     ClaudeResult,
     DEFAULT_ALLOWED_TOOLS,
     DEFAULT_DISALLOWED_TOOLS,
+    _classify_process_error,
 )
+from claude_code_sdk._errors import ProcessError
 
 
 class TestClaudeAgentRunnerUnit:
@@ -427,6 +429,101 @@ class TestClaudeAgentRunnerCompact:
                 result = await runner.run("테스트")
 
         assert result.success is True
+
+
+class TestClassifyProcessError:
+    """ProcessError 분류 테스트"""
+
+    def test_usage_limit_keyword(self):
+        """usage limit 키워드 감지"""
+        e = ProcessError("Command failed", exit_code=1, stderr="usage limit reached")
+        msg = _classify_process_error(e)
+        assert "사용량 제한" in msg
+
+    def test_rate_limit_keyword(self):
+        """rate limit 키워드 감지"""
+        e = ProcessError("rate limit exceeded", exit_code=1, stderr=None)
+        msg = _classify_process_error(e)
+        assert "사용량 제한" in msg
+
+    def test_429_status(self):
+        """429 상태 코드 감지"""
+        e = ProcessError("Command failed", exit_code=1, stderr="HTTP 429 Too Many Requests")
+        msg = _classify_process_error(e)
+        assert "사용량 제한" in msg
+
+    def test_unauthorized_401(self):
+        """401 인증 오류 감지"""
+        e = ProcessError("Command failed", exit_code=1, stderr="401 Unauthorized")
+        msg = _classify_process_error(e)
+        assert "인증" in msg
+
+    def test_forbidden_403(self):
+        """403 권한 오류 감지"""
+        e = ProcessError("Command failed", exit_code=1, stderr="403 Forbidden")
+        msg = _classify_process_error(e)
+        assert "인증" in msg
+
+    def test_network_error(self):
+        """네트워크 오류 감지"""
+        e = ProcessError("Connection refused", exit_code=1, stderr="ECONNREFUSED")
+        msg = _classify_process_error(e)
+        assert "네트워크" in msg
+
+    def test_generic_exit_code_1(self):
+        """exit code 1 일반 폴백"""
+        e = ProcessError("Command failed with exit code 1", exit_code=1, stderr="Check stderr output for details")
+        msg = _classify_process_error(e)
+        assert "비정상 종료" in msg
+        assert "잠시 후" in msg
+
+    def test_other_exit_code(self):
+        """기타 exit code"""
+        e = ProcessError("Command failed", exit_code=137, stderr=None)
+        msg = _classify_process_error(e)
+        assert "exit code: 137" in msg
+
+    def test_none_stderr(self):
+        """stderr가 None인 경우"""
+        e = ProcessError("Command failed", exit_code=1, stderr=None)
+        msg = _classify_process_error(e)
+        assert "비정상 종료" in msg
+
+
+@pytest.mark.asyncio
+class TestProcessErrorHandling:
+    """ProcessError가 agent_runner._execute에서 올바르게 처리되는지 테스트"""
+
+    async def test_process_error_returns_friendly_message(self):
+        """ProcessError 발생 시 친절한 메시지 반환"""
+        runner = ClaudeAgentRunner()
+
+        async def mock_query(prompt, options):
+            raise ProcessError("Command failed with exit code 1", exit_code=1, stderr="Check stderr output for details")
+            yield
+
+        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+            result = await runner.run("테스트")
+
+        assert result.success is False
+        assert "비정상 종료" in result.error
+        assert "잠시 후" in result.error
+        # 원래의 불친절한 메시지가 아닌지 확인
+        assert "Command failed" not in result.error
+
+    async def test_process_error_with_usage_limit(self):
+        """usage limit ProcessError 발생 시 친절한 메시지"""
+        runner = ClaudeAgentRunner()
+
+        async def mock_query(prompt, options):
+            raise ProcessError("usage limit reached", exit_code=1, stderr="usage limit")
+            yield
+
+        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+            result = await runner.run("테스트")
+
+        assert result.success is False
+        assert "사용량 제한" in result.error
 
 
 class TestServiceFactory:
