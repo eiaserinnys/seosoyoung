@@ -135,6 +135,12 @@ class Config:
     TRANSLATE_DEBUG_CHANNEL = os.getenv("TRANSLATE_DEBUG_CHANNEL", "")
 
     # ========================================
+    # Gemini 설정 (이미지 생성)
+    # ========================================
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-pro-image-preview")
+
+    # ========================================
     # 실행 트리거 설정
     # ========================================
     EXECUTE_EMOJI = os.getenv("EXECUTE_EMOJI", "rocket")
