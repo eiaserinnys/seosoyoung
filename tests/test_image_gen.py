@@ -345,5 +345,169 @@ class TestGeminiImageGenerator:
         assert call_kwargs.kwargs["model"] == "gemini-2.5-flash-image"
 
 
+class TestExecutorImageGen:
+    """executor._handle_image_gen 통합 테스트"""
+
+    def _make_executor(self, upload_result=(True, "ok")):
+        """테스트용 ClaudeExecutor 생성"""
+        from seosoyoung.claude.executor import ClaudeExecutor
+
+        executor = ClaudeExecutor(
+            session_manager=MagicMock(),
+            get_session_lock=MagicMock(),
+            mark_session_running=MagicMock(),
+            mark_session_stopped=MagicMock(),
+            get_running_session_count=MagicMock(return_value=0),
+            restart_manager=MagicMock(),
+            upload_file_to_slack=MagicMock(return_value=upload_result),
+            send_long_message=MagicMock(),
+            send_restart_confirmation=MagicMock(),
+        )
+        return executor
+
+    def test_image_gen_success(self, tmp_path):
+        """이미지 생성 성공 시 업로드 및 임시 파일 삭제"""
+        from seosoyoung.image_gen.generator import GeneratedImage
+
+        executor = self._make_executor()
+        say = MagicMock()
+        client = MagicMock()
+
+        # 임시 이미지 파일 생성
+        img_path = tmp_path / "test.png"
+        img_path.write_bytes(b"\x89PNG" + b"\x00" * 100)
+
+        mock_generated = GeneratedImage(
+            path=img_path, mime_type="image/png", prompt="test"
+        )
+
+        with patch("seosoyoung.claude.executor.asyncio.run", return_value=mock_generated):
+            executor._handle_image_gen(
+                ["귀여운 강아지"], "C123", "T123", say, client
+            )
+
+        # 진행 메시지 확인
+        say.assert_any_call(
+            text='🎨 이미지 생성 중... (`귀여운 강아지`)', thread_ts="T123"
+        )
+        # 업로드 호출 확인
+        executor.upload_file_to_slack.assert_called_once_with(
+            client, "C123", "T123", str(img_path)
+        )
+
+    def test_image_gen_no_api_key(self):
+        """API 키 미설정 시 안내 메시지"""
+        executor = self._make_executor()
+        say = MagicMock()
+        client = MagicMock()
+
+        with patch(
+            "seosoyoung.claude.executor.asyncio.run",
+            side_effect=ValueError("GEMINI_API_KEY가 설정되지 않았습니다."),
+        ):
+            executor._handle_image_gen(
+                ["test1", "test2"], "C123", "T123", say, client
+            )
+
+        # 설정 오류 메시지 확인
+        say.assert_any_call(
+            text="⚠️ 이미지 생성 기능이 설정되지 않았습니다.", thread_ts="T123"
+        )
+        # API 키 없으면 break하므로 업로드 시도 없음
+        executor.upload_file_to_slack.assert_not_called()
+
+    def test_image_gen_safety_filter(self):
+        """안전 필터 차단 시 안내 메시지"""
+        executor = self._make_executor()
+        say = MagicMock()
+        client = MagicMock()
+
+        with patch(
+            "seosoyoung.claude.executor.asyncio.run",
+            side_effect=RuntimeError("이 요청은 안전 정책에 의해 차단되었습니다."),
+        ):
+            executor._handle_image_gen(
+                ["위험한 프롬프트"], "C123", "T123", say, client
+            )
+
+        say.assert_any_call(
+            text="⚠️ 안전 정책에 의해 이미지를 생성할 수 없습니다.", thread_ts="T123"
+        )
+
+    def test_image_gen_runtime_error(self):
+        """일반 RuntimeError 시 에러 메시지"""
+        executor = self._make_executor()
+        say = MagicMock()
+        client = MagicMock()
+
+        with patch(
+            "seosoyoung.claude.executor.asyncio.run",
+            side_effect=RuntimeError("빈 응답을 반환했습니다."),
+        ):
+            executor._handle_image_gen(
+                ["test"], "C123", "T123", say, client
+            )
+
+        # 에러 메시지에 원본 에러 포함
+        calls = [str(c) for c in say.call_args_list]
+        assert any("오류가 발생했습니다" in c for c in calls)
+
+    def test_image_gen_upload_failure(self, tmp_path):
+        """업로드 실패 시 경고 메시지"""
+        from seosoyoung.image_gen.generator import GeneratedImage
+
+        executor = self._make_executor(upload_result=(False, "파일 크기 초과"))
+        say = MagicMock()
+        client = MagicMock()
+
+        img_path = tmp_path / "test.png"
+        img_path.write_bytes(b"\x89PNG" + b"\x00" * 100)
+
+        mock_generated = GeneratedImage(
+            path=img_path, mime_type="image/png", prompt="test"
+        )
+
+        with patch("seosoyoung.claude.executor.asyncio.run", return_value=mock_generated):
+            executor._handle_image_gen(
+                ["test"], "C123", "T123", say, client
+            )
+
+        say.assert_any_call(
+            text="⚠️ 이미지 업로드 실패: 파일 크기 초과", thread_ts="T123"
+        )
+
+    def test_multiple_image_gen(self, tmp_path):
+        """복수 이미지 생성 처리"""
+        from seosoyoung.image_gen.generator import GeneratedImage
+
+        executor = self._make_executor()
+        say = MagicMock()
+        client = MagicMock()
+
+        img1 = tmp_path / "test1.png"
+        img1.write_bytes(b"\x89PNG" + b"\x00" * 100)
+        img2 = tmp_path / "test2.png"
+        img2.write_bytes(b"\x89PNG" + b"\x00" * 100)
+
+        results = [
+            GeneratedImage(path=img1, mime_type="image/png", prompt="해변"),
+            GeneratedImage(path=img2, mime_type="image/png", prompt="산"),
+        ]
+        call_count = [0]
+
+        def mock_run(coro):
+            result = results[call_count[0]]
+            call_count[0] += 1
+            return result
+
+        with patch("seosoyoung.claude.executor.asyncio.run", side_effect=mock_run):
+            executor._handle_image_gen(
+                ["해변", "산"], "C123", "T123", say, client
+            )
+
+        # 두 번 업로드 호출
+        assert executor.upload_file_to_slack.call_count == 2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

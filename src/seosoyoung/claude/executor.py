@@ -5,6 +5,7 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 
 import asyncio
 import logging
+import os
 from typing import Callable, Optional
 
 from seosoyoung.config import Config
@@ -395,6 +396,10 @@ class ClaudeExecutor:
                 if not success:
                     say(text=f"⚠️ {msg}", thread_ts=thread_ts)
 
+        # 이미지 생성 처리
+        if result.image_gen_prompts:
+            self._handle_image_gen(result.image_gen_prompts, channel, thread_ts, say, client)
+
     def _handle_normal_success(
         self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client,
         is_thread_reply: bool = False
@@ -485,6 +490,10 @@ class ClaudeExecutor:
                 success, msg = self.upload_file_to_slack(client, channel, thread_ts, file_path)
                 if not success:
                     say(text=f"⚠️ {msg}", thread_ts=thread_ts)
+
+        # 이미지 생성 처리
+        if result.image_gen_prompts:
+            self._handle_image_gen(result.image_gen_prompts, channel, thread_ts, say, client)
 
     def _handle_restart_marker(self, result, session, thread_ts, say):
         """재기동 마커 처리"""
@@ -660,3 +669,53 @@ class ClaudeExecutor:
                 )
             except Exception:
                 say(text=f"❌ {error_msg}", thread_ts=thread_ts)
+
+    def _handle_image_gen(
+        self, prompts: list[str], channel: str, thread_ts: str, say, client
+    ):
+        """이미지 생성 마커 처리
+
+        IMAGE_GEN 마커로 추출된 프롬프트를 Gemini API로 이미지 생성 후 슬랙에 첨부합니다.
+
+        Args:
+            prompts: 이미지 생성 프롬프트 목록
+            channel: 슬랙 채널 ID
+            thread_ts: 스레드 타임스탬프
+            say: Slack say 함수
+            client: Slack client
+        """
+        from seosoyoung.image_gen import generate_image
+
+        for prompt in prompts:
+            try:
+                say(text=f"🎨 이미지 생성 중... (`{prompt[:50]}`)", thread_ts=thread_ts)
+
+                generated = asyncio.run(generate_image(prompt))
+
+                success, msg = self.upload_file_to_slack(
+                    client, channel, thread_ts, str(generated.path)
+                )
+                if not success:
+                    say(text=f"⚠️ 이미지 업로드 실패: {msg}", thread_ts=thread_ts)
+
+                # 임시 파일 삭제
+                try:
+                    os.unlink(generated.path)
+                except OSError:
+                    pass
+
+            except ValueError as e:
+                # API 키 미설정
+                say(text="⚠️ 이미지 생성 기능이 설정되지 않았습니다.", thread_ts=thread_ts)
+                logger.warning(f"이미지 생성 실패 (설정 오류): {e}")
+                break  # API 키 없으면 나머지도 실패하므로 중단
+            except RuntimeError as e:
+                error_msg = str(e)
+                if "안전 정책" in error_msg or "차단" in error_msg:
+                    say(text="⚠️ 안전 정책에 의해 이미지를 생성할 수 없습니다.", thread_ts=thread_ts)
+                else:
+                    say(text=f"⚠️ 이미지 생성 중 오류가 발생했습니다: {error_msg[:200]}", thread_ts=thread_ts)
+                logger.warning(f"이미지 생성 실패: {e}")
+            except Exception as e:
+                say(text=f"⚠️ 이미지 생성 중 오류가 발생했습니다: {str(e)[:200]}", thread_ts=thread_ts)
+                logger.exception(f"이미지 생성 예외: {e}")
