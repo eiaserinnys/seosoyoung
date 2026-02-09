@@ -82,6 +82,7 @@ class ClaudeResult:
     error: Optional[str] = None
     files: list[str] = field(default_factory=list)
     attachments: list[str] = field(default_factory=list)
+    image_gen_prompts: list[str] = field(default_factory=list)
     update_requested: bool = False
     restart_requested: bool = False
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
@@ -245,6 +246,7 @@ class ClaudeAgentRunner:
             # 마커 추출
             files = re.findall(r"<!-- FILE: (.+?) -->", output)
             attachments = re.findall(r"<!-- ATTACH: (.+?) -->", output)
+            image_gen_prompts = re.findall(r"<!-- IMAGE_GEN: (.+?) -->", output)
             update_requested = "<!-- UPDATE -->" in output
             restart_requested = "<!-- RESTART -->" in output
 
@@ -254,6 +256,8 @@ class ClaudeAgentRunner:
 
             if attachments:
                 logger.info(f"첨부 파일 요청: {attachments}")
+            if image_gen_prompts:
+                logger.info(f"이미지 생성 요청: {image_gen_prompts}")
             if update_requested:
                 logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
             if restart_requested:
@@ -267,6 +271,7 @@ class ClaudeAgentRunner:
                 session_id=result_session_id,
                 files=files,
                 attachments=attachments,
+                image_gen_prompts=image_gen_prompts,
                 update_requested=update_requested,
                 restart_requested=restart_requested,
                 list_run=list_run,

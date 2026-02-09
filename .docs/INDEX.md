@@ -17,6 +17,7 @@
 - [`handlers/mention.py`](modules/handlers_mention.md): @seosoyoung 멘션 핸들러
 - [`handlers/message.py`](modules/handlers_message.md): 스레드 메시지 핸들러
 - [`handlers/translate.py`](modules/handlers_translate.md): 번역 핸들러
+- [`image_gen/generator.py`](modules/image_gen_generator.md): Gemini API 이미지 생성 모듈
 - [`seosoyoung/logging_config.py`](modules/seosoyoung_logging_config.md): 로깅 설정 모듈
 - [`seosoyoung/main.py`](modules/seosoyoung_main.md): SeoSoyoung 슬랙 봇 메인
 - [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리
@@ -45,7 +46,7 @@
 ### 주요 클래스
 
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:77): Claude Code 실행 결과
-- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:90): Claude Code SDK 기반 실행기
+- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:91): Claude Code SDK 기반 실행기
 - `ClaudeExecutor` (seosoyoung/claude/executor.py:42): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
@@ -53,6 +54,7 @@
 - `SessionRuntime` (seosoyoung/claude/session.py:185): 세션 실행 상태 관리자
 - `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
+- `GeneratedImage` (seosoyoung/image_gen/generator.py:24): 생성된 이미지 결과
 - `ProfileInfo` (seosoyoung/profile/manager.py:14): 프로필 정보
 - `ProfileManager` (seosoyoung/profile/manager.py:24): Claude Code 인증 프로필 관리자
 - `AggregationResult` (seosoyoung/recall/aggregator.py:121): 집계 결과
@@ -96,7 +98,7 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:338): 
+- `async main()` (seosoyoung/claude/agent_runner.py:343): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:30): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱
@@ -115,6 +117,7 @@
 - `register_message_handlers()` (seosoyoung/handlers/message.py:74): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
+- `async generate_image()` (seosoyoung/image_gen/generator.py:31): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
 - `notify_startup()` (seosoyoung/main.py:94): 봇 시작 알림
 - `notify_shutdown()` (seosoyoung/main.py:105): 봇 종료 알림
