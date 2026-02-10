@@ -6,7 +6,8 @@
     memory/
     ├── observations/
     │   ├── {thread_ts}.md          # 세션별 관찰 로그 (마크다운)
-    │   └── {thread_ts}.meta.json   # 메타데이터 (user_id 포함)
+    │   ├── {thread_ts}.meta.json   # 메타데이터 (user_id 포함)
+    │   └── {thread_ts}.inject      # OM 주입 플래그 (존재하면 다음 요청에 주입)
     ├── pending/
     │   └── {thread_ts}.jsonl       # 세션별 미관찰 대화 버퍼 (누적)
     └── conversations/
@@ -183,6 +184,26 @@ class MemoryStore:
             lock = FileLock(str(self._pending_lock_path(thread_ts)), timeout=5)
             with lock:
                 pending_path.unlink()
+
+    def _inject_flag_path(self, thread_ts: str) -> Path:
+        return self.observations_dir / f"{thread_ts}.inject"
+
+    def set_inject_flag(self, thread_ts: str) -> None:
+        """다음 요청에 OM을 주입하도록 플래그를 설정합니다."""
+        self._ensure_dirs()
+        self._inject_flag_path(thread_ts).write_text("1", encoding="utf-8")
+
+    def check_and_clear_inject_flag(self, thread_ts: str) -> bool:
+        """inject 플래그를 확인하고 있으면 제거합니다.
+
+        Returns:
+            True: 플래그가 있었음 (주입 필요), False: 없었음
+        """
+        flag_path = self._inject_flag_path(thread_ts)
+        if flag_path.exists():
+            flag_path.unlink()
+            return True
+        return False
 
     def save_conversation(self, thread_ts: str, messages: list[dict]) -> None:
         """세션 대화 로그를 JSONL로 저장합니다."""

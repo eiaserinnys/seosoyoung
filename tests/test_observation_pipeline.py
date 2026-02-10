@@ -247,6 +247,47 @@ class TestObserveConversation:
         assert record.observation_tokens > 0
 
     @pytest.mark.asyncio
+    async def test_observation_sets_inject_flag(
+        self, store, mock_observer, sample_messages
+    ):
+        """관찰 완료 시 inject 플래그가 설정됨"""
+        mock_observer.observe.return_value = ObserverResult(
+            observations="## [2026-02-10] Observations\n\n🔴 관찰 내용",
+        )
+
+        result = await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            thread_ts="ts_1234",
+            user_id="U12345",
+            messages=sample_messages,
+            observation_threshold=0,
+        )
+
+        assert result is True
+        # inject 플래그가 설정되어 있어야 함
+        assert store.check_and_clear_inject_flag("ts_1234") is True
+        # 다시 확인하면 이미 소비됨
+        assert store.check_and_clear_inject_flag("ts_1234") is False
+
+    @pytest.mark.asyncio
+    async def test_below_threshold_no_inject_flag(
+        self, store, mock_observer, sample_messages
+    ):
+        """임계치 미달 시 inject 플래그가 설정되지 않음"""
+        result = await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            thread_ts="ts_1234",
+            user_id="U12345",
+            messages=sample_messages,
+            observation_threshold=999999,
+        )
+
+        assert result is False
+        assert store.check_and_clear_inject_flag("ts_1234") is False
+
+    @pytest.mark.asyncio
     async def test_different_sessions_independent(
         self, store, mock_observer, sample_messages
     ):

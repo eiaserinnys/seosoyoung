@@ -139,6 +139,21 @@ class ClaudeAgentRunner:
                     "trigger": trigger,
                     "message": f"컨텍스트 컴팩트 실행됨 (트리거: {trigger})",
                 })
+
+                # OM: 컴팩션 시 다음 요청에 관찰 로그 재주입하도록 플래그 설정
+                if thread_ts:
+                    try:
+                        from seosoyoung.config import Config
+                        if Config.OM_ENABLED:
+                            from seosoyoung.memory.store import MemoryStore
+                            store = MemoryStore(Config.get_memory_path())
+                            record = store.get_record(thread_ts)
+                            if record and record.observations.strip():
+                                store.set_inject_flag(thread_ts)
+                                logger.info(f"OM inject 플래그 설정 (PreCompact, thread={thread_ts})")
+                    except Exception as e:
+                        logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
+
                 return HookJSONOutput()  # 빈 응답 = 컴팩션 진행 허용
 
             hooks = {
@@ -164,22 +179,27 @@ class ClaudeAgentRunner:
         if session_id:
             options.resume = session_id
 
-        # Observational Memory: 관찰 로그 주입 (세션 단위)
+        # Observational Memory: inject 플래그가 있을 때만 관찰 로그 주입
         if thread_ts:
             try:
                 from seosoyoung.config import Config
                 if Config.OM_ENABLED:
-                    from seosoyoung.memory.context_builder import ContextBuilder
                     from seosoyoung.memory.store import MemoryStore
 
                     store = MemoryStore(Config.get_memory_path())
-                    builder = ContextBuilder(store)
-                    memory_prompt = builder.build_memory_prompt(
-                        thread_ts, Config.OM_MAX_OBSERVATION_TOKENS
-                    )
-                    if memory_prompt:
-                        options.append_system_prompt = memory_prompt
-                        logger.info(f"OM 관찰 로그 주입 완료 (thread={thread_ts})")
+                    should_inject = store.check_and_clear_inject_flag(thread_ts)
+                    if should_inject:
+                        from seosoyoung.memory.context_builder import ContextBuilder
+
+                        builder = ContextBuilder(store)
+                        memory_prompt = builder.build_memory_prompt(
+                            thread_ts, Config.OM_MAX_OBSERVATION_TOKENS
+                        )
+                        if memory_prompt:
+                            options.append_system_prompt = memory_prompt
+                            logger.info(f"OM 관찰 로그 주입 완료 (thread={thread_ts})")
+                    else:
+                        logger.debug(f"OM inject 플래그 없음, 주입 건너뜀 (thread={thread_ts})")
             except Exception as e:
                 logger.warning(f"OM 관찰 로그 주입 실패 (무시): {e}")
 

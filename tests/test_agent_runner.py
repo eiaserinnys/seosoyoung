@@ -327,8 +327,8 @@ class TestClaudeAgentRunnerCompact:
         # compact_events 리스트에 직접 이벤트를 추가하는 방식으로 훅 시뮬레이션
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
+            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
             # 훅 시뮬레이션: compact_events에 이벤트 추가
             if compact_events is not None:
                 compact_events.append({
@@ -365,8 +365,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
+            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -400,8 +400,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
+            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",

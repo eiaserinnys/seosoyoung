@@ -175,16 +175,17 @@ class TestPipelineReflectorIntegration:
         result = await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=[{"role": "user", "content": "test"}],
-            min_conversation_tokens=0,
+            observation_threshold=0,
             reflector=mock_reflector,
             reflection_threshold=100,  # 낮은 임계치
         )
 
         assert result is True
         mock_reflector.reflect.assert_called_once()
-        record = store.get_record("U12345")
+        record = store.get_record("ts_1234")
         assert record.observations == "🔴 압축된 관찰"
         assert record.reflection_count == 1
 
@@ -203,9 +204,10 @@ class TestPipelineReflectorIntegration:
         await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=[{"role": "user", "content": "test"}],
-            min_conversation_tokens=0,
+            observation_threshold=0,
             reflector=mock_reflector,
             reflection_threshold=999999,  # 높은 임계치
         )
@@ -226,14 +228,15 @@ class TestPipelineReflectorIntegration:
         await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=[{"role": "user", "content": "test"}],
-            min_conversation_tokens=0,
+            observation_threshold=0,
             reflector=None,
             reflection_threshold=100,
         )
 
-        record = store.get_record("U12345")
+        record = store.get_record("ts_1234")
         assert record.observations == long_obs
 
     @pytest.mark.asyncio
@@ -251,13 +254,14 @@ class TestPipelineReflectorIntegration:
         await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=[{"role": "user", "content": "test"}],
-            min_conversation_tokens=0,
+            observation_threshold=0,
             reflector=mock_reflector,
             reflection_threshold=100,
         )
 
-        record = store.get_record("U12345")
+        record = store.get_record("ts_1234")
         assert record.observations == long_obs
         assert record.reflection_count == 0

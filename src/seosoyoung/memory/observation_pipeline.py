@@ -186,9 +186,10 @@ async def observe_conversation(
                     f"총 {record.reflection_count}회 압축"
                 )
 
-        # 7. 저장 및 pending 비우기
+        # 7. 저장, pending 비우기, inject 플래그 설정
         store.save_record(record)
         store.clear_pending_messages(thread_ts)
+        store.set_inject_flag(thread_ts)
 
         logger.info(
             f"관찰 완료 ({log_label}): "

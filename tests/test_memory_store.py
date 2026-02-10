@@ -183,6 +183,38 @@ class TestMemoryStorePending:
         assert store.pending_dir.exists()
 
 
+class TestMemoryStoreInjectFlag:
+    def test_set_and_check_flag(self, store):
+        """플래그 설정 후 확인하면 True, 다시 확인하면 False"""
+        store.set_inject_flag("ts_1234")
+        assert store.check_and_clear_inject_flag("ts_1234") is True
+        assert store.check_and_clear_inject_flag("ts_1234") is False
+
+    def test_check_nonexistent_flag(self, store):
+        """플래그 없으면 False"""
+        assert store.check_and_clear_inject_flag("NONEXISTENT") is False
+
+    def test_flag_independent_per_session(self, store):
+        """세션별 플래그는 독립적"""
+        store.set_inject_flag("ts_a")
+        assert store.check_and_clear_inject_flag("ts_a") is True
+        assert store.check_and_clear_inject_flag("ts_b") is False
+
+    def test_flag_creates_directory(self, tmp_path):
+        """디렉토리 자동 생성"""
+        deep_path = tmp_path / "deep" / "path"
+        store = MemoryStore(base_dir=deep_path)
+        store.set_inject_flag("ts_1234")
+        assert store.check_and_clear_inject_flag("ts_1234") is True
+
+    def test_set_flag_idempotent(self, store):
+        """플래그 중복 설정해도 문제 없음"""
+        store.set_inject_flag("ts_1234")
+        store.set_inject_flag("ts_1234")
+        assert store.check_and_clear_inject_flag("ts_1234") is True
+        assert store.check_and_clear_inject_flag("ts_1234") is False
+
+
 class TestMemoryStoreConversation:
     def test_save_and_load_conversation(self, store):
         messages = [
