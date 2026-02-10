@@ -141,7 +141,7 @@
 - `init_bot_user_id()` (seosoyoung/main.py:146): 봇 사용자 ID 초기화
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:17): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:60): 관찰 로그를 컨텍스트 주입에 최적화합니다.
-- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:58): 대화를 버퍼에 누적하고, 임계치 도달 시 관찰합니다.
+- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:73): 대화를 버퍼에 누적하고, 임계치 도달 시 관찰합니다.
 - `parse_observer_output()` (seosoyoung/memory/observer.py:30): Observer 응답에서 XML 태그를 파싱합니다.
 - `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:77): Observer 시스템 프롬프트를 반환합니다.
 - `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:82): Observer 사용자 프롬프트를 구성합니다.

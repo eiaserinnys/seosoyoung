@@ -55,6 +55,21 @@ def _format_tokens(n: int) -> str:
     return f"{n:,}"
 
 
+def _progress_bar(current: int, total: int, width: int = 10) -> str:
+    """프로그레스 바 생성. 예: ■■■■□□□□□□"""
+    if total <= 0:
+        return "□" * width
+    filled = min(round(current / total * width), width)
+    return "■" * filled + "□" * (width - filled)
+
+
+def _short_ts(thread_ts: str) -> str:
+    """thread_ts를 짧은 식별자로 변환. 예: 1234567890.123456 → ...3456"""
+    if len(thread_ts) > 4:
+        return f"...{thread_ts[-4:]}"
+    return thread_ts
+
+
 async def observe_conversation(
     store: MemoryStore,
     observer: Observer,
@@ -82,7 +97,8 @@ async def observe_conversation(
     Returns:
         True: 관찰 수행됨, False: 버퍼에 누적만 함 또는 실패
     """
-    label = f"{user_id}/{thread_ts}"
+    sid = _short_ts(thread_ts)
+    log_label = f"session={thread_ts}"
     debug_ts = ""
 
     try:
@@ -103,21 +119,22 @@ async def observe_conversation(
         if debug_channel:
             debug_ts = _send_debug_log(
                 debug_channel,
-                f":mag: *OM Observer 시작...* `{label}`",
+                f":mag: *OM Observer 시작...* `{sid}`",
             )
 
         # 3. 임계치 미달이면 저장만 하고 종료
         if pending_tokens < observation_threshold:
             logger.info(
-                f"관찰 대기 ({label}): "
+                f"관찰 대기 ({log_label}): "
                 f"{pending_tokens}/{observation_threshold} tokens"
             )
             if debug_channel:
+                bar = _progress_bar(pending_tokens, observation_threshold)
                 _update_debug_log(
                     debug_channel,
                     debug_ts,
                     f":black_right_pointing_double_triangle_with_vertical_bar: *OM 버퍼 누적* "
-                    f"`{label} | {_format_tokens(pending_tokens)} / {_format_tokens(observation_threshold)} tokens`",
+                    f"`{sid} | {bar} {_format_tokens(pending_tokens)}/{_format_tokens(observation_threshold)}`",
                 )
             return False
 
@@ -128,12 +145,12 @@ async def observe_conversation(
         )
 
         if result is None:
-            logger.warning(f"Observer가 None을 반환 ({label})")
+            logger.warning(f"Observer가 None을 반환 ({log_label})")
             if debug_channel:
                 _update_debug_log(
                     debug_channel,
                     debug_ts,
-                    f":warning: *OM Observer 결과 없음* `{label}`",
+                    f":warning: *OM Observer 결과 없음* `{sid}`",
                 )
             return False
 
@@ -152,7 +169,7 @@ async def observe_conversation(
         # 6. Reflector: 임계치 초과 시 압축
         if reflector and new_tokens > reflection_threshold:
             logger.info(
-                f"Reflector 트리거 ({label}): "
+                f"Reflector 트리거 ({log_label}): "
                 f"{new_tokens} > {reflection_threshold} tokens"
             )
             reflection_result = await reflector.reflect(
@@ -164,7 +181,7 @@ async def observe_conversation(
                 record.observation_tokens = reflection_result.token_count
                 record.reflection_count += 1
                 logger.info(
-                    f"Reflector 완료 ({label}): "
+                    f"Reflector 완료 ({log_label}): "
                     f"{new_tokens} → {reflection_result.token_count} tokens, "
                     f"총 {record.reflection_count}회 압축"
                 )
@@ -174,7 +191,7 @@ async def observe_conversation(
         store.clear_pending_messages(thread_ts)
 
         logger.info(
-            f"관찰 완료 ({label}): "
+            f"관찰 완료 ({log_label}): "
             f"{record.observation_tokens} tokens, "
             f"총 {record.total_sessions_observed}회"
         )
@@ -187,19 +204,19 @@ async def observe_conversation(
                 debug_channel,
                 debug_ts,
                 f":white_check_mark: *OM 관찰 완료* "
-                f"`{label} | {_format_tokens(record.observation_tokens)} tokens | "
+                f"`{sid} | {_format_tokens(record.observation_tokens)} tokens | "
                 f"관찰 {record.total_sessions_observed}회`"
                 f"{diff_block}",
             )
         return True
 
     except Exception as e:
-        logger.error(f"관찰 파이프라인 오류 ({label}): {e}")
+        logger.error(f"관찰 파이프라인 오류 ({log_label}): {e}")
         if debug_channel:
             _update_debug_log(
                 debug_channel,
                 debug_ts,
-                f":x: *OM 오류* `{label} | {e}`",
+                f":x: *OM 오류* `{sid} | {e}`",
             )
         return False
 

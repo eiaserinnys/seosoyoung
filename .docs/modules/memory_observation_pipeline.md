@@ -29,8 +29,16 @@ Mastra의 원본 구현처럼 상한선(threshold) 기반으로 동작합니다.
 - 위치: 줄 53
 - 설명: 토큰 수를 천 단위 콤마 포맷
 
-### `async observe_conversation(store, observer, thread_ts, user_id, messages, observation_threshold, reflector, reflection_threshold, debug_channel)`
+### `_progress_bar(current, total, width)`
 - 위치: 줄 58
+- 설명: 프로그레스 바 생성. 예: ■■■■□□□□□□
+
+### `_short_ts(thread_ts)`
+- 위치: 줄 66
+- 설명: thread_ts를 짧은 식별자로 변환. 예: 1234567890.123456 → ...3456
+
+### `async observe_conversation(store, observer, thread_ts, user_id, messages, observation_threshold, reflector, reflection_threshold, debug_channel)`
+- 위치: 줄 73
 - 설명: 대화를 버퍼에 누적하고, 임계치 도달 시 관찰합니다.
 
 Args:
@@ -48,7 +56,7 @@ Returns:
     True: 관찰 수행됨, False: 버퍼에 누적만 함 또는 실패
 
 ### `_make_observation_diff(old, new)`
-- 위치: 줄 207
+- 위치: 줄 224
 - 설명: 관찰 로그의 변경점을 간략히 표시.
 
 새로 추가된 줄에 + 접두사, 삭제된 줄에 - 접두사를 붙입니다.
