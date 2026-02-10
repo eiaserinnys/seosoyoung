@@ -704,23 +704,36 @@ class ClaudeExecutor:
         is_thread_reply: bool = False
     ):
         """일반 모드(멘션) 성공 처리"""
-        # 스레드 내 후속 대화에는 continuation hint 불필요
-        show_hint = not is_thread_reply
         continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
-        simple_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
 
-        # 요약/상세 분리 파싱 (채널 최초 응답 시만 적용)
+        # 요약/상세 분리 파싱
         summary, details, remainder = parse_summary_details(response)
 
         # 스레드 내 응답인지에 따라 _replace_thinking_message에 전달할 thread_ts 결정
         # 채널 루트 메시지는 thread_ts=None, 스레드 내 메시지는 thread_ts 전달
         reply_thread_ts = thread_ts if is_thread_reply else None
 
-        # 요약/상세 마커가 있고, 채널 최초 응답인 경우
-        if summary and not is_thread_reply:
+        if not is_thread_reply:
+            # 채널 최초 응답: 요약은 채널에, 전문은 스레드에
             try:
-                # 메인 메시지: 요약 + continuation hint
-                final_text = f"{summary}\n\n{continuation_hint}"
+                if summary:
+                    # SUMMARY 마커가 있는 경우: 요약을 채널에 표시
+                    channel_text = summary
+                else:
+                    # SUMMARY 마커가 없는 경우: 전체 응답을 채널 요약으로 사용
+                    # 3줄 이내로 잘라서 표시
+                    lines = response.strip().split("\n")
+                    preview_lines = []
+                    for line in lines:
+                        preview_lines.append(line)
+                        if len(preview_lines) >= 3:
+                            break
+                    channel_text = "\n".join(preview_lines)
+                    if len(lines) > 3:
+                        channel_text += "\n..."
+
+                # 채널 메시지: 요약 + continuation hint
+                final_text = f"{channel_text}\n\n{continuation_hint}"
                 final_blocks = [{
                     "type": "section",
                     "text": {"type": "mrkdwn", "text": final_text}
@@ -730,34 +743,27 @@ class ClaudeExecutor:
                     final_text, final_blocks, thread_ts=reply_thread_ts,
                 )
 
-                # 스레드에 상세 내용 전송
-                if details:
+                # 스레드에 전문 전송
+                if summary and details:
+                    # SUMMARY/DETAILS 마커가 있는 경우: details를 스레드에
                     self.send_long_message(say, details, thread_ts)
-
-                # 나머지 내용이 있으면 추가 전송
-                if remainder:
-                    self.send_long_message(say, remainder, thread_ts)
+                    if remainder:
+                        self.send_long_message(say, remainder, thread_ts)
+                else:
+                    # 마커가 없는 경우: 전체 응답을 스레드에
+                    full_response = strip_summary_details_markers(response)
+                    self.send_long_message(say, full_response, thread_ts)
 
             except Exception:
-                # 실패 시 기존 방식으로 폴백
+                # 실패 시 폴백: 스레드에 전체 응답 전송
                 self.send_long_message(say, response, thread_ts)
         else:
-            # 기존 로직: 마커가 없거나 스레드 내 후속 대화
-            # 스레드 내 후속 대화에서 마커가 있으면 태그만 제거
-            display_response = strip_summary_details_markers(response) if is_thread_reply else response
-
-            # 응답에 이미 continuation hint가 있으면 추가하지 않음
-            has_hint = "이 대화를 이어가려면" in display_response or "댓글을 달아주세요" in display_response or "스레드를 확인" in display_response
-            should_add_hint = show_hint and not has_hint
-            hint_to_use = simple_hint
+            # 스레드 내 후속 대화: 마커가 있으면 태그만 제거하고 스레드에 응답
+            display_response = strip_summary_details_markers(response) if (summary or details) else response
 
             try:
-                # continuation hint를 포함한 최대 응답 길이 계산
-                hint_len = len(hint_to_use) + 10 if should_add_hint else 0
-                max_response_len = 3900 - hint_len
-
-                if len(display_response) <= max_response_len:
-                    final_text = f"{display_response}\n\n{hint_to_use}" if should_add_hint else display_response
+                if len(display_response) <= 3900:
+                    final_text = display_response
                     final_blocks = [{
                         "type": "section",
                         "text": {"type": "mrkdwn", "text": final_text}
@@ -767,9 +773,9 @@ class ClaudeExecutor:
                         final_text, final_blocks, thread_ts=reply_thread_ts,
                     )
                 else:
-                    # 첫 번째 메시지에 잘린 응답 + continuation hint
-                    truncated = display_response[:max_response_len]
-                    first_part = f"{truncated}...\n\n{hint_to_use}" if should_add_hint else f"{truncated}..."
+                    # 긴 응답: 첫 부분은 사고 과정 메시지를 교체, 나머지는 추가 메시지
+                    truncated = display_response[:3900]
+                    first_part = f"{truncated}..."
                     first_blocks = [{
                         "type": "section",
                         "text": {"type": "mrkdwn", "text": first_part}
@@ -778,8 +784,7 @@ class ClaudeExecutor:
                         client, channel, last_msg_ts,
                         first_part, first_blocks, thread_ts=reply_thread_ts,
                     )
-                    # 나머지는 스레드에 전송
-                    remaining = display_response[max_response_len:]
+                    remaining = display_response[3900:]
                     self.send_long_message(say, remaining, thread_ts)
             except Exception:
                 self.send_long_message(say, display_response, thread_ts)
