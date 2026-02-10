@@ -94,20 +94,14 @@ class Observer:
         system_prompt = build_observer_system_prompt()
         user_prompt = build_observer_user_prompt(existing_observations, messages)
 
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.3,
-                max_tokens=16_000,
-            )
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_completion_tokens=16_000,
+        )
 
-            result_text = response.choices[0].message.content or ""
-            return parse_observer_output(result_text)
-
-        except Exception as e:
-            logger.error(f"Observer API 호출 실패: {e}")
-            return None
+        result_text = response.choices[0].message.content or ""
+        return parse_observer_output(result_text)

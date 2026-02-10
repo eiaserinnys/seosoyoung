@@ -173,15 +173,15 @@ class TestObserverObserve:
         observer.client.chat.completions.create.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_observe_handles_api_error(self, observer, long_messages):
-        """API 오류 시 None을 반환"""
+    async def test_observe_raises_on_api_error(self, observer, long_messages):
+        """API 오류 시 예외가 전파됨 (파이프라인에서 처리)"""
         observer.client = AsyncMock()
         observer.client.chat.completions.create = AsyncMock(
             side_effect=Exception("API Error")
         )
 
-        result = await observer.observe(None, long_messages, min_conversation_tokens=10)
-        assert result is None
+        with pytest.raises(Exception, match="API Error"):
+            await observer.observe(None, long_messages, min_conversation_tokens=10)
 
     @pytest.mark.asyncio
     async def test_observe_with_existing_observations(self, observer, long_messages):

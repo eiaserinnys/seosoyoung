@@ -67,8 +67,7 @@ class Reflector:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": observations},
                 ],
-                temperature=0.3,
-                max_tokens=16_000,
+                max_completion_tokens=16_000,
             )
 
             result_text = response.choices[0].message.content or ""
@@ -94,8 +93,7 @@ class Reflector:
                     {"role": "assistant", "content": result_text},
                     {"role": "user", "content": retry_prompt},
                 ],
-                temperature=0.3,
-                max_tokens=16_000,
+                max_completion_tokens=16_000,
             )
 
             retry_text = response.choices[0].message.content or ""
