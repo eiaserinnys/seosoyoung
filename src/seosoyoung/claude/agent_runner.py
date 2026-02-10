@@ -97,6 +97,11 @@ class ClaudeResult:
 class ClaudeAgentRunner:
     """Claude Code SDK 기반 실행기"""
 
+    # 클래스 레벨 공유 이벤트 루프 (모든 인스턴스가 공유)
+    _shared_loop: Optional[asyncio.AbstractEventLoop] = None
+    _loop_thread: Optional[threading.Thread] = None
+    _loop_lock = threading.Lock()
+
     def __init__(
         self,
         working_dir: Optional[Path] = None,
@@ -111,6 +116,46 @@ class ClaudeAgentRunner:
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
         self._lock = asyncio.Lock()
+
+    @classmethod
+    def _ensure_loop(cls) -> None:
+        """공유 이벤트 루프가 없거나 닫혀있으면 데몬 스레드에서 새로 생성"""
+        with cls._loop_lock:
+            if cls._shared_loop is not None and cls._shared_loop.is_running():
+                return
+
+            loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                target=loop.run_forever,
+                daemon=True,
+                name="claude-shared-loop",
+            )
+            thread.start()
+
+            cls._shared_loop = loop
+            cls._loop_thread = thread
+            logger.info("공유 이벤트 루프 생성됨")
+
+    @classmethod
+    def _reset_shared_loop(cls) -> None:
+        """공유 루프를 리셋 (테스트용)"""
+        with cls._loop_lock:
+            if cls._shared_loop is not None and cls._shared_loop.is_running():
+                cls._shared_loop.call_soon_threadsafe(cls._shared_loop.stop)
+                if cls._loop_thread is not None:
+                    cls._loop_thread.join(timeout=2)
+            cls._shared_loop = None
+            cls._loop_thread = None
+
+    def run_sync(self, coro):
+        """동기 컨텍스트에서 코루틴을 실행하는 브릿지
+
+        Slack 이벤트 핸들러(동기)에서 async 함수를 호출할 때 사용.
+        공유 이벤트 루프에 코루틴을 제출하고 결과를 기다립니다.
+        """
+        self._ensure_loop()
+        future = asyncio.run_coroutine_threadsafe(coro, self._shared_loop)
+        return future.result()
 
     def _build_options(
         self,
