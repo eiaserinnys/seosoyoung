@@ -340,10 +340,15 @@ class ClaudeAgentRunner:
                                             logger.warning(f"진행 상황 콜백 오류: {e}")
 
                             elif isinstance(block, ToolUseBlock):
-                                # OM용: 도구 호출 수집
+                                # OM용: 도구 호출 수집 (input 요약 포함)
+                                tool_input = ""
+                                if block.input:
+                                    tool_input = json.dumps(block.input, ensure_ascii=False)
+                                    if len(tool_input) > 2000:
+                                        tool_input = tool_input[:2000] + "..."
                                 collected_messages.append({
                                     "role": "assistant",
-                                    "content": f"[tool_use: {block.name}]",
+                                    "content": f"[tool_use: {block.name}] {tool_input}",
                                     "timestamp": datetime.now(timezone.utc).isoformat(),
                                 })
 

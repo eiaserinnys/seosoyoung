@@ -113,7 +113,7 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:487): 
+- `async main()` (seosoyoung/claude/agent_runner.py:492): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:31): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱
