@@ -461,6 +461,106 @@ class ClaudeExecutor:
 
         return last_msg_ts, thread_ts
 
+    def _is_last_message(self, client, channel: str, msg_ts: str, thread_ts: str = None) -> bool:
+        """사고 과정 메시지가 채널/스레드에서 마지막 메시지인지 확인
+
+        Args:
+            client: Slack client
+            channel: 채널 ID
+            msg_ts: 확인할 메시지의 타임스탬프
+            thread_ts: 스레드인 경우 스레드 루트 ts (None이면 채널 루트)
+
+        Returns:
+            True면 마지막 메시지 (기존 chat_update 사용), False면 마지막이 아님 (delete+post)
+        """
+        try:
+            if thread_ts:
+                # 스레드 내: conversations_replies로 msg_ts 이후 메시지 조회
+                resp = client.conversations_replies(
+                    channel=channel,
+                    ts=thread_ts,
+                    oldest=msg_ts,
+                    limit=2,
+                )
+                messages = resp.get("messages", [])
+                # 자기 자신을 제외한 메시지가 있으면 마지막이 아님
+                other_messages = [m for m in messages if m.get("ts") != msg_ts]
+                return len(other_messages) == 0
+            else:
+                # 채널 루트: conversations_history로 msg_ts 이후 메시지 조회
+                resp = client.conversations_history(
+                    channel=channel,
+                    oldest=msg_ts,
+                    limit=2,
+                )
+                messages = resp.get("messages", [])
+                other_messages = [m for m in messages if m.get("ts") != msg_ts]
+                return len(other_messages) == 0
+        except Exception as e:
+            logger.warning(f"_is_last_message 확인 실패 (기본값 True): {e}")
+            return True  # 실패 시 안전하게 기존 동작 유지
+
+    def _replace_thinking_message(
+        self, client, channel: str, old_msg_ts: str,
+        new_text: str, new_blocks: list, thread_ts: str = None
+    ) -> str:
+        """사고 과정 메시지를 삭제하고 새 메시지로 교체
+
+        마지막 메시지면 chat_update, 아니면 chat_delete + chat_postMessage.
+        chat_delete 실패 시 fallback으로 "(중단됨)"으로 업데이트 + 새 메시지 게시.
+
+        Args:
+            client: Slack client
+            channel: 채널 ID
+            old_msg_ts: 교체 대상 메시지 ts
+            new_text: 새 메시지 텍스트
+            new_blocks: 새 메시지 blocks
+            thread_ts: 스레드인 경우 스레드 루트 ts
+
+        Returns:
+            최종 메시지 ts
+        """
+        if self._is_last_message(client, channel, old_msg_ts, thread_ts):
+            # 마지막 메시지면 기존대로 chat_update
+            client.chat_update(
+                channel=channel,
+                ts=old_msg_ts,
+                text=new_text,
+                blocks=new_blocks,
+            )
+            return old_msg_ts
+        else:
+            # 마지막이 아니면 delete + post
+            try:
+                client.chat_delete(channel=channel, ts=old_msg_ts)
+            except Exception as e:
+                logger.warning(f"chat_delete 실패, fallback 처리: {e}")
+                # fallback: "(중단됨)"으로 업데이트
+                try:
+                    aborted_text = "```\n(중단됨)\n```"
+                    client.chat_update(
+                        channel=channel,
+                        ts=old_msg_ts,
+                        text=aborted_text,
+                        blocks=[{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": aborted_text}
+                        }]
+                    )
+                except Exception:
+                    pass
+
+            # 새 메시지 게시
+            post_kwargs = dict(
+                channel=channel,
+                text=new_text,
+                blocks=new_blocks,
+            )
+            if thread_ts:
+                post_kwargs["thread_ts"] = thread_ts
+            new_msg = client.chat_postMessage(**post_kwargs)
+            return new_msg["ts"]
+
     def _handle_interrupted(
         self, last_msg_ts, main_msg_ts, is_trello_mode, trello_card,
         session, channel, client
@@ -550,14 +650,14 @@ class ClaudeExecutor:
                 truncated = summary[:max_summary_len]
                 final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
 
-            client.chat_update(
-                channel=channel,
-                ts=main_msg_ts,
-                text=final_text,
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": final_text}
-                }]
+            final_blocks = [{
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": final_text}
+            }]
+            # 트렐로 메시지는 채널 루트이므로 thread_ts=None
+            self._replace_thinking_message(
+                client, channel, main_msg_ts,
+                final_text, final_blocks, thread_ts=None,
             )
 
             # 스레드에 상세 내용 전송
@@ -572,27 +672,20 @@ class ClaudeExecutor:
             max_response_len = 3900 - len(header) - len(continuation_hint) - 20
             if len(response) <= max_response_len:
                 final_text = f"{header}\n\n{response}\n\n{continuation_hint}"
-                client.chat_update(
-                    channel=channel,
-                    ts=main_msg_ts,
-                    text=final_text,
-                    blocks=[{
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": final_text}
-                    }]
-                )
             else:
                 truncated = response[:max_response_len]
                 final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
-                client.chat_update(
-                    channel=channel,
-                    ts=main_msg_ts,
-                    text=final_text,
-                    blocks=[{
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": final_text}
-                    }]
-                )
+
+            final_blocks = [{
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": final_text}
+            }]
+            self._replace_thinking_message(
+                client, channel, main_msg_ts,
+                final_text, final_blocks, thread_ts=None,
+            )
+
+            if len(response) > max_response_len:
                 self.send_long_message(say, response, thread_ts)
 
         # 첨부 파일은 스레드에 전송
@@ -619,19 +712,22 @@ class ClaudeExecutor:
         # 요약/상세 분리 파싱 (채널 최초 응답 시만 적용)
         summary, details, remainder = parse_summary_details(response)
 
+        # 스레드 내 응답인지에 따라 _replace_thinking_message에 전달할 thread_ts 결정
+        # 채널 루트 메시지는 thread_ts=None, 스레드 내 메시지는 thread_ts 전달
+        reply_thread_ts = thread_ts if is_thread_reply else None
+
         # 요약/상세 마커가 있고, 채널 최초 응답인 경우
         if summary and not is_thread_reply:
             try:
                 # 메인 메시지: 요약 + continuation hint
                 final_text = f"{summary}\n\n{continuation_hint}"
-                client.chat_update(
-                    channel=channel,
-                    ts=last_msg_ts,
-                    text=final_text,
-                    blocks=[{
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": final_text}
-                    }]
+                final_blocks = [{
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": final_text}
+                }]
+                self._replace_thinking_message(
+                    client, channel, last_msg_ts,
+                    final_text, final_blocks, thread_ts=reply_thread_ts,
                 )
 
                 # 스레드에 상세 내용 전송
@@ -662,27 +758,25 @@ class ClaudeExecutor:
 
                 if len(display_response) <= max_response_len:
                     final_text = f"{display_response}\n\n{hint_to_use}" if should_add_hint else display_response
-                    client.chat_update(
-                        channel=channel,
-                        ts=last_msg_ts,
-                        text=final_text,
-                        blocks=[{
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": final_text}
-                        }]
+                    final_blocks = [{
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": final_text}
+                    }]
+                    self._replace_thinking_message(
+                        client, channel, last_msg_ts,
+                        final_text, final_blocks, thread_ts=reply_thread_ts,
                     )
                 else:
                     # 첫 번째 메시지에 잘린 응답 + continuation hint
                     truncated = display_response[:max_response_len]
                     first_part = f"{truncated}...\n\n{hint_to_use}" if should_add_hint else f"{truncated}..."
-                    client.chat_update(
-                        channel=channel,
-                        ts=last_msg_ts,
-                        text=first_part,
-                        blocks=[{
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": first_part}
-                        }]
+                    first_blocks = [{
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": first_part}
+                    }]
+                    self._replace_thinking_message(
+                        client, channel, last_msg_ts,
+                        first_part, first_blocks, thread_ts=reply_thread_ts,
                     )
                     # 나머지는 스레드에 전송
                     remaining = display_response[max_response_len:]
