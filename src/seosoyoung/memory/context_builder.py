@@ -1,17 +1,31 @@
 """컨텍스트 빌더
 
-관찰 로그를 시스템 프롬프트로 변환하여 Claude 세션에 주입합니다.
+장기 기억과 세션 관찰 로그를 시스템 프롬프트로 변환하여 Claude 세션에 주입합니다.
 OM의 processInputStep에 해당하는 부분입니다.
+
+주입 계층:
+- 장기 기억 (persistent/recent.md): 매 세션 시작 시 항상 주입
+- 세션 관찰 (observations/{thread_ts}.md): inject 플래그 있을 때만 주입
 """
 
 import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from seosoyoung.memory.store import MemoryStore
 from seosoyoung.memory.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class InjectionResult:
+    """주입 결과 — 디버그 로그용 정보를 포함"""
+
+    prompt: str | None
+    persistent_tokens: int = 0
+    session_tokens: int = 0
 
 
 def add_relative_time(observations: str, now: datetime | None = None) -> str:
@@ -100,37 +114,66 @@ def optimize_for_context(
 
 
 class ContextBuilder:
-    """관찰 로그를 시스템 프롬프트로 변환"""
+    """장기 기억 + 세션 관찰 로그를 시스템 프롬프트로 변환"""
 
     def __init__(self, store: MemoryStore):
         self.store = store
+        self._counter = TokenCounter()
 
     def build_memory_prompt(
-        self, thread_ts: str, max_tokens: int = 30000
-    ) -> str | None:
-        """세션의 관찰 로그를 시스템 프롬프트로 변환합니다.
+        self,
+        thread_ts: str,
+        max_tokens: int = 30000,
+        include_persistent: bool = False,
+        include_session: bool = True,
+    ) -> InjectionResult:
+        """장기 기억과 세션 관찰 로그를 합쳐서 시스템 프롬프트로 변환합니다.
 
         Args:
             thread_ts: 세션(스레드) 타임스탬프
-            max_tokens: 최대 토큰 수
+            max_tokens: 세션 관찰 최대 토큰 수
+            include_persistent: 장기 기억을 포함할지 여부
+            include_session: 세션 관찰을 포함할지 여부
 
         Returns:
-            프롬프트 텍스트 또는 None (관찰 로그가 없는 경우)
+            InjectionResult (prompt, persistent_tokens, session_tokens)
         """
-        record = self.store.get_record(thread_ts)
-        if not record or not record.observations.strip():
-            return None
+        parts = []
+        persistent_tokens = 0
+        session_tokens = 0
 
-        # 상대 시간 주석 추가
-        observations = add_relative_time(record.observations)
+        # 1. 장기 기억 (persistent/recent.md)
+        if include_persistent:
+            persistent_data = self.store.get_persistent()
+            if persistent_data and persistent_data["content"].strip():
+                content = persistent_data["content"]
+                persistent_tokens = self._counter.count_string(content)
+                parts.append(
+                    "<long-term-memory>\n"
+                    "다음은 과거 대화들에서 축적한 장기 기억입니다.\n"
+                    "응답할 때 이 기억을 자연스럽게 활용하세요.\n\n"
+                    f"{content}\n"
+                    "</long-term-memory>"
+                )
 
-        # 토큰 최적화
-        optimized = optimize_for_context(observations, max_tokens)
+        # 2. 세션 관찰 (observations/{thread_ts}.md)
+        if include_session:
+            record = self.store.get_record(thread_ts)
+            if record and record.observations.strip():
+                observations = add_relative_time(record.observations)
+                optimized = optimize_for_context(observations, max_tokens)
+                session_tokens = self._counter.count_string(optimized)
+                parts.append(
+                    "<observational-memory>\n"
+                    "다음은 이 세션의 최근 대화에서 관찰한 내용입니다.\n\n"
+                    f"{optimized}\n"
+                    "</observational-memory>"
+                )
 
-        return (
-            "<observational-memory>\n"
-            "다음은 이 세션의 과거 대화에서 관찰한 내용입니다.\n"
-            "응답할 때 이 관찰을 자연스럽게 활용하세요.\n\n"
-            f"{optimized}\n"
-            "</observational-memory>"
+        prompt = "\n\n".join(parts) if parts else None
+
+        return InjectionResult(
+            prompt=prompt,
+            persistent_tokens=persistent_tokens,
+            session_tokens=session_tokens,
         )

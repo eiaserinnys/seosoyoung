@@ -281,31 +281,87 @@ class ClaudeAgentRunner:
         if session_id:
             options.resume = session_id
 
-        # Observational Memory: inject 플래그가 있을 때만 관찰 로그 주입
+        # Observational Memory: 장기 기억은 항상, 세션 관찰은 inject 플래그일 때만 주입
         if thread_ts:
             try:
                 from seosoyoung.config import Config
                 if Config.OM_ENABLED:
+                    from seosoyoung.memory.context_builder import ContextBuilder, InjectionResult
                     from seosoyoung.memory.store import MemoryStore
 
                     store = MemoryStore(Config.get_memory_path())
-                    should_inject = store.check_and_clear_inject_flag(thread_ts)
-                    if should_inject:
-                        from seosoyoung.memory.context_builder import ContextBuilder
+                    should_inject_session = store.check_and_clear_inject_flag(thread_ts)
 
-                        builder = ContextBuilder(store)
-                        memory_prompt = builder.build_memory_prompt(
-                            thread_ts, Config.OM_MAX_OBSERVATION_TOKENS
+                    builder = ContextBuilder(store)
+                    result: InjectionResult = builder.build_memory_prompt(
+                        thread_ts,
+                        max_tokens=Config.OM_MAX_OBSERVATION_TOKENS,
+                        include_persistent=True,       # 장기 기억: 항상
+                        include_session=should_inject_session,  # 세션 관찰: inject 플래그
+                    )
+
+                    if result.prompt:
+                        options.append_system_prompt = result.prompt
+                        logger.info(
+                            f"OM 주입 완료 (thread={thread_ts}, "
+                            f"LTM={result.persistent_tokens} tok, "
+                            f"세션={result.session_tokens} tok)"
                         )
-                        if memory_prompt:
-                            options.append_system_prompt = memory_prompt
-                            logger.info(f"OM 관찰 로그 주입 완료 (thread={thread_ts})")
-                    else:
-                        logger.debug(f"OM inject 플래그 없음, 주입 건너뜀 (thread={thread_ts})")
+
+                    # 디버그 로그 이벤트 #7, #8: 주입 정보
+                    self._send_injection_debug_log(
+                        thread_ts, result, Config.OM_DEBUG_CHANNEL
+                    )
             except Exception as e:
-                logger.warning(f"OM 관찰 로그 주입 실패 (무시): {e}")
+                logger.warning(f"OM 주입 실패 (무시): {e}")
 
         return options
+
+    @staticmethod
+    def _send_injection_debug_log(
+        thread_ts: str,
+        result: "InjectionResult",
+        debug_channel: str,
+    ) -> None:
+        """디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
+
+        - LTM만 → send
+        - LTM + 세션 → send 후 update (합산 표시)
+        - 세션만 → send
+        - 없으면 → 로그 남기지 않음
+        """
+        if not debug_channel:
+            return
+        if not result.persistent_tokens and not result.session_tokens:
+            return
+
+        try:
+            from seosoyoung.memory.observation_pipeline import (
+                _format_tokens,
+                _send_debug_log,
+                _short_ts,
+                _update_debug_log,
+            )
+
+            sid = _short_ts(thread_ts)
+            parts = []
+            if result.persistent_tokens:
+                parts.append(f"LTM {_format_tokens(result.persistent_tokens)} tok")
+            if result.session_tokens:
+                parts.append(f"세션 {_format_tokens(result.session_tokens)} tok")
+
+            text = f":syringe: *OM 주입* `{sid} | {' + '.join(parts)}`"
+
+            if result.persistent_tokens and result.session_tokens:
+                # 이벤트 #7: 장기 기억만으로 send
+                ltm_text = f":syringe: *OM 주입* `{sid} | LTM {_format_tokens(result.persistent_tokens)} tok`"
+                msg_ts = _send_debug_log(debug_channel, ltm_text)
+                # 이벤트 #8: 세션 관찰 합산으로 update
+                _update_debug_log(debug_channel, msg_ts, text)
+            else:
+                _send_debug_log(debug_channel, text)
+        except Exception as e:
+            logger.warning(f"OM 주입 디버그 로그 실패 (무시): {e}")
 
     async def run(
         self,
