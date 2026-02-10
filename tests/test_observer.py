@@ -68,6 +68,28 @@ Remember to ask about OM progress
         assert "🔴 Critical finding" in result.observations
         assert "Implementing Observational Memory" in result.current_task
         assert "Remember to ask about OM progress" in result.suggested_response
+        assert result.candidates == ""
+
+    def test_parse_with_candidates(self):
+        text = """<observations>
+## [2026-02-10] Session Observations
+
+🔴 Critical finding
+</observations>
+
+<candidates>
+🔴 사용자는 커밋 메시지를 항상 한국어로 작성하는 것을 선호한다
+🟡 트렐로 카드 작업 시 체크리스트를 먼저 확인한 후 작업을 시작하는 패턴
+</candidates>
+
+<current-task>
+Working on memory system
+</current-task>"""
+
+        result = parse_observer_output(text)
+        assert "커밋 메시지를 항상 한국어로" in result.candidates
+        assert "체크리스트를 먼저 확인" in result.candidates
+        assert "🔴 Critical finding" in result.observations
 
     def test_parse_observations_only(self):
         text = """<observations>
@@ -78,6 +100,7 @@ Remember to ask about OM progress
         assert "🔴 Only observations present" in result.observations
         assert result.current_task == ""
         assert result.suggested_response == ""
+        assert result.candidates == ""
 
     def test_fallback_no_tags(self):
         """태그가 없으면 전체 텍스트를 observations로 사용"""
@@ -95,6 +118,11 @@ class TestObserverPrompts:
         prompt = build_observer_system_prompt()
         assert len(prompt) > 100
         assert "서소영" in prompt
+
+    def test_system_prompt_includes_candidates_section(self):
+        prompt = build_observer_system_prompt()
+        assert "LONG-TERM MEMORY CANDIDATES" in prompt
+        assert "<candidates>" in prompt
 
     def test_user_prompt_with_existing_observations(self):
         prompt = build_observer_user_prompt(

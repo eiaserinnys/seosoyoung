@@ -381,7 +381,7 @@ class ClaudeAgentRunner:
                         thread_ts=thread_ts,
                         user_id=user_id,
                         messages=messages,
-                        observation_threshold=Config.OM_OBSERVATION_THRESHOLD,
+                        min_turn_tokens=Config.OM_MIN_TURN_TOKENS,
                         reflector=reflector,
                         reflection_threshold=Config.OM_REFLECTION_THRESHOLD,
                         debug_channel=debug_channel,

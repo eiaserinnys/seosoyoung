@@ -57,6 +57,33 @@ OBSERVATION GUIDELINES:
    <suggested-response>
    Optional: If there's a natural way to reference past context in the next interaction.
    </suggested-response>
+
+6. LONG-TERM MEMORY CANDIDATES:
+   If any observation is worth remembering beyond this session permanently, include it in <candidates>.
+
+   What to include:
+   - User's preferences and style (coding style, commit message format, review process, etc.)
+   - Important work history (project structure changes, major feature additions, etc.)
+   - Recurring workflow patterns (task order, tool usage patterns, etc.)
+   - Critical mistakes the agent made and the correct way to handle them
+   - Important context from interactions with other people or bots
+
+   What NOT to include:
+   - Temporary context only valid for this session
+   - Content already specified in CLAUDE.md or rule files
+   - Simple greetings or trivial conversations
+
+   Use priority emoji prefixes:
+   🔴 HIGH - Core preferences/patterns that should always be remembered
+   🟡 MEDIUM - Useful but not essential context
+   🟢 LOW - Reference observations
+
+   If there are no candidates, omit the <candidates> tag entirely.
+
+   <candidates>
+   🔴 [permanent observation]
+   🟡 [useful long-term context]
+   </candidates>
 """
 
 OBSERVER_USER_PROMPT_TEMPLATE = """\

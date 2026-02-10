@@ -25,6 +25,7 @@ class ObserverResult:
     observations: str = ""
     current_task: str = ""
     suggested_response: str = ""
+    candidates: str = ""
 
 
 def parse_observer_output(text: str) -> ObserverResult:
@@ -36,6 +37,7 @@ def parse_observer_output(text: str) -> ObserverResult:
     observations = _extract_tag(text, "observations")
     current_task = _extract_tag(text, "current-task")
     suggested_response = _extract_tag(text, "suggested-response")
+    candidates = _extract_tag(text, "candidates")
 
     # fallback: observations 태그가 없으면 전체 응답을 사용
     if not observations:
@@ -45,6 +47,7 @@ def parse_observer_output(text: str) -> ObserverResult:
         observations=observations,
         current_task=current_task,
         suggested_response=suggested_response,
+        candidates=candidates,
     )
 
 

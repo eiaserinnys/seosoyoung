@@ -65,7 +65,7 @@
 - `GeneratedImage` (seosoyoung/image_gen/generator.py:24): 생성된 이미지 결과
 - `ContextBuilder` (seosoyoung/memory/context_builder.py:102): 관찰 로그를 시스템 프롬프트로 변환
 - `ObserverResult` (seosoyoung/memory/observer.py:22): Observer 출력 결과
-- `Observer` (seosoyoung/memory/observer.py:60): 대화를 관찰하여 구조화된 관찰 로그를 생성
+- `Observer` (seosoyoung/memory/observer.py:63): 대화를 관찰하여 구조화된 관찰 로그를 생성
 - `ReflectorResult` (seosoyoung/memory/reflector.py:23): Reflector 출력 결과
 - `Reflector` (seosoyoung/memory/reflector.py:38): 관찰 로그를 압축하고 재구조화
 - `MemoryRecord` (seosoyoung/memory/store.py:36): 세션별 관찰 로그 레코드
@@ -142,12 +142,13 @@
 - `init_bot_user_id()` (seosoyoung/main.py:146): 봇 사용자 ID 초기화
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:17): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:60): 관찰 로그를 컨텍스트 주입에 최적화합니다.
-- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:73): 대화를 버퍼에 누적하고, 임계치 도달 시 관찰합니다.
-- `parse_observer_output()` (seosoyoung/memory/observer.py:30): Observer 응답에서 XML 태그를 파싱합니다.
-- `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:77): Observer 시스템 프롬프트를 반환합니다.
-- `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:82): Observer 사용자 프롬프트를 구성합니다.
-- `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:166): Reflector 시스템 프롬프트를 반환합니다.
-- `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:171): Reflector 재시도 프롬프트를 반환합니다.
+- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:65): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
+- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:101): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
+- `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.
+- `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:104): Observer 시스템 프롬프트를 반환합니다.
+- `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:109): Observer 사용자 프롬프트를 구성합니다.
+- `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:193): Reflector 시스템 프롬프트를 반환합니다.
+- `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:198): Reflector 재시도 프롬프트를 반환합니다.
 - `rank_results()` (seosoyoung/recall/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
 - `select_best_tool()` (seosoyoung/recall/aggregator.py:42): 최적 도구 선택.
 - `build_summary_prompt()` (seosoyoung/recall/aggregator.py:67): 요약 생성 프롬프트.

@@ -178,7 +178,7 @@ class TestPipelineReflectorIntegration:
             thread_ts="ts_1234",
             user_id="U12345",
             messages=[{"role": "user", "content": "test"}],
-            observation_threshold=0,
+            min_turn_tokens=0,
             reflector=mock_reflector,
             reflection_threshold=100,  # 낮은 임계치
         )
@@ -207,7 +207,7 @@ class TestPipelineReflectorIntegration:
             thread_ts="ts_1234",
             user_id="U12345",
             messages=[{"role": "user", "content": "test"}],
-            observation_threshold=0,
+            min_turn_tokens=0,
             reflector=mock_reflector,
             reflection_threshold=999999,  # 높은 임계치
         )
@@ -231,7 +231,7 @@ class TestPipelineReflectorIntegration:
             thread_ts="ts_1234",
             user_id="U12345",
             messages=[{"role": "user", "content": "test"}],
-            observation_threshold=0,
+            min_turn_tokens=0,
             reflector=None,
             reflection_threshold=100,
         )
@@ -257,7 +257,7 @@ class TestPipelineReflectorIntegration:
             thread_ts="ts_1234",
             user_id="U12345",
             messages=[{"role": "user", "content": "test"}],
-            observation_threshold=0,
+            min_turn_tokens=0,
             reflector=mock_reflector,
             reflection_threshold=100,
         )
