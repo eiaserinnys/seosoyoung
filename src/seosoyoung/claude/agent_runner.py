@@ -418,6 +418,7 @@ class ClaudeAgentRunner:
                         observe_conversation,
                     )
                     from seosoyoung.memory.observer import Observer
+                    from seosoyoung.memory.promoter import Compactor, Promoter
                     from seosoyoung.memory.reflector import Reflector
                     from seosoyoung.memory.store import MemoryStore
 
@@ -432,6 +433,14 @@ class ClaudeAgentRunner:
                         api_key=Config.OPENAI_API_KEY,
                         model=Config.OM_MODEL,
                     )
+                    promoter = Promoter(
+                        api_key=Config.OPENAI_API_KEY,
+                        model=Config.OM_PROMOTER_MODEL,
+                    )
+                    compactor = Compactor(
+                        api_key=Config.OPENAI_API_KEY,
+                        model=Config.OM_PROMOTER_MODEL,
+                    )
                     asyncio.run(observe_conversation(
                         store=store,
                         observer=observer,
@@ -441,6 +450,11 @@ class ClaudeAgentRunner:
                         min_turn_tokens=Config.OM_MIN_TURN_TOKENS,
                         reflector=reflector,
                         reflection_threshold=Config.OM_REFLECTION_THRESHOLD,
+                        promoter=promoter,
+                        promotion_threshold=Config.OM_PROMOTION_THRESHOLD,
+                        compactor=compactor,
+                        compaction_threshold=Config.OM_PERSISTENT_COMPACTION_THRESHOLD,
+                        compaction_target=Config.OM_PERSISTENT_COMPACTION_TARGET,
                         debug_channel=debug_channel,
                     ))
                 except Exception as e:
