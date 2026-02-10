@@ -198,7 +198,54 @@ class ClaudeAgentRunner:
             user_id: 사용자 ID (OM 관찰 로그 주입용, 선택)
         """
         async with self._lock:
-            return await self._execute(prompt, session_id, on_progress, on_compact, user_id)
+            result = await self._execute(prompt, session_id, on_progress, on_compact, user_id)
+
+        # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
+        if result.success and user_id and result.collected_messages:
+            self._trigger_observation(user_id, prompt, result.collected_messages)
+
+        return result
+
+    def _trigger_observation(
+        self,
+        user_id: str,
+        prompt: str,
+        collected_messages: list[dict],
+    ) -> None:
+        """관찰 파이프라인을 비동기로 트리거 (봇 응답 블로킹 없음)"""
+        try:
+            from seosoyoung.config import Config
+            if not Config.OM_ENABLED:
+                return
+
+            # 사용자 메시지를 collected_messages 앞에 추가
+            messages = [{"role": "user", "content": prompt}] + collected_messages
+
+            async def _run_observation():
+                try:
+                    from seosoyoung.memory.observation_pipeline import observe_conversation
+                    from seosoyoung.memory.observer import Observer
+                    from seosoyoung.memory.store import MemoryStore
+
+                    store = MemoryStore(Config.get_memory_path())
+                    observer = Observer(
+                        api_key=Config.OPENAI_API_KEY,
+                        model=Config.OM_MODEL,
+                    )
+                    await observe_conversation(
+                        store=store,
+                        observer=observer,
+                        user_id=user_id,
+                        messages=messages,
+                        min_conversation_tokens=Config.OM_MIN_CONVERSATION_TOKENS,
+                    )
+                except Exception as e:
+                    logger.error(f"OM 관찰 파이프라인 비동기 실행 오류 (무시): {e}")
+
+            asyncio.create_task(_run_observation())
+            logger.info(f"OM 관찰 파이프라인 트리거됨 (user={user_id})")
+        except Exception as e:
+            logger.warning(f"OM 관찰 트리거 실패 (무시): {e}")
 
     async def _execute(
         self,
