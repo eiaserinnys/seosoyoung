@@ -35,13 +35,13 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 - `_replace_thinking_message(self, client, channel, old_msg_ts, new_text, new_blocks, thread_ts)` (줄 508): 사고 과정 메시지를 삭제하고 새 메시지로 교체
 - `_handle_interrupted(self, last_msg_ts, main_msg_ts, is_trello_mode, trello_card, session, channel, client)` (줄 569): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
 - `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 597): 성공 결과 처리
-- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client)` (줄 629): 트렐로 모드 성공 처리
-- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply)` (줄 707): 일반 모드(멘션) 성공 처리
-- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 808): 재기동 마커 처리
-- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 831): LIST_RUN 마커 처리 - 정주행 시작
-- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 900): 오류 결과 처리
-- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 943): 예외 처리
-- `_handle_image_gen(self, prompts, channel, thread_ts, say, client)` (줄 983): 이미지 생성 마커 처리
+- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client)` (줄 637): 트렐로 모드 성공 처리
+- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply)` (줄 715): 일반 모드(멘션) 성공 처리
+- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 816): 재기동 마커 처리
+- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 839): LIST_RUN 마커 처리 - 정주행 시작
+- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 908): 오류 결과 처리
+- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 951): 예외 처리
+- `_handle_image_gen(self, prompts, channel, thread_ts, say, client)` (줄 991): 이미지 생성 마커 처리
 
 ## 함수
 

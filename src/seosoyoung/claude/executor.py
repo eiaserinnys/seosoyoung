@@ -600,7 +600,15 @@ class ClaudeExecutor:
         is_thread_reply: bool = False
     ):
         """성공 결과 처리"""
-        response = result.output or "(응답 없음)"
+        response = result.output or ""
+
+        if not response.strip():
+            # 응답이 비어있으면 사고 과정 메시지를 (중단됨)으로 정리
+            self._handle_interrupted(
+                last_msg_ts, main_msg_ts, is_trello_mode, trello_card,
+                session, channel, client
+            )
+            return
 
         if is_trello_mode:
             self._handle_trello_success(
