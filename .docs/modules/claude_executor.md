@@ -36,12 +36,12 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 - `_handle_interrupted(self, last_msg_ts, main_msg_ts, is_trello_mode, trello_card, session, channel, client)` (줄 573): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
 - `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 602): 성공 결과 처리
 - `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client, is_list_run)` (줄 647): 트렐로 모드 성공 처리
-- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply, is_list_run)` (줄 748): 일반 모드(멘션) 성공 처리
-- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 862): 재기동 마커 처리
-- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 885): LIST_RUN 마커 처리 - 정주행 시작
-- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 954): 오류 결과 처리
-- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 997): 예외 처리
-- `_handle_image_gen(self, prompts, channel, thread_ts, say, client)` (줄 1037): 이미지 생성 마커 처리
+- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply, is_list_run)` (줄 741): 일반 모드(멘션) 성공 처리
+- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 848): 재기동 마커 처리
+- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 871): LIST_RUN 마커 처리 - 정주행 시작
+- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 940): 오류 결과 처리
+- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 983): 예외 처리
+- `_handle_image_gen(self, prompts, channel, thread_ts, say, client)` (줄 1023): 이미지 생성 마커 처리
 
 ## 함수
 

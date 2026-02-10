@@ -89,7 +89,6 @@ class ClaudeResult:
     session_id: Optional[str] = None
     error: Optional[str] = None
     files: list[str] = field(default_factory=list)
-    attachments: list[str] = field(default_factory=list)
     image_gen_prompts: list[str] = field(default_factory=list)
     update_requested: bool = False
     restart_requested: bool = False
@@ -620,7 +619,6 @@ class ClaudeAgentRunner:
 
             # 마커 추출
             files = re.findall(r"<!-- FILE: (.+?) -->", output)
-            attachments = re.findall(r"<!-- ATTACH: (.+?) -->", output)
             image_gen_prompts = re.findall(r"<!-- IMAGE_GEN: (.+?) -->", output)
             update_requested = "<!-- UPDATE -->" in output
             restart_requested = "<!-- RESTART -->" in output
@@ -629,8 +627,6 @@ class ClaudeAgentRunner:
             list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
             list_run = list_run_match.group(1).strip() if list_run_match else None
 
-            if attachments:
-                logger.info(f"첨부 파일 요청: {attachments}")
             if image_gen_prompts:
                 logger.info(f"이미지 생성 요청: {image_gen_prompts}")
             if update_requested:
@@ -645,7 +641,6 @@ class ClaudeAgentRunner:
                 output=output,
                 session_id=result_session_id,
                 files=files,
-                attachments=attachments,
                 image_gen_prompts=image_gen_prompts,
                 update_requested=update_requested,
                 restart_requested=restart_requested,

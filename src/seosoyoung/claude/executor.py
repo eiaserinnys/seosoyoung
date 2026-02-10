@@ -734,13 +734,6 @@ class ClaudeExecutor:
             if len(response) > max_response_len:
                 self.send_long_message(say, response, thread_ts)
 
-        # 첨부 파일은 스레드에 전송
-        if result.attachments:
-            for file_path in result.attachments:
-                success, msg = self.upload_file_to_slack(client, channel, thread_ts, file_path)
-                if not success:
-                    say(text=f"⚠️ {msg}", thread_ts=thread_ts)
-
         # 이미지 생성 처리
         if result.image_gen_prompts:
             self._handle_image_gen(result.image_gen_prompts, channel, thread_ts, say, client)
@@ -847,13 +840,6 @@ class ClaudeExecutor:
                     self.send_long_message(say, remaining, thread_ts)
             except Exception:
                 self.send_long_message(say, display_response, thread_ts)
-
-        # 첨부 파일 처리
-        if result.attachments:
-            for file_path in result.attachments:
-                success, msg = self.upload_file_to_slack(client, channel, thread_ts, file_path)
-                if not success:
-                    say(text=f"⚠️ {msg}", thread_ts=thread_ts)
 
         # 이미지 생성 처리
         if result.image_gen_prompts:
