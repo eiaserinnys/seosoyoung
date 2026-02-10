@@ -348,7 +348,9 @@ class ClaudeExecutor:
         async def on_progress(current_text: str):
             nonlocal last_msg_ts, trello_reaction_added
             try:
-                display_text = current_text
+                display_text = current_text.lstrip("\n")
+                if not display_text:
+                    return
                 if len(display_text) > 3800:
                     display_text = "...\n" + display_text[-3800:]
 
@@ -681,12 +683,14 @@ class ClaudeExecutor:
                     final_text, final_blocks, thread_ts=None,
                 )
 
-            # 스레드에 상세 내용 전송
+            # 스레드에 상세 내용 전송 (remainder가 있으면 앞에 붙여서)
             if details:
-                self.send_long_message(say, details, thread_ts)
-
-            # 나머지 내용이 있으면 추가 전송
-            if remainder:
+                if remainder:
+                    thread_content = f"{remainder}\n\n{details}"
+                else:
+                    thread_content = details
+                self.send_long_message(say, thread_content, thread_ts)
+            elif remainder:
                 self.send_long_message(say, remainder, thread_ts)
         else:
             # 기존 로직: 마커가 없는 경우
@@ -787,10 +791,12 @@ class ClaudeExecutor:
 
                 # 스레드에 전문 전송
                 if summary and details:
-                    # SUMMARY/DETAILS 마커가 있는 경우: details를 스레드에
-                    self.send_long_message(say, details, thread_ts)
+                    # SUMMARY/DETAILS 마커가 있는 경우: remainder(도입부) + details 순서로
                     if remainder:
-                        self.send_long_message(say, remainder, thread_ts)
+                        thread_content = f"{remainder}\n\n{details}"
+                    else:
+                        thread_content = details
+                    self.send_long_message(say, thread_content, thread_ts)
                 else:
                     # 마커가 없는 경우: 전체 응답을 스레드에
                     full_response = strip_summary_details_markers(response)
