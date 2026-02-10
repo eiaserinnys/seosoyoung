@@ -572,12 +572,12 @@ class TestDebugLogs:
         # 이벤트 #4: Promoter 시작 (send)
         mock_send.assert_called_once()
         send_text = mock_send.call_args[0][1]
-        assert "LTM Promoter" in send_text
-        assert "검토 시작" in send_text
+        assert "LTM 승격 검토 시작" in send_text
 
         # 이벤트 #5: Promoter 완료 (update)
         mock_update.assert_called_once()
         update_text = mock_update.call_args[0][2]
+        assert "LTM 승격 완료" in update_text
         assert "승격 1건" in update_text
         assert "기각 1건" in update_text
 
@@ -606,5 +606,5 @@ class TestDebugLogs:
 
         mock_send.assert_called_once()
         send_text = mock_send.call_args[0][1]
-        assert "LTM Compactor" in send_text
-        assert "archive 저장" in send_text
+        assert "LTM 장기 기억 압축" in send_text
+        assert "archive" in send_text

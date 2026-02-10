@@ -3,8 +3,8 @@
 매턴마다 Observer를 호출하여 세션 관찰 로그를 갱신하고, 장기 기억 후보를 수집합니다.
 
 흐름:
-1. 이번 턴 대화의 토큰을 계산 → 최소 토큰(min_turn_tokens) 미만이면 스킵
-2. Observer 호출 (매턴) → 세션 관찰 로그 갱신
+1. pending 버퍼 로드 → 이번 턴 메시지와 합산 → 최소 토큰 미만이면 pending에 누적 후 스킵
+2. Observer 호출 (매턴) → 세션 관찰 로그 갱신 → pending 비우기
 3. <candidates> 태그가 있으면 장기 기억 후보 버퍼에 적재
 4. 관찰 로그가 reflection 임계치를 넘으면 Reflector로 압축
 5. 후보 버퍼 토큰 합산 → promotion 임계치 초과 시 Promoter 호출
@@ -58,11 +58,15 @@ def _format_tokens(n: int) -> str:
     return f"{n:,}"
 
 
-def _short_ts(thread_ts: str) -> str:
-    """thread_ts를 짧은 식별자로 변환. 예: 1234567890.123456 → ...3456"""
-    if len(thread_ts) > 4:
-        return f"...{thread_ts[-4:]}"
-    return thread_ts
+def _blockquote(text: str, max_chars: int = 800) -> str:
+    """텍스트를 슬랙 blockquote 형식으로 변환. 길면 잘라서 표시."""
+    if not text or not text.strip():
+        return ""
+    text = text.strip()
+    if len(text) > max_chars:
+        text = text[:max_chars] + "…"
+    lines = text.split("\n")
+    return "\n".join(f">{line}" for line in lines)
 
 
 def parse_candidate_entries(candidates_text: str) -> list[dict]:
@@ -138,17 +142,26 @@ async def observe_conversation(
     Returns:
         True: 관찰 수행됨, False: 스킵 또는 실패
     """
-    sid = _short_ts(thread_ts)
+    sid = thread_ts
     log_label = f"session={thread_ts}"
     debug_ts = ""
 
     try:
         token_counter = TokenCounter()
 
-        # 1. 이번 턴 대화 토큰 계산 → 최소 토큰 미달 시 스킵
+        # 1. pending 버퍼 로드 → 이번 턴 메시지와 합산
+        pending = store.load_pending_messages(thread_ts)
+        if pending:
+            messages = pending + messages
+
         turn_tokens = token_counter.count_messages(messages)
 
+        # 최소 토큰 미달 시 pending 버퍼에 누적하고 스킵
         if turn_tokens < min_turn_tokens:
+            # 이번 턴의 새 메시지를 pending에 추가 (기존 pending은 파일에 이미 있음)
+            new_messages = messages[len(pending):] if pending else messages
+            if new_messages:
+                store.append_pending_messages(thread_ts, new_messages)
             logger.info(
                 f"관찰 스킵 ({log_label}): "
                 f"{turn_tokens} tok < {min_turn_tokens} 최소"
@@ -156,8 +169,8 @@ async def observe_conversation(
             if debug_channel:
                 _send_debug_log(
                     debug_channel,
-                    f":next_track_button: *OM* "
-                    f"`{sid} | 스킵 ({_format_tokens(turn_tokens)} tok < {_format_tokens(min_turn_tokens)})`",
+                    f":fast_forward: *OM 스킵* `{sid}`\n"
+                    f">`누적 {_format_tokens(turn_tokens)} tok < {_format_tokens(min_turn_tokens)} 최소`",
                 )
             return False
 
@@ -169,7 +182,7 @@ async def observe_conversation(
         if debug_channel:
             debug_ts = _send_debug_log(
                 debug_channel,
-                f":mag: *OM* `{sid} | 관찰 시작`",
+                f":mag: *OM 관찰 시작* `{sid}`",
             )
 
         # 3. Observer 호출 (매턴)
@@ -184,7 +197,7 @@ async def observe_conversation(
                 _update_debug_log(
                     debug_channel,
                     debug_ts,
-                    f":x: *OM* `{sid} | 관찰 오류 | Observer returned None`",
+                    f":x: *OM 관찰 오류* `{sid}`\n>`Observer returned None`",
                 )
             return False
 
@@ -239,15 +252,17 @@ async def observe_conversation(
                 )
                 # 디버그 이벤트 #2: Reflector (별도 send)
                 if debug_channel:
+                    ref_quote = _blockquote(reflection_result.observations)
                     _send_debug_log(
                         debug_channel,
-                        f":recycle: *OM Reflector* "
-                        f"`{sid} | {_format_tokens(pre_tokens)} → {_format_tokens(reflection_result.token_count)} tok`",
+                        f":recycle: *OM 세션 관찰 압축* `{sid}`\n"
+                        f">`{_format_tokens(pre_tokens)} → {_format_tokens(reflection_result.token_count)} tok`\n"
+                        f"{ref_quote}",
                     )
 
-        # 7. 저장 + inject 플래그
+        # 7. 저장 + pending 버퍼 비우기
         store.save_record(record)
-        store.set_inject_flag(thread_ts)
+        store.clear_pending_messages(thread_ts)
 
         logger.info(
             f"관찰 완료 ({log_label}): "
@@ -262,11 +277,13 @@ async def observe_conversation(
                 candidate_part = f" | 후보 +{candidate_count} ({candidate_summary})"
             else:
                 candidate_part = " | 후보 없음"
+            obs_quote = _blockquote(result.observations)
             _update_debug_log(
                 debug_channel,
                 debug_ts,
-                f":white_check_mark: *OM* "
-                f"`{sid} | 관찰 완료 | {_format_tokens(turn_tokens)} tok{candidate_part}`",
+                f":white_check_mark: *OM 관찰 완료* `{sid}`\n"
+                f">`{_format_tokens(turn_tokens)} tok{candidate_part}`\n"
+                f"{obs_quote}",
             )
 
         # 8. Promoter: 후보 버퍼 토큰 합산 → 임계치 초과 시 승격
@@ -287,11 +304,11 @@ async def observe_conversation(
     except Exception as e:
         logger.error(f"관찰 파이프라인 오류 ({log_label}): {e}")
         if debug_channel:
-            error_msg = str(e)[:80]
+            error_msg = str(e)[:200]
             _update_debug_log(
                 debug_channel,
                 debug_ts,
-                f":x: *OM* `{sid} | 관찰 오류 | {error_msg}`",
+                f":x: *OM 관찰 오류* `{sid}`\n>`{error_msg}`",
             )
         return False
 
@@ -325,8 +342,8 @@ async def _try_promote(
         if debug_channel:
             promoter_debug_ts = _send_debug_log(
                 debug_channel,
-                f":brain: *LTM Promoter* "
-                f"`후보 {_format_tokens(candidate_tokens)} tok ({len(all_candidates)}건) → 검토 시작`",
+                f":brain: *LTM 승격 검토 시작*\n"
+                f">`후보 {_format_tokens(candidate_tokens)} tok ({len(all_candidates)}건)`",
             )
 
         logger.info(
@@ -365,13 +382,15 @@ async def _try_promote(
                     if cnt:
                         priority_parts.append(f"{emoji}{cnt}")
                 priority_str = " ".join(priority_parts)
+                promoted_quote = _blockquote(result.promoted)
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f":white_check_mark: *LTM Promoter* "
-                    f"`승격 {result.promoted_count}건 ({priority_str}) | "
+                    f":white_check_mark: *LTM 승격 완료*\n"
+                    f">`승격 {result.promoted_count}건 ({priority_str}) | "
                     f"기각 {result.rejected_count}건 | "
-                    f"장기기억 {_format_tokens(persistent_tokens)} tok`",
+                    f"장기기억 {_format_tokens(persistent_tokens)} tok`\n"
+                    f"{promoted_quote}",
                 )
 
             # Compactor 트리거 체크
@@ -393,8 +412,8 @@ async def _try_promote(
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f":white_check_mark: *LTM Promoter* "
-                    f"`승격 0건 | 기각 {result.rejected_count}건`",
+                    f":white_check_mark: *LTM 승격 완료*\n"
+                    f">`승격 0건 | 기각 {result.rejected_count}건`",
                 )
 
         # 후보 버퍼 비우기
@@ -444,10 +463,14 @@ async def _try_compact(
 
         # 디버그 이벤트 #6: 컴팩션 (별도 send)
         if debug_channel:
+            compact_quote = _blockquote(result.compacted)
+            archive_info = f"\n>`archive: {archive_path}`" if archive_path else ""
             _send_debug_log(
                 debug_channel,
-                f":compression: *LTM Compactor* "
-                f"`{_format_tokens(persistent_tokens)} → {_format_tokens(result.token_count)} tok | archive 저장`",
+                f":compression: *LTM 장기 기억 압축*\n"
+                f">`{_format_tokens(persistent_tokens)} → {_format_tokens(result.token_count)} tok`"
+                f"{archive_info}\n"
+                f"{compact_quote}",
             )
 
     except Exception as e:

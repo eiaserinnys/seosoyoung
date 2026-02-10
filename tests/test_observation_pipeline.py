@@ -100,7 +100,7 @@ class TestObserveConversation:
 
     @pytest.mark.asyncio
     async def test_min_token_skip(self, store, mock_observer):
-        """최소 토큰 미달 시 스킵"""
+        """최소 토큰 미달 시 pending 버퍼에 누적하고 스킵"""
         short_messages = [
             {"role": "user", "content": "안녕"},
             {"role": "assistant", "content": "네"},
@@ -118,6 +118,78 @@ class TestObserveConversation:
         assert result is False
         mock_observer.observe.assert_not_called()
         assert store.get_record("ts_1234") is None
+        # pending 버퍼에 누적되었는지 확인
+        pending = store.load_pending_messages("ts_1234")
+        assert len(pending) == 2
+
+    @pytest.mark.asyncio
+    async def test_pending_buffer_accumulation_triggers_observation(
+        self, store, mock_observer
+    ):
+        """pending 버퍼 누적이 임계치를 넘으면 관찰 트리거"""
+        mock_observer.observe.return_value = ObserverResult(
+            observations="누적 관찰 완료"
+        )
+        short_messages = [
+            {"role": "user", "content": "hi"},
+        ]
+
+        # 1차: 짧은 대화 → pending에 누적, 스킵
+        result1 = await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            thread_ts="ts_1234",
+            user_id="U12345",
+            messages=short_messages,
+            min_turn_tokens=999999,
+        )
+        assert result1 is False
+        assert len(store.load_pending_messages("ts_1234")) == 1
+
+        # 2차: 더 긴 대화 (min_turn_tokens를 낮춰서 pending + 새 메시지가 넘도록)
+        longer_messages = [
+            {"role": "user", "content": "이번에는 충분히 긴 메시지를 보내봅니다. " * 10},
+            {"role": "assistant", "content": "네, 충분히 긴 응답입니다. " * 10},
+        ]
+        result2 = await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            thread_ts="ts_1234",
+            user_id="U12345",
+            messages=longer_messages,
+            min_turn_tokens=10,
+        )
+        assert result2 is True
+        mock_observer.observe.assert_called_once()
+        # Observer에 전달된 messages에는 pending(1건) + 새 메시지(2건) = 3건
+        call_args = mock_observer.observe.call_args
+        passed_messages = call_args.kwargs.get("messages", call_args[1].get("messages", []))
+        assert len(passed_messages) == 3
+        # 관찰 후 pending 비워짐
+        assert store.load_pending_messages("ts_1234") == []
+
+    @pytest.mark.asyncio
+    async def test_pending_buffer_cleared_after_observation(
+        self, store, mock_observer, sample_messages
+    ):
+        """관찰 성공 후 pending 버퍼가 비워지는지 확인"""
+        mock_observer.observe.return_value = ObserverResult(
+            observations="관찰 완료"
+        )
+        # 먼저 pending에 무언가를 넣어둠
+        store.append_pending_messages("ts_1234", [{"role": "user", "content": "이전 데이터"}])
+
+        result = await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            thread_ts="ts_1234",
+            user_id="U12345",
+            messages=sample_messages,
+            min_turn_tokens=0,
+        )
+
+        assert result is True
+        assert store.load_pending_messages("ts_1234") == []
 
     @pytest.mark.asyncio
     async def test_min_token_zero_always_observes(
@@ -251,10 +323,10 @@ class TestObserveConversation:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_inject_flag_set_on_observation(
+    async def test_no_inject_flag_after_observation(
         self, store, mock_observer, sample_messages
     ):
-        """관찰 완료 시 inject 플래그 설정"""
+        """관찰 완료 시 inject 플래그 미설정 (PreCompact 훅에서만 설정)"""
         mock_observer.observe.return_value = ObserverResult(
             observations="관찰 내용"
         )
@@ -269,7 +341,6 @@ class TestObserveConversation:
         )
 
         assert result is True
-        assert store.check_and_clear_inject_flag("ts_1234") is True
         assert store.check_and_clear_inject_flag("ts_1234") is False
 
     @pytest.mark.asyncio

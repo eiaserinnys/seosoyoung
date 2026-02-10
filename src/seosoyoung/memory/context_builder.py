@@ -26,6 +26,8 @@ class InjectionResult:
     prompt: str | None
     persistent_tokens: int = 0
     session_tokens: int = 0
+    persistent_content: str = ""
+    session_content: str = ""
 
 
 def add_relative_time(observations: str, now: datetime | None = None) -> str:
@@ -141,6 +143,8 @@ class ContextBuilder:
         parts = []
         persistent_tokens = 0
         session_tokens = 0
+        persistent_content = ""
+        session_content = ""
 
         # 1. 장기 기억 (persistent/recent.md)
         if include_persistent:
@@ -148,6 +152,7 @@ class ContextBuilder:
             if persistent_data and persistent_data["content"].strip():
                 content = persistent_data["content"]
                 persistent_tokens = self._counter.count_string(content)
+                persistent_content = content
                 parts.append(
                     "<long-term-memory>\n"
                     "다음은 과거 대화들에서 축적한 장기 기억입니다.\n"
@@ -163,6 +168,7 @@ class ContextBuilder:
                 observations = add_relative_time(record.observations)
                 optimized = optimize_for_context(observations, max_tokens)
                 session_tokens = self._counter.count_string(optimized)
+                session_content = optimized
                 parts.append(
                     "<observational-memory>\n"
                     "다음은 이 세션의 최근 대화에서 관찰한 내용입니다.\n\n"
@@ -176,4 +182,6 @@ class ContextBuilder:
             prompt=prompt,
             persistent_tokens=persistent_tokens,
             session_tokens=session_tokens,
+            persistent_content=persistent_content,
+            session_content=session_content,
         )

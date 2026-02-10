@@ -281,7 +281,7 @@ class ClaudeAgentRunner:
         if session_id:
             options.resume = session_id
 
-        # Observational Memory: 장기 기억은 항상, 세션 관찰은 inject 플래그일 때만 주입
+        # Observational Memory: 장기 기억은 새 세션 시작 시만, 세션 관찰은 컴팩션 후만 주입
         if thread_ts:
             try:
                 from seosoyoung.config import Config
@@ -290,14 +290,15 @@ class ClaudeAgentRunner:
                     from seosoyoung.memory.store import MemoryStore
 
                     store = MemoryStore(Config.get_memory_path())
+                    is_new_session = session_id is None  # 새 세션일 때만 장기 기억 주입
                     should_inject_session = store.check_and_clear_inject_flag(thread_ts)
 
                     builder = ContextBuilder(store)
                     result: InjectionResult = builder.build_memory_prompt(
                         thread_ts,
                         max_tokens=Config.OM_MAX_OBSERVATION_TOKENS,
-                        include_persistent=True,       # 장기 기억: 항상
-                        include_session=should_inject_session,  # 세션 관찰: inject 플래그
+                        include_persistent=is_new_session,          # 장기 기억: 새 세션만
+                        include_session=should_inject_session,  # 세션 관찰: 컴팩션 후만 (inject 플래그)
                     )
 
                     if result.prompt:
@@ -325,10 +326,7 @@ class ClaudeAgentRunner:
     ) -> None:
         """디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
 
-        - LTM만 → send
-        - LTM + 세션 → send 후 update (합산 표시)
-        - 세션만 → send
-        - 없으면 → 로그 남기지 않음
+        LTM/세션 각각 별도 메시지로 발송하며, 주입 내용을 blockquote로 표시.
         """
         if not debug_channel:
             return
@@ -337,29 +335,32 @@ class ClaudeAgentRunner:
 
         try:
             from seosoyoung.memory.observation_pipeline import (
+                _blockquote,
                 _format_tokens,
                 _send_debug_log,
-                _short_ts,
-                _update_debug_log,
             )
 
-            sid = _short_ts(thread_ts)
-            parts = []
+            sid = thread_ts
+
+            # LTM 주입
             if result.persistent_tokens:
-                parts.append(f"LTM {_format_tokens(result.persistent_tokens)} tok")
+                ltm_quote = _blockquote(result.persistent_content)
+                _send_debug_log(
+                    debug_channel,
+                    f":syringe: *OM 장기 기억 주입* `{sid}`\n"
+                    f">`LTM {_format_tokens(result.persistent_tokens)} tok`\n"
+                    f"{ltm_quote}",
+                )
+
+            # 세션 관찰 주입
             if result.session_tokens:
-                parts.append(f"세션 {_format_tokens(result.session_tokens)} tok")
-
-            text = f":syringe: *OM 주입* `{sid} | {' + '.join(parts)}`"
-
-            if result.persistent_tokens and result.session_tokens:
-                # 이벤트 #7: 장기 기억만으로 send
-                ltm_text = f":syringe: *OM 주입* `{sid} | LTM {_format_tokens(result.persistent_tokens)} tok`"
-                msg_ts = _send_debug_log(debug_channel, ltm_text)
-                # 이벤트 #8: 세션 관찰 합산으로 update
-                _update_debug_log(debug_channel, msg_ts, text)
-            else:
-                _send_debug_log(debug_channel, text)
+                session_quote = _blockquote(result.session_content)
+                _send_debug_log(
+                    debug_channel,
+                    f":syringe: *OM 세션 관찰 주입* `{sid}`\n"
+                    f">`세션 {_format_tokens(result.session_tokens)} tok`\n"
+                    f"{session_quote}",
+                )
         except Exception as e:
             logger.warning(f"OM 주입 디버그 로그 실패 (무시): {e}")
 
