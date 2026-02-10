@@ -507,8 +507,8 @@ def register_mention_handlers(app, dependencies: dict):
             logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")
             return
 
-        # 초기 메시지 표시 (리콜 시작 전)
-        initial_text = "```\n소영이 생각합니다...\n```"
+        # 초기 메시지 표시 (리콜 시작 전) - blockquote 형태
+        initial_text = "> 소영이 생각합니다..."
         if is_existing_thread:
             # 스레드 내 후속 대화: 해당 스레드에 응답
             initial_msg = client.chat_postMessage(
@@ -538,7 +538,8 @@ def register_mention_handlers(app, dependencies: dict):
         if Config.RECALL_ENABLED and clean_text:
             recall_result = _run_recall(clean_text)
 
-            # 디버깅용: Recall 결과를 스레드에 blockquote로 답글
+            # 디버깅용: Recall 결과를 M(멘션 메시지)의 스레드에 답글
+            # P(사고 과정)에 스레드를 달지 않기 위해 session_thread_ts(=M의 ts)를 사용
             if recall_result and recall_result.suitable_tools:
                 recall_debug_lines = ["*🔍 Recall 결과*", ""]
                 for tool_info in recall_result.suitable_tools:
@@ -556,7 +557,7 @@ def register_mention_handlers(app, dependencies: dict):
 
                 client.chat_postMessage(
                     channel=channel,
-                    thread_ts=initial_msg_ts,
+                    thread_ts=session_thread_ts,
                     text="\n".join(recall_debug_lines),
                 )
 

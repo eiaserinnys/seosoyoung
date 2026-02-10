@@ -303,57 +303,46 @@ class ClaudeExecutor:
         # 트렐로 모드에서 첫 번째 on_progress 호출 시 리액션 추가 여부 추적
         trello_reaction_added = False
 
-        # 멘션 응답 메시지 ts (세션 thread_ts 업데이트용)
-        mention_response_ts = None
-
         # 스레드 내 후속 대화인지 판단
         is_thread_reply = session.message_count > 0 or is_existing_thread
 
         if is_trello_mode:
             last_msg_ts = msg_ts
         elif initial_msg_ts:
-            # 이미 초기 메시지가 있으면 재사용
+            # 이미 초기 메시지가 있으면 재사용 (P = 사고 과정 메시지)
             last_msg_ts = initial_msg_ts
-            if not is_thread_reply:
-                mention_response_ts = initial_msg_ts
-                if mention_response_ts and mention_response_ts != thread_ts:
-                    self.session_manager.update_thread_ts(thread_ts, mention_response_ts)
-                    thread_ts = mention_response_ts
+            # 세션의 thread_ts는 M(멘션 메시지)의 ts를 유지
+            # P의 ts를 세션 thread_ts로 바꾸지 않음
         else:
-            # 초기 메시지: 코드 블럭 형태로 생각 과정 표시
+            # 초기 메시지: blockquote 형태로 생각 과정 표시
             if effective_role == "admin":
                 initial_text = "소영이 생각합니다..."
             else:
                 initial_text = "소영이 조회 전용 모드로 생각합니다..."
 
-            code_text = f"```\n{initial_text}\n```"
+            quote_text = f"> {initial_text}"
 
             if is_thread_reply:
                 initial_msg = client.chat_postMessage(
                     channel=channel,
                     thread_ts=thread_ts,
-                    text=code_text,
+                    text=quote_text,
                     blocks=[{
                         "type": "section",
-                        "text": {"type": "mrkdwn", "text": code_text}
+                        "text": {"type": "mrkdwn", "text": quote_text}
                     }]
                 )
                 last_msg_ts = initial_msg["ts"]
             else:
                 initial_msg = client.chat_postMessage(
                     channel=channel,
-                    text=code_text,
+                    text=quote_text,
                     blocks=[{
                         "type": "section",
-                        "text": {"type": "mrkdwn", "text": code_text}
+                        "text": {"type": "mrkdwn", "text": quote_text}
                     }]
                 )
                 last_msg_ts = initial_msg["ts"]
-                mention_response_ts = last_msg_ts
-
-                if mention_response_ts and mention_response_ts != thread_ts:
-                    self.session_manager.update_thread_ts(thread_ts, mention_response_ts)
-                    thread_ts = mention_response_ts
 
         # 스트리밍 콜백
         async def on_progress(current_text: str):
@@ -383,15 +372,17 @@ class ClaudeExecutor:
                         }]
                     )
                 else:
+                    # blockquote 형태로 사고 과정 표시
                     escaped_text = escape_backticks(display_text)
-                    code_text = f"```\n{escaped_text}\n```"
+                    quote_lines = [f"> {line}" for line in escaped_text.split("\n")]
+                    quote_text = "\n".join(quote_lines)
                     client.chat_update(
                         channel=channel,
                         ts=last_msg_ts,
-                        text=code_text,
+                        text=quote_text,
                         blocks=[{
                             "type": "section",
-                            "text": {"type": "mrkdwn", "text": code_text}
+                            "text": {"type": "mrkdwn", "text": quote_text}
                         }]
                     )
             except Exception as e:
@@ -542,7 +533,7 @@ class ClaudeExecutor:
                 logger.warning(f"chat_delete 실패, fallback 처리: {e}")
                 # fallback: "(중단됨)"으로 업데이트
                 try:
-                    aborted_text = "```\n(중단됨)\n```"
+                    aborted_text = "> (중단됨)"
                     client.chat_update(
                         channel=channel,
                         ts=old_msg_ts,
@@ -572,7 +563,6 @@ class ClaudeExecutor:
     ):
         """인터럽트로 중단된 실행의 사고 과정 메시지 정리"""
         try:
-            interrupted_text = "```\n(중단됨)\n```"
             target_ts = main_msg_ts if is_trello_mode else last_msg_ts
             if not target_ts:
                 return
@@ -580,6 +570,8 @@ class ClaudeExecutor:
             if is_trello_mode:
                 header = build_trello_header(trello_card, session.session_id or "")
                 interrupted_text = f"{header}\n\n```\n(중단됨)\n```"
+            else:
+                interrupted_text = "> (중단됨)"
 
             client.chat_update(
                 channel=channel,
@@ -610,15 +602,20 @@ class ClaudeExecutor:
             )
             return
 
+        # LIST_RUN 마커가 있으면 초기 메시지 삭제를 방지해야 함
+        is_list_run = bool(effective_role == "admin" and result.list_run)
+
         if is_trello_mode:
             self._handle_trello_success(
                 result, response, session, trello_card,
-                channel, thread_ts, main_msg_ts, say, client
+                channel, thread_ts, main_msg_ts, say, client,
+                is_list_run=is_list_run
             )
         else:
             self._handle_normal_success(
                 result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client,
-                is_thread_reply=is_thread_reply
+                is_thread_reply=is_thread_reply,
+                is_list_run=is_list_run
             )
 
         # 재기동 마커 감지 (admin 역할만 허용)
@@ -629,14 +626,15 @@ class ClaudeExecutor:
                 )
 
         # LIST_RUN 마커 감지 (admin 역할만 허용)
-        if effective_role == "admin" and result.list_run:
+        if is_list_run:
             self._handle_list_run_marker(
                 result.list_run, channel, thread_ts, say, client
             )
 
     def _handle_trello_success(
         self, result, response, session, trello_card,
-        channel, thread_ts, main_msg_ts, say, client
+        channel, thread_ts, main_msg_ts, say, client,
+        is_list_run: bool = False
     ):
         """트렐로 모드 성공 처리"""
         # 이전 상태 리액션 제거 후 완료 리액션 추가
@@ -667,11 +665,21 @@ class ClaudeExecutor:
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": final_text}
             }]
-            # 트렐로 메시지는 채널 루트이므로 thread_ts=None
-            self._replace_thinking_message(
-                client, channel, main_msg_ts,
-                final_text, final_blocks, thread_ts=None,
-            )
+
+            if is_list_run:
+                # LIST_RUN: 삭제하면 트렐로 워처가 깨지므로 항상 chat_update만 사용
+                client.chat_update(
+                    channel=channel,
+                    ts=main_msg_ts,
+                    text=final_text,
+                    blocks=final_blocks,
+                )
+            else:
+                # 트렐로 메시지는 채널 루트이므로 thread_ts=None
+                self._replace_thinking_message(
+                    client, channel, main_msg_ts,
+                    final_text, final_blocks, thread_ts=None,
+                )
 
             # 스레드에 상세 내용 전송
             if details:
@@ -693,10 +701,20 @@ class ClaudeExecutor:
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": final_text}
             }]
-            self._replace_thinking_message(
-                client, channel, main_msg_ts,
-                final_text, final_blocks, thread_ts=None,
-            )
+
+            if is_list_run:
+                # LIST_RUN: 삭제 방지
+                client.chat_update(
+                    channel=channel,
+                    ts=main_msg_ts,
+                    text=final_text,
+                    blocks=final_blocks,
+                )
+            else:
+                self._replace_thinking_message(
+                    client, channel, main_msg_ts,
+                    final_text, final_blocks, thread_ts=None,
+                )
 
             if len(response) > max_response_len:
                 self.send_long_message(say, response, thread_ts)
@@ -714,7 +732,8 @@ class ClaudeExecutor:
 
     def _handle_normal_success(
         self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client,
-        is_thread_reply: bool = False
+        is_thread_reply: bool = False,
+        is_list_run: bool = False
     ):
         """일반 모드(멘션) 성공 처리"""
         continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
@@ -727,7 +746,7 @@ class ClaudeExecutor:
         reply_thread_ts = thread_ts if is_thread_reply else None
 
         if not is_thread_reply:
-            # 채널 최초 응답: 요약은 채널에, 전문은 스레드에
+            # 채널 최초 응답: 요약은 채널에(P를 교체), 전문은 M의 스레드에
             try:
                 if summary:
                     # SUMMARY 마커가 있는 경우: 요약을 채널에 표시
@@ -751,10 +770,20 @@ class ClaudeExecutor:
                     "type": "section",
                     "text": {"type": "mrkdwn", "text": final_text}
                 }]
-                self._replace_thinking_message(
-                    client, channel, last_msg_ts,
-                    final_text, final_blocks, thread_ts=reply_thread_ts,
-                )
+
+                if is_list_run:
+                    # LIST_RUN: 삭제 방지, 항상 chat_update만 사용
+                    client.chat_update(
+                        channel=channel,
+                        ts=last_msg_ts,
+                        text=final_text,
+                        blocks=final_blocks,
+                    )
+                else:
+                    self._replace_thinking_message(
+                        client, channel, last_msg_ts,
+                        final_text, final_blocks, thread_ts=reply_thread_ts,
+                    )
 
                 # 스레드에 전문 전송
                 if summary and details:
