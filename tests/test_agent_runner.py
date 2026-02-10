@@ -165,15 +165,18 @@ class TestClaudeAgentRunnerAsync:
         assert result.restart_requested is False
 
     async def test_run_timeout(self):
-        """타임아웃 테스트"""
+        """idle 타임아웃 테스트 (SDK가 메시지를 보내지 않고 멈추는 경우)"""
         runner = ClaudeAgentRunner(timeout=1)
 
         async def mock_query(prompt, options):
-            raise asyncio.TimeoutError()
-            yield  # make it async generator
+            yield MockSystemMessage(session_id="timeout-test")
+            # SDK가 멈춤: 메시지를 보내지 않고 무한 대기
+            await asyncio.sleep(10)
+            yield MockResultMessage(result="이건 도달 안 됨")
 
         with patch("seosoyoung.claude.agent_runner.query", mock_query):
-            result = await runner.run("테스트")
+            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
+                result = await runner.run("테스트")
 
         assert result.success is False
         assert "타임아웃" in result.error

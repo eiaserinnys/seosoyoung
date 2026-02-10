@@ -323,9 +323,16 @@ class ClaudeAgentRunner:
         collected_messages: list[dict] = []  # OM용 대화 수집
         last_progress_time = asyncio.get_event_loop().time()
         progress_interval = 2.0
+        # idle 타임아웃: 마지막 메시지 수신 후 이 시간이 지나면 강제 종료
+        idle_timeout = self.timeout
 
         try:
-            async for message in query(prompt=prompt, options=options):
+            aiter = query(prompt=prompt, options=options).__aiter__()
+            while True:
+                try:
+                    message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
+                except StopAsyncIteration:
+                    break
                 # SystemMessage에서 세션 ID 추출
                 if isinstance(message, SystemMessage):
                     if hasattr(message, 'session_id'):
@@ -447,12 +454,13 @@ class ClaudeAgentRunner:
             )
 
         except asyncio.TimeoutError:
-            logger.error(f"Claude Code SDK 타임아웃 ({self.timeout}초)")
+            logger.error(f"Claude Code SDK idle 타임아웃 ({idle_timeout}초간 메시지 수신 없음)")
             return ClaudeResult(
                 success=False,
                 output=current_text,
                 session_id=result_session_id,
-                error=f"타임아웃: {self.timeout}초 초과"
+                error=f"타임아웃: {idle_timeout}초간 SDK 응답 없음",
+                collected_messages=collected_messages,
             )
         except FileNotFoundError as e:
             logger.error(f"Claude Code CLI를 찾을 수 없습니다: {e}")
