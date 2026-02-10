@@ -86,7 +86,11 @@ class Config:
     ADMIN_USERS = [u.strip() for u in os.getenv("ADMIN_USERS", "").split(",") if u.strip()]
 
     ROLE_TOOLS = {
-        "admin": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
+        "admin": [
+            "Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite",
+            "mcp__seosoyoung-attach__slack_attach_file",
+            "mcp__seosoyoung-attach__slack_get_context",
+        ],
         "viewer": ["Read", "Glob", "Grep"],
     }
 

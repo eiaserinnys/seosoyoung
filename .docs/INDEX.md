@@ -57,10 +57,10 @@
 
 ### 주요 클래스
 
-- `ClaudeResult` (seosoyoung/claude/agent_runner.py:82): Claude Code 실행 결과
-- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:98): Claude Code SDK 기반 실행기
-- `PendingPrompt` (seosoyoung/claude/executor.py:50): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:63): Claude Code 실행기
+- `ClaudeResult` (seosoyoung/claude/agent_runner.py:85): Claude Code 실행 결과
+- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:101): Claude Code SDK 기반 실행기
+- `PendingPrompt` (seosoyoung/claude/executor.py:60): 인터벤션 대기 중인 프롬프트 정보
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:73): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
@@ -124,8 +124,8 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:706): 
-- `get_runner_for_role()` (seosoyoung/claude/executor.py:37): 역할에 맞는 ClaudeAgentRunner 반환
+- `async main()` (seosoyoung/claude/agent_runner.py:724): 
+- `get_runner_for_role()` (seosoyoung/claude/executor.py:44): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱
 - `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:63): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지

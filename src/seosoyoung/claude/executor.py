@@ -10,6 +10,7 @@ import logging
 import os
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 from seosoyoung.config import Config
@@ -34,16 +35,25 @@ from seosoyoung.restart import RestartType
 logger = logging.getLogger(__name__)
 
 
+def _get_mcp_config_path() -> Optional[Path]:
+    """MCP 설정 파일 경로 반환 (없으면 None)"""
+    config_path = Path(__file__).resolve().parents[3] / "mcp_config.json"
+    return config_path if config_path.exists() else None
+
+
 def get_runner_for_role(role: str):
     """역할에 맞는 ClaudeAgentRunner 반환"""
     allowed_tools = Config.ROLE_TOOLS.get(role, Config.ROLE_TOOLS["viewer"])
-    # viewer는 수정/실행 도구 명시적 차단
+    # viewer는 수정/실행 도구 명시적 차단, MCP 도구 불필요
     if role == "viewer":
         return get_claude_runner(
             allowed_tools=allowed_tools,
             disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"]
         )
-    return get_claude_runner(allowed_tools=allowed_tools)
+    return get_claude_runner(
+        allowed_tools=allowed_tools,
+        mcp_config_path=_get_mcp_config_path(),
+    )
 
 
 @dataclass
@@ -418,6 +428,7 @@ class ClaudeExecutor:
                 on_compact=on_compact,
                 user_id=session.user_id,
                 thread_ts=thread_ts,
+                channel=channel,
             ))
 
             # 세션 ID 업데이트

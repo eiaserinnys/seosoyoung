@@ -358,8 +358,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
+            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -396,8 +396,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
+            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -432,8 +432,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
+            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
