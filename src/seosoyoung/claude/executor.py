@@ -249,6 +249,7 @@ class ClaudeExecutor:
                     session_id=session.session_id,
                     on_progress=on_progress,
                     on_compact=on_compact,
+                    user_id=session.user_id,
                 ))
 
                 # 세션 ID 업데이트

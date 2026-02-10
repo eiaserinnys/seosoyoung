@@ -112,6 +112,7 @@ class ClaudeAgentRunner:
         self,
         session_id: Optional[str] = None,
         compact_events: Optional[list] = None,
+        user_id: Optional[str] = None,
     ) -> ClaudeCodeOptions:
         """ClaudeCodeOptions 생성
 
@@ -158,6 +159,25 @@ class ClaudeAgentRunner:
         if session_id:
             options.resume = session_id
 
+        # Observational Memory: 관찰 로그 주입
+        if user_id:
+            try:
+                from seosoyoung.config import Config
+                if Config.OM_ENABLED:
+                    from seosoyoung.memory.context_builder import ContextBuilder
+                    from seosoyoung.memory.store import MemoryStore
+
+                    store = MemoryStore(Config.get_memory_path())
+                    builder = ContextBuilder(store)
+                    memory_prompt = builder.build_memory_prompt(
+                        user_id, Config.OM_MAX_OBSERVATION_TOKENS
+                    )
+                    if memory_prompt:
+                        options.append_system_prompt = memory_prompt
+                        logger.info(f"OM 관찰 로그 주입 완료 (user={user_id})")
+            except Exception as e:
+                logger.warning(f"OM 관찰 로그 주입 실패 (무시): {e}")
+
         return options
 
     async def run(
@@ -166,6 +186,7 @@ class ClaudeAgentRunner:
         session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        user_id: Optional[str] = None,
     ) -> ClaudeResult:
         """Claude Code 실행
 
@@ -174,9 +195,10 @@ class ClaudeAgentRunner:
             session_id: 이어갈 세션 ID (선택)
             on_progress: 진행 상황 콜백 (선택)
             on_compact: 컴팩션 발생 콜백 (선택) - (trigger, message) 전달
+            user_id: 사용자 ID (OM 관찰 로그 주입용, 선택)
         """
         async with self._lock:
-            return await self._execute(prompt, session_id, on_progress, on_compact)
+            return await self._execute(prompt, session_id, on_progress, on_compact, user_id)
 
     async def _execute(
         self,
@@ -184,11 +206,12 @@ class ClaudeAgentRunner:
         session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        user_id: Optional[str] = None,
     ) -> ClaudeResult:
         """실제 실행 로직"""
         compact_events: list[dict] = []
         compact_notified_count = 0
-        options = self._build_options(session_id, compact_events=compact_events)
+        options = self._build_options(session_id, compact_events=compact_events, user_id=user_id)
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
 
         result_session_id = None
