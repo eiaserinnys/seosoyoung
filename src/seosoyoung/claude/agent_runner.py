@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
@@ -86,6 +87,7 @@ class ClaudeResult:
     update_requested: bool = False
     restart_requested: bool = False
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
+    collected_messages: list[dict] = field(default_factory=list)  # OM용 대화 수집
 
 
 class ClaudeAgentRunner:
@@ -192,6 +194,7 @@ class ClaudeAgentRunner:
         result_session_id = None
         current_text = ""
         result_text = ""
+        collected_messages: list[dict] = []  # OM용 대화 수집
         last_progress_time = asyncio.get_event_loop().time()
         progress_interval = 2.0
 
@@ -210,6 +213,13 @@ class ClaudeAgentRunner:
                             if isinstance(block, TextBlock):
                                 current_text = block.text
 
+                                # OM용 대화 수집
+                                collected_messages.append({
+                                    "role": "assistant",
+                                    "content": block.text,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                })
+
                                 # 진행 상황 콜백 (2초 간격)
                                 if on_progress:
                                     current_time = asyncio.get_event_loop().time()
@@ -227,6 +237,12 @@ class ClaudeAgentRunner:
                 elif isinstance(message, ResultMessage):
                     if hasattr(message, 'result'):
                         result_text = message.result
+                        # OM용 대화 수집
+                        collected_messages.append({
+                            "role": "assistant",
+                            "content": message.result,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
                     # ResultMessage에서도 세션 ID 추출 시도
                     if hasattr(message, 'session_id') and message.session_id:
                         result_session_id = message.session_id
@@ -275,6 +291,7 @@ class ClaudeAgentRunner:
                 update_requested=update_requested,
                 restart_requested=restart_requested,
                 list_run=list_run,
+                collected_messages=collected_messages,
             )
 
         except asyncio.TimeoutError:
