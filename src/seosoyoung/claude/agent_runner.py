@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 import re
 import threading
 from dataclasses import dataclass, field
@@ -68,6 +69,8 @@ DEFAULT_ALLOWED_TOOLS = [
     "Grep",
     "Bash",
     "TodoWrite",
+    "mcp__seosoyoung-attach__slack_attach_file",
+    "mcp__seosoyoung-attach__slack_get_context",
 ]
 
 # Claude Code 기본 금지 도구
@@ -86,7 +89,6 @@ class ClaudeResult:
     session_id: Optional[str] = None
     error: Optional[str] = None
     files: list[str] = field(default_factory=list)
-    attachments: list[str] = field(default_factory=list)
     image_gen_prompts: list[str] = field(default_factory=list)
     update_requested: bool = False
     restart_requested: bool = False
@@ -220,12 +222,17 @@ class ClaudeAgentRunner:
         compact_events: Optional[list] = None,
         user_id: Optional[str] = None,
         thread_ts: Optional[str] = None,
+        channel: Optional[str] = None,
     ) -> ClaudeCodeOptions:
         """ClaudeCodeOptions 생성
 
         참고: env 파라미터를 명시적으로 전달하지 않으면
         Claude Code CLI가 현재 프로세스의 환경변수를 상속받습니다.
         이 방식이 API 키 등을 안전하게 전달하는 가장 간단한 방법입니다.
+
+        channel과 thread_ts가 모두 제공되면 env에 SLACK_CHANNEL, SLACK_THREAD_TS를
+        명시적으로 설정합니다. MCP 서버(seosoyoung-attach)가 이 값을 사용하여
+        파일을 올바른 스레드에 첨부합니다.
         """
         # PreCompact 훅 설정
         hooks = None
@@ -264,13 +271,20 @@ class ClaudeAgentRunner:
                 ]
             }
 
+        # 슬랙 컨텍스트가 있으면 env에 주입 (MCP 서버용)
+        # SDK는 env가 항상 dict이길 기대하므로 빈 dict를 기본값으로 사용
+        env: dict[str, str] = {}
+        if channel and thread_ts:
+            env["SLACK_CHANNEL"] = channel
+            env["SLACK_THREAD_TS"] = thread_ts
+
         options = ClaudeCodeOptions(
             allowed_tools=self.allowed_tools,
             disallowed_tools=self.disallowed_tools,
             permission_mode="bypassPermissions",  # dangerously-skip-permissions 대응
             cwd=self.working_dir,
             hooks=hooks,
-            # env는 명시적으로 전달하지 않음 (CLI가 상위 프로세스 환경 상속)
+            env=env,
         )
 
         # MCP 서버 설정 (경로 지정된 경우)
@@ -372,6 +386,7 @@ class ClaudeAgentRunner:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         user_id: Optional[str] = None,
         thread_ts: Optional[str] = None,
+        channel: Optional[str] = None,
     ) -> ClaudeResult:
         """Claude Code 실행
 
@@ -382,9 +397,10 @@ class ClaudeAgentRunner:
             on_compact: 컴팩션 발생 콜백 (선택) - (trigger, message) 전달
             user_id: 사용자 ID (OM 관찰 로그 주입용, 선택)
             thread_ts: 스레드 타임스탬프 (OM 세션 단위 저장용, 선택)
+            channel: 슬랙 채널 ID (MCP 서버 컨텍스트용, 선택)
         """
         async with self._lock:
-            result = await self._execute(prompt, session_id, on_progress, on_compact, user_id, thread_ts)
+            result = await self._execute(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel=channel)
 
         # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
         if result.success and user_id and thread_ts and result.collected_messages:
@@ -418,6 +434,7 @@ class ClaudeAgentRunner:
                         observe_conversation,
                     )
                     from seosoyoung.memory.observer import Observer
+                    from seosoyoung.memory.promoter import Compactor, Promoter
                     from seosoyoung.memory.reflector import Reflector
                     from seosoyoung.memory.store import MemoryStore
 
@@ -432,6 +449,14 @@ class ClaudeAgentRunner:
                         api_key=Config.OPENAI_API_KEY,
                         model=Config.OM_MODEL,
                     )
+                    promoter = Promoter(
+                        api_key=Config.OPENAI_API_KEY,
+                        model=Config.OM_PROMOTER_MODEL,
+                    )
+                    compactor = Compactor(
+                        api_key=Config.OPENAI_API_KEY,
+                        model=Config.OM_PROMOTER_MODEL,
+                    )
                     asyncio.run(observe_conversation(
                         store=store,
                         observer=observer,
@@ -441,6 +466,11 @@ class ClaudeAgentRunner:
                         min_turn_tokens=Config.OM_MIN_TURN_TOKENS,
                         reflector=reflector,
                         reflection_threshold=Config.OM_REFLECTION_THRESHOLD,
+                        promoter=promoter,
+                        promotion_threshold=Config.OM_PROMOTION_THRESHOLD,
+                        compactor=compactor,
+                        compaction_threshold=Config.OM_PERSISTENT_COMPACTION_THRESHOLD,
+                        compaction_target=Config.OM_PERSISTENT_COMPACTION_TARGET,
                         debug_channel=debug_channel,
                     ))
                 except Exception as e:
@@ -469,11 +499,12 @@ class ClaudeAgentRunner:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         user_id: Optional[str] = None,
         thread_ts: Optional[str] = None,
+        channel: Optional[str] = None,
     ) -> ClaudeResult:
         """실제 실행 로직 (ClaudeSDKClient 기반)"""
         compact_events: list[dict] = []
         compact_notified_count = 0
-        options = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
+        options = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
 
         # 스레드 키: thread_ts가 없으면 임시 키 생성
@@ -588,7 +619,6 @@ class ClaudeAgentRunner:
 
             # 마커 추출
             files = re.findall(r"<!-- FILE: (.+?) -->", output)
-            attachments = re.findall(r"<!-- ATTACH: (.+?) -->", output)
             image_gen_prompts = re.findall(r"<!-- IMAGE_GEN: (.+?) -->", output)
             update_requested = "<!-- UPDATE -->" in output
             restart_requested = "<!-- RESTART -->" in output
@@ -597,8 +627,6 @@ class ClaudeAgentRunner:
             list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
             list_run = list_run_match.group(1).strip() if list_run_match else None
 
-            if attachments:
-                logger.info(f"첨부 파일 요청: {attachments}")
             if image_gen_prompts:
                 logger.info(f"이미지 생성 요청: {image_gen_prompts}")
             if update_requested:
@@ -613,7 +641,6 @@ class ClaudeAgentRunner:
                 output=output,
                 session_id=result_session_id,
                 files=files,
-                attachments=attachments,
                 image_gen_prompts=image_gen_prompts,
                 update_requested=update_requested,
                 restart_requested=restart_requested,

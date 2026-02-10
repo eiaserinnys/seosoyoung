@@ -112,13 +112,6 @@ class TestClaudeResultMarkers:
         files = re.findall(r"<!-- FILE: (.+?) -->", output)
         assert files == ["/path/to/file1.txt", "/path/to/file2.py"]
 
-    def test_extract_attach_markers(self):
-        """ATTACH 마커 추출"""
-        import re
-        output = "첨부합니다.\n<!-- ATTACH: D:\\workspace\\doc.md -->"
-        attachments = re.findall(r"<!-- ATTACH: (.+?) -->", output)
-        assert attachments == ["D:\\workspace\\doc.md"]
-
     def test_detect_update_marker(self):
         """UPDATE 마커 감지"""
         output = "코드를 수정했습니다.\n<!-- UPDATE -->"
@@ -161,7 +154,7 @@ class TestClaudeAgentRunnerAsync:
 
         mock_client = _make_mock_client(
             MockResultMessage(
-                result="파일 생성함\n<!-- FILE: /test/file.py -->\n<!-- ATTACH: /doc/readme.md -->\n<!-- UPDATE -->",
+                result="파일 생성함\n<!-- FILE: /test/file.py -->\n<!-- UPDATE -->",
                 session_id="marker-test"
             ),
         )
@@ -172,7 +165,6 @@ class TestClaudeAgentRunnerAsync:
 
         assert result.success is True
         assert "/test/file.py" in result.files
-        assert "/doc/readme.md" in result.attachments
         assert result.update_requested is True
         assert result.restart_requested is False
 
@@ -358,8 +350,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
+            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -396,8 +388,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
+            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -432,8 +424,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
+            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",

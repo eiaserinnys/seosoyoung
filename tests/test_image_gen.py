@@ -42,15 +42,12 @@ class TestImageGenMarkerParsing:
     def test_mixed_markers(self):
         """IMAGE_GEN과 다른 마커 혼합"""
         output = (
-            "<!-- ATTACH: D:\\test\\file.md -->\n"
             "<!-- IMAGE_GEN: 판타지 성 -->\n"
             "<!-- FILE: /test/code.py -->\n"
             "<!-- UPDATE -->"
         )
         prompts = re.findall(r"<!-- IMAGE_GEN: (.+?) -->", output)
-        attachments = re.findall(r"<!-- ATTACH: (.+?) -->", output)
         assert prompts == ["판타지 성"]
-        assert attachments == ["D:\\test\\file.md"]
 
     def test_korean_prompt(self):
         """한글 프롬프트 파싱"""
@@ -164,13 +161,11 @@ class TestClaudeResultImageGenPrompts:
             success=True,
             output=(
                 "결과\n"
-                "<!-- ATTACH: /path/file.md -->\n"
                 "<!-- IMAGE_GEN: 판타지 성 -->\n"
                 "<!-- UPDATE -->"
             ),
             session_id="img-test",
             image_gen_prompts=["판타지 성"],
-            attachments=["/path/file.md"],
             update_requested=True,
         )
 
@@ -178,7 +173,6 @@ class TestClaudeResultImageGenPrompts:
             result = await runner.run("테스트")
 
         assert result.image_gen_prompts == ["판타지 성"]
-        assert result.attachments == ["/path/file.md"]
         assert result.update_requested is True
 
 

@@ -594,6 +594,49 @@ class TestTriggerObservation:
         assert call_kwargs["messages"][1] == {"role": "assistant", "content": "응답"}
 
 
+    @pytest.mark.asyncio
+    async def test_trigger_passes_promoter_and_compactor(self):
+        """트리거 시 Promoter와 Compactor가 생성되어 전달되는지 확인"""
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+
+        runner = ClaudeAgentRunner()
+        collected = [{"role": "assistant", "content": "응답"}]
+
+        def run_thread_target_directly(target, daemon=True):
+            mock_t = MagicMock()
+            mock_t.start = lambda: target()
+            return mock_t
+
+        with patch("seosoyoung.config.Config.OM_ENABLED", True):
+            with patch("seosoyoung.config.Config.OPENAI_API_KEY", "test-key"):
+                with patch("seosoyoung.config.Config.OM_MODEL", "gpt-4.1-mini"):
+                    with patch("seosoyoung.config.Config.OM_PROMOTER_MODEL", "gpt-5.2"):
+                        with patch("seosoyoung.config.Config.OM_PROMOTION_THRESHOLD", 5000):
+                            with patch("seosoyoung.config.Config.OM_PERSISTENT_COMPACTION_THRESHOLD", 15000):
+                                with patch("seosoyoung.config.Config.OM_PERSISTENT_COMPACTION_TARGET", 8000):
+                                    with patch("seosoyoung.config.Config.get_memory_path", return_value="/tmp/test"):
+                                        with patch("seosoyoung.config.Config.OM_MIN_TURN_TOKENS", 200):
+                                            with patch(
+                                                "seosoyoung.memory.observation_pipeline.observe_conversation",
+                                                new_callable=AsyncMock,
+                                            ) as mock_obs:
+                                                with patch(
+                                                    "seosoyoung.claude.agent_runner.threading.Thread",
+                                                    side_effect=run_thread_target_directly,
+                                                ):
+                                                    runner._trigger_observation("ts_1234", "U12345", "테스트", collected)
+
+        mock_obs.assert_called_once()
+        call_kwargs = mock_obs.call_args.kwargs
+        # Promoter와 Compactor 인스턴스가 전달되었는지 확인
+        from seosoyoung.memory.promoter import Compactor, Promoter
+        assert isinstance(call_kwargs["promoter"], Promoter)
+        assert isinstance(call_kwargs["compactor"], Compactor)
+        assert call_kwargs["promotion_threshold"] == 5000
+        assert call_kwargs["compaction_threshold"] == 15000
+        assert call_kwargs["compaction_target"] == 8000
+
+
 class TestRunTriggersObservation:
     """run() 메서드에서 관찰이 트리거되는지 통합 테스트"""
 

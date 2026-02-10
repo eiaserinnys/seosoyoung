@@ -13,11 +13,11 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 ## 클래스
 
 ### `PendingPrompt`
-- 위치: 줄 50
+- 위치: 줄 60
 - 설명: 인터벤션 대기 중인 프롬프트 정보
 
 ### `ClaudeExecutor`
-- 위치: 줄 63
+- 위치: 줄 73
 - 설명: Claude Code 실행기
 
 세션 내에서 Claude Code를 실행하고 결과를 처리합니다.
@@ -25,28 +25,32 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 
 #### 메서드
 
-- `__init__(self, session_manager, get_session_lock, mark_session_running, mark_session_stopped, get_running_session_count, restart_manager, upload_file_to_slack, send_long_message, send_restart_confirmation, trello_watcher_ref, list_runner_ref)` (줄 70): 
-- `run(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts)` (줄 103): 세션 내에서 Claude Code 실행 (공통 로직)
-- `_handle_intervention(self, thread_ts, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts)` (줄 158): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
-- `_pop_pending(self, thread_ts)` (줄 207): pending 프롬프트를 꺼내고 제거
-- `_run_with_lock(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts)` (줄 212): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
-- `_execute_once(self, session, prompt, msg_ts, channel, say, client, effective_role, trello_card, is_existing_thread, initial_msg_ts, is_trello_mode, thread_ts_override)` (줄 277): 단일 Claude 실행
-- `_is_last_message(self, client, channel, msg_ts, thread_ts)` (줄 462): 사고 과정 메시지가 채널/스레드에서 마지막 메시지인지 확인
-- `_replace_thinking_message(self, client, channel, old_msg_ts, new_text, new_blocks, thread_ts)` (줄 501): 사고 과정 메시지를 삭제하고 새 메시지로 교체
-- `_handle_interrupted(self, last_msg_ts, main_msg_ts, is_trello_mode, trello_card, session, channel, client)` (줄 562): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
-- `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 591): 성공 결과 처리
-- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client, is_list_run)` (줄 636): 트렐로 모드 성공 처리
-- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply, is_list_run)` (줄 737): 일반 모드(멘션) 성공 처리
-- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 851): 재기동 마커 처리
-- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 874): LIST_RUN 마커 처리 - 정주행 시작
-- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 943): 오류 결과 처리
-- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 986): 예외 처리
-- `_handle_image_gen(self, prompts, channel, thread_ts, say, client)` (줄 1026): 이미지 생성 마커 처리
+- `__init__(self, session_manager, get_session_lock, mark_session_running, mark_session_stopped, get_running_session_count, restart_manager, upload_file_to_slack, send_long_message, send_restart_confirmation, trello_watcher_ref, list_runner_ref)` (줄 80): 
+- `run(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts)` (줄 113): 세션 내에서 Claude Code 실행 (공통 로직)
+- `_handle_intervention(self, thread_ts, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts)` (줄 168): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
+- `_pop_pending(self, thread_ts)` (줄 217): pending 프롬프트를 꺼내고 제거
+- `_run_with_lock(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts)` (줄 222): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
+- `_execute_once(self, session, prompt, msg_ts, channel, say, client, effective_role, trello_card, is_existing_thread, initial_msg_ts, is_trello_mode, thread_ts_override)` (줄 287): 단일 Claude 실행
+- `_is_last_message(self, client, channel, msg_ts, thread_ts)` (줄 473): 사고 과정 메시지가 채널/스레드에서 마지막 메시지인지 확인
+- `_replace_thinking_message(self, client, channel, old_msg_ts, new_text, new_blocks, thread_ts)` (줄 512): 사고 과정 메시지를 삭제하고 새 메시지로 교체
+- `_handle_interrupted(self, last_msg_ts, main_msg_ts, is_trello_mode, trello_card, session, channel, client)` (줄 573): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
+- `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 602): 성공 결과 처리
+- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client, is_list_run)` (줄 647): 트렐로 모드 성공 처리
+- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply, is_list_run)` (줄 741): 일반 모드(멘션) 성공 처리
+- `_handle_restart_marker(self, result, session, thread_ts, say)` (줄 848): 재기동 마커 처리
+- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 871): LIST_RUN 마커 처리 - 정주행 시작
+- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 940): 오류 결과 처리
+- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply)` (줄 983): 예외 처리
+- `_handle_image_gen(self, prompts, channel, thread_ts, say, client)` (줄 1023): 이미지 생성 마커 처리
 
 ## 함수
 
+### `_get_mcp_config_path()`
+- 위치: 줄 38
+- 설명: MCP 설정 파일 경로 반환 (없으면 None)
+
 ### `get_runner_for_role(role)`
-- 위치: 줄 37
+- 위치: 줄 44
 - 설명: 역할에 맞는 ClaudeAgentRunner 반환
 
 ## 내부 의존성
