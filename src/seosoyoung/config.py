@@ -150,9 +150,18 @@ class Config:
     OM_REFLECTION_THRESHOLD = _parse_int(os.getenv("OM_REFLECTION_THRESHOLD"), 20000)
     OM_OBSERVATION_THRESHOLD = _parse_int(
         os.getenv("OM_OBSERVATION_THRESHOLD"), 30000
-    )
+    )  # deprecated: 매턴 호출로 변경됨. agent_runner 하위 호환용으로 유지.
     OM_MAX_OBSERVATION_TOKENS = _parse_int(
         os.getenv("OM_MAX_OBSERVATION_TOKENS"), 30000
+    )
+    OM_MIN_TURN_TOKENS = _parse_int(os.getenv("OM_MIN_TURN_TOKENS"), 200)
+    OM_PROMOTER_MODEL = os.getenv("OM_PROMOTER_MODEL", "gpt-5.2")
+    OM_PROMOTION_THRESHOLD = _parse_int(os.getenv("OM_PROMOTION_THRESHOLD"), 5000)
+    OM_PERSISTENT_COMPACTION_THRESHOLD = _parse_int(
+        os.getenv("OM_PERSISTENT_COMPACTION_THRESHOLD"), 15000
+    )
+    OM_PERSISTENT_COMPACTION_TARGET = _parse_int(
+        os.getenv("OM_PERSISTENT_COMPACTION_TARGET"), 8000
     )
 
     # ========================================

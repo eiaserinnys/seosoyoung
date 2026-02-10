@@ -243,3 +243,200 @@ class TestMemoryStoreConversation:
         loaded = store.load_conversation("ts_unicode")
 
         assert loaded[0]["content"] == "🔴 캐릭터 설정을 수정해줘"
+
+
+class TestCandidates:
+    """장기 기억 후보(candidates) 저장소 테스트"""
+
+    def test_append_and_load_candidates(self, store):
+        """후보 항목을 누적하고 로드"""
+        entries = [
+            {"ts": "2026-02-10T15:30:00Z", "priority": "🔴", "content": "사용자는 커밋 메시지를 한국어로 작성"},
+            {"ts": "2026-02-10T16:00:00Z", "priority": "🟡", "content": "트렐로 체크리스트를 먼저 확인"},
+        ]
+        store.append_candidates("ts_1234", entries)
+
+        loaded = store.load_candidates("ts_1234")
+        assert len(loaded) == 2
+        assert loaded[0]["priority"] == "🔴"
+        assert loaded[1]["content"] == "트렐로 체크리스트를 먼저 확인"
+
+    def test_append_candidates_accumulates(self, store):
+        """여러 번 호출 시 누적"""
+        store.append_candidates("ts_1234", [
+            {"ts": "t1", "priority": "🔴", "content": "첫 번째"},
+        ])
+        store.append_candidates("ts_1234", [
+            {"ts": "t2", "priority": "🟡", "content": "두 번째"},
+        ])
+
+        loaded = store.load_candidates("ts_1234")
+        assert len(loaded) == 2
+
+    def test_load_candidates_nonexistent(self, store):
+        """존재하지 않는 세션은 빈 리스트"""
+        assert store.load_candidates("NONEXISTENT") == []
+
+    def test_load_all_candidates(self, store):
+        """전체 세션의 후보를 수집"""
+        store.append_candidates("ts_a", [
+            {"ts": "t1", "priority": "🔴", "content": "A 세션 후보"},
+        ])
+        store.append_candidates("ts_b", [
+            {"ts": "t2", "priority": "🟡", "content": "B 세션 후보 1"},
+            {"ts": "t3", "priority": "🟢", "content": "B 세션 후보 2"},
+        ])
+
+        all_candidates = store.load_all_candidates()
+        assert len(all_candidates) == 3
+
+    def test_load_all_candidates_empty(self, store):
+        """후보가 없으면 빈 리스트"""
+        assert store.load_all_candidates() == []
+
+    def test_count_all_candidate_tokens(self, store):
+        """전체 후보 토큰 합산"""
+        store.append_candidates("ts_a", [
+            {"ts": "t1", "priority": "🔴", "content": "사용자는 커밋 메시지를 한국어로 작성하는 것을 선호한다"},
+        ])
+        store.append_candidates("ts_b", [
+            {"ts": "t2", "priority": "🟡", "content": "트렐로 카드 작업 시 체크리스트를 먼저 확인"},
+        ])
+
+        token_count = store.count_all_candidate_tokens()
+        assert token_count > 0
+
+    def test_count_all_candidate_tokens_empty(self, store):
+        """후보가 없으면 0"""
+        assert store.count_all_candidate_tokens() == 0
+
+    def test_clear_all_candidates(self, store):
+        """모든 후보 파일 삭제"""
+        store.append_candidates("ts_a", [
+            {"ts": "t1", "priority": "🔴", "content": "A"},
+        ])
+        store.append_candidates("ts_b", [
+            {"ts": "t2", "priority": "🟡", "content": "B"},
+        ])
+
+        store.clear_all_candidates()
+
+        assert store.load_all_candidates() == []
+        assert store.load_candidates("ts_a") == []
+        assert store.load_candidates("ts_b") == []
+
+    def test_clear_all_candidates_empty(self, store):
+        """후보가 없어도 에러 없음"""
+        store.clear_all_candidates()
+
+    def test_candidates_preserves_unicode(self, store):
+        """한글/이모지 보존"""
+        entries = [
+            {"ts": "t1", "priority": "🔴", "content": "🔴 캐릭터 정보 요청 패턴"},
+        ]
+        store.append_candidates("ts_1234", entries)
+        loaded = store.load_candidates("ts_1234")
+        assert loaded[0]["content"] == "🔴 캐릭터 정보 요청 패턴"
+
+    def test_candidates_independent_per_session(self, store):
+        """세션별 후보는 독립적"""
+        store.append_candidates("ts_a", [{"ts": "t1", "priority": "🔴", "content": "A"}])
+        store.append_candidates("ts_b", [{"ts": "t2", "priority": "🟡", "content": "B"}])
+
+        assert len(store.load_candidates("ts_a")) == 1
+        assert len(store.load_candidates("ts_b")) == 1
+        assert store.load_candidates("ts_a")[0]["content"] == "A"
+
+    def test_candidates_creates_directory(self, tmp_path):
+        """디렉토리 자동 생성"""
+        deep_path = tmp_path / "deep" / "path"
+        store = MemoryStore(base_dir=deep_path)
+        store.append_candidates("ts_1234", [{"ts": "t1", "priority": "🔴", "content": "test"}])
+        assert store.candidates_dir.exists()
+
+
+class TestPersistent:
+    """장기 기억(persistent) 저장소 테스트"""
+
+    def test_get_persistent_empty(self, store):
+        """장기 기억이 없으면 None"""
+        assert store.get_persistent() is None
+
+    def test_save_and_get_persistent(self, store):
+        """장기 기억 저장 및 로드"""
+        content = "🔴 사용자는 커밋 메시지를 한국어로 작성\n🟡 트렐로 체크리스트 먼저 확인"
+        meta = {"last_promoted_at": "2026-02-10T15:30:00Z", "total_promotions": 1}
+        store.save_persistent(content, meta)
+
+        result = store.get_persistent()
+        assert result is not None
+        assert result["content"] == content
+        assert result["meta"]["total_promotions"] == 1
+
+    def test_save_persistent_overwrites(self, store):
+        """저장 시 기존 내용 덮어쓰기"""
+        store.save_persistent("첫 번째 기억", {"total_promotions": 1})
+        store.save_persistent("두 번째 기억", {"total_promotions": 2})
+
+        result = store.get_persistent()
+        assert result["content"] == "두 번째 기억"
+        assert result["meta"]["total_promotions"] == 2
+
+    def test_save_persistent_preserves_unicode(self, store):
+        """한글/이모지 보존"""
+        content = "🔴 캐릭터 정보 패턴\n🟢 이모지 테스트 ⚡"
+        store.save_persistent(content, {})
+
+        result = store.get_persistent()
+        assert result["content"] == content
+
+    def test_save_persistent_creates_directory(self, tmp_path):
+        """디렉토리 자동 생성"""
+        deep_path = tmp_path / "deep" / "path"
+        store = MemoryStore(base_dir=deep_path)
+        store.save_persistent("test", {})
+        assert store.persistent_dir.exists()
+
+
+class TestArchivePersistent:
+    """장기 기억 아카이브 테스트"""
+
+    def test_archive_persistent(self, store):
+        """기존 장기 기억을 archive에 백업"""
+        store.save_persistent("원본 기억", {"total_promotions": 1})
+        archive_path = store.archive_persistent()
+
+        assert archive_path is not None
+        assert archive_path.exists()
+        assert archive_path.parent.name == "archive"
+        assert archive_path.read_text(encoding="utf-8") == "원본 기억"
+
+    def test_archive_persistent_no_existing(self, store):
+        """장기 기억이 없으면 None"""
+        result = store.archive_persistent()
+        assert result is None
+
+    def test_archive_persistent_preserves_original(self, store):
+        """아카이브 후 원본도 유지"""
+        store.save_persistent("원본 기억", {"total_promotions": 1})
+        store.archive_persistent()
+
+        result = store.get_persistent()
+        assert result is not None
+        assert result["content"] == "원본 기억"
+
+    def test_archive_multiple_times(self, store):
+        """여러 번 아카이브해도 각각 다른 파일로 저장"""
+        import time
+
+        store.save_persistent("기억 v1", {"total_promotions": 1})
+        path1 = store.archive_persistent()
+
+        time.sleep(0.01)  # 타임스탬프 차이 확보
+
+        store.save_persistent("기억 v2", {"total_promotions": 2})
+        path2 = store.archive_persistent()
+
+        assert path1 != path2
+        assert path1.exists()
+        assert path2.exists()

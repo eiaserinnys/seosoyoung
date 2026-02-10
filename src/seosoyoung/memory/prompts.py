@@ -57,6 +57,33 @@ OBSERVATION GUIDELINES:
    <suggested-response>
    Optional: If there's a natural way to reference past context in the next interaction.
    </suggested-response>
+
+6. LONG-TERM MEMORY CANDIDATES:
+   If any observation is worth remembering beyond this session permanently, include it in <candidates>.
+
+   What to include:
+   - User's preferences and style (coding style, commit message format, review process, etc.)
+   - Important work history (project structure changes, major feature additions, etc.)
+   - Recurring workflow patterns (task order, tool usage patterns, etc.)
+   - Critical mistakes the agent made and the correct way to handle them
+   - Important context from interactions with other people or bots
+
+   What NOT to include:
+   - Temporary context only valid for this session
+   - Content already specified in CLAUDE.md or rule files
+   - Simple greetings or trivial conversations
+
+   Use priority emoji prefixes:
+   🔴 HIGH - Core preferences/patterns that should always be remembered
+   🟡 MEDIUM - Useful but not essential context
+   🟢 LOW - Reference observations
+
+   If there are no candidates, omit the <candidates> tag entirely.
+
+   <candidates>
+   🔴 [permanent observation]
+   🟡 [useful long-term context]
+   </candidates>
 """
 
 OBSERVER_USER_PROMPT_TEMPLATE = """\
@@ -161,6 +188,90 @@ Please compress further:
 [more aggressively compressed observation log]
 </observations>
 """
+
+
+PROMOTER_SYSTEM_PROMPT = """\
+You are the long-term memory manager for "서소영(seosoyoung)", a Slack bot assistant.
+
+Below are candidate observations collected from session observers. Your task is to \
+review them and decide which ones should be promoted to permanent long-term memory.
+
+SELECTION CRITERIA:
+
+1. Is this information valid beyond a single session?
+2. Does it reflect a consistent user preference or pattern?
+3. Has it appeared repeatedly across multiple sessions?
+4. Will it have a real impact on the agent's work quality?
+5. Does it overlap with or duplicate existing long-term memory?
+
+EXISTING LONG-TERM MEMORY:
+{existing_persistent}
+
+CANDIDATE ENTRIES:
+{candidate_entries}
+
+OUTPUT FORMAT:
+
+<promoted>
+Write the items to promote in long-term memory format.
+Maintain priority emoji prefixes (🔴🟡🟢).
+Merge similar items into concise entries.
+Write so that the output naturally extends the existing long-term memory.
+</promoted>
+
+<rejected>
+List rejected items with brief reasons for rejection.
+</rejected>
+"""
+
+COMPACTOR_SYSTEM_PROMPT = """\
+You are the long-term memory compaction manager for "서소영(seosoyoung)", a Slack bot assistant.
+
+Your task is to compress the long-term memory below. The result will be the ONLY \
+accumulated experience the agent has — anything you remove is permanently lost.
+
+COMPACTION GUIDELINES:
+
+1. 🔴 HIGH items MUST be preserved
+2. 🟡 MEDIUM items: preserve if still valid, remove if outdated or superseded
+3. 🟢 LOW items: may remove if older than 3 months
+4. Merge similar observations into concise entries
+5. Replace specific old dates with relative terms ("early on", "consistently", etc.)
+6. When conflicting observations exist, prefer the most recent one
+
+TARGET TOKEN COUNT: {target_tokens} or fewer
+
+CURRENT LONG-TERM MEMORY:
+{persistent_memory}
+
+OUTPUT:
+
+<compacted>
+[compressed long-term memory]
+</compacted>
+"""
+
+
+def build_promoter_prompt(
+    existing_persistent: str,
+    candidate_entries: str,
+) -> str:
+    """Promoter 프롬프트를 구성합니다."""
+    return PROMOTER_SYSTEM_PROMPT.format(
+        existing_persistent=existing_persistent or "(empty — no long-term memory yet)",
+        candidate_entries=candidate_entries,
+    )
+
+
+def build_compactor_prompt(
+    persistent_memory: str,
+    target_tokens: int,
+) -> str:
+    """Compactor 프롬프트를 구성합니다."""
+    return COMPACTOR_SYSTEM_PROMPT.format(
+        target_tokens=target_tokens,
+        persistent_memory=persistent_memory,
+    )
 
 
 def build_reflector_system_prompt() -> str:
