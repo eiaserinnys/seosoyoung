@@ -16,6 +16,9 @@ TRELLO_REACTIONS = {
     "error": "x",                   # ❌ 오류
 }
 
+# 인터벤션 이모지 (실행 중 새 메시지 도착 시)
+INTERVENTION_EMOJI = "zap"  # ⚡
+
 
 def add_reaction(client, channel: str, ts: str, emoji: str) -> bool:
     """슬랙 메시지에 이모지 리액션 추가

@@ -13,23 +13,23 @@ Claude Code SDK 기반 실행기
 - 설명: Claude Code 실행 결과
 
 ### `ClaudeAgentRunner`
-- 위치: 줄 97
+- 위치: 줄 98
 - 설명: Claude Code SDK 기반 실행기
 
 #### 메서드
 
-- `__init__(self, working_dir, timeout, allowed_tools, disallowed_tools, mcp_config_path)` (줄 105): 
-- `_ensure_loop(cls)` (줄 122): 공유 이벤트 루프가 없거나 닫혀있으면 데몬 스레드에서 새로 생성
-- `_reset_shared_loop(cls)` (줄 141): 공유 루프를 리셋 (테스트용)
-- `run_sync(self, coro)` (줄 151): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
-- `async _get_or_create_client(self, thread_ts, options)` (줄 161): 스레드에 대한 ClaudeSDKClient를 가져오거나 새로 생성
-- `async _remove_client(self, thread_ts)` (줄 181): 스레드의 ClaudeSDKClient를 정리
-- `async interrupt(self, thread_ts)` (줄 196): 실행 중인 스레드에 인터럽트 전송
-- `_build_options(self, session_id, compact_events, user_id, thread_ts)` (줄 216): ClaudeCodeOptions 생성
-- `async run(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts)` (줄 309): Claude Code 실행
-- `_trigger_observation(self, thread_ts, user_id, prompt, collected_messages)` (줄 337): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
-- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts)` (줄 406): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 600): 세션 컴팩트 처리
+- `__init__(self, working_dir, timeout, allowed_tools, disallowed_tools, mcp_config_path)` (줄 106): 
+- `_ensure_loop(cls)` (줄 123): 공유 이벤트 루프가 없거나 닫혀있으면 데몬 스레드에서 새로 생성
+- `_reset_shared_loop(cls)` (줄 142): 공유 루프를 리셋 (테스트용)
+- `run_sync(self, coro)` (줄 152): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
+- `async _get_or_create_client(self, thread_ts, options)` (줄 162): 스레드에 대한 ClaudeSDKClient를 가져오거나 새로 생성
+- `async _remove_client(self, thread_ts)` (줄 182): 스레드의 ClaudeSDKClient를 정리
+- `async interrupt(self, thread_ts)` (줄 197): 실행 중인 스레드에 인터럽트 전송
+- `_build_options(self, session_id, compact_events, user_id, thread_ts)` (줄 217): ClaudeCodeOptions 생성
+- `async run(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts)` (줄 310): Claude Code 실행
+- `_trigger_observation(self, thread_ts, user_id, prompt, collected_messages)` (줄 338): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
+- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts)` (줄 407): 실제 실행 로직 (ClaudeSDKClient 기반)
+- `async compact_session(self, session_id)` (줄 605): 세션 컴팩트 처리
 
 ## 함수
 
@@ -42,4 +42,4 @@ SDK가 stderr를 캡처하지 않아 원인 구분이 어렵습니다.
 exit_code와 stderr 패턴을 기반으로 최대한 분류합니다.
 
 ### `async main()`
-- 위치: 줄 630
+- 위치: 줄 635

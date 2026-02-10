@@ -1,11 +1,15 @@
 """Claude Code 실행 로직
 
 _run_claude_in_session 함수를 캡슐화한 모듈입니다.
+인터벤션(intervention) 기능을 지원하여, 실행 중 새 메시지가 도착하면
+현재 실행을 중단하고 새 프롬프트로 이어서 실행합니다.
 """
 
 import asyncio
 import logging
 import os
+import threading
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from seosoyoung.config import Config
@@ -19,6 +23,7 @@ from seosoyoung.claude.message_formatter import (
 )
 from seosoyoung.claude.reaction_manager import (
     TRELLO_REACTIONS,
+    INTERVENTION_EMOJI,
     add_reaction,
     remove_reaction
 )
@@ -40,10 +45,25 @@ def get_runner_for_role(role: str):
     return get_claude_runner(allowed_tools=allowed_tools)
 
 
+@dataclass
+class PendingPrompt:
+    """인터벤션 대기 중인 프롬프트 정보"""
+    prompt: str
+    msg_ts: str
+    channel: str
+    say: object
+    client: object
+    role: Optional[str] = None
+    trello_card: Optional[TrackedCard] = None
+    is_existing_thread: bool = False
+    initial_msg_ts: Optional[str] = None
+
+
 class ClaudeExecutor:
     """Claude Code 실행기
 
     세션 내에서 Claude Code를 실행하고 결과를 처리합니다.
+    인터벤션 기능을 지원합니다.
     """
 
     def __init__(
@@ -72,6 +92,13 @@ class ClaudeExecutor:
         self.trello_watcher_ref = trello_watcher_ref
         self.list_runner_ref = list_runner_ref
 
+        # 인터벤션: 스레드별 대기 중인 프롬프트
+        self._pending_prompts: dict[str, PendingPrompt] = {}
+        self._pending_lock = threading.Lock()
+        # 인터벤션: 실행 중인 runner 추적 (interrupt 전송용)
+        self._active_runners: dict[str, object] = {}
+        self._runners_lock = threading.Lock()
+
     def run(
         self,
         session: Session,
@@ -87,6 +114,10 @@ class ClaudeExecutor:
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
+        인터벤션 지원:
+        - 락 획득 실패 시 ⚡ 리액션 + pending 저장 + interrupt
+        - 실행 완료 후 pending이 있으면 이어서 실행
+
         Args:
             session: Session 객체
             prompt: Claude에 전달할 프롬프트
@@ -100,20 +131,165 @@ class ClaudeExecutor:
             initial_msg_ts: 이미 생성된 초기 메시지 ts (있으면 새로 생성하지 않음)
         """
         thread_ts = session.thread_ts
-        # mark_session_running/stopped에 사용할 원래 thread_ts 보존
-        # (채널 최초 멘션 시 thread_ts가 변경되므로)
-        original_thread_ts = thread_ts
-        effective_role = role or session.role
-        is_trello_mode = trello_card is not None
 
         # 스레드별 락으로 동시 실행 방지
         lock = self.get_session_lock(thread_ts)
         if not lock.acquire(blocking=False):
-            say(text="이전 요청을 처리 중이에요. 잠시 후 다시 시도해주세요.", thread_ts=thread_ts)
+            # 인터벤션: 리액션만 추가하고 pending에 저장 후 interrupt
+            self._handle_intervention(
+                thread_ts, prompt, msg_ts, channel, say, client,
+                role=role, trello_card=trello_card,
+                is_existing_thread=is_existing_thread,
+                initial_msg_ts=initial_msg_ts,
+            )
             return
+
+        try:
+            self._run_with_lock(
+                session, prompt, msg_ts, channel, say, client,
+                role=role, trello_card=trello_card,
+                is_existing_thread=is_existing_thread,
+                initial_msg_ts=initial_msg_ts,
+            )
+        finally:
+            lock.release()
+
+    def _handle_intervention(
+        self,
+        thread_ts: str,
+        prompt: str,
+        msg_ts: str,
+        channel: str,
+        say,
+        client,
+        role: str = None,
+        trello_card: TrackedCard = None,
+        is_existing_thread: bool = False,
+        initial_msg_ts: str = None,
+    ):
+        """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
+
+        ⚡ 리액션 추가 → pending 저장 → interrupt fire → 즉시 return
+        """
+        logger.info(f"인터벤션 발생: thread={thread_ts}")
+
+        # ⚡ 리액션 추가 (메시지 없음)
+        add_reaction(client, channel, msg_ts, INTERVENTION_EMOJI)
+
+        # pending에 저장 (최신 것으로 덮어씀)
+        pending = PendingPrompt(
+            prompt=prompt,
+            msg_ts=msg_ts,
+            channel=channel,
+            say=say,
+            client=client,
+            role=role,
+            trello_card=trello_card,
+            is_existing_thread=is_existing_thread,
+            initial_msg_ts=initial_msg_ts,
+        )
+        with self._pending_lock:
+            self._pending_prompts[thread_ts] = pending
+
+        # interrupt fire-and-forget (실행 중인 runner에게 전송)
+        with self._runners_lock:
+            runner = self._active_runners.get(thread_ts)
+        if runner:
+            try:
+                runner.run_sync(runner.interrupt(thread_ts))
+                logger.info(f"인터럽트 전송 완료: thread={thread_ts}")
+            except Exception as e:
+                logger.warning(f"인터럽트 전송 실패 (무시): thread={thread_ts}, {e}")
+        else:
+            logger.warning(f"인터럽트 전송 불가: 실행 중인 runner 없음 (thread={thread_ts})")
+
+    def _pop_pending(self, thread_ts: str) -> Optional[PendingPrompt]:
+        """pending 프롬프트를 꺼내고 제거"""
+        with self._pending_lock:
+            return self._pending_prompts.pop(thread_ts, None)
+
+    def _run_with_lock(
+        self,
+        session: Session,
+        prompt: str,
+        msg_ts: str,
+        channel: str,
+        say,
+        client,
+        role: str = None,
+        trello_card: TrackedCard = None,
+        is_existing_thread: bool = False,
+        initial_msg_ts: str = None,
+    ):
+        """락을 보유한 상태에서 실행 (while 루프로 pending 처리)"""
+        thread_ts = session.thread_ts
+        original_thread_ts = thread_ts
+        effective_role = role or session.role
+        is_trello_mode = trello_card is not None
 
         # 실행 중 세션으로 표시
         self.mark_session_running(original_thread_ts)
+
+        try:
+            # 첫 번째 실행
+            last_msg_ts, thread_ts = self._execute_once(
+                session, prompt, msg_ts, channel, say, client,
+                effective_role=effective_role,
+                trello_card=trello_card,
+                is_existing_thread=is_existing_thread,
+                initial_msg_ts=initial_msg_ts,
+                is_trello_mode=is_trello_mode,
+                thread_ts_override=None,
+            )
+
+            # pending 확인 → while 루프
+            while True:
+                pending = self._pop_pending(original_thread_ts)
+                if not pending:
+                    break
+
+                logger.info(f"인터벤션 이어가기: thread={original_thread_ts}")
+
+                # pending의 정보로 다음 실행
+                p_role = pending.role or session.role
+                p_trello = pending.trello_card
+                p_is_trello = p_trello is not None
+
+                last_msg_ts, thread_ts = self._execute_once(
+                    session, pending.prompt, pending.msg_ts, pending.channel,
+                    pending.say, pending.client,
+                    effective_role=p_role,
+                    trello_card=p_trello,
+                    is_existing_thread=pending.is_existing_thread,
+                    initial_msg_ts=pending.initial_msg_ts,
+                    is_trello_mode=p_is_trello,
+                    thread_ts_override=thread_ts,  # 이전 실행의 thread_ts 사용
+                )
+
+        finally:
+            self.mark_session_stopped(original_thread_ts)
+
+    def _execute_once(
+        self,
+        session: Session,
+        prompt: str,
+        msg_ts: str,
+        channel: str,
+        say,
+        client,
+        effective_role: str,
+        trello_card: Optional[TrackedCard],
+        is_existing_thread: bool,
+        initial_msg_ts: Optional[str],
+        is_trello_mode: bool,
+        thread_ts_override: Optional[str] = None,
+    ) -> tuple[Optional[str], str]:
+        """단일 Claude 실행
+
+        Returns:
+            (last_msg_ts, thread_ts) - 다음 실행에서 사용할 정보
+        """
+        thread_ts = thread_ts_override or session.thread_ts
 
         # 마지막 메시지 ts 추적 (최종 답변으로 교체할 대상)
         last_msg_ts = None
@@ -126,164 +302,192 @@ class ClaudeExecutor:
         mention_response_ts = None
 
         # 스레드 내 후속 대화인지 판단
-        # - message_count > 0: 세션 내 후속 대화
-        # - is_existing_thread: 기존 스레드에서 처음 호출 (세션 없이)
         is_thread_reply = session.message_count > 0 or is_existing_thread
 
-        try:
-            if is_trello_mode:
-                last_msg_ts = msg_ts
-            elif initial_msg_ts:
-                # 이미 초기 메시지가 있으면 재사용
-                last_msg_ts = initial_msg_ts
-                if not is_thread_reply:
-                    mention_response_ts = initial_msg_ts
-                    # 세션의 thread_ts를 응답 메시지 ts로 업데이트
-                    if mention_response_ts and mention_response_ts != thread_ts:
-                        self.session_manager.update_thread_ts(thread_ts, mention_response_ts)
-                        thread_ts = mention_response_ts
+        if is_trello_mode:
+            last_msg_ts = msg_ts
+        elif initial_msg_ts:
+            # 이미 초기 메시지가 있으면 재사용
+            last_msg_ts = initial_msg_ts
+            if not is_thread_reply:
+                mention_response_ts = initial_msg_ts
+                if mention_response_ts and mention_response_ts != thread_ts:
+                    self.session_manager.update_thread_ts(thread_ts, mention_response_ts)
+                    thread_ts = mention_response_ts
+        else:
+            # 초기 메시지: 코드 블럭 형태로 생각 과정 표시
+            if effective_role == "admin":
+                initial_text = "소영이 생각합니다..."
             else:
-                # 초기 메시지: 코드 블럭 형태로 생각 과정 표시
-                if effective_role == "admin":
-                    initial_text = "소영이 생각합니다..."
-                else:
-                    initial_text = "소영이 조회 전용 모드로 생각합니다..."
+                initial_text = "소영이 조회 전용 모드로 생각합니다..."
 
-                code_text = f"```\n{initial_text}\n```"
+            code_text = f"```\n{initial_text}\n```"
 
-                if is_thread_reply:
-                    # 스레드 내 후속 대화: 해당 스레드에 응답
-                    initial_msg = client.chat_postMessage(
-                        channel=channel,
-                        thread_ts=thread_ts,
-                        text=code_text,
-                        blocks=[{
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": code_text}
-                        }]
-                    )
-                    last_msg_ts = initial_msg["ts"]
-                else:
-                    # 채널에서 최초 멘션: 채널 루트에 응답
-                    initial_msg = client.chat_postMessage(
-                        channel=channel,
-                        text=code_text,
-                        blocks=[{
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": code_text}
-                        }]
-                    )
-                    last_msg_ts = initial_msg["ts"]
-                    mention_response_ts = last_msg_ts
-
-                    # 세션의 thread_ts를 응답 메시지 ts로 업데이트
-                    # (스레드로 대화를 이어가기 위해)
-                    if mention_response_ts and mention_response_ts != thread_ts:
-                        self.session_manager.update_thread_ts(thread_ts, mention_response_ts)
-                        thread_ts = mention_response_ts  # 이후 로직에서 새 thread_ts 사용
-
-            # 스트리밍 콜백
-            async def on_progress(current_text: str):
-                nonlocal last_msg_ts, trello_reaction_added
-                try:
-                    display_text = current_text
-                    if len(display_text) > 3800:
-                        display_text = "...\n" + display_text[-3800:]
-
-                    if is_trello_mode:
-                        # 첫 호출 시 상태 이모지 리액션 추가
-                        if not trello_reaction_added:
-                            reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
-                            add_reaction(client, channel, main_msg_ts, reaction)
-                            trello_reaction_added = True
-
-                        header = build_trello_header(trello_card, session.session_id or "")
-                        escaped_text = escape_backticks(display_text)
-                        # 헤더와 코드블록 사이에 빈 줄 추가
-                        update_text = f"{header}\n\n```\n{escaped_text}\n```"
-
-                        client.chat_update(
-                            channel=channel,
-                            ts=main_msg_ts,
-                            text=update_text,
-                            blocks=[{
-                                "type": "section",
-                                "text": {"type": "mrkdwn", "text": update_text}
-                            }]
-                        )
-                    else:
-                        # 일반 모드: chat_update로 기존 메시지 갱신 (트렐로 모드와 동일)
-                        escaped_text = escape_backticks(display_text)
-                        code_text = f"```\n{escaped_text}\n```"
-                        client.chat_update(
-                            channel=channel,
-                            ts=last_msg_ts,
-                            text=code_text,
-                            blocks=[{
-                                "type": "section",
-                                "text": {"type": "mrkdwn", "text": code_text}
-                            }]
-                        )
-                except Exception as e:
-                    logger.warning(f"사고 과정 메시지 전송 실패: {e}")
-
-            # 컴팩션 알림 콜백
-            async def on_compact(trigger: str, message: str):
-                try:
-                    if trigger == "auto":
-                        text = "🔄 컨텍스트가 자동 압축됩니다..."
-                    else:
-                        text = "📦 컨텍스트를 압축하는 중입니다..."
-                    say(text=text, thread_ts=thread_ts)
-                except Exception as e:
-                    logger.warning(f"컴팩션 알림 전송 실패: {e}")
-
-            # 역할에 맞는 runner 생성
-            runner = get_runner_for_role(effective_role)
-            logger.info(f"Claude 실행: thread={thread_ts}, role={effective_role}")
-
-            # Claude Code 실행
-            try:
-                result = runner.run_sync(runner.run(
-                    prompt=prompt,
-                    session_id=session.session_id,
-                    on_progress=on_progress,
-                    on_compact=on_compact,
-                    user_id=session.user_id,
+            if is_thread_reply:
+                initial_msg = client.chat_postMessage(
+                    channel=channel,
                     thread_ts=thread_ts,
-                ))
+                    text=code_text,
+                    blocks=[{
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": code_text}
+                    }]
+                )
+                last_msg_ts = initial_msg["ts"]
+            else:
+                initial_msg = client.chat_postMessage(
+                    channel=channel,
+                    text=code_text,
+                    blocks=[{
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": code_text}
+                    }]
+                )
+                last_msg_ts = initial_msg["ts"]
+                mention_response_ts = last_msg_ts
 
-                # 세션 ID 업데이트
-                if result.session_id and result.session_id != session.session_id:
-                    self.session_manager.update_session_id(thread_ts, result.session_id)
+                if mention_response_ts and mention_response_ts != thread_ts:
+                    self.session_manager.update_thread_ts(thread_ts, mention_response_ts)
+                    thread_ts = mention_response_ts
 
-                # 메시지 카운트 증가
-                self.session_manager.increment_message_count(thread_ts)
+        # 스트리밍 콜백
+        async def on_progress(current_text: str):
+            nonlocal last_msg_ts, trello_reaction_added
+            try:
+                display_text = current_text
+                if len(display_text) > 3800:
+                    display_text = "...\n" + display_text[-3800:]
 
-                if result.success:
-                    self._handle_success(
-                        result, session, effective_role, is_trello_mode, trello_card,
-                        channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client,
-                        is_thread_reply=is_thread_reply
+                if is_trello_mode:
+                    if not trello_reaction_added:
+                        reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
+                        add_reaction(client, channel, main_msg_ts, reaction)
+                        trello_reaction_added = True
+
+                    header = build_trello_header(trello_card, session.session_id or "")
+                    escaped_text = escape_backticks(display_text)
+                    update_text = f"{header}\n\n```\n{escaped_text}\n```"
+
+                    client.chat_update(
+                        channel=channel,
+                        ts=main_msg_ts,
+                        text=update_text,
+                        blocks=[{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": update_text}
+                        }]
                     )
                 else:
-                    self._handle_error(
-                        result.error, is_trello_mode, trello_card, session,
-                        channel, last_msg_ts, main_msg_ts, say, client,
-                        is_thread_reply=is_thread_reply
+                    escaped_text = escape_backticks(display_text)
+                    code_text = f"```\n{escaped_text}\n```"
+                    client.chat_update(
+                        channel=channel,
+                        ts=last_msg_ts,
+                        text=code_text,
+                        blocks=[{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": code_text}
+                        }]
                     )
-
             except Exception as e:
-                logger.exception(f"Claude 실행 오류: {e}")
-                self._handle_exception(
-                    e, is_trello_mode, trello_card, session,
-                    channel, thread_ts, last_msg_ts, main_msg_ts, say, client,
+                logger.warning(f"사고 과정 메시지 전송 실패: {e}")
+
+        # 컴팩션 알림 콜백
+        async def on_compact(trigger: str, message: str):
+            try:
+                if trigger == "auto":
+                    text = "🔄 컨텍스트가 자동 압축됩니다..."
+                else:
+                    text = "📦 컨텍스트를 압축하는 중입니다..."
+                say(text=text, thread_ts=thread_ts)
+            except Exception as e:
+                logger.warning(f"컴팩션 알림 전송 실패: {e}")
+
+        # 역할에 맞는 runner 생성 및 등록
+        # original_thread_ts: session.thread_ts (변경 전) — _active_runners 키로 사용
+        original_thread_ts = session.thread_ts
+        runner = get_runner_for_role(effective_role)
+        with self._runners_lock:
+            self._active_runners[original_thread_ts] = runner
+        logger.info(f"Claude 실행: thread={thread_ts}, role={effective_role}")
+
+        # Claude Code 실행
+        try:
+            result = runner.run_sync(runner.run(
+                prompt=prompt,
+                session_id=session.session_id,
+                on_progress=on_progress,
+                on_compact=on_compact,
+                user_id=session.user_id,
+                thread_ts=thread_ts,
+            ))
+
+            # 세션 ID 업데이트
+            if result.session_id and result.session_id != session.session_id:
+                self.session_manager.update_session_id(thread_ts, result.session_id)
+
+            # 메시지 카운트 증가
+            self.session_manager.increment_message_count(thread_ts)
+
+            if result.interrupted:
+                # 인터럽트로 중단됨: 사고 과정 메시지를 "(중단됨)"으로 업데이트
+                self._handle_interrupted(
+                    last_msg_ts, main_msg_ts, is_trello_mode, trello_card,
+                    session, channel, client
+                )
+            elif result.success:
+                self._handle_success(
+                    result, session, effective_role, is_trello_mode, trello_card,
+                    channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client,
+                    is_thread_reply=is_thread_reply
+                )
+            else:
+                self._handle_error(
+                    result.error, is_trello_mode, trello_card, session,
+                    channel, last_msg_ts, main_msg_ts, say, client,
                     is_thread_reply=is_thread_reply
                 )
 
+        except Exception as e:
+            logger.exception(f"Claude 실행 오류: {e}")
+            self._handle_exception(
+                e, is_trello_mode, trello_card, session,
+                channel, thread_ts, last_msg_ts, main_msg_ts, say, client,
+                is_thread_reply=is_thread_reply
+            )
         finally:
-            self.mark_session_stopped(original_thread_ts)
-            lock.release()
+            with self._runners_lock:
+                self._active_runners.pop(original_thread_ts, None)
+
+        return last_msg_ts, thread_ts
+
+    def _handle_interrupted(
+        self, last_msg_ts, main_msg_ts, is_trello_mode, trello_card,
+        session, channel, client
+    ):
+        """인터럽트로 중단된 실행의 사고 과정 메시지 정리"""
+        try:
+            interrupted_text = "```\n(중단됨)\n```"
+            target_ts = main_msg_ts if is_trello_mode else last_msg_ts
+            if not target_ts:
+                return
+
+            if is_trello_mode:
+                header = build_trello_header(trello_card, session.session_id or "")
+                interrupted_text = f"{header}\n\n```\n(중단됨)\n```"
+
+            client.chat_update(
+                channel=channel,
+                ts=target_ts,
+                text=interrupted_text,
+                blocks=[{
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": interrupted_text}
+                }]
+            )
+            logger.info(f"중단된 실행 메시지 업데이트: ts={target_ts}")
+        except Exception as e:
+            logger.warning(f"중단 메시지 업데이트 실패: {e}")
 
     def _handle_success(
         self, result, session, effective_role, is_trello_mode, trello_card,
