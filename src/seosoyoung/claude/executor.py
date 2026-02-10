@@ -244,7 +244,7 @@ class ClaudeExecutor:
 
             # Claude Code 실행
             try:
-                result = asyncio.run(runner.run(
+                result = runner.run_sync(runner.run(
                     prompt=prompt,
                     session_id=session.session_id,
                     on_progress=on_progress,

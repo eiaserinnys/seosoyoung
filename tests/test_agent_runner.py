@@ -21,6 +21,40 @@ from seosoyoung.claude.agent_runner import (
 from claude_code_sdk._errors import ProcessError
 
 
+# SDK 메시지 타입 Mock
+@dataclass
+class MockSystemMessage:
+    session_id: str = None
+
+
+@dataclass
+class MockTextBlock:
+    text: str
+
+
+@dataclass
+class MockAssistantMessage:
+    content: list = None
+
+
+@dataclass
+class MockResultMessage:
+    result: str = ""
+    session_id: str = None
+
+
+def _make_mock_client(*messages):
+    """mock_receive async generator를 설정한 mock client를 생성하는 헬퍼"""
+    mock_client = AsyncMock()
+
+    async def mock_receive():
+        for msg in messages:
+            yield msg
+
+    mock_client.receive_response = mock_receive
+    return mock_client
+
+
 class TestClaudeAgentRunnerUnit:
     """유닛 테스트 (Mock 사용)"""
 
@@ -96,44 +130,21 @@ class TestClaudeResultMarkers:
         assert "<!-- RESTART -->" in output
 
 
-# SDK 메시지 타입 Mock
-@dataclass
-class MockSystemMessage:
-    session_id: str = None
-
-
-@dataclass
-class MockTextBlock:
-    text: str
-
-
-@dataclass
-class MockAssistantMessage:
-    content: list
-
-
-@dataclass
-class MockResultMessage:
-    result: str
-    session_id: str = None
-
-
 @pytest.mark.asyncio
 class TestClaudeAgentRunnerAsync:
-    """비동기 테스트 (Mock 사용)"""
+    """비동기 테스트 (ClaudeSDKClient Mock 사용)"""
 
     async def test_run_success(self):
         """성공적인 SDK 실행 테스트"""
         runner = ClaudeAgentRunner()
 
-        # SDK query 함수 Mock
-        async def mock_query(prompt, options):
-            yield MockSystemMessage(session_id="test-sdk-123")
-            yield MockAssistantMessage(content=[MockTextBlock(text="진행 중...")])
-            yield MockResultMessage(result="완료되었습니다.", session_id="test-sdk-123")
+        mock_client = _make_mock_client(
+            MockSystemMessage(session_id="test-sdk-123"),
+            MockAssistantMessage(content=[MockTextBlock(text="진행 중...")]),
+            MockResultMessage(result="완료되었습니다.", session_id="test-sdk-123"),
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
-            # isinstance 체크를 위한 Mock
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
                     with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -148,13 +159,14 @@ class TestClaudeAgentRunnerAsync:
         """마커 포함 응답 테스트"""
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(
+        mock_client = _make_mock_client(
+            MockResultMessage(
                 result="파일 생성함\n<!-- FILE: /test/file.py -->\n<!-- ATTACH: /doc/readme.md -->\n<!-- UPDATE -->",
                 session_id="marker-test"
-            )
+            ),
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.run("테스트")
 
@@ -168,13 +180,16 @@ class TestClaudeAgentRunnerAsync:
         """idle 타임아웃 테스트 (SDK가 메시지를 보내지 않고 멈추는 경우)"""
         runner = ClaudeAgentRunner(timeout=1)
 
-        async def mock_query(prompt, options):
+        mock_client = AsyncMock()
+
+        async def mock_receive_slow():
             yield MockSystemMessage(session_id="timeout-test")
-            # SDK가 멈춤: 메시지를 보내지 않고 무한 대기
             await asyncio.sleep(10)
             yield MockResultMessage(result="이건 도달 안 됨")
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        mock_client.receive_response = mock_receive_slow
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
                 result = await runner.run("테스트")
 
@@ -185,11 +200,10 @@ class TestClaudeAgentRunnerAsync:
         """Claude CLI 없음 테스트"""
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            raise FileNotFoundError("claude not found")
-            yield
+        mock_client = AsyncMock()
+        mock_client.connect.side_effect = FileNotFoundError("claude not found")
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -199,11 +213,10 @@ class TestClaudeAgentRunnerAsync:
         """일반 예외 처리 테스트"""
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            raise RuntimeError("SDK error")
-            yield
+        mock_client = AsyncMock()
+        mock_client.connect.side_effect = RuntimeError("SDK error")
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -214,29 +227,44 @@ class TestClaudeAgentRunnerAsync:
         runner = ClaudeAgentRunner()
         call_order = []
 
-        async def mock_query(prompt, options):
-            call_order.append("start")
-            await asyncio.sleep(0.1)
-            call_order.append("end")
-            yield MockResultMessage(result="done", session_id="test")
+        def make_ordered_client(label):
+            mock_client = AsyncMock()
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+            async def mock_receive():
+                call_order.append(f"start-{label}")
+                await asyncio.sleep(0.1)
+                call_order.append(f"end-{label}")
+                yield MockResultMessage(result="done", session_id="test")
+
+            mock_client.receive_response = mock_receive
+            return mock_client
+
+        clients = [make_ordered_client("1"), make_ordered_client("2")]
+        client_idx = [0]
+
+        def get_next_client(*args, **kwargs):
+            c = clients[client_idx[0]]
+            client_idx[0] += 1
+            return c
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", side_effect=get_next_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
                 task1 = asyncio.create_task(runner.run("first"))
                 task2 = asyncio.create_task(runner.run("second"))
                 await asyncio.gather(task1, task2)
 
         # Lock으로 인해 순차 실행
-        assert call_order == ["start", "end", "start", "end"]
+        assert call_order == ["start-1", "end-1", "start-2", "end-2"]
 
     async def test_compact_session_success(self):
         """compact_session 성공 테스트"""
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(result="Compacted.", session_id="compact-123")
+        mock_client = _make_mock_client(
+            MockResultMessage(result="Compacted.", session_id="compact-123"),
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.compact_session("test-session-id")
 
@@ -264,22 +292,24 @@ class TestClaudeAgentRunnerProgress:
         async def on_progress(text):
             progress_calls.append(text)
 
+        mock_client = _make_mock_client(
+            MockSystemMessage(session_id="progress-test"),
+            MockAssistantMessage(content=[MockTextBlock(text="첫 번째")]),
+            MockAssistantMessage(content=[MockTextBlock(text="두 번째")]),
+            MockResultMessage(result="완료", session_id="progress-test"),
+        )
+
         time_value = [0]
 
-        async def mock_query(prompt, options):
-            yield MockSystemMessage(session_id="progress-test")
-            yield MockAssistantMessage(content=[MockTextBlock(text="첫 번째")])
-            time_value[0] += 3
-            yield MockAssistantMessage(content=[MockTextBlock(text="두 번째")])
-            yield MockResultMessage(result="완료", session_id="progress-test")
-
         def mock_time():
-            return time_value[0]
+            val = time_value[0]
+            time_value[0] += 3
+            return val
 
         mock_loop = MagicMock()
         mock_loop.time = mock_time
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
                     with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -320,19 +350,16 @@ class TestClaudeAgentRunnerCompact:
         async def on_compact(trigger: str, message: str):
             compact_calls.append({"trigger": trigger, "message": message})
 
-        async def mock_query(prompt, options):
-            # PreCompact 훅을 시뮬레이션하기 위해 compact_events에 직접 추가
-            # (실제로는 SDK 내부에서 훅을 호출하지만, 테스트에서는 직접 시뮬레이션)
-            yield MockSystemMessage(session_id="compact-test")
-            yield MockAssistantMessage(content=[MockTextBlock(text="작업 중...")])
-            yield MockResultMessage(result="완료", session_id="compact-test")
+        mock_client = _make_mock_client(
+            MockSystemMessage(session_id="compact-test"),
+            MockAssistantMessage(content=[MockTextBlock(text="작업 중...")]),
+            MockResultMessage(result="완료", session_id="compact-test"),
+        )
 
-        # compact_events 리스트에 직접 이벤트를 추가하는 방식으로 훅 시뮬레이션
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None):
             options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
-            # 훅 시뮬레이션: compact_events에 이벤트 추가
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -340,7 +367,7 @@ class TestClaudeAgentRunnerCompact:
                 })
             return options
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
                     with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -363,8 +390,9 @@ class TestClaudeAgentRunnerCompact:
         async def on_compact(trigger: str, message: str):
             compact_calls.append({"trigger": trigger, "message": message})
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(result="완료", session_id="test")
+        mock_client = _make_mock_client(
+            MockResultMessage(result="완료", session_id="test"),
+        )
 
         original_build = runner._build_options
 
@@ -381,7 +409,7 @@ class TestClaudeAgentRunnerCompact:
                 })
             return options
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
                 with patch.object(runner, "_build_options", patched_build):
                     result = await runner.run("테스트", on_compact=on_compact)
@@ -398,8 +426,9 @@ class TestClaudeAgentRunnerCompact:
         async def failing_compact(trigger: str, message: str):
             raise RuntimeError("콜백 오류")
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(result="완료", session_id="test")
+        mock_client = _make_mock_client(
+            MockResultMessage(result="완료", session_id="test"),
+        )
 
         original_build = runner._build_options
 
@@ -412,7 +441,7 @@ class TestClaudeAgentRunnerCompact:
                 })
             return options
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
                 with patch.object(runner, "_build_options", patched_build):
                     result = await runner.run("테스트", on_compact=failing_compact)
@@ -424,10 +453,11 @@ class TestClaudeAgentRunnerCompact:
         """on_compact 미전달 시에도 정상 동작 확인"""
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(result="완료", session_id="test")
+        mock_client = _make_mock_client(
+            MockResultMessage(result="완료", session_id="test"),
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.run("테스트")
 
@@ -501,11 +531,12 @@ class TestProcessErrorHandling:
         """ProcessError 발생 시 친절한 메시지 반환"""
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            raise ProcessError("Command failed with exit code 1", exit_code=1, stderr="Check stderr output for details")
-            yield
+        mock_client = AsyncMock()
+        mock_client.connect.side_effect = ProcessError(
+            "Command failed with exit code 1", exit_code=1, stderr="Check stderr output for details"
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -518,11 +549,12 @@ class TestProcessErrorHandling:
         """usage limit ProcessError 발생 시 친절한 메시지"""
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            raise ProcessError("usage limit reached", exit_code=1, stderr="usage limit")
-            yield
+        mock_client = AsyncMock()
+        mock_client.connect.side_effect = ProcessError(
+            "usage limit reached", exit_code=1, stderr="usage limit"
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False

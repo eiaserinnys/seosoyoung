@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
-from claude_code_sdk import query, ClaudeCodeOptions, HookMatcher, HookContext
+from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient, HookMatcher, HookContext
 from claude_code_sdk._errors import ProcessError
 from claude_code_sdk.types import (
     AssistantMessage,
@@ -116,6 +116,7 @@ class ClaudeAgentRunner:
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
         self._lock = asyncio.Lock()
+        self._active_clients: dict[str, ClaudeSDKClient] = {}
 
     @classmethod
     def _ensure_loop(cls) -> None:
@@ -156,6 +157,61 @@ class ClaudeAgentRunner:
         self._ensure_loop()
         future = asyncio.run_coroutine_threadsafe(coro, self._shared_loop)
         return future.result()
+
+    async def _get_or_create_client(
+        self,
+        thread_ts: str,
+        options: Optional[ClaudeCodeOptions] = None,
+    ) -> ClaudeSDKClient:
+        """스레드에 대한 ClaudeSDKClient를 가져오거나 새로 생성
+
+        Args:
+            thread_ts: 스레드 타임스탬프 (클라이언트 키)
+            options: ClaudeCodeOptions (새 클라이언트 생성 시 사용)
+        """
+        if thread_ts in self._active_clients:
+            return self._active_clients[thread_ts]
+
+        client = ClaudeSDKClient(options=options)
+        await client.connect()
+        self._active_clients[thread_ts] = client
+        logger.info(f"ClaudeSDKClient 생성: thread={thread_ts}")
+        return client
+
+    async def _remove_client(self, thread_ts: str) -> None:
+        """스레드의 ClaudeSDKClient를 정리
+
+        disconnect 후 딕셔너리에서 제거합니다.
+        disconnect 실패 시에도 딕셔너리에서 제거합니다.
+        """
+        client = self._active_clients.pop(thread_ts, None)
+        if client is None:
+            return
+        try:
+            await client.disconnect()
+        except Exception as e:
+            logger.warning(f"ClaudeSDKClient disconnect 오류 (무시): thread={thread_ts}, {e}")
+        logger.info(f"ClaudeSDKClient 제거: thread={thread_ts}")
+
+    async def interrupt(self, thread_ts: str) -> bool:
+        """실행 중인 스레드에 인터럽트 전송
+
+        Args:
+            thread_ts: 스레드 타임스탬프
+
+        Returns:
+            True: 인터럽트 성공, False: 해당 스레드에 클라이언트 없음 또는 실패
+        """
+        client = self._active_clients.get(thread_ts)
+        if client is None:
+            return False
+        try:
+            await client.interrupt()
+            logger.info(f"인터럽트 전송: thread={thread_ts}")
+            return True
+        except Exception as e:
+            logger.warning(f"인터럽트 실패: thread={thread_ts}, {e}")
+            return False
 
     def _build_options(
         self,
@@ -287,8 +343,8 @@ class ClaudeAgentRunner:
     ) -> None:
         """관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
 
-        executor.py가 asyncio.run()으로 호출하므로, 코루틴 완료 후 이벤트 루프가 닫힙니다.
-        따라서 create_task 대신 별도 스레드에서 새 이벤트 루프를 생성하여 실행합니다.
+        공유 이벤트 루프에서 ClaudeSDKClient가 실행되므로,
+        별도 스레드에서 새 이벤트 루프를 생성하여 OM 파이프라인을 실행합니다.
         """
         try:
             from seosoyoung.config import Config
@@ -356,11 +412,14 @@ class ClaudeAgentRunner:
         user_id: Optional[str] = None,
         thread_ts: Optional[str] = None,
     ) -> ClaudeResult:
-        """실제 실행 로직"""
+        """실제 실행 로직 (ClaudeSDKClient 기반)"""
         compact_events: list[dict] = []
         compact_notified_count = 0
         options = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
+
+        # 스레드 키: thread_ts가 없으면 임시 키 생성
+        client_key = thread_ts or f"_ephemeral_{id(asyncio.current_task())}"
 
         result_session_id = None
         current_text = ""
@@ -372,7 +431,10 @@ class ClaudeAgentRunner:
         idle_timeout = self.timeout
 
         try:
-            aiter = query(prompt=prompt, options=options).__aiter__()
+            client = await self._get_or_create_client(client_key, options=options)
+            await client.query(prompt)
+
+            aiter = client.receive_response().__aiter__()
             while True:
                 try:
                     message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
@@ -531,6 +593,9 @@ class ClaudeAgentRunner:
                 session_id=result_session_id,
                 error=str(e)
             )
+        finally:
+            # 응답 완료 또는 에러 시 클라이언트 정리
+            await self._remove_client(client_key)
 
     async def compact_session(self, session_id: str) -> ClaudeResult:
         """세션 컴팩트 처리
