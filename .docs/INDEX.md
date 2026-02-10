@@ -68,8 +68,8 @@
 - `Observer` (seosoyoung/memory/observer.py:60): 대화를 관찰하여 구조화된 관찰 로그를 생성
 - `ReflectorResult` (seosoyoung/memory/reflector.py:23): Reflector 출력 결과
 - `Reflector` (seosoyoung/memory/reflector.py:38): 관찰 로그를 압축하고 재구조화
-- `MemoryRecord` (seosoyoung/memory/store.py:29): 세션별 관찰 로그 레코드
-- `MemoryStore` (seosoyoung/memory/store.py:84): 파일 기반 관찰 로그 저장소
+- `MemoryRecord` (seosoyoung/memory/store.py:36): 세션별 관찰 로그 레코드
+- `MemoryStore` (seosoyoung/memory/store.py:91): 파일 기반 관찰 로그 저장소
 - `TokenCounter` (seosoyoung/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
 - `ProfileInfo` (seosoyoung/profile/manager.py:14): 프로필 정보
 - `ProfileManager` (seosoyoung/profile/manager.py:24): Claude Code 인증 프로필 관리자

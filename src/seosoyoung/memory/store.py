@@ -1,6 +1,6 @@
 """관찰 로그 저장소
 
-파일 기반으로 세션(thread_ts) 단위 관찰 로그와 대화 로그를 관리합니다.
+파일 기반으로 세션(thread_ts) 단위 관찰 로그, 대화 로그, 장기 기억을 관리합니다.
 
 저장 구조:
     memory/
@@ -10,8 +10,15 @@
     │   └── {thread_ts}.inject      # OM 주입 플래그 (존재하면 다음 요청에 주입)
     ├── pending/
     │   └── {thread_ts}.jsonl       # 세션별 미관찰 대화 버퍼 (누적)
-    └── conversations/
-        └── {thread_ts}.jsonl       # 세션별 대화 로그
+    ├── conversations/
+    │   └── {thread_ts}.jsonl       # 세션별 대화 로그
+    ├── candidates/
+    │   └── {thread_ts}.jsonl       # 장기 기억 후보 (세션 단위 누적)
+    └── persistent/
+        ├── recent.md               # 활성 장기 기억
+        ├── recent.meta.json        # 메타데이터
+        └── archive/                # 컴팩션 시 이전 버전 보존
+            └── recent_{timestamp}.md
 """
 
 import json
@@ -92,12 +99,16 @@ class MemoryStore:
         self.observations_dir = self.base_dir / "observations"
         self.pending_dir = self.base_dir / "pending"
         self.conversations_dir = self.base_dir / "conversations"
+        self.candidates_dir = self.base_dir / "candidates"
+        self.persistent_dir = self.base_dir / "persistent"
 
     def _ensure_dirs(self) -> None:
         """저장소 디렉토리가 없으면 생성"""
         self.observations_dir.mkdir(parents=True, exist_ok=True)
         self.pending_dir.mkdir(parents=True, exist_ok=True)
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
+        self.candidates_dir.mkdir(parents=True, exist_ok=True)
+        self.persistent_dir.mkdir(parents=True, exist_ok=True)
 
     def _obs_path(self, thread_ts: str) -> Path:
         return self.observations_dir / f"{thread_ts}.md"
@@ -227,3 +238,141 @@ class MemoryStore:
                 if line:
                     messages.append(json.loads(line))
         return messages
+
+    # ── candidates (장기 기억 후보) ─────────────────────────────
+
+    def _candidates_path(self, thread_ts: str) -> Path:
+        return self.candidates_dir / f"{thread_ts}.jsonl"
+
+    def _candidates_lock_path(self, thread_ts: str) -> Path:
+        return self.candidates_dir / f"{thread_ts}.lock"
+
+    def append_candidates(self, thread_ts: str, entries: list[dict]) -> None:
+        """후보 항목을 세션별 파일에 누적합니다."""
+        self._ensure_dirs()
+
+        lock = FileLock(str(self._candidates_lock_path(thread_ts)), timeout=5)
+        with lock:
+            with open(self._candidates_path(thread_ts), "a", encoding="utf-8") as f:
+                for entry in entries:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def load_candidates(self, thread_ts: str) -> list[dict]:
+        """세션별 후보를 로드합니다. 없으면 빈 리스트."""
+        path = self._candidates_path(thread_ts)
+        if not path.exists():
+            return []
+
+        lock = FileLock(str(self._candidates_lock_path(thread_ts)), timeout=5)
+        with lock:
+            entries = []
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        entries.append(json.loads(line))
+            return entries
+
+    def load_all_candidates(self) -> list[dict]:
+        """전체 세션의 후보를 수집합니다."""
+        if not self.candidates_dir.exists():
+            return []
+
+        all_entries = []
+        for path in sorted(self.candidates_dir.glob("*.jsonl")):
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        all_entries.append(json.loads(line))
+        return all_entries
+
+    def count_all_candidate_tokens(self) -> int:
+        """전체 후보의 content 필드 토큰 합산."""
+        from seosoyoung.memory.token_counter import TokenCounter
+
+        candidates = self.load_all_candidates()
+        if not candidates:
+            return 0
+
+        counter = TokenCounter()
+        total = 0
+        for entry in candidates:
+            total += counter.count_string(entry.get("content", ""))
+        return total
+
+    def clear_all_candidates(self) -> None:
+        """모든 후보 파일을 삭제합니다."""
+        if not self.candidates_dir.exists():
+            return
+
+        for path in self.candidates_dir.glob("*.jsonl"):
+            path.unlink()
+        for path in self.candidates_dir.glob("*.lock"):
+            path.unlink()
+
+    # ── persistent (장기 기억) ──────────────────────────────────
+
+    def _persistent_content_path(self) -> Path:
+        return self.persistent_dir / "recent.md"
+
+    def _persistent_meta_path(self) -> Path:
+        return self.persistent_dir / "recent.meta.json"
+
+    def _persistent_lock_path(self) -> Path:
+        return self.persistent_dir / "recent.lock"
+
+    def _persistent_archive_dir(self) -> Path:
+        return self.persistent_dir / "archive"
+
+    def get_persistent(self) -> dict | None:
+        """장기 기억을 로드합니다. 없으면 None.
+
+        Returns:
+            {"content": str, "meta": dict} 또는 None
+        """
+        content_path = self._persistent_content_path()
+        if not content_path.exists():
+            return None
+
+        lock = FileLock(str(self._persistent_lock_path()), timeout=5)
+        with lock:
+            content = content_path.read_text(encoding="utf-8")
+            meta = {}
+            meta_path = self._persistent_meta_path()
+            if meta_path.exists():
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            return {"content": content, "meta": meta}
+
+    def save_persistent(self, content: str, meta: dict) -> None:
+        """장기 기억을 저장합니다."""
+        self._ensure_dirs()
+
+        lock = FileLock(str(self._persistent_lock_path()), timeout=5)
+        with lock:
+            self._persistent_content_path().write_text(content, encoding="utf-8")
+            self._persistent_meta_path().write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+    def archive_persistent(self) -> Path | None:
+        """기존 장기 기억을 archive/에 백업합니다.
+
+        Returns:
+            아카이브 파일 경로 또는 None (장기 기억이 없을 때)
+        """
+        content_path = self._persistent_content_path()
+        if not content_path.exists():
+            return None
+
+        archive_dir = self._persistent_archive_dir()
+        archive_dir.mkdir(parents=True, exist_ok=True)
+
+        lock = FileLock(str(self._persistent_lock_path()), timeout=5)
+        with lock:
+            content = content_path.read_text(encoding="utf-8")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S%f")
+            archive_path = archive_dir / f"recent_{timestamp}.md"
+            archive_path.write_text(content, encoding="utf-8")
+            return archive_path
