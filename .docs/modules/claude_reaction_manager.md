@@ -11,7 +11,7 @@
 ## 함수
 
 ### `add_reaction(client, channel, ts, emoji)`
-- 위치: 줄 23
+- 위치: 줄 24
 - 설명: 슬랙 메시지에 이모지 리액션 추가
 
 Args:
@@ -24,7 +24,7 @@ Returns:
     성공 여부
 
 ### `remove_reaction(client, channel, ts, emoji)`
-- 위치: 줄 43
+- 위치: 줄 44
 - 설명: 슬랙 메시지에서 이모지 리액션 제거
 
 Args:

@@ -24,6 +24,7 @@ from seosoyoung.claude.message_formatter import (
 from seosoyoung.claude.reaction_manager import (
     TRELLO_REACTIONS,
     INTERVENTION_EMOJI,
+    INTERVENTION_ACCEPTED_EMOJI,
     add_reaction,
     remove_reaction
 )
@@ -249,6 +250,10 @@ class ClaudeExecutor:
                     break
 
                 logger.info(f"인터벤션 이어가기: thread={original_thread_ts}")
+
+                # 📩 → ✅ 리액션 교체
+                remove_reaction(pending.client, pending.channel, pending.msg_ts, INTERVENTION_EMOJI)
+                add_reaction(pending.client, pending.channel, pending.msg_ts, INTERVENTION_ACCEPTED_EMOJI)
 
                 # pending의 정보로 다음 실행
                 p_role = pending.role or session.role

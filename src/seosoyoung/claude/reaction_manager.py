@@ -16,8 +16,9 @@ TRELLO_REACTIONS = {
     "error": "x",                   # ❌ 오류
 }
 
-# 인터벤션 이모지 (실행 중 새 메시지 도착 시)
-INTERVENTION_EMOJI = "zap"  # ⚡
+# 인터벤션 이모지
+INTERVENTION_EMOJI = "incoming_envelope"  # 📩 대기 중
+INTERVENTION_ACCEPTED_EMOJI = "heavy_check_mark"  # ✅ 수락됨
 
 
 def add_reaction(client, channel: str, ts: str, emoji: str) -> bool:

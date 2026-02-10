@@ -54,8 +54,8 @@
 
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:82): Claude Code 실행 결과
 - `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:98): Claude Code SDK 기반 실행기
-- `PendingPrompt` (seosoyoung/claude/executor.py:49): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:62): Claude Code 실행기
+- `PendingPrompt` (seosoyoung/claude/executor.py:50): 인터벤션 대기 중인 프롬프트 정보
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:63): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
@@ -115,13 +115,13 @@
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
 - `async main()` (seosoyoung/claude/agent_runner.py:635): 
-- `get_runner_for_role()` (seosoyoung/claude/executor.py:36): 역할에 맞는 ClaudeAgentRunner 반환
+- `get_runner_for_role()` (seosoyoung/claude/executor.py:37): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱
 - `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:63): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:87): 트렐로 카드용 슬랙 메시지 헤더 생성
-- `add_reaction()` (seosoyoung/claude/reaction_manager.py:23): 슬랙 메시지에 이모지 리액션 추가
-- `remove_reaction()` (seosoyoung/claude/reaction_manager.py:43): 슬랙 메시지에서 이모지 리액션 제거
+- `add_reaction()` (seosoyoung/claude/reaction_manager.py:24): 슬랙 메시지에 이모지 리액션 추가
+- `remove_reaction()` (seosoyoung/claude/reaction_manager.py:44): 슬랙 메시지에서 이모지 리액션 제거
 - `register_all_handlers()` (seosoyoung/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록
