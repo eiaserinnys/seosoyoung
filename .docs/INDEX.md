@@ -24,6 +24,7 @@
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
 - [`memory/observer.py`](modules/memory_observer.md): Observer 모듈
 - [`memory/prompts.py`](modules/memory_prompts.md): Observer/Reflector 프롬프트
+- [`memory/reflector.py`](modules/memory_reflector.md): Reflector 모듈
 - [`memory/store.py`](modules/memory_store.md): 관찰 로그 저장소
 - [`memory/token_counter.py`](modules/memory_token_counter.md): 토큰 카운터
 - [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리
@@ -64,6 +65,8 @@
 - `ContextBuilder` (seosoyoung/memory/context_builder.py:102): 관찰 로그를 시스템 프롬프트로 변환
 - `ObserverResult` (seosoyoung/memory/observer.py:23): Observer 출력 결과
 - `Observer` (seosoyoung/memory/observer.py:61): 대화를 관찰하여 구조화된 관찰 로그를 생성
+- `ReflectorResult` (seosoyoung/memory/reflector.py:23): Reflector 출력 결과
+- `Reflector` (seosoyoung/memory/reflector.py:38): 관찰 로그를 압축하고 재구조화
 - `MemoryRecord` (seosoyoung/memory/store.py:26): 사용자별 관찰 로그 레코드
 - `MemoryStore` (seosoyoung/memory/store.py:75): 파일 기반 관찰 로그 저장소
 - `TokenCounter` (seosoyoung/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
@@ -110,7 +113,7 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:430): 
+- `async main()` (seosoyoung/claude/agent_runner.py:437): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:31): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱
@@ -138,7 +141,7 @@
 - `init_bot_user_id()` (seosoyoung/main.py:146): 봇 사용자 ID 초기화
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:17): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:60): 관찰 로그를 컨텍스트 주입에 최적화합니다.
-- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:17): 대화를 관찰하고 관찰 로그를 갱신합니다.
+- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:19): 대화를 관찰하고 관찰 로그를 갱신합니다.
 - `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.
 - `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:77): Observer 시스템 프롬프트를 반환합니다.
 - `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:82): Observer 사용자 프롬프트를 구성합니다.

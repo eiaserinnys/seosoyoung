@@ -22,8 +22,8 @@ Claude Code SDK 기반 실행기
 - `_build_options(self, session_id, compact_events, user_id)` (줄 111): ClaudeCodeOptions 생성
 - `async run(self, prompt, session_id, on_progress, on_compact, user_id)` (줄 183): Claude Code 실행
 - `_trigger_observation(self, user_id, prompt, collected_messages)` (줄 209): 관찰 파이프라인을 비동기로 트리거 (봇 응답 블로킹 없음)
-- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id)` (줄 250): 실제 실행 로직
-- `async compact_session(self, session_id)` (줄 400): 세션 컴팩트 처리
+- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id)` (줄 257): 실제 실행 로직
+- `async compact_session(self, session_id)` (줄 407): 세션 컴팩트 처리
 
 ## 함수
 
@@ -36,4 +36,4 @@ SDK가 stderr를 캡처하지 않아 원인 구분이 어렵습니다.
 exit_code와 stderr 패턴을 기반으로 최대한 분류합니다.
 
 ### `async main()`
-- 위치: 줄 430
+- 위치: 줄 437

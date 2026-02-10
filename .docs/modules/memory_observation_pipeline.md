@@ -11,8 +11,8 @@ agent_runner의 Stop 훅에서 비동기로 트리거됩니다.
 
 ## 함수
 
-### `async observe_conversation(store, observer, user_id, messages, min_conversation_tokens)`
-- 위치: 줄 17
+### `async observe_conversation(store, observer, user_id, messages, min_conversation_tokens, reflector, reflection_threshold)`
+- 위치: 줄 19
 - 설명: 대화를 관찰하고 관찰 로그를 갱신합니다.
 
 Args:
@@ -21,6 +21,8 @@ Args:
     user_id: 사용자 ID
     messages: 세션 대화 내역
     min_conversation_tokens: 최소 대화 토큰 수
+    reflector: Reflector 인스턴스 (None이면 압축 건너뜀)
+    reflection_threshold: Reflector 트리거 토큰 임계치
 
 Returns:
     True: 관찰 성공, False: 관찰 건너뜀 또는 실패
@@ -28,6 +30,7 @@ Returns:
 ## 내부 의존성
 
 - `seosoyoung.memory.observer.Observer`
+- `seosoyoung.memory.reflector.Reflector`
 - `seosoyoung.memory.store.MemoryRecord`
 - `seosoyoung.memory.store.MemoryStore`
 - `seosoyoung.memory.token_counter.TokenCounter`

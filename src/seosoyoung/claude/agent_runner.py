@@ -225,10 +225,15 @@ class ClaudeAgentRunner:
                 try:
                     from seosoyoung.memory.observation_pipeline import observe_conversation
                     from seosoyoung.memory.observer import Observer
+                    from seosoyoung.memory.reflector import Reflector
                     from seosoyoung.memory.store import MemoryStore
 
                     store = MemoryStore(Config.get_memory_path())
                     observer = Observer(
+                        api_key=Config.OPENAI_API_KEY,
+                        model=Config.OM_MODEL,
+                    )
+                    reflector = Reflector(
                         api_key=Config.OPENAI_API_KEY,
                         model=Config.OM_MODEL,
                     )
@@ -238,6 +243,8 @@ class ClaudeAgentRunner:
                         user_id=user_id,
                         messages=messages,
                         min_conversation_tokens=Config.OM_MIN_CONVERSATION_TOKENS,
+                        reflector=reflector,
+                        reflection_threshold=Config.OM_REFLECTION_THRESHOLD,
                     )
                 except Exception as e:
                     logger.error(f"OM 관찰 파이프라인 비동기 실행 오류 (무시): {e}")
