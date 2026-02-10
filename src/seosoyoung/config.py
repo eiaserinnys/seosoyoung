@@ -141,6 +141,20 @@ class Config:
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-pro-image-preview")
 
     # ========================================
+    # Observational Memory 설정
+    # ========================================
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    OM_MODEL = os.getenv("OM_MODEL", "gpt-4.1-mini")
+    OM_ENABLED = _parse_bool(os.getenv("OM_ENABLED"), False)
+    OM_REFLECTION_THRESHOLD = _parse_int(os.getenv("OM_REFLECTION_THRESHOLD"), 20000)
+    OM_MIN_CONVERSATION_TOKENS = _parse_int(
+        os.getenv("OM_MIN_CONVERSATION_TOKENS"), 500
+    )
+    OM_MAX_OBSERVATION_TOKENS = _parse_int(
+        os.getenv("OM_MAX_OBSERVATION_TOKENS"), 30000
+    )
+
+    # ========================================
     # 실행 트리거 설정
     # ========================================
     EXECUTE_EMOJI = os.getenv("EXECUTE_EMOJI", "rocket")
@@ -177,6 +191,11 @@ class Config:
     def get_web_cache_path() -> str:
         """웹 콘텐츠 캐시 경로"""
         return _get_path("WEB_CACHE_PATH", ".local/cache/web")
+
+    @staticmethod
+    def get_memory_path() -> str:
+        """관찰 로그 저장 경로"""
+        return _get_path("MEMORY_PATH", "memory")
 
     # ========================================
     # 검증

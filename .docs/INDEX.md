@@ -20,6 +20,9 @@
 - [`image_gen/generator.py`](modules/image_gen_generator.md): Gemini API 이미지 생성 모듈
 - [`seosoyoung/logging_config.py`](modules/seosoyoung_logging_config.md): 로깅 설정 모듈
 - [`seosoyoung/main.py`](modules/seosoyoung_main.md): SeoSoyoung 슬랙 봇 메인
+- [`memory/prompts.py`](modules/memory_prompts.md): Observer/Reflector 프롬프트
+- [`memory/store.py`](modules/memory_store.md): 관찰 로그 저장소
+- [`memory/token_counter.py`](modules/memory_token_counter.md): 토큰 카운터
 - [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리
 - [`recall/aggregator.py`](modules/recall_aggregator.md): 결과 집계기
 - [`recall/evaluator.py`](modules/recall_evaluator.md): 하이쿠 평가 클라이언트
@@ -55,6 +58,9 @@
 - `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `GeneratedImage` (seosoyoung/image_gen/generator.py:24): 생성된 이미지 결과
+- `MemoryRecord` (seosoyoung/memory/store.py:26): 사용자별 관찰 로그 레코드
+- `MemoryStore` (seosoyoung/memory/store.py:75): 파일 기반 관찰 로그 저장소
+- `TokenCounter` (seosoyoung/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
 - `ProfileInfo` (seosoyoung/profile/manager.py:14): 프로필 정보
 - `ProfileManager` (seosoyoung/profile/manager.py:24): Claude Code 인증 프로필 관리자
 - `AggregationResult` (seosoyoung/recall/aggregator.py:121): 집계 결과
@@ -124,6 +130,10 @@
 - `start_trello_watcher()` (seosoyoung/main.py:116): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:136): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:146): 봇 사용자 ID 초기화
+- `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:77): Observer 시스템 프롬프트를 반환합니다.
+- `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:82): Observer 사용자 프롬프트를 구성합니다.
+- `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:166): Reflector 시스템 프롬프트를 반환합니다.
+- `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:171): Reflector 재시도 프롬프트를 반환합니다.
 - `rank_results()` (seosoyoung/recall/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
 - `select_best_tool()` (seosoyoung/recall/aggregator.py:42): 최적 도구 선택.
 - `build_summary_prompt()` (seosoyoung/recall/aggregator.py:67): 요약 생성 프롬프트.
