@@ -145,7 +145,8 @@ class Config:
     # ========================================
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     OM_MODEL = os.getenv("OM_MODEL", "gpt-4.1-mini")
-    OM_ENABLED = _parse_bool(os.getenv("OM_ENABLED"), False)
+    OM_ENABLED = _parse_bool(os.getenv("OM_ENABLED"), True)
+    OM_DEBUG_CHANNEL = os.getenv("OM_DEBUG_CHANNEL", "")
     OM_REFLECTION_THRESHOLD = _parse_int(os.getenv("OM_REFLECTION_THRESHOLD"), 20000)
     OM_MIN_CONVERSATION_TOKENS = _parse_int(
         os.getenv("OM_MIN_CONVERSATION_TOKENS"), 500

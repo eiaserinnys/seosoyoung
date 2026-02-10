@@ -199,18 +199,20 @@ class TestTriggerObservation:
     """agent_runner._trigger_observation 테스트"""
 
     @pytest.mark.asyncio
-    async def test_trigger_creates_async_task(self):
-        """_trigger_observation이 asyncio.create_task를 호출하는지 확인"""
+    async def test_trigger_creates_thread(self):
+        """_trigger_observation이 별도 스레드를 생성하는지 확인"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner()
         messages = [{"role": "assistant", "content": "응답"}]
 
-        with patch("seosoyoung.claude.agent_runner.asyncio.create_task") as mock_create:
+        with patch("seosoyoung.claude.agent_runner.threading.Thread") as mock_thread:
+            mock_thread.return_value.start = MagicMock()
             with patch("seosoyoung.config.Config.OM_ENABLED", True):
                 runner._trigger_observation("U12345", "프롬프트", messages)
 
-        mock_create.assert_called_once()
+        mock_thread.assert_called_once()
+        mock_thread.return_value.start.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_trigger_disabled_when_om_off(self):
@@ -219,11 +221,11 @@ class TestTriggerObservation:
 
         runner = ClaudeAgentRunner()
 
-        with patch("seosoyoung.claude.agent_runner.asyncio.create_task") as mock_create:
+        with patch("seosoyoung.claude.agent_runner.threading.Thread") as mock_thread:
             with patch("seosoyoung.config.Config.OM_ENABLED", False):
                 runner._trigger_observation("U12345", "프롬프트", [])
 
-        mock_create.assert_not_called()
+        mock_thread.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_trigger_error_does_not_propagate(self):
@@ -252,6 +254,12 @@ class TestTriggerObservation:
             captured_messages.extend(kwargs.get("messages", []))
             return False
 
+        # Thread.start()를 가로채서 target을 직접 실행
+        def run_thread_target_directly(target, daemon=True):
+            mock_t = MagicMock()
+            mock_t.start = lambda: target()
+            return mock_t
+
         with patch("seosoyoung.config.Config.OM_ENABLED", True):
             with patch("seosoyoung.config.Config.OPENAI_API_KEY", "test-key"):
                 with patch("seosoyoung.config.Config.OM_MODEL", "gpt-4.1-mini"):
@@ -261,12 +269,11 @@ class TestTriggerObservation:
                                 "seosoyoung.memory.observation_pipeline.observe_conversation",
                                 side_effect=mock_observe,
                             ) as mock_obs:
-                                with patch("seosoyoung.claude.agent_runner.asyncio.create_task") as mock_task:
+                                with patch(
+                                    "seosoyoung.claude.agent_runner.threading.Thread",
+                                    side_effect=run_thread_target_directly,
+                                ):
                                     runner._trigger_observation("U12345", "테스트 프롬프트", collected)
-
-                                    # create_task에 전달된 코루틴을 실행
-                                    coro = mock_task.call_args[0][0]
-                                    await coro
 
         mock_obs.assert_called_once()
         call_kwargs = mock_obs.call_args.kwargs

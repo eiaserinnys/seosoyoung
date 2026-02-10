@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -212,7 +213,11 @@ class ClaudeAgentRunner:
         prompt: str,
         collected_messages: list[dict],
     ) -> None:
-        """관찰 파이프라인을 비동기로 트리거 (봇 응답 블로킹 없음)"""
+        """관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
+
+        executor.py가 asyncio.run()으로 호출하므로, 코루틴 완료 후 이벤트 루프가 닫힙니다.
+        따라서 create_task 대신 별도 스레드에서 새 이벤트 루프를 생성하여 실행합니다.
+        """
         try:
             from seosoyoung.config import Config
             if not Config.OM_ENABLED:
@@ -221,12 +226,17 @@ class ClaudeAgentRunner:
             # 사용자 메시지를 collected_messages 앞에 추가
             messages = [{"role": "user", "content": prompt}] + collected_messages
 
-            async def _run_observation():
+            def _run_in_thread():
                 try:
-                    from seosoyoung.memory.observation_pipeline import observe_conversation
+                    from seosoyoung.memory.observation_pipeline import (
+                        observe_conversation,
+                        _send_debug_log,
+                    )
                     from seosoyoung.memory.observer import Observer
                     from seosoyoung.memory.reflector import Reflector
                     from seosoyoung.memory.store import MemoryStore
+
+                    debug_channel = Config.OM_DEBUG_CHANNEL
 
                     store = MemoryStore(Config.get_memory_path())
                     observer = Observer(
@@ -237,7 +247,7 @@ class ClaudeAgentRunner:
                         api_key=Config.OPENAI_API_KEY,
                         model=Config.OM_MODEL,
                     )
-                    await observe_conversation(
+                    asyncio.run(observe_conversation(
                         store=store,
                         observer=observer,
                         user_id=user_id,
@@ -245,11 +255,23 @@ class ClaudeAgentRunner:
                         min_conversation_tokens=Config.OM_MIN_CONVERSATION_TOKENS,
                         reflector=reflector,
                         reflection_threshold=Config.OM_REFLECTION_THRESHOLD,
-                    )
+                        debug_channel=debug_channel,
+                    ))
                 except Exception as e:
                     logger.error(f"OM 관찰 파이프라인 비동기 실행 오류 (무시): {e}")
+                    # 별도 스레드에서 logger가 동작하지 않을 수 있으므로 디버그 채널로도 발송
+                    try:
+                        from seosoyoung.memory.observation_pipeline import _send_debug_log
+                        if Config.OM_DEBUG_CHANNEL:
+                            _send_debug_log(
+                                Config.OM_DEBUG_CHANNEL,
+                                f"❌ *OM 스레드 오류*\n• user: `{user_id}`\n• error: `{e}`",
+                            )
+                    except Exception:
+                        pass
 
-            asyncio.create_task(_run_observation())
+            thread = threading.Thread(target=_run_in_thread, daemon=True)
+            thread.start()
             logger.info(f"OM 관찰 파이프라인 트리거됨 (user={user_id})")
         except Exception as e:
             logger.warning(f"OM 관찰 트리거 실패 (무시): {e}")
