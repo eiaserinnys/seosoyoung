@@ -18,6 +18,11 @@ trafilatura>=1.6.0
 boilerpy3>=1.0.0
 htmldate>=1.6.0
 
+# Observational Memory
+openai>=1.0.0
+tiktoken>=0.7.0
+filelock>=3.13.0
+
 # Gemini (image generation)
 google-genai>=1.0.0
 

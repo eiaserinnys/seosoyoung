@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
@@ -86,6 +87,7 @@ class ClaudeResult:
     update_requested: bool = False
     restart_requested: bool = False
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
+    collected_messages: list[dict] = field(default_factory=list)  # OM용 대화 수집
 
 
 class ClaudeAgentRunner:
@@ -110,6 +112,7 @@ class ClaudeAgentRunner:
         self,
         session_id: Optional[str] = None,
         compact_events: Optional[list] = None,
+        user_id: Optional[str] = None,
     ) -> ClaudeCodeOptions:
         """ClaudeCodeOptions 생성
 
@@ -156,6 +159,25 @@ class ClaudeAgentRunner:
         if session_id:
             options.resume = session_id
 
+        # Observational Memory: 관찰 로그 주입
+        if user_id:
+            try:
+                from seosoyoung.config import Config
+                if Config.OM_ENABLED:
+                    from seosoyoung.memory.context_builder import ContextBuilder
+                    from seosoyoung.memory.store import MemoryStore
+
+                    store = MemoryStore(Config.get_memory_path())
+                    builder = ContextBuilder(store)
+                    memory_prompt = builder.build_memory_prompt(
+                        user_id, Config.OM_MAX_OBSERVATION_TOKENS
+                    )
+                    if memory_prompt:
+                        options.append_system_prompt = memory_prompt
+                        logger.info(f"OM 관찰 로그 주입 완료 (user={user_id})")
+            except Exception as e:
+                logger.warning(f"OM 관찰 로그 주입 실패 (무시): {e}")
+
         return options
 
     async def run(
@@ -164,6 +186,7 @@ class ClaudeAgentRunner:
         session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        user_id: Optional[str] = None,
     ) -> ClaudeResult:
         """Claude Code 실행
 
@@ -172,9 +195,64 @@ class ClaudeAgentRunner:
             session_id: 이어갈 세션 ID (선택)
             on_progress: 진행 상황 콜백 (선택)
             on_compact: 컴팩션 발생 콜백 (선택) - (trigger, message) 전달
+            user_id: 사용자 ID (OM 관찰 로그 주입용, 선택)
         """
         async with self._lock:
-            return await self._execute(prompt, session_id, on_progress, on_compact)
+            result = await self._execute(prompt, session_id, on_progress, on_compact, user_id)
+
+        # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
+        if result.success and user_id and result.collected_messages:
+            self._trigger_observation(user_id, prompt, result.collected_messages)
+
+        return result
+
+    def _trigger_observation(
+        self,
+        user_id: str,
+        prompt: str,
+        collected_messages: list[dict],
+    ) -> None:
+        """관찰 파이프라인을 비동기로 트리거 (봇 응답 블로킹 없음)"""
+        try:
+            from seosoyoung.config import Config
+            if not Config.OM_ENABLED:
+                return
+
+            # 사용자 메시지를 collected_messages 앞에 추가
+            messages = [{"role": "user", "content": prompt}] + collected_messages
+
+            async def _run_observation():
+                try:
+                    from seosoyoung.memory.observation_pipeline import observe_conversation
+                    from seosoyoung.memory.observer import Observer
+                    from seosoyoung.memory.reflector import Reflector
+                    from seosoyoung.memory.store import MemoryStore
+
+                    store = MemoryStore(Config.get_memory_path())
+                    observer = Observer(
+                        api_key=Config.OPENAI_API_KEY,
+                        model=Config.OM_MODEL,
+                    )
+                    reflector = Reflector(
+                        api_key=Config.OPENAI_API_KEY,
+                        model=Config.OM_MODEL,
+                    )
+                    await observe_conversation(
+                        store=store,
+                        observer=observer,
+                        user_id=user_id,
+                        messages=messages,
+                        min_conversation_tokens=Config.OM_MIN_CONVERSATION_TOKENS,
+                        reflector=reflector,
+                        reflection_threshold=Config.OM_REFLECTION_THRESHOLD,
+                    )
+                except Exception as e:
+                    logger.error(f"OM 관찰 파이프라인 비동기 실행 오류 (무시): {e}")
+
+            asyncio.create_task(_run_observation())
+            logger.info(f"OM 관찰 파이프라인 트리거됨 (user={user_id})")
+        except Exception as e:
+            logger.warning(f"OM 관찰 트리거 실패 (무시): {e}")
 
     async def _execute(
         self,
@@ -182,16 +260,18 @@ class ClaudeAgentRunner:
         session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        user_id: Optional[str] = None,
     ) -> ClaudeResult:
         """실제 실행 로직"""
         compact_events: list[dict] = []
         compact_notified_count = 0
-        options = self._build_options(session_id, compact_events=compact_events)
+        options = self._build_options(session_id, compact_events=compact_events, user_id=user_id)
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
 
         result_session_id = None
         current_text = ""
         result_text = ""
+        collected_messages: list[dict] = []  # OM용 대화 수집
         last_progress_time = asyncio.get_event_loop().time()
         progress_interval = 2.0
 
@@ -210,6 +290,13 @@ class ClaudeAgentRunner:
                             if isinstance(block, TextBlock):
                                 current_text = block.text
 
+                                # OM용 대화 수집
+                                collected_messages.append({
+                                    "role": "assistant",
+                                    "content": block.text,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                })
+
                                 # 진행 상황 콜백 (2초 간격)
                                 if on_progress:
                                     current_time = asyncio.get_event_loop().time()
@@ -227,6 +314,12 @@ class ClaudeAgentRunner:
                 elif isinstance(message, ResultMessage):
                     if hasattr(message, 'result'):
                         result_text = message.result
+                        # OM용 대화 수집
+                        collected_messages.append({
+                            "role": "assistant",
+                            "content": message.result,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
                     # ResultMessage에서도 세션 ID 추출 시도
                     if hasattr(message, 'session_id') and message.session_id:
                         result_session_id = message.session_id
@@ -275,6 +368,7 @@ class ClaudeAgentRunner:
                 update_requested=update_requested,
                 restart_requested=restart_requested,
                 list_run=list_run,
+                collected_messages=collected_messages,
             )
 
         except asyncio.TimeoutError:
