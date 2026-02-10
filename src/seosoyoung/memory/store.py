@@ -7,6 +7,8 @@
     ├── observations/
     │   ├── {user_id}.md          # 관찰 로그 (마크다운)
     │   └── {user_id}.meta.json   # 메타데이터
+    ├── pending/
+    │   └── {user_id}.jsonl       # 미관찰 대화 버퍼 (누적)
     └── conversations/
         └── {thread_ts}.jsonl     # 세션별 대화 로그
 """
@@ -78,11 +80,13 @@ class MemoryStore:
     def __init__(self, base_dir: str | Path):
         self.base_dir = Path(base_dir)
         self.observations_dir = self.base_dir / "observations"
+        self.pending_dir = self.base_dir / "pending"
         self.conversations_dir = self.base_dir / "conversations"
 
     def _ensure_dirs(self) -> None:
         """저장소 디렉토리가 없으면 생성"""
         self.observations_dir.mkdir(parents=True, exist_ok=True)
+        self.pending_dir.mkdir(parents=True, exist_ok=True)
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
 
     def _obs_path(self, user_id: str) -> Path:
@@ -130,6 +134,46 @@ class MemoryStore:
                 json.dumps(record.to_meta_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+
+    def _pending_path(self, user_id: str) -> Path:
+        return self.pending_dir / f"{user_id}.jsonl"
+
+    def _pending_lock_path(self, user_id: str) -> Path:
+        return self.pending_dir / f"{user_id}.lock"
+
+    def append_pending_messages(self, user_id: str, messages: list[dict]) -> None:
+        """미관찰 대화를 사용자별 버퍼에 누적합니다."""
+        self._ensure_dirs()
+
+        lock = FileLock(str(self._pending_lock_path(user_id)), timeout=5)
+        with lock:
+            with open(self._pending_path(user_id), "a", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+    def load_pending_messages(self, user_id: str) -> list[dict]:
+        """미관찰 대화 버퍼를 로드합니다. 없으면 빈 리스트."""
+        pending_path = self._pending_path(user_id)
+        if not pending_path.exists():
+            return []
+
+        lock = FileLock(str(self._pending_lock_path(user_id)), timeout=5)
+        with lock:
+            messages = []
+            with open(pending_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        messages.append(json.loads(line))
+            return messages
+
+    def clear_pending_messages(self, user_id: str) -> None:
+        """관찰 완료 후 미관찰 대화 버퍼를 비웁니다."""
+        pending_path = self._pending_path(user_id)
+        if pending_path.exists():
+            lock = FileLock(str(self._pending_lock_path(user_id)), timeout=5)
+            with lock:
+                pending_path.unlink()
 
     def save_conversation(self, thread_ts: str, messages: list[dict]) -> None:
         """세션 대화 로그를 JSONL로 저장합니다."""

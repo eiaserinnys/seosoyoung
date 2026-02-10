@@ -14,7 +14,6 @@ from seosoyoung.memory.prompts import (
     build_observer_system_prompt,
     build_observer_user_prompt,
 )
-from seosoyoung.memory.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
 
@@ -64,33 +63,21 @@ class Observer:
     def __init__(self, api_key: str, model: str = "gpt-4.1-mini"):
         self.client = openai.AsyncOpenAI(api_key=api_key)
         self.model = model
-        self.token_counter = TokenCounter()
 
     async def observe(
         self,
         existing_observations: str | None,
         messages: list[dict],
-        min_conversation_tokens: int = 500,
     ) -> ObserverResult | None:
         """대화를 관찰하여 새 관찰 로그를 생성합니다.
 
         Args:
             existing_observations: 기존 관찰 로그 (없으면 None)
-            messages: 세션 대화 내역
-            min_conversation_tokens: 최소 대화 토큰 수 (미달 시 None 반환)
+            messages: 누적된 미관찰 대화 내역
 
         Returns:
-            ObserverResult 또는 None (대화가 너무 짧은 경우)
+            ObserverResult 또는 None (관찰 실패 시)
         """
-        # 최소 대화 길이 체크
-        conversation_tokens = self.token_counter.count_messages(messages)
-        if conversation_tokens < min_conversation_tokens:
-            logger.info(
-                f"대화가 너무 짧아 관찰을 건너뜁니다 "
-                f"({conversation_tokens} < {min_conversation_tokens} tokens)"
-            )
-            return None
-
         system_prompt = build_observer_system_prompt()
         user_prompt = build_observer_user_prompt(existing_observations, messages)
 

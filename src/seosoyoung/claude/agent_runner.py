@@ -1,6 +1,7 @@
 """Claude Code SDK 기반 실행기"""
 
 import asyncio
+import json
 import logging
 import re
 import threading
@@ -17,6 +18,8 @@ from claude_code_sdk.types import (
     ResultMessage,
     SystemMessage,
     TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,7 +233,6 @@ class ClaudeAgentRunner:
                 try:
                     from seosoyoung.memory.observation_pipeline import (
                         observe_conversation,
-                        _send_debug_log,
                     )
                     from seosoyoung.memory.observer import Observer
                     from seosoyoung.memory.reflector import Reflector
@@ -252,7 +254,7 @@ class ClaudeAgentRunner:
                         observer=observer,
                         user_id=user_id,
                         messages=messages,
-                        min_conversation_tokens=Config.OM_MIN_CONVERSATION_TOKENS,
+                        observation_threshold=Config.OM_OBSERVATION_THRESHOLD,
                         reflector=reflector,
                         reflection_threshold=Config.OM_REFLECTION_THRESHOLD,
                         debug_channel=debug_channel,
@@ -305,7 +307,7 @@ class ClaudeAgentRunner:
                         result_session_id = message.session_id
                         logger.info(f"세션 ID: {result_session_id}")
 
-                # AssistantMessage에서 텍스트 추출 (진행 상황용)
+                # AssistantMessage에서 텍스트/도구 사용 추출
                 elif isinstance(message, AssistantMessage):
                     if hasattr(message, 'content'):
                         for block in message.content:
@@ -331,6 +333,27 @@ class ClaudeAgentRunner:
                                             last_progress_time = current_time
                                         except Exception as e:
                                             logger.warning(f"진행 상황 콜백 오류: {e}")
+
+                            elif isinstance(block, ToolUseBlock):
+                                # OM용: 도구 호출 수집
+                                collected_messages.append({
+                                    "role": "assistant",
+                                    "content": f"[tool_use: {block.name}]",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                })
+
+                            elif isinstance(block, ToolResultBlock):
+                                # OM용: 도구 결과 수집 (내용이 긴 경우 truncate)
+                                content = ""
+                                if isinstance(block.content, str):
+                                    content = block.content[:2000]
+                                elif block.content:
+                                    content = json.dumps(block.content, ensure_ascii=False)[:2000]
+                                collected_messages.append({
+                                    "role": "tool",
+                                    "content": content,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                })
 
                 # ResultMessage에서 최종 결과 추출
                 elif isinstance(message, ResultMessage):

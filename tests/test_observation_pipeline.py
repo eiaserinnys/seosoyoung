@@ -37,7 +37,7 @@ class TestObserveConversation:
     async def test_first_observation_creates_record(
         self, store, mock_observer, sample_messages
     ):
-        """첫 관찰 시 새 레코드를 생성"""
+        """누적 토큰이 임계치를 넘으면 관찰 수행"""
         mock_observer.observe.return_value = ObserverResult(
             observations="## [2026-02-10] Session Observations\n\n🔴 사용자가 캐릭터 정보를 요청함",
             current_task="캐릭터 정보 조회",
@@ -48,7 +48,7 @@ class TestObserveConversation:
             observer=mock_observer,
             user_id="U12345",
             messages=sample_messages,
-            min_conversation_tokens=0,
+            observation_threshold=0,  # 임계치 0으로 즉시 관찰
         )
 
         assert result is True
@@ -58,13 +58,14 @@ class TestObserveConversation:
         assert record.total_sessions_observed == 1
         assert record.last_observed_at is not None
         assert record.observation_tokens > 0
+        # 관찰 후 pending이 비워졌는지 확인
+        assert store.load_pending_messages("U12345") == []
 
     @pytest.mark.asyncio
     async def test_subsequent_observation_updates_record(
         self, store, mock_observer, sample_messages
     ):
         """기존 레코드가 있을 때 갱신"""
-        # 기존 레코드 생성
         existing_record = MemoryRecord(
             user_id="U12345",
             observations="## [2026-02-09] Previous\n\n🔴 이전 관찰",
@@ -82,35 +83,73 @@ class TestObserveConversation:
             observer=mock_observer,
             user_id="U12345",
             messages=sample_messages,
-            min_conversation_tokens=0,
+            observation_threshold=0,
         )
 
         assert result is True
         record = store.get_record("U12345")
         assert record.total_sessions_observed == 2
         assert "갱신된 관찰" in record.observations
-        # Observer에 기존 관찰 로그가 전달되었는지 확인
         mock_observer.observe.assert_called_once()
         call_args = mock_observer.observe.call_args
         assert "이전 관찰" in call_args.kwargs["existing_observations"]
 
     @pytest.mark.asyncio
-    async def test_short_conversation_skipped(
+    async def test_below_threshold_buffers_only(
         self, store, mock_observer, sample_messages
     ):
-        """Observer가 None을 반환하면 건너뜀"""
-        mock_observer.observe.return_value = None
-
+        """임계치 미달 시 버퍼에만 누적하고 Observer를 호출하지 않음"""
         result = await observe_conversation(
             store=store,
             observer=mock_observer,
             user_id="U12345",
             messages=sample_messages,
-            min_conversation_tokens=500,
+            observation_threshold=999999,  # 매우 높은 임계치
         )
 
         assert result is False
         assert store.get_record("U12345") is None
+        mock_observer.observe.assert_not_called()
+        # pending에 메시지가 누적되었는지 확인
+        pending = store.load_pending_messages("U12345")
+        assert len(pending) == len(sample_messages)
+
+    @pytest.mark.asyncio
+    async def test_accumulated_sessions_trigger_observation(
+        self, store, mock_observer, sample_messages
+    ):
+        """여러 세션의 누적 토큰이 임계치를 넘으면 관찰 수행"""
+        # 첫 번째 세션: 버퍼에만 누적
+        result1 = await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            user_id="U12345",
+            messages=sample_messages,
+            observation_threshold=999999,
+        )
+        assert result1 is False
+        mock_observer.observe.assert_not_called()
+
+        # 두 번째 세션: 임계치를 0으로 낮추면 누적분 + 새 메시지로 관찰 수행
+        mock_observer.observe.return_value = ObserverResult(
+            observations="## [2026-02-10] 누적 관찰\n\n🔴 여러 세션 종합 관찰",
+        )
+
+        result2 = await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            user_id="U12345",
+            messages=[{"role": "user", "content": "추가 질문"}],
+            observation_threshold=0,
+        )
+
+        assert result2 is True
+        mock_observer.observe.assert_called_once()
+        # Observer에 전달된 메시지가 누적분(3) + 새 메시지(1) = 4개인지 확인
+        call_args = mock_observer.observe.call_args
+        assert len(call_args.kwargs["messages"]) == len(sample_messages) + 1
+        # 관찰 후 pending이 비워졌는지 확인
+        assert store.load_pending_messages("U12345") == []
 
     @pytest.mark.asyncio
     async def test_observer_error_returns_false(
@@ -124,6 +163,7 @@ class TestObserveConversation:
             observer=mock_observer,
             user_id="U12345",
             messages=sample_messages,
+            observation_threshold=0,
         )
 
         assert result is False
@@ -148,12 +188,11 @@ class TestObserveConversation:
             observer=mock_observer,
             user_id="U12345",
             messages=sample_messages,
-            min_conversation_tokens=0,
+            observation_threshold=0,
         )
 
         call_kwargs = mock_observer.observe.call_args.kwargs
         assert call_kwargs["existing_observations"] == "기존 관찰 내용"
-        assert call_kwargs["messages"] == sample_messages
 
     @pytest.mark.asyncio
     async def test_no_existing_record_passes_none(
@@ -167,7 +206,7 @@ class TestObserveConversation:
             observer=mock_observer,
             user_id="U12345",
             messages=sample_messages,
-            min_conversation_tokens=0,
+            observation_threshold=0,
         )
 
         call_kwargs = mock_observer.observe.call_args.kwargs
@@ -188,7 +227,7 @@ class TestObserveConversation:
             observer=mock_observer,
             user_id="U12345",
             messages=sample_messages,
-            min_conversation_tokens=0,
+            observation_threshold=0,
         )
 
         record = store.get_record("U12345")
@@ -264,7 +303,7 @@ class TestTriggerObservation:
             with patch("seosoyoung.config.Config.OPENAI_API_KEY", "test-key"):
                 with patch("seosoyoung.config.Config.OM_MODEL", "gpt-4.1-mini"):
                     with patch("seosoyoung.config.Config.get_memory_path", return_value="/tmp/test"):
-                        with patch("seosoyoung.config.Config.OM_MIN_CONVERSATION_TOKENS", 0):
+                        with patch("seosoyoung.config.Config.OM_OBSERVATION_THRESHOLD", 0):
                             with patch(
                                 "seosoyoung.memory.observation_pipeline.observe_conversation",
                                 side_effect=mock_observe,

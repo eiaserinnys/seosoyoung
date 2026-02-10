@@ -131,29 +131,15 @@ class TestObserverObserve:
         return Observer(api_key="test-key", model="gpt-4.1-mini")
 
     @pytest.fixture
-    def long_messages(self):
-        """최소 토큰 수를 초과하는 대화"""
+    def sample_messages(self):
         return [
-            {"role": "user", "content": "이번에 eb_lore의 캐릭터 설정을 대폭 수정하려고 합니다. " * 20},
-            {"role": "assistant", "content": "네, 어떤 캐릭터를 수정하실 건가요? " * 20},
-        ]
-
-    @pytest.fixture
-    def short_messages(self):
-        """최소 토큰 수 미달인 대화"""
-        return [
-            {"role": "user", "content": "hi"},
+            {"role": "user", "content": "이번에 eb_lore의 캐릭터 설정을 대폭 수정하려고 합니다."},
+            {"role": "assistant", "content": "네, 어떤 캐릭터를 수정하실 건가요?"},
         ]
 
     @pytest.mark.asyncio
-    async def test_skip_short_conversation(self, observer, short_messages):
-        """짧은 대화는 None을 반환"""
-        result = await observer.observe(None, short_messages, min_conversation_tokens=500)
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_observe_calls_api(self, observer, long_messages):
-        """충분한 대화가 있으면 API를 호출"""
+    async def test_observe_calls_api(self, observer, sample_messages):
+        """API를 호출하여 관찰 결과를 반환"""
         mock_response = MagicMock()
         mock_response.choices = [
             MagicMock(
@@ -166,14 +152,14 @@ class TestObserverObserve:
         observer.client = AsyncMock()
         observer.client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        result = await observer.observe(None, long_messages, min_conversation_tokens=10)
+        result = await observer.observe(None, sample_messages)
 
         assert result is not None
         assert "🔴 Test observation" in result.observations
         observer.client.chat.completions.create.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_observe_raises_on_api_error(self, observer, long_messages):
+    async def test_observe_raises_on_api_error(self, observer, sample_messages):
         """API 오류 시 예외가 전파됨 (파이프라인에서 처리)"""
         observer.client = AsyncMock()
         observer.client.chat.completions.create = AsyncMock(
@@ -181,10 +167,10 @@ class TestObserverObserve:
         )
 
         with pytest.raises(Exception, match="API Error"):
-            await observer.observe(None, long_messages, min_conversation_tokens=10)
+            await observer.observe(None, sample_messages)
 
     @pytest.mark.asyncio
-    async def test_observe_with_existing_observations(self, observer, long_messages):
+    async def test_observe_with_existing_observations(self, observer, sample_messages):
         """기존 관찰이 있을 때 API에 전달되는지 확인"""
         mock_response = MagicMock()
         mock_response.choices = [
@@ -200,8 +186,7 @@ class TestObserverObserve:
 
         result = await observer.observe(
             "🔴 Previous observation",
-            long_messages,
-            min_conversation_tokens=10,
+            sample_messages,
         )
 
         assert result is not None

@@ -148,8 +148,8 @@ class Config:
     OM_ENABLED = _parse_bool(os.getenv("OM_ENABLED"), True)
     OM_DEBUG_CHANNEL = os.getenv("OM_DEBUG_CHANNEL", "")
     OM_REFLECTION_THRESHOLD = _parse_int(os.getenv("OM_REFLECTION_THRESHOLD"), 20000)
-    OM_MIN_CONVERSATION_TOKENS = _parse_int(
-        os.getenv("OM_MIN_CONVERSATION_TOKENS"), 500
+    OM_OBSERVATION_THRESHOLD = _parse_int(
+        os.getenv("OM_OBSERVATION_THRESHOLD"), 30000
     )
     OM_MAX_OBSERVATION_TOKENS = _parse_int(
         os.getenv("OM_MAX_OBSERVATION_TOKENS"), 30000

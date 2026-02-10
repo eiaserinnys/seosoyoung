@@ -120,6 +120,60 @@ class TestMemoryStoreGetSave:
         assert loaded_b.observations == "User B observations"
 
 
+class TestMemoryStorePending:
+    def test_append_and_load_pending(self, store):
+        """pending 메시지 누적 및 로드"""
+        messages1 = [{"role": "user", "content": "첫 번째 대화"}]
+        messages2 = [{"role": "user", "content": "두 번째 대화"}]
+
+        store.append_pending_messages("U12345", messages1)
+        store.append_pending_messages("U12345", messages2)
+
+        loaded = store.load_pending_messages("U12345")
+        assert len(loaded) == 2
+        assert loaded[0]["content"] == "첫 번째 대화"
+        assert loaded[1]["content"] == "두 번째 대화"
+
+    def test_load_empty_pending(self, store):
+        """pending이 없으면 빈 리스트"""
+        assert store.load_pending_messages("NONEXISTENT") == []
+
+    def test_clear_pending(self, store):
+        """pending 비우기"""
+        store.append_pending_messages("U12345", [{"role": "user", "content": "test"}])
+        assert len(store.load_pending_messages("U12345")) == 1
+
+        store.clear_pending_messages("U12345")
+        assert store.load_pending_messages("U12345") == []
+
+    def test_clear_nonexistent_pending(self, store):
+        """존재하지 않는 pending 비우기는 에러 없음"""
+        store.clear_pending_messages("NONEXISTENT")
+
+    def test_pending_preserves_unicode(self, store):
+        """한글/이모지가 올바르게 저장/로드"""
+        messages = [{"role": "user", "content": "🔴 캐릭터 정보 요청"}]
+        store.append_pending_messages("U12345", messages)
+
+        loaded = store.load_pending_messages("U12345")
+        assert loaded[0]["content"] == "🔴 캐릭터 정보 요청"
+
+    def test_pending_independent_per_user(self, store):
+        """사용자별 pending은 독립적"""
+        store.append_pending_messages("UA", [{"role": "user", "content": "A"}])
+        store.append_pending_messages("UB", [{"role": "user", "content": "B"}])
+
+        assert store.load_pending_messages("UA")[0]["content"] == "A"
+        assert store.load_pending_messages("UB")[0]["content"] == "B"
+
+    def test_pending_creates_directory(self, tmp_path):
+        """pending 디렉토리 자동 생성"""
+        deep_path = tmp_path / "x" / "y"
+        store = MemoryStore(base_dir=deep_path)
+        store.append_pending_messages("U12345", [{"role": "user", "content": "test"}])
+        assert store.pending_dir.exists()
+
+
 class TestMemoryStoreConversation:
     def test_save_and_load_conversation(self, store):
         messages = [
