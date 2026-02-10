@@ -106,18 +106,18 @@ class ContextBuilder:
         self.store = store
 
     def build_memory_prompt(
-        self, user_id: str, max_tokens: int = 30000
+        self, thread_ts: str, max_tokens: int = 30000
     ) -> str | None:
-        """관찰 로그를 시스템 프롬프트 텍스트로 변환합니다.
+        """세션의 관찰 로그를 시스템 프롬프트로 변환합니다.
 
         Args:
-            user_id: 사용자 ID
+            thread_ts: 세션(스레드) 타임스탬프
             max_tokens: 최대 토큰 수
 
         Returns:
             프롬프트 텍스트 또는 None (관찰 로그가 없는 경우)
         """
-        record = self.store.get_record(user_id)
+        record = self.store.get_record(thread_ts)
         if not record or not record.observations.strip():
             return None
 
@@ -129,7 +129,7 @@ class ContextBuilder:
 
         return (
             "<observational-memory>\n"
-            "다음은 이 사용자와의 과거 대화에서 관찰한 내용입니다.\n"
+            "다음은 이 세션의 과거 대화에서 관찰한 내용입니다.\n"
             "응답할 때 이 관찰을 자연스럽게 활용하세요.\n\n"
             f"{optimized}\n"
             "</observational-memory>"

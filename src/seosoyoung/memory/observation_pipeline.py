@@ -4,7 +4,7 @@
 Mastra의 원본 구현처럼 상한선(threshold) 기반으로 동작합니다.
 
 흐름:
-1. 세션 대화를 사용자별 pending 버퍼에 append
+1. 세션 대화를 세션(thread_ts)별 pending 버퍼에 append
 2. pending 토큰 합산 → 임계치 미만이면 저장만 하고 종료
 3. 임계치 이상이면 Observer 호출 → 관찰 로그 갱신 → pending 비우기
 4. 관찰 로그가 reflection 임계치를 넘으면 Reflector로 압축
@@ -58,6 +58,7 @@ def _format_tokens(n: int) -> str:
 async def observe_conversation(
     store: MemoryStore,
     observer: Observer,
+    thread_ts: str,
     user_id: str,
     messages: list[dict],
     observation_threshold: int = 30000,
@@ -70,7 +71,8 @@ async def observe_conversation(
     Args:
         store: 관찰 로그 저장소
         observer: Observer 인스턴스
-        user_id: 사용자 ID
+        thread_ts: 세션(스레드) 타임스탬프 — 저장 키
+        user_id: 사용자 ID — 메타데이터용
         messages: 이번 세션 대화 내역
         observation_threshold: Observer 트리거 토큰 임계치
         reflector: Reflector 인스턴스 (None이면 압축 건너뜀)
@@ -80,33 +82,34 @@ async def observe_conversation(
     Returns:
         True: 관찰 수행됨, False: 버퍼에 누적만 함 또는 실패
     """
+    label = f"{user_id}/{thread_ts}"
     debug_ts = ""
 
     try:
         token_counter = TokenCounter()
 
-        # 1. 이번 세션 대화를 pending 버퍼에 누적
-        store.append_pending_messages(user_id, messages)
+        # 1. 이번 세션 대화를 pending 버퍼에 누적 (thread_ts 기준)
+        store.append_pending_messages(thread_ts, messages)
 
         # 2. 누적된 전체 pending 메시지 로드 및 토큰 계산
-        all_pending = store.load_pending_messages(user_id)
+        all_pending = store.load_pending_messages(thread_ts)
         pending_tokens = token_counter.count_messages(all_pending)
 
-        # 기존 관찰 로그 로드
-        record = store.get_record(user_id)
+        # 기존 관찰 로그 로드 (세션별)
+        record = store.get_record(thread_ts)
         existing_observations = record.observations if record else None
 
         # 디버그: 시작 메시지 발송
         if debug_channel:
             debug_ts = _send_debug_log(
                 debug_channel,
-                f":mag: *OM Observer 시작...* `{user_id}`",
+                f":mag: *OM Observer 시작...* `{label}`",
             )
 
         # 3. 임계치 미달이면 저장만 하고 종료
         if pending_tokens < observation_threshold:
             logger.info(
-                f"관찰 대기 (user={user_id}): "
+                f"관찰 대기 ({label}): "
                 f"{pending_tokens}/{observation_threshold} tokens"
             )
             if debug_channel:
@@ -114,7 +117,7 @@ async def observe_conversation(
                     debug_channel,
                     debug_ts,
                     f":black_right_pointing_double_triangle_with_vertical_bar: *OM 버퍼 누적* "
-                    f"`{user_id} | {_format_tokens(pending_tokens)} / {_format_tokens(observation_threshold)} tokens`",
+                    f"`{label} | {_format_tokens(pending_tokens)} / {_format_tokens(observation_threshold)} tokens`",
                 )
             return False
 
@@ -125,12 +128,12 @@ async def observe_conversation(
         )
 
         if result is None:
-            logger.warning(f"Observer가 None을 반환 (user={user_id})")
+            logger.warning(f"Observer가 None을 반환 ({label})")
             if debug_channel:
                 _update_debug_log(
                     debug_channel,
                     debug_ts,
-                    f":warning: *OM Observer 결과 없음* `{user_id}`",
+                    f":warning: *OM Observer 결과 없음* `{label}`",
                 )
             return False
 
@@ -138,7 +141,7 @@ async def observe_conversation(
         new_tokens = token_counter.count_string(result.observations)
 
         if record is None:
-            record = MemoryRecord(user_id=user_id)
+            record = MemoryRecord(thread_ts=thread_ts, user_id=user_id)
 
         old_observations = record.observations
         record.observations = result.observations
@@ -149,7 +152,7 @@ async def observe_conversation(
         # 6. Reflector: 임계치 초과 시 압축
         if reflector and new_tokens > reflection_threshold:
             logger.info(
-                f"Reflector 트리거 (user={user_id}): "
+                f"Reflector 트리거 ({label}): "
                 f"{new_tokens} > {reflection_threshold} tokens"
             )
             reflection_result = await reflector.reflect(
@@ -161,17 +164,17 @@ async def observe_conversation(
                 record.observation_tokens = reflection_result.token_count
                 record.reflection_count += 1
                 logger.info(
-                    f"Reflector 완료 (user={user_id}): "
+                    f"Reflector 완료 ({label}): "
                     f"{new_tokens} → {reflection_result.token_count} tokens, "
                     f"총 {record.reflection_count}회 압축"
                 )
 
         # 7. 저장 및 pending 비우기
         store.save_record(record)
-        store.clear_pending_messages(user_id)
+        store.clear_pending_messages(thread_ts)
 
         logger.info(
-            f"관찰 완료 (user={user_id}): "
+            f"관찰 완료 ({label}): "
             f"{record.observation_tokens} tokens, "
             f"총 {record.total_sessions_observed}회"
         )
@@ -184,19 +187,19 @@ async def observe_conversation(
                 debug_channel,
                 debug_ts,
                 f":white_check_mark: *OM 관찰 완료* "
-                f"`{user_id} | {_format_tokens(record.observation_tokens)} tokens | "
+                f"`{label} | {_format_tokens(record.observation_tokens)} tokens | "
                 f"관찰 {record.total_sessions_observed}회`"
                 f"{diff_block}",
             )
         return True
 
     except Exception as e:
-        logger.error(f"관찰 파이프라인 오류 (user={user_id}): {e}")
+        logger.error(f"관찰 파이프라인 오류 ({label}): {e}")
         if debug_channel:
             _update_debug_log(
                 debug_channel,
                 debug_ts,
-                f":x: *OM 오류* `{user_id} | {e}`",
+                f":x: *OM 오류* `{label} | {e}`",
             )
         return False
 

@@ -16,6 +16,7 @@ def store(tmp_path):
 @pytest.fixture
 def sample_record():
     return MemoryRecord(
+        thread_ts="1234567890.123456",
         user_id="U08HWT0C6K1",
         username="eias",
         observations="## [2026-02-10] Session Observations\n\n🔴 사용자는 커밋 메시지를 한글로 작성",
@@ -30,6 +31,7 @@ def sample_record():
 class TestMemoryRecord:
     def test_to_meta_dict(self, sample_record):
         meta = sample_record.to_meta_dict()
+        assert meta["thread_ts"] == "1234567890.123456"
         assert meta["user_id"] == "U08HWT0C6K1"
         assert meta["username"] == "eias"
         assert meta["observation_tokens"] == 50
@@ -42,6 +44,7 @@ class TestMemoryRecord:
         meta = sample_record.to_meta_dict()
         restored = MemoryRecord.from_meta_dict(meta, sample_record.observations)
 
+        assert restored.thread_ts == sample_record.thread_ts
         assert restored.user_id == sample_record.user_id
         assert restored.username == sample_record.username
         assert restored.observations == sample_record.observations
@@ -51,16 +54,17 @@ class TestMemoryRecord:
 
     def test_from_meta_dict_missing_optional_fields(self):
         """선택 필드가 없어도 복원 가능"""
-        data = {"user_id": "U12345"}
+        data = {"thread_ts": "1234.5678"}
         record = MemoryRecord.from_meta_dict(data)
-        assert record.user_id == "U12345"
+        assert record.thread_ts == "1234.5678"
+        assert record.user_id == ""
         assert record.username == ""
         assert record.observation_tokens == 0
         assert record.last_observed_at is None
 
     def test_default_created_at(self):
         """created_at 기본값은 현재 시각"""
-        record = MemoryRecord(user_id="U12345")
+        record = MemoryRecord(thread_ts="1234.5678")
         assert record.created_at is not None
         assert isinstance(record.created_at, datetime)
 
@@ -72,9 +76,10 @@ class TestMemoryStoreGetSave:
 
     def test_save_and_get_record(self, store, sample_record):
         store.save_record(sample_record)
-        loaded = store.get_record(sample_record.user_id)
+        loaded = store.get_record(sample_record.thread_ts)
 
         assert loaded is not None
+        assert loaded.thread_ts == sample_record.thread_ts
         assert loaded.user_id == sample_record.user_id
         assert loaded.username == sample_record.username
         assert loaded.observations == sample_record.observations
@@ -85,7 +90,7 @@ class TestMemoryStoreGetSave:
         """존재하지 않는 디렉토리도 자동 생성"""
         deep_path = tmp_path / "a" / "b" / "c"
         store = MemoryStore(base_dir=deep_path)
-        record = MemoryRecord(user_id="U12345", observations="test")
+        record = MemoryRecord(thread_ts="1234.5678", observations="test")
         store.save_record(record)
 
         assert store.observations_dir.exists()
@@ -100,24 +105,28 @@ class TestMemoryStoreGetSave:
         sample_record.total_sessions_observed = 4
         store.save_record(sample_record)
 
-        loaded = store.get_record(sample_record.user_id)
+        loaded = store.get_record(sample_record.thread_ts)
         assert loaded.observations == "## Updated observations"
         assert loaded.observation_tokens == 10
         assert loaded.total_sessions_observed == 4
 
-    def test_multiple_users(self, store):
-        """여러 사용자의 레코드를 독립적으로 저장/로드"""
-        record_a = MemoryRecord(user_id="UA", observations="User A observations")
-        record_b = MemoryRecord(user_id="UB", observations="User B observations")
+    def test_multiple_sessions(self, store):
+        """여러 세션의 레코드를 독립적으로 저장/로드"""
+        record_a = MemoryRecord(
+            thread_ts="ts_a", user_id="UA", observations="Session A observations"
+        )
+        record_b = MemoryRecord(
+            thread_ts="ts_b", user_id="UB", observations="Session B observations"
+        )
 
         store.save_record(record_a)
         store.save_record(record_b)
 
-        loaded_a = store.get_record("UA")
-        loaded_b = store.get_record("UB")
+        loaded_a = store.get_record("ts_a")
+        loaded_b = store.get_record("ts_b")
 
-        assert loaded_a.observations == "User A observations"
-        assert loaded_b.observations == "User B observations"
+        assert loaded_a.observations == "Session A observations"
+        assert loaded_b.observations == "Session B observations"
 
 
 class TestMemoryStorePending:
@@ -126,10 +135,10 @@ class TestMemoryStorePending:
         messages1 = [{"role": "user", "content": "첫 번째 대화"}]
         messages2 = [{"role": "user", "content": "두 번째 대화"}]
 
-        store.append_pending_messages("U12345", messages1)
-        store.append_pending_messages("U12345", messages2)
+        store.append_pending_messages("ts_1234", messages1)
+        store.append_pending_messages("ts_1234", messages2)
 
-        loaded = store.load_pending_messages("U12345")
+        loaded = store.load_pending_messages("ts_1234")
         assert len(loaded) == 2
         assert loaded[0]["content"] == "첫 번째 대화"
         assert loaded[1]["content"] == "두 번째 대화"
@@ -140,11 +149,11 @@ class TestMemoryStorePending:
 
     def test_clear_pending(self, store):
         """pending 비우기"""
-        store.append_pending_messages("U12345", [{"role": "user", "content": "test"}])
-        assert len(store.load_pending_messages("U12345")) == 1
+        store.append_pending_messages("ts_1234", [{"role": "user", "content": "test"}])
+        assert len(store.load_pending_messages("ts_1234")) == 1
 
-        store.clear_pending_messages("U12345")
-        assert store.load_pending_messages("U12345") == []
+        store.clear_pending_messages("ts_1234")
+        assert store.load_pending_messages("ts_1234") == []
 
     def test_clear_nonexistent_pending(self, store):
         """존재하지 않는 pending 비우기는 에러 없음"""
@@ -153,24 +162,24 @@ class TestMemoryStorePending:
     def test_pending_preserves_unicode(self, store):
         """한글/이모지가 올바르게 저장/로드"""
         messages = [{"role": "user", "content": "🔴 캐릭터 정보 요청"}]
-        store.append_pending_messages("U12345", messages)
+        store.append_pending_messages("ts_1234", messages)
 
-        loaded = store.load_pending_messages("U12345")
+        loaded = store.load_pending_messages("ts_1234")
         assert loaded[0]["content"] == "🔴 캐릭터 정보 요청"
 
-    def test_pending_independent_per_user(self, store):
-        """사용자별 pending은 독립적"""
-        store.append_pending_messages("UA", [{"role": "user", "content": "A"}])
-        store.append_pending_messages("UB", [{"role": "user", "content": "B"}])
+    def test_pending_independent_per_session(self, store):
+        """세션별 pending은 독립적"""
+        store.append_pending_messages("ts_a", [{"role": "user", "content": "A"}])
+        store.append_pending_messages("ts_b", [{"role": "user", "content": "B"}])
 
-        assert store.load_pending_messages("UA")[0]["content"] == "A"
-        assert store.load_pending_messages("UB")[0]["content"] == "B"
+        assert store.load_pending_messages("ts_a")[0]["content"] == "A"
+        assert store.load_pending_messages("ts_b")[0]["content"] == "B"
 
     def test_pending_creates_directory(self, tmp_path):
         """pending 디렉토리 자동 생성"""
         deep_path = tmp_path / "x" / "y"
         store = MemoryStore(base_dir=deep_path)
-        store.append_pending_messages("U12345", [{"role": "user", "content": "test"}])
+        store.append_pending_messages("ts_1234", [{"role": "user", "content": "test"}])
         assert store.pending_dir.exists()
 
 

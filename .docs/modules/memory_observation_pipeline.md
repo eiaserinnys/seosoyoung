@@ -10,7 +10,7 @@
 Mastra의 원본 구현처럼 상한선(threshold) 기반으로 동작합니다.
 
 흐름:
-1. 세션 대화를 사용자별 pending 버퍼에 append
+1. 세션 대화를 세션(thread_ts)별 pending 버퍼에 append
 2. pending 토큰 합산 → 임계치 미만이면 저장만 하고 종료
 3. 임계치 이상이면 Observer 호출 → 관찰 로그 갱신 → pending 비우기
 4. 관찰 로그가 reflection 임계치를 넘으면 Reflector로 압축
@@ -29,14 +29,15 @@ Mastra의 원본 구현처럼 상한선(threshold) 기반으로 동작합니다.
 - 위치: 줄 53
 - 설명: 토큰 수를 천 단위 콤마 포맷
 
-### `async observe_conversation(store, observer, user_id, messages, observation_threshold, reflector, reflection_threshold, debug_channel)`
+### `async observe_conversation(store, observer, thread_ts, user_id, messages, observation_threshold, reflector, reflection_threshold, debug_channel)`
 - 위치: 줄 58
 - 설명: 대화를 버퍼에 누적하고, 임계치 도달 시 관찰합니다.
 
 Args:
     store: 관찰 로그 저장소
     observer: Observer 인스턴스
-    user_id: 사용자 ID
+    thread_ts: 세션(스레드) 타임스탬프 — 저장 키
+    user_id: 사용자 ID — 메타데이터용
     messages: 이번 세션 대화 내역
     observation_threshold: Observer 트리거 토큰 임계치
     reflector: Reflector 인스턴스 (None이면 압축 건너뜀)
@@ -47,7 +48,7 @@ Returns:
     True: 관찰 수행됨, False: 버퍼에 누적만 함 또는 실패
 
 ### `_make_observation_diff(old, new)`
-- 위치: 줄 204
+- 위치: 줄 207
 - 설명: 관찰 로그의 변경점을 간략히 표시.
 
 새로 추가된 줄에 + 접두사, 삭제된 줄에 - 접두사를 붙입니다.

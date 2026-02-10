@@ -1,16 +1,16 @@
 """관찰 로그 저장소
 
-파일 기반으로 사용자별 관찰 로그와 세션별 대화 로그를 관리합니다.
+파일 기반으로 세션(thread_ts) 단위 관찰 로그와 대화 로그를 관리합니다.
 
 저장 구조:
     memory/
     ├── observations/
-    │   ├── {user_id}.md          # 관찰 로그 (마크다운)
-    │   └── {user_id}.meta.json   # 메타데이터
+    │   ├── {thread_ts}.md          # 세션별 관찰 로그 (마크다운)
+    │   └── {thread_ts}.meta.json   # 메타데이터 (user_id 포함)
     ├── pending/
-    │   └── {user_id}.jsonl       # 미관찰 대화 버퍼 (누적)
+    │   └── {thread_ts}.jsonl       # 세션별 미관찰 대화 버퍼 (누적)
     └── conversations/
-        └── {thread_ts}.jsonl     # 세션별 대화 로그
+        └── {thread_ts}.jsonl       # 세션별 대화 로그
 """
 
 import json
@@ -26,9 +26,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MemoryRecord:
-    """사용자별 관찰 로그 레코드"""
+    """세션별 관찰 로그 레코드
 
-    user_id: str
+    thread_ts를 기본 키로 사용하고, user_id는 메타데이터로 보관합니다.
+    """
+
+    thread_ts: str
+    user_id: str = ""
     username: str = ""
     observations: str = ""
     observation_tokens: int = 0
@@ -40,6 +44,7 @@ class MemoryRecord:
     def to_meta_dict(self) -> dict:
         """메타데이터를 직렬화 가능한 dict로 변환"""
         return {
+            "thread_ts": self.thread_ts,
             "user_id": self.user_id,
             "username": self.username,
             "observation_tokens": self.observation_tokens,
@@ -57,7 +62,8 @@ class MemoryRecord:
         last_observed = data.get("last_observed_at")
         created = data.get("created_at")
         return cls(
-            user_id=data["user_id"],
+            thread_ts=data.get("thread_ts", ""),
+            user_id=data.get("user_id", ""),
             username=data.get("username", ""),
             observations=observations,
             observation_tokens=data.get("observation_tokens", 0),
@@ -75,7 +81,10 @@ class MemoryRecord:
 
 
 class MemoryStore:
-    """파일 기반 관찰 로그 저장소"""
+    """파일 기반 관찰 로그 저장소
+
+    세션(thread_ts)을 기본 키로 사용합니다.
+    """
 
     def __init__(self, base_dir: str | Path):
         self.base_dir = Path(base_dir)
@@ -89,29 +98,29 @@ class MemoryStore:
         self.pending_dir.mkdir(parents=True, exist_ok=True)
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
 
-    def _obs_path(self, user_id: str) -> Path:
-        return self.observations_dir / f"{user_id}.md"
+    def _obs_path(self, thread_ts: str) -> Path:
+        return self.observations_dir / f"{thread_ts}.md"
 
-    def _meta_path(self, user_id: str) -> Path:
-        return self.observations_dir / f"{user_id}.meta.json"
+    def _meta_path(self, thread_ts: str) -> Path:
+        return self.observations_dir / f"{thread_ts}.meta.json"
 
-    def _lock_path(self, user_id: str) -> Path:
-        return self.observations_dir / f"{user_id}.lock"
+    def _lock_path(self, thread_ts: str) -> Path:
+        return self.observations_dir / f"{thread_ts}.lock"
 
     def _conv_path(self, thread_ts: str) -> Path:
         return self.conversations_dir / f"{thread_ts}.jsonl"
 
-    def get_record(self, user_id: str) -> MemoryRecord | None:
-        """사용자의 관찰 레코드를 로드합니다. 없으면 None."""
-        meta_path = self._meta_path(user_id)
+    def get_record(self, thread_ts: str) -> MemoryRecord | None:
+        """세션의 관찰 레코드를 로드합니다. 없으면 None."""
+        meta_path = self._meta_path(thread_ts)
         if not meta_path.exists():
             return None
 
-        lock = FileLock(str(self._lock_path(user_id)), timeout=5)
+        lock = FileLock(str(self._lock_path(thread_ts)), timeout=5)
         with lock:
             meta_data = json.loads(meta_path.read_text(encoding="utf-8"))
 
-            obs_path = self._obs_path(user_id)
+            obs_path = self._obs_path(thread_ts)
             observations = ""
             if obs_path.exists():
                 observations = obs_path.read_text(encoding="utf-8")
@@ -122,42 +131,42 @@ class MemoryStore:
         """관찰 레코드를 저장합니다."""
         self._ensure_dirs()
 
-        lock = FileLock(str(self._lock_path(record.user_id)), timeout=5)
+        lock = FileLock(str(self._lock_path(record.thread_ts)), timeout=5)
         with lock:
             # 관찰 로그 (마크다운)
-            self._obs_path(record.user_id).write_text(
+            self._obs_path(record.thread_ts).write_text(
                 record.observations, encoding="utf-8"
             )
 
             # 메타데이터 (JSON)
-            self._meta_path(record.user_id).write_text(
+            self._meta_path(record.thread_ts).write_text(
                 json.dumps(record.to_meta_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
 
-    def _pending_path(self, user_id: str) -> Path:
-        return self.pending_dir / f"{user_id}.jsonl"
+    def _pending_path(self, thread_ts: str) -> Path:
+        return self.pending_dir / f"{thread_ts}.jsonl"
 
-    def _pending_lock_path(self, user_id: str) -> Path:
-        return self.pending_dir / f"{user_id}.lock"
+    def _pending_lock_path(self, thread_ts: str) -> Path:
+        return self.pending_dir / f"{thread_ts}.lock"
 
-    def append_pending_messages(self, user_id: str, messages: list[dict]) -> None:
-        """미관찰 대화를 사용자별 버퍼에 누적합니다."""
+    def append_pending_messages(self, thread_ts: str, messages: list[dict]) -> None:
+        """미관찰 대화를 세션별 버퍼에 누적합니다."""
         self._ensure_dirs()
 
-        lock = FileLock(str(self._pending_lock_path(user_id)), timeout=5)
+        lock = FileLock(str(self._pending_lock_path(thread_ts)), timeout=5)
         with lock:
-            with open(self._pending_path(user_id), "a", encoding="utf-8") as f:
+            with open(self._pending_path(thread_ts), "a", encoding="utf-8") as f:
                 for msg in messages:
                     f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
-    def load_pending_messages(self, user_id: str) -> list[dict]:
+    def load_pending_messages(self, thread_ts: str) -> list[dict]:
         """미관찰 대화 버퍼를 로드합니다. 없으면 빈 리스트."""
-        pending_path = self._pending_path(user_id)
+        pending_path = self._pending_path(thread_ts)
         if not pending_path.exists():
             return []
 
-        lock = FileLock(str(self._pending_lock_path(user_id)), timeout=5)
+        lock = FileLock(str(self._pending_lock_path(thread_ts)), timeout=5)
         with lock:
             messages = []
             with open(pending_path, "r", encoding="utf-8") as f:
@@ -167,11 +176,11 @@ class MemoryStore:
                         messages.append(json.loads(line))
             return messages
 
-    def clear_pending_messages(self, user_id: str) -> None:
+    def clear_pending_messages(self, thread_ts: str) -> None:
         """관찰 완료 후 미관찰 대화 버퍼를 비웁니다."""
-        pending_path = self._pending_path(user_id)
+        pending_path = self._pending_path(thread_ts)
         if pending_path.exists():
-            lock = FileLock(str(self._pending_lock_path(user_id)), timeout=5)
+            lock = FileLock(str(self._pending_lock_path(thread_ts)), timeout=5)
             with lock:
                 pending_path.unlink()
 

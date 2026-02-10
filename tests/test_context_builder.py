@@ -98,29 +98,30 @@ class TestContextBuilder:
         return ContextBuilder(store)
 
     def test_no_record_returns_none(self, builder):
-        result = builder.build_memory_prompt("NONEXISTENT")
+        result = builder.build_memory_prompt("NONEXISTENT_TS")
         assert result is None
 
     def test_empty_observations_returns_none(self, builder, store):
-        record = MemoryRecord(user_id="U12345", observations="")
+        record = MemoryRecord(thread_ts="ts_1", user_id="U12345", observations="")
         store.save_record(record)
-        result = builder.build_memory_prompt("U12345")
+        result = builder.build_memory_prompt("ts_1")
         assert result is None
 
     def test_whitespace_only_returns_none(self, builder, store):
-        record = MemoryRecord(user_id="U12345", observations="   \n  ")
+        record = MemoryRecord(thread_ts="ts_1", user_id="U12345", observations="   \n  ")
         store.save_record(record)
-        result = builder.build_memory_prompt("U12345")
+        result = builder.build_memory_prompt("ts_1")
         assert result is None
 
     def test_builds_prompt_with_observations(self, builder, store):
         record = MemoryRecord(
+            thread_ts="ts_1",
             user_id="U12345",
             observations="## [2026-02-10] Session Observations\n\n🔴 Important finding",
         )
         store.save_record(record)
 
-        result = builder.build_memory_prompt("U12345")
+        result = builder.build_memory_prompt("ts_1")
 
         assert result is not None
         assert "<observational-memory>" in result
@@ -130,13 +131,34 @@ class TestContextBuilder:
 
     def test_includes_relative_time(self, builder, store):
         record = MemoryRecord(
+            thread_ts="ts_1",
             user_id="U12345",
             observations="## [2026-02-10] Session Observations\n\n🔴 Finding",
         )
         store.save_record(record)
 
-        result = builder.build_memory_prompt("U12345")
+        result = builder.build_memory_prompt("ts_1")
         # 상대 시간이 추가되어야 함
         assert result is not None
-        # 날짜 헤더에 상대 시간이 포함되어 있어야 함 (정확한 값은 현재 시간에 따라 다름)
         assert "## [2026-02-10]" in result
+
+    def test_session_isolation(self, builder, store):
+        """세션별로 독립적인 관찰 주입"""
+        store.save_record(MemoryRecord(
+            thread_ts="ts_1",
+            user_id="U12345",
+            observations="## [2026-02-10] Session 1\n\n🔴 First session finding",
+        ))
+        store.save_record(MemoryRecord(
+            thread_ts="ts_2",
+            user_id="U12345",
+            observations="## [2026-02-11] Session 2\n\n🔴 Second session finding",
+        ))
+
+        result_1 = builder.build_memory_prompt("ts_1")
+        result_2 = builder.build_memory_prompt("ts_2")
+
+        assert "First session finding" in result_1
+        assert "Second session finding" not in result_1
+        assert "Second session finding" in result_2
+        assert "First session finding" not in result_2

@@ -46,20 +46,23 @@ class TestObserveConversation:
         result = await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=sample_messages,
             observation_threshold=0,  # 임계치 0으로 즉시 관찰
         )
 
         assert result is True
-        record = store.get_record("U12345")
+        record = store.get_record("ts_1234")
         assert record is not None
         assert "캐릭터 정보를 요청함" in record.observations
+        assert record.thread_ts == "ts_1234"
+        assert record.user_id == "U12345"
         assert record.total_sessions_observed == 1
         assert record.last_observed_at is not None
         assert record.observation_tokens > 0
         # 관찰 후 pending이 비워졌는지 확인
-        assert store.load_pending_messages("U12345") == []
+        assert store.load_pending_messages("ts_1234") == []
 
     @pytest.mark.asyncio
     async def test_subsequent_observation_updates_record(
@@ -67,6 +70,7 @@ class TestObserveConversation:
     ):
         """기존 레코드가 있을 때 갱신"""
         existing_record = MemoryRecord(
+            thread_ts="ts_1234",
             user_id="U12345",
             observations="## [2026-02-09] Previous\n\n🔴 이전 관찰",
             observation_tokens=50,
@@ -81,13 +85,14 @@ class TestObserveConversation:
         result = await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=sample_messages,
             observation_threshold=0,
         )
 
         assert result is True
-        record = store.get_record("U12345")
+        record = store.get_record("ts_1234")
         assert record.total_sessions_observed == 2
         assert "갱신된 관찰" in record.observations
         mock_observer.observe.assert_called_once()
@@ -102,27 +107,29 @@ class TestObserveConversation:
         result = await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=sample_messages,
             observation_threshold=999999,  # 매우 높은 임계치
         )
 
         assert result is False
-        assert store.get_record("U12345") is None
+        assert store.get_record("ts_1234") is None
         mock_observer.observe.assert_not_called()
         # pending에 메시지가 누적되었는지 확인
-        pending = store.load_pending_messages("U12345")
+        pending = store.load_pending_messages("ts_1234")
         assert len(pending) == len(sample_messages)
 
     @pytest.mark.asyncio
     async def test_accumulated_sessions_trigger_observation(
         self, store, mock_observer, sample_messages
     ):
-        """여러 세션의 누적 토큰이 임계치를 넘으면 관찰 수행"""
-        # 첫 번째 세션: 버퍼에만 누적
+        """같은 세션의 누적 토큰이 임계치를 넘으면 관찰 수행"""
+        # 첫 번째 호출: 버퍼에만 누적
         result1 = await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=sample_messages,
             observation_threshold=999999,
@@ -130,14 +137,15 @@ class TestObserveConversation:
         assert result1 is False
         mock_observer.observe.assert_not_called()
 
-        # 두 번째 세션: 임계치를 0으로 낮추면 누적분 + 새 메시지로 관찰 수행
+        # 두 번째 호출: 임계치를 0으로 낮추면 누적분 + 새 메시지로 관찰 수행
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] 누적 관찰\n\n🔴 여러 세션 종합 관찰",
+            observations="## [2026-02-10] 누적 관찰\n\n🔴 여러 호출 종합 관찰",
         )
 
         result2 = await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=[{"role": "user", "content": "추가 질문"}],
             observation_threshold=0,
@@ -149,7 +157,7 @@ class TestObserveConversation:
         call_args = mock_observer.observe.call_args
         assert len(call_args.kwargs["messages"]) == len(sample_messages) + 1
         # 관찰 후 pending이 비워졌는지 확인
-        assert store.load_pending_messages("U12345") == []
+        assert store.load_pending_messages("ts_1234") == []
 
     @pytest.mark.asyncio
     async def test_observer_error_returns_false(
@@ -161,6 +169,7 @@ class TestObserveConversation:
         result = await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=sample_messages,
             observation_threshold=0,
@@ -174,6 +183,7 @@ class TestObserveConversation:
     ):
         """기존 관찰 로그를 Observer에 전달"""
         existing = MemoryRecord(
+            thread_ts="ts_1234",
             user_id="U12345",
             observations="기존 관찰 내용",
         )
@@ -186,6 +196,7 @@ class TestObserveConversation:
         await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=sample_messages,
             observation_threshold=0,
@@ -204,6 +215,7 @@ class TestObserveConversation:
         await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=sample_messages,
             observation_threshold=0,
@@ -225,13 +237,53 @@ class TestObserveConversation:
         await observe_conversation(
             store=store,
             observer=mock_observer,
+            thread_ts="ts_1234",
             user_id="U12345",
             messages=sample_messages,
             observation_threshold=0,
         )
 
-        record = store.get_record("U12345")
+        record = store.get_record("ts_1234")
         assert record.observation_tokens > 0
+
+    @pytest.mark.asyncio
+    async def test_different_sessions_independent(
+        self, store, mock_observer, sample_messages
+    ):
+        """다른 세션은 독립적으로 관찰됨"""
+        mock_observer.observe.return_value = ObserverResult(
+            observations="세션 A 관찰",
+        )
+
+        # 세션 A
+        await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            thread_ts="ts_a",
+            user_id="U12345",
+            messages=sample_messages,
+            observation_threshold=0,
+        )
+
+        mock_observer.observe.return_value = ObserverResult(
+            observations="세션 B 관찰",
+        )
+
+        # 세션 B (같은 사용자)
+        await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            thread_ts="ts_b",
+            user_id="U12345",
+            messages=[{"role": "user", "content": "다른 질문"}],
+            observation_threshold=0,
+        )
+
+        record_a = store.get_record("ts_a")
+        record_b = store.get_record("ts_b")
+        assert record_a.observations == "세션 A 관찰"
+        assert record_b.observations == "세션 B 관찰"
+        assert record_a.user_id == record_b.user_id == "U12345"
 
 
 class TestTriggerObservation:
@@ -248,7 +300,7 @@ class TestTriggerObservation:
         with patch("seosoyoung.claude.agent_runner.threading.Thread") as mock_thread:
             mock_thread.return_value.start = MagicMock()
             with patch("seosoyoung.config.Config.OM_ENABLED", True):
-                runner._trigger_observation("U12345", "프롬프트", messages)
+                runner._trigger_observation("ts_1234", "U12345", "프롬프트", messages)
 
         mock_thread.assert_called_once()
         mock_thread.return_value.start.assert_called_once()
@@ -262,7 +314,7 @@ class TestTriggerObservation:
 
         with patch("seosoyoung.claude.agent_runner.threading.Thread") as mock_thread:
             with patch("seosoyoung.config.Config.OM_ENABLED", False):
-                runner._trigger_observation("U12345", "프롬프트", [])
+                runner._trigger_observation("ts_1234", "U12345", "프롬프트", [])
 
         mock_thread.assert_not_called()
 
@@ -278,7 +330,7 @@ class TestTriggerObservation:
             new_callable=lambda: property(lambda self: (_ for _ in ()).throw(RuntimeError("설정 오류"))),
         ):
             # Config import 자체가 실패해도 에러 전파 없음
-            runner._trigger_observation("U12345", "프롬프트", [])
+            runner._trigger_observation("ts_1234", "U12345", "프롬프트", [])
 
     @pytest.mark.asyncio
     async def test_trigger_prepends_user_message(self):
@@ -312,10 +364,12 @@ class TestTriggerObservation:
                                     "seosoyoung.claude.agent_runner.threading.Thread",
                                     side_effect=run_thread_target_directly,
                                 ):
-                                    runner._trigger_observation("U12345", "테스트 프롬프트", collected)
+                                    runner._trigger_observation("ts_1234", "U12345", "테스트 프롬프트", collected)
 
         mock_obs.assert_called_once()
         call_kwargs = mock_obs.call_args.kwargs
+        assert call_kwargs["thread_ts"] == "ts_1234"
+        assert call_kwargs["user_id"] == "U12345"
         assert call_kwargs["messages"][0] == {"role": "user", "content": "테스트 프롬프트"}
         assert call_kwargs["messages"][1] == {"role": "assistant", "content": "응답"}
 
@@ -353,10 +407,11 @@ class TestRunTriggersObservation:
                 with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
                     with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
                         with patch.object(runner, "_trigger_observation") as mock_trigger:
-                            result = await runner.run("테스트", user_id="U12345")
+                            result = await runner.run("테스트", user_id="U12345", thread_ts="ts_1234")
 
         assert result.success is True
         mock_trigger.assert_called_once_with(
+            "ts_1234",
             "U12345",
             "테스트",
             result.collected_messages,
@@ -387,6 +442,30 @@ class TestRunTriggersObservation:
         mock_trigger.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_run_does_not_trigger_without_thread_ts(self):
+        """thread_ts 없으면 관찰을 트리거하지 않음"""
+        from dataclasses import dataclass
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+
+        @dataclass
+        class MockResultMessage:
+            result: str
+            session_id: str = None
+
+        runner = ClaudeAgentRunner()
+
+        async def mock_query(prompt, options):
+            yield MockResultMessage(result="완료", session_id="test")
+
+        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                with patch.object(runner, "_trigger_observation") as mock_trigger:
+                    result = await runner.run("테스트", user_id="U12345")
+
+        assert result.success is True
+        mock_trigger.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_run_does_not_trigger_on_failure(self):
         """실행 실패 시 관찰을 트리거하지 않음"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
@@ -399,7 +478,7 @@ class TestRunTriggersObservation:
 
         with patch("seosoyoung.claude.agent_runner.query", mock_query):
             with patch.object(runner, "_trigger_observation") as mock_trigger:
-                result = await runner.run("테스트", user_id="U12345")
+                result = await runner.run("테스트", user_id="U12345", thread_ts="ts_1234")
 
         assert result.success is False
         mock_trigger.assert_not_called()

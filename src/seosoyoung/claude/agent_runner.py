@@ -117,6 +117,7 @@ class ClaudeAgentRunner:
         session_id: Optional[str] = None,
         compact_events: Optional[list] = None,
         user_id: Optional[str] = None,
+        thread_ts: Optional[str] = None,
     ) -> ClaudeCodeOptions:
         """ClaudeCodeOptions 생성
 
@@ -163,8 +164,8 @@ class ClaudeAgentRunner:
         if session_id:
             options.resume = session_id
 
-        # Observational Memory: 관찰 로그 주입
-        if user_id:
+        # Observational Memory: 관찰 로그 주입 (세션 단위)
+        if thread_ts:
             try:
                 from seosoyoung.config import Config
                 if Config.OM_ENABLED:
@@ -174,11 +175,11 @@ class ClaudeAgentRunner:
                     store = MemoryStore(Config.get_memory_path())
                     builder = ContextBuilder(store)
                     memory_prompt = builder.build_memory_prompt(
-                        user_id, Config.OM_MAX_OBSERVATION_TOKENS
+                        thread_ts, Config.OM_MAX_OBSERVATION_TOKENS
                     )
                     if memory_prompt:
                         options.append_system_prompt = memory_prompt
-                        logger.info(f"OM 관찰 로그 주입 완료 (user={user_id})")
+                        logger.info(f"OM 관찰 로그 주입 완료 (thread={thread_ts})")
             except Exception as e:
                 logger.warning(f"OM 관찰 로그 주입 실패 (무시): {e}")
 
@@ -191,6 +192,7 @@ class ClaudeAgentRunner:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         user_id: Optional[str] = None,
+        thread_ts: Optional[str] = None,
     ) -> ClaudeResult:
         """Claude Code 실행
 
@@ -200,18 +202,20 @@ class ClaudeAgentRunner:
             on_progress: 진행 상황 콜백 (선택)
             on_compact: 컴팩션 발생 콜백 (선택) - (trigger, message) 전달
             user_id: 사용자 ID (OM 관찰 로그 주입용, 선택)
+            thread_ts: 스레드 타임스탬프 (OM 세션 단위 저장용, 선택)
         """
         async with self._lock:
-            result = await self._execute(prompt, session_id, on_progress, on_compact, user_id)
+            result = await self._execute(prompt, session_id, on_progress, on_compact, user_id, thread_ts)
 
         # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
-        if result.success and user_id and result.collected_messages:
-            self._trigger_observation(user_id, prompt, result.collected_messages)
+        if result.success and user_id and thread_ts and result.collected_messages:
+            self._trigger_observation(thread_ts, user_id, prompt, result.collected_messages)
 
         return result
 
     def _trigger_observation(
         self,
+        thread_ts: str,
         user_id: str,
         prompt: str,
         collected_messages: list[dict],
@@ -252,6 +256,7 @@ class ClaudeAgentRunner:
                     asyncio.run(observe_conversation(
                         store=store,
                         observer=observer,
+                        thread_ts=thread_ts,
                         user_id=user_id,
                         messages=messages,
                         observation_threshold=Config.OM_OBSERVATION_THRESHOLD,
@@ -261,20 +266,19 @@ class ClaudeAgentRunner:
                     ))
                 except Exception as e:
                     logger.error(f"OM 관찰 파이프라인 비동기 실행 오류 (무시): {e}")
-                    # 별도 스레드에서 logger가 동작하지 않을 수 있으므로 디버그 채널로도 발송
                     try:
                         from seosoyoung.memory.observation_pipeline import _send_debug_log
                         if Config.OM_DEBUG_CHANNEL:
                             _send_debug_log(
                                 Config.OM_DEBUG_CHANNEL,
-                                f"❌ *OM 스레드 오류*\n• user: `{user_id}`\n• error: `{e}`",
+                                f"❌ *OM 스레드 오류*\n• user: `{user_id}`\n• thread: `{thread_ts}`\n• error: `{e}`",
                             )
                     except Exception:
                         pass
 
             thread = threading.Thread(target=_run_in_thread, daemon=True)
             thread.start()
-            logger.info(f"OM 관찰 파이프라인 트리거됨 (user={user_id})")
+            logger.info(f"OM 관찰 파이프라인 트리거됨 (user={user_id}, thread={thread_ts})")
         except Exception as e:
             logger.warning(f"OM 관찰 트리거 실패 (무시): {e}")
 
@@ -285,11 +289,12 @@ class ClaudeAgentRunner:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         user_id: Optional[str] = None,
+        thread_ts: Optional[str] = None,
     ) -> ClaudeResult:
         """실제 실행 로직"""
         compact_events: list[dict] = []
         compact_notified_count = 0
-        options = self._build_options(session_id, compact_events=compact_events, user_id=user_id)
+        options = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts)
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
 
         result_session_id = None

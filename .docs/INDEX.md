@@ -67,8 +67,8 @@
 - `Observer` (seosoyoung/memory/observer.py:60): 대화를 관찰하여 구조화된 관찰 로그를 생성
 - `ReflectorResult` (seosoyoung/memory/reflector.py:23): Reflector 출력 결과
 - `Reflector` (seosoyoung/memory/reflector.py:38): 관찰 로그를 압축하고 재구조화
-- `MemoryRecord` (seosoyoung/memory/store.py:28): 사용자별 관찰 로그 레코드
-- `MemoryStore` (seosoyoung/memory/store.py:77): 파일 기반 관찰 로그 저장소
+- `MemoryRecord` (seosoyoung/memory/store.py:28): 세션별 관찰 로그 레코드
+- `MemoryStore` (seosoyoung/memory/store.py:83): 파일 기반 관찰 로그 저장소
 - `TokenCounter` (seosoyoung/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
 - `ProfileInfo` (seosoyoung/profile/manager.py:14): 프로필 정보
 - `ProfileManager` (seosoyoung/profile/manager.py:24): Claude Code 인증 프로필 관리자
@@ -113,7 +113,7 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:482): 
+- `async main()` (seosoyoung/claude/agent_runner.py:487): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:31): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱

@@ -18,7 +18,7 @@ OM의 processInputStep에 해당하는 부분입니다.
 #### 메서드
 
 - `__init__(self, store)` (줄 105): 
-- `build_memory_prompt(self, user_id, max_tokens)` (줄 108): 관찰 로그를 시스템 프롬프트 텍스트로 변환합니다.
+- `build_memory_prompt(self, thread_ts, max_tokens)` (줄 108): 세션의 관찰 로그를 시스템 프롬프트로 변환합니다.
 
 ## 함수
 
