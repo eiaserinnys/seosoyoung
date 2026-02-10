@@ -20,6 +20,10 @@
 - [`image_gen/generator.py`](modules/image_gen_generator.md): Gemini API 이미지 생성 모듈
 - [`seosoyoung/logging_config.py`](modules/seosoyoung_logging_config.md): 로깅 설정 모듈
 - [`seosoyoung/main.py`](modules/seosoyoung_main.md): SeoSoyoung 슬랙 봇 메인
+- [`mcp/__main__.py`](modules/mcp___main__.md): MCP 서버 실행 진입점
+- [`mcp/config.py`](modules/mcp_config.md): MCP 서버 설정
+- [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
+- [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
 - [`memory/context_builder.py`](modules/memory_context_builder.md): 컨텍스트 빌더
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
 - [`memory/observer.py`](modules/memory_observer.md): Observer 모듈
@@ -120,7 +124,7 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:692): 
+- `async main()` (seosoyoung/claude/agent_runner.py:706): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:37): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱
@@ -146,6 +150,10 @@
 - `start_trello_watcher()` (seosoyoung/main.py:116): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:136): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:146): 봇 사용자 ID 초기화
+- `slack_attach_file()` (seosoyoung/mcp/server.py:11): 슬랙에 파일을 첨부합니다.
+- `slack_get_context()` (seosoyoung/mcp/server.py:27): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
+- `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:33): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:76): 관찰 로그를 컨텍스트 주입에 최적화합니다.
 - `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:72): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.

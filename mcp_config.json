@@ -1,0 +1,13 @@
+{
+  "seosoyoung-attach": {
+    "type": "stdio",
+    "command": "python",
+    "args": ["-m", "seosoyoung.mcp"],
+    "env": {
+      "PYTHONPATH": "src",
+      "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
+      "SLACK_CHANNEL": "${SLACK_CHANNEL}",
+      "SLACK_THREAD_TS": "${SLACK_THREAD_TS}"
+    }
+  }
+}
