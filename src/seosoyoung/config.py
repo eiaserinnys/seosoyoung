@@ -155,6 +155,14 @@ class Config:
         os.getenv("OM_MAX_OBSERVATION_TOKENS"), 30000
     )
     OM_MIN_TURN_TOKENS = _parse_int(os.getenv("OM_MIN_TURN_TOKENS"), 200)
+    OM_PROMOTER_MODEL = os.getenv("OM_PROMOTER_MODEL", "gpt-5.2")
+    OM_PROMOTION_THRESHOLD = _parse_int(os.getenv("OM_PROMOTION_THRESHOLD"), 5000)
+    OM_PERSISTENT_COMPACTION_THRESHOLD = _parse_int(
+        os.getenv("OM_PERSISTENT_COMPACTION_THRESHOLD"), 15000
+    )
+    OM_PERSISTENT_COMPACTION_TARGET = _parse_int(
+        os.getenv("OM_PERSISTENT_COMPACTION_TARGET"), 8000
+    )
 
     # ========================================
     # 실행 트리거 설정

@@ -22,10 +22,18 @@ Mastra의 Observational Memory 프롬프트를 서소영 컨텍스트에 맞게 
 - 위치: 줄 139
 - 설명: 메시지 목록을 Observer 입력용 텍스트로 변환
 
+### `build_promoter_prompt(existing_persistent, candidate_entries)`
+- 위치: 줄 255
+- 설명: Promoter 프롬프트를 구성합니다.
+
+### `build_compactor_prompt(persistent_memory, target_tokens)`
+- 위치: 줄 266
+- 설명: Compactor 프롬프트를 구성합니다.
+
 ### `build_reflector_system_prompt()`
-- 위치: 줄 193
+- 위치: 줄 277
 - 설명: Reflector 시스템 프롬프트를 반환합니다.
 
 ### `build_reflector_retry_prompt(token_count, target)`
-- 위치: 줄 198
+- 위치: 줄 282
 - 설명: Reflector 재시도 프롬프트를 반환합니다.

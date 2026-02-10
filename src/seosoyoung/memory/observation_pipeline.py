@@ -7,6 +7,8 @@
 2. Observer 호출 (매턴) → 세션 관찰 로그 갱신
 3. <candidates> 태그가 있으면 장기 기억 후보 버퍼에 적재
 4. 관찰 로그가 reflection 임계치를 넘으면 Reflector로 압축
+5. 후보 버퍼 토큰 합산 → promotion 임계치 초과 시 Promoter 호출
+6. 장기 기억 토큰 → compaction 임계치 초과 시 Compactor 호출
 """
 
 import logging
@@ -15,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from seosoyoung.memory.observer import Observer
+from seosoyoung.memory.promoter import Compactor, Promoter
 from seosoyoung.memory.reflector import Reflector
 from seosoyoung.memory.store import MemoryRecord, MemoryStore
 from seosoyoung.memory.token_counter import TokenCounter
@@ -107,6 +110,11 @@ async def observe_conversation(
     min_turn_tokens: int = 200,
     reflector: Optional[Reflector] = None,
     reflection_threshold: int = 20000,
+    promoter: Optional[Promoter] = None,
+    promotion_threshold: int = 5000,
+    compactor: Optional[Compactor] = None,
+    compaction_threshold: int = 15000,
+    compaction_target: int = 8000,
     debug_channel: str = "",
 ) -> bool:
     """매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
@@ -120,6 +128,11 @@ async def observe_conversation(
         min_turn_tokens: 최소 턴 토큰 (이하 스킵)
         reflector: Reflector 인스턴스 (None이면 압축 건너뜀)
         reflection_threshold: Reflector 트리거 토큰 임계치
+        promoter: Promoter 인스턴스 (None이면 승격 건너뜀)
+        promotion_threshold: 후보 버퍼 → Promoter 트리거 토큰 임계치
+        compactor: Compactor 인스턴스 (None이면 컴팩션 건너뜀)
+        compaction_threshold: 장기 기억 → Compactor 트리거 토큰 임계치
+        compaction_target: 컴팩션 목표 토큰
         debug_channel: 디버그 로그를 발송할 슬랙 채널
 
     Returns:
@@ -255,6 +268,20 @@ async def observe_conversation(
                 f":white_check_mark: *OM* "
                 f"`{sid} | 관찰 완료 | {_format_tokens(turn_tokens)} tok{candidate_part}`",
             )
+
+        # 8. Promoter: 후보 버퍼 토큰 합산 → 임계치 초과 시 승격
+        if promoter:
+            await _try_promote(
+                store=store,
+                promoter=promoter,
+                promotion_threshold=promotion_threshold,
+                compactor=compactor,
+                compaction_threshold=compaction_threshold,
+                compaction_target=compaction_target,
+                debug_channel=debug_channel,
+                token_counter=token_counter,
+            )
+
         return True
 
     except Exception as e:
@@ -267,3 +294,161 @@ async def observe_conversation(
                 f":x: *OM* `{sid} | 관찰 오류 | {error_msg}`",
             )
         return False
+
+
+async def _try_promote(
+    store: MemoryStore,
+    promoter: Promoter,
+    promotion_threshold: int,
+    compactor: Optional[Compactor],
+    compaction_threshold: int,
+    compaction_target: int,
+    debug_channel: str,
+    token_counter: TokenCounter,
+) -> None:
+    """후보 버퍼 토큰이 임계치를 넘으면 Promoter를 호출하고, 필요 시 Compactor도 호출."""
+    try:
+        candidate_tokens = store.count_all_candidate_tokens()
+        if candidate_tokens < promotion_threshold:
+            return
+
+        all_candidates = store.load_all_candidates()
+        if not all_candidates:
+            return
+
+        # 기존 장기 기억 로드
+        persistent_data = store.get_persistent()
+        existing_persistent = persistent_data["content"] if persistent_data else ""
+
+        # 디버그 이벤트 #4: Promoter 시작 (send)
+        promoter_debug_ts = ""
+        if debug_channel:
+            promoter_debug_ts = _send_debug_log(
+                debug_channel,
+                f":brain: *LTM Promoter* "
+                f"`후보 {_format_tokens(candidate_tokens)} tok ({len(all_candidates)}건) → 검토 시작`",
+            )
+
+        logger.info(
+            f"Promoter 트리거: {candidate_tokens} tok ({len(all_candidates)}건)"
+        )
+
+        result = await promoter.promote(
+            candidates=all_candidates,
+            existing_persistent=existing_persistent,
+        )
+
+        # 승격된 항목이 있으면 장기 기억에 머지
+        if result.promoted and result.promoted.strip():
+            merged = Promoter.merge_promoted(existing_persistent, result.promoted)
+            persistent_tokens = token_counter.count_string(merged)
+
+            store.save_persistent(
+                content=merged,
+                meta={
+                    "token_count": persistent_tokens,
+                    "last_promoted_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+
+            logger.info(
+                f"Promoter 완료: 승격 {result.promoted_count}건, "
+                f"기각 {result.rejected_count}건, "
+                f"장기기억 {persistent_tokens} tok"
+            )
+
+            # 디버그 이벤트 #5: Promoter 완료 — 승격 있음 (update #4)
+            if debug_channel:
+                priority_parts = []
+                for emoji in ("🔴", "🟡", "🟢"):
+                    cnt = result.priority_counts.get(emoji, 0)
+                    if cnt:
+                        priority_parts.append(f"{emoji}{cnt}")
+                priority_str = " ".join(priority_parts)
+                _update_debug_log(
+                    debug_channel,
+                    promoter_debug_ts,
+                    f":white_check_mark: *LTM Promoter* "
+                    f"`승격 {result.promoted_count}건 ({priority_str}) | "
+                    f"기각 {result.rejected_count}건 | "
+                    f"장기기억 {_format_tokens(persistent_tokens)} tok`",
+                )
+
+            # Compactor 트리거 체크
+            if compactor and persistent_tokens > compaction_threshold:
+                await _try_compact(
+                    store=store,
+                    compactor=compactor,
+                    compaction_target=compaction_target,
+                    persistent_tokens=persistent_tokens,
+                    debug_channel=debug_channel,
+                )
+        else:
+            logger.info(
+                f"Promoter 완료: 승격 0건, 기각 {result.rejected_count}건"
+            )
+
+            # 디버그 이벤트 #5: 승격 없음 (update #4)
+            if debug_channel:
+                _update_debug_log(
+                    debug_channel,
+                    promoter_debug_ts,
+                    f":white_check_mark: *LTM Promoter* "
+                    f"`승격 0건 | 기각 {result.rejected_count}건`",
+                )
+
+        # 후보 버퍼 비우기
+        store.clear_all_candidates()
+
+    except Exception as e:
+        logger.error(f"Promoter 파이프라인 오류: {e}")
+
+
+async def _try_compact(
+    store: MemoryStore,
+    compactor: Compactor,
+    compaction_target: int,
+    persistent_tokens: int,
+    debug_channel: str,
+) -> None:
+    """장기 기억 토큰이 임계치를 넘으면 archive 후 Compactor를 호출."""
+    try:
+        # archive 백업
+        archive_path = store.archive_persistent()
+        logger.info(
+            f"Compactor 트리거: {persistent_tokens} tok, archive={archive_path}"
+        )
+
+        # 장기 기억 로드
+        persistent_data = store.get_persistent()
+        if not persistent_data:
+            return
+
+        result = await compactor.compact(
+            persistent=persistent_data["content"],
+            target_tokens=compaction_target,
+        )
+
+        # 압축 결과 저장
+        store.save_persistent(
+            content=result.compacted,
+            meta={
+                "token_count": result.token_count,
+                "last_compacted_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+        logger.info(
+            f"Compactor 완료: {persistent_tokens} → {result.token_count} tok"
+        )
+
+        # 디버그 이벤트 #6: 컴팩션 (별도 send)
+        if debug_channel:
+            _send_debug_log(
+                debug_channel,
+                f":compression: *LTM Compactor* "
+                f"`{_format_tokens(persistent_tokens)} → {_format_tokens(result.token_count)} tok | archive 저장`",
+            )
+
+    except Exception as e:
+        logger.error(f"Compactor 파이프라인 오류: {e}")

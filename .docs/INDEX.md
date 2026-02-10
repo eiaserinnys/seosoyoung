@@ -23,6 +23,7 @@
 - [`memory/context_builder.py`](modules/memory_context_builder.md): 컨텍스트 빌더
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
 - [`memory/observer.py`](modules/memory_observer.md): Observer 모듈
+- [`memory/promoter.py`](modules/memory_promoter.md): Promoter / Compactor 모듈
 - [`memory/prompts.py`](modules/memory_prompts.md): Observer/Reflector 프롬프트
 - [`memory/reflector.py`](modules/memory_reflector.md): Reflector 모듈
 - [`memory/store.py`](modules/memory_store.md): 관찰 로그 저장소
@@ -66,6 +67,10 @@
 - `ContextBuilder` (seosoyoung/memory/context_builder.py:102): 관찰 로그를 시스템 프롬프트로 변환
 - `ObserverResult` (seosoyoung/memory/observer.py:22): Observer 출력 결과
 - `Observer` (seosoyoung/memory/observer.py:63): 대화를 관찰하여 구조화된 관찰 로그를 생성
+- `PromoterResult` (seosoyoung/memory/promoter.py:20): Promoter 출력 결과
+- `CompactorResult` (seosoyoung/memory/promoter.py:35): Compactor 출력 결과
+- `Promoter` (seosoyoung/memory/promoter.py:103): 장기 기억 후보를 검토하여 승격
+- `Compactor` (seosoyoung/memory/promoter.py:157): 장기 기억을 압축
 - `ReflectorResult` (seosoyoung/memory/reflector.py:23): Reflector 출력 결과
 - `Reflector` (seosoyoung/memory/reflector.py:38): 관찰 로그를 압축하고 재구조화
 - `MemoryRecord` (seosoyoung/memory/store.py:36): 세션별 관찰 로그 레코드
@@ -142,13 +147,17 @@
 - `init_bot_user_id()` (seosoyoung/main.py:146): 봇 사용자 ID 초기화
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:17): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:60): 관찰 로그를 컨텍스트 주입에 최적화합니다.
-- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:65): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
-- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:101): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
+- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:68): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
+- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:104): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 - `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.
+- `parse_promoter_output()` (seosoyoung/memory/promoter.py:83): Promoter 응답에서 <promoted>와 <rejected> 태그를 파싱합니다.
+- `parse_compactor_output()` (seosoyoung/memory/promoter.py:97): Compactor 응답에서 <compacted> 태그를 파싱합니다.
 - `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:104): Observer 시스템 프롬프트를 반환합니다.
 - `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:109): Observer 사용자 프롬프트를 구성합니다.
-- `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:193): Reflector 시스템 프롬프트를 반환합니다.
-- `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:198): Reflector 재시도 프롬프트를 반환합니다.
+- `build_promoter_prompt()` (seosoyoung/memory/prompts.py:255): Promoter 프롬프트를 구성합니다.
+- `build_compactor_prompt()` (seosoyoung/memory/prompts.py:266): Compactor 프롬프트를 구성합니다.
+- `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:277): Reflector 시스템 프롬프트를 반환합니다.
+- `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:282): Reflector 재시도 프롬프트를 반환합니다.
 - `rank_results()` (seosoyoung/recall/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
 - `select_best_tool()` (seosoyoung/recall/aggregator.py:42): 최적 도구 선택.
 - `build_summary_prompt()` (seosoyoung/recall/aggregator.py:67): 요약 생성 프롬프트.
