@@ -98,79 +98,84 @@ class TestClaudeResultImageGenPrompts:
 
     async def test_image_gen_prompts_extracted(self):
         """IMAGE_GEN 마커가 ClaudeResult.image_gen_prompts로 추출되는지 확인"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from unittest.mock import AsyncMock
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(
-                result="이미지를 생성합니다.\n<!-- IMAGE_GEN: 귀여운 강아지 -->",
-                session_id="img-test"
-            )
+        mock_result = ClaudeResult(
+            success=True,
+            output="이미지를 생성합니다.\n<!-- IMAGE_GEN: 귀여운 강아지 -->",
+            session_id="img-test",
+            image_gen_prompts=["귀여운 강아지"],
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                result = await runner.run("테스트")
+        with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
+            result = await runner.run("테스트")
 
         assert result.success is True
         assert result.image_gen_prompts == ["귀여운 강아지"]
 
     async def test_multiple_image_gen_prompts(self):
         """복수 IMAGE_GEN 마커 추출"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from unittest.mock import AsyncMock
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(
-                result="<!-- IMAGE_GEN: 해변 -->\n<!-- IMAGE_GEN: 산 -->",
-                session_id="img-test"
-            )
+        mock_result = ClaudeResult(
+            success=True,
+            output="<!-- IMAGE_GEN: 해변 -->\n<!-- IMAGE_GEN: 산 -->",
+            session_id="img-test",
+            image_gen_prompts=["해변", "산"],
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                result = await runner.run("테스트")
+        with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
+            result = await runner.run("테스트")
 
         assert result.image_gen_prompts == ["해변", "산"]
 
     async def test_no_image_gen_prompts(self):
         """IMAGE_GEN 마커 없는 경우 빈 리스트"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from unittest.mock import AsyncMock
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(
-                result="일반 응답입니다.",
-                session_id="img-test"
-            )
+        mock_result = ClaudeResult(
+            success=True,
+            output="일반 응답입니다.",
+            session_id="img-test",
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                result = await runner.run("테스트")
+        with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
+            result = await runner.run("테스트")
 
         assert result.image_gen_prompts == []
 
     async def test_image_gen_with_other_markers(self):
         """다른 마커와 혼합된 IMAGE_GEN"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from unittest.mock import AsyncMock
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(
-                result=(
-                    "결과\n"
-                    "<!-- ATTACH: /path/file.md -->\n"
-                    "<!-- IMAGE_GEN: 판타지 성 -->\n"
-                    "<!-- UPDATE -->"
-                ),
-                session_id="img-test"
-            )
+        mock_result = ClaudeResult(
+            success=True,
+            output=(
+                "결과\n"
+                "<!-- ATTACH: /path/file.md -->\n"
+                "<!-- IMAGE_GEN: 판타지 성 -->\n"
+                "<!-- UPDATE -->"
+            ),
+            session_id="img-test",
+            image_gen_prompts=["판타지 성"],
+            attachments=["/path/file.md"],
+            update_requested=True,
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                result = await runner.run("테스트")
+        with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
+            result = await runner.run("테스트")
 
         assert result.image_gen_prompts == ["판타지 성"]
         assert result.attachments == ["/path/file.md"]

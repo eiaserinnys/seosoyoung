@@ -529,34 +529,20 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_triggers_observation_on_success(self):
         """성공적인 실행 후 관찰이 트리거됨"""
-        from dataclasses import dataclass
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
-
-        @dataclass
-        class MockResultMessage:
-            result: str
-            session_id: str = None
-
-        @dataclass
-        class MockTextBlock:
-            text: str
-
-        @dataclass
-        class MockAssistantMessage:
-            content: list
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockAssistantMessage(content=[MockTextBlock(text="작업 중...")])
-            yield MockResultMessage(result="완료", session_id="test")
+        mock_result = ClaudeResult(
+            success=True,
+            output="완료",
+            session_id="test",
+            collected_messages=[{"role": "assistant", "content": "작업 중..."}],
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
-            with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
-                with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
-                        with patch.object(runner, "_trigger_observation") as mock_trigger:
-                            result = await runner.run("테스트", user_id="U12345", thread_ts="ts_1234")
+        with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
+            with patch.object(runner, "_trigger_observation") as mock_trigger:
+                result = await runner.run("테스트", user_id="U12345", thread_ts="ts_1234")
 
         assert result.success is True
         mock_trigger.assert_called_once_with(
@@ -569,23 +555,19 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_without_user_id(self):
         """user_id 없으면 관찰을 트리거하지 않음"""
-        from dataclasses import dataclass
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
-
-        @dataclass
-        class MockResultMessage:
-            result: str
-            session_id: str = None
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(result="완료", session_id="test")
+        mock_result = ClaudeResult(
+            success=True,
+            output="완료",
+            session_id="test",
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                with patch.object(runner, "_trigger_observation") as mock_trigger:
-                    result = await runner.run("테스트")
+        with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
+            with patch.object(runner, "_trigger_observation") as mock_trigger:
+                result = await runner.run("테스트")
 
         assert result.success is True
         mock_trigger.assert_not_called()
@@ -593,23 +575,19 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_without_thread_ts(self):
         """thread_ts 없으면 관찰을 트리거하지 않음"""
-        from dataclasses import dataclass
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
-
-        @dataclass
-        class MockResultMessage:
-            result: str
-            session_id: str = None
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            yield MockResultMessage(result="완료", session_id="test")
+        mock_result = ClaudeResult(
+            success=True,
+            output="완료",
+            session_id="test",
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                with patch.object(runner, "_trigger_observation") as mock_trigger:
-                    result = await runner.run("테스트", user_id="U12345")
+        with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
+            with patch.object(runner, "_trigger_observation") as mock_trigger:
+                result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is True
         mock_trigger.assert_not_called()
@@ -617,15 +595,17 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_on_failure(self):
         """실행 실패 시 관찰을 트리거하지 않음"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
-        async def mock_query(prompt, options):
-            raise RuntimeError("실행 오류")
-            yield
+        mock_result = ClaudeResult(
+            success=False,
+            output="",
+            error="실행 오류",
+        )
 
-        with patch("seosoyoung.claude.agent_runner.query", mock_query):
+        with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
             with patch.object(runner, "_trigger_observation") as mock_trigger:
                 result = await runner.run("테스트", user_id="U12345", thread_ts="ts_1234")
 
