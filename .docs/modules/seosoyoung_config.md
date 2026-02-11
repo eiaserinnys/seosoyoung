@@ -32,14 +32,14 @@
 
 #### 메서드
 
-- `get_log_path()` (줄 209): 로그 경로
-- `get_session_path()` (줄 214): 세션 경로
-- `get_glossary_path()` (줄 219): 용어집 경로 (번역 시 고유명사 참조)
-- `get_narrative_path()` (줄 224): 대사 데이터 경로
-- `get_search_index_path()` (줄 229): 검색 인덱스 경로
-- `get_web_cache_path()` (줄 234): 웹 콘텐츠 캐시 경로
-- `get_memory_path()` (줄 239): 관찰 로그 저장 경로
-- `validate(cls)` (줄 249): 필수 환경변수 검증
+- `get_log_path()` (줄 211): 로그 경로
+- `get_session_path()` (줄 216): 세션 경로
+- `get_glossary_path()` (줄 221): 용어집 경로 (번역 시 고유명사 참조)
+- `get_narrative_path()` (줄 226): 대사 데이터 경로
+- `get_search_index_path()` (줄 231): 검색 인덱스 경로
+- `get_web_cache_path()` (줄 236): 웹 콘텐츠 캐시 경로
+- `get_memory_path()` (줄 241): 관찰 로그 저장 경로
+- `validate(cls)` (줄 251): 필수 환경변수 검증
 
 ## 함수
 

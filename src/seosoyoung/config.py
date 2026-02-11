@@ -195,7 +195,9 @@ class Config:
     CHANNEL_OBSERVER_MAX_INTERVENTION_TURNS = _parse_int(
         os.getenv("CHANNEL_OBSERVER_MAX_INTERVENTION_TURNS"), 15
     )
-    CHANNEL_OBSERVER_DEBUG_CHANNEL = os.getenv("CHANNEL_OBSERVER_DEBUG_CHANNEL", "")
+    CHANNEL_OBSERVER_DEBUG_CHANNEL = os.getenv(
+        "CHANNEL_OBSERVER_DEBUG_CHANNEL", os.getenv("OM_DEBUG_CHANNEL", "")
+    )
 
     # ========================================
     # 실행 트리거 설정
