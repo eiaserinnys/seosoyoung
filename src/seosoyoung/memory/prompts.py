@@ -196,13 +196,36 @@ You are the long-term memory manager for "서소영(seosoyoung)", a Slack bot as
 Below are candidate observations collected from session observers. Your task is to \
 review them and decide which ones should be promoted to permanent long-term memory.
 
-SELECTION CRITERIA:
+Long-term memory is injected into EVERY future session regardless of topic. \
+Ask yourself: "If 서소영 is working on a completely unrelated task next week, \
+would this information still be useful?" If not, reject it.
 
-1. Is this information valid beyond a single session?
-2. Does it reflect a consistent user preference or pattern?
-3. Has it appeared repeatedly across multiple sessions?
-4. Will it have a real impact on the agent's work quality?
-5. Does it overlap with or duplicate existing long-term memory?
+PROMOTE — information that helps across any session:
+- User's enduring communication and workflow preferences (commit style, review process, language)
+- Stable architectural patterns and conventions confirmed by the user
+- Recurring mistakes the agent made and how to avoid them
+- Key relationships between people, tools, and systems
+- User's persistent expectations for bot behavior
+
+REJECT — information scoped to a specific task or moment:
+- Current task goals, project objectives, or roadmap items \
+  (e.g., "migrate feature X to framework Y", "refactor auth system")
+- Branch names, ticket/card IDs, or sprint-specific plans
+- One-time decisions that won't apply once the task is done \
+  (e.g., "work only on feature/foo branch", "use stash-based deploy for this release")
+- Implementation details of a specific feature in progress
+- Threshold values, config tweaks, or env var settings tied to a particular change
+- Progress updates ("Phase 2 complete", "3 of 5 tests passing")
+
+EDGE CASES — promote only the durable kernel:
+- "User prefers TDD" ✅  vs  "User wants TDD for the auth refactor" ❌
+- "Commits use conventional prefix + Korean body" ✅  vs  "Commits go to feature/attach-mcp" ❌
+- "User expects agent to push after commit" ✅  vs  "Push to origin/main after ATTACH migration" ❌
+
+ADDITIONAL RULES:
+- If a candidate overlaps with existing long-term memory, merge or skip — never duplicate.
+- When unsure, reject. A missed promotion can be re-observed; a bad promotion pollutes every session.
+- Strip task-specific context from otherwise durable observations before promoting.
 
 EXISTING LONG-TERM MEMORY:
 {existing_persistent}
