@@ -615,8 +615,14 @@ class ClaudeExecutor:
             )
             return
 
-        # LIST_RUN 마커가 있으면 초기 메시지 삭제를 방지해야 함
-        is_list_run = bool(effective_role == "admin" and result.list_run)
+        # LIST_RUN: 초기 메시지 삭제를 방지해야 하는 경우
+        # 1) result.list_run 마커가 있거나 (새 정주행 시작)
+        # 2) trello_card.list_key == "list_run"이면 (정주행 중 개별 카드 실행)
+        is_list_run_from_marker = bool(effective_role == "admin" and result.list_run)
+        is_list_run_from_card = bool(
+            trello_card and getattr(trello_card, "list_key", None) == "list_run"
+        )
+        is_list_run = is_list_run_from_marker or is_list_run_from_card
 
         if is_trello_mode:
             self._handle_trello_success(
@@ -638,8 +644,8 @@ class ClaudeExecutor:
                     result, session, thread_ts, say
                 )
 
-        # LIST_RUN 마커 감지 (admin 역할만 허용)
-        if is_list_run:
+        # LIST_RUN 마커 감지 (admin 역할만, 새 정주행 시작 마커일 때만)
+        if is_list_run_from_marker:
             self._handle_list_run_marker(
                 result.list_run, channel, thread_ts, say, client
             )

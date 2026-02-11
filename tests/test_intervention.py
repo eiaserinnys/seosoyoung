@@ -793,6 +793,72 @@ class TestTrelloSuccessWithReplace:
         assert call_kwargs[1]["thread_ts"] is None
 
 
+class TestListRunTrelloSuccessNoDelete:
+    """정주행 카드 실행 시 chat_delete 방지 테스트
+
+    LIST_RUN 정주행 중 개별 카드 실행 시에는 result.list_run이 설정되지 않지만,
+    trello_card.list_key == "list_run"이면 is_list_run=True로 처리되어
+    chat_delete 대신 chat_update만 사용해야 합니다.
+    """
+
+    @patch("seosoyoung.claude.executor.add_reaction")
+    @patch("seosoyoung.claude.executor.remove_reaction")
+    @patch("seosoyoung.claude.executor.build_trello_header", return_value="[Header]")
+    def test_list_run_card_uses_chat_update_not_delete(self, mock_header, mock_remove, mock_add):
+        """정주행 카드(list_key='list_run')는 _replace_thinking_message를 호출하지 않음"""
+        executor = make_executor()
+        # result.list_run은 None (정주행 개별 카드에는 LIST_RUN 마커 없음)
+        result = make_claude_result(output="카드 작업 완료")
+        session = FakeSession()
+
+        # 정주행 카드: list_key="list_run", has_execute=True
+        trello_card = MagicMock()
+        trello_card.has_execute = True
+        trello_card.list_key = "list_run"
+
+        client = MagicMock()
+
+        with patch.object(executor, "_replace_thinking_message") as mock_replace:
+            executor._handle_trello_success(
+                result, "카드 작업 완료", session, trello_card,
+                "C_TEST", "thread_1", "msg_main",
+                MagicMock(), client,
+                is_list_run=True,
+            )
+
+        # _replace_thinking_message가 호출되지 않아야 함 (chat_delete 방지)
+        mock_replace.assert_not_called()
+        # 대신 chat_update가 호출되어야 함
+        client.chat_update.assert_called_once()
+
+    @patch("seosoyoung.claude.executor.get_runner_for_role")
+    def test_handle_success_detects_list_run_from_trello_card(self, mock_get_runner):
+        """_handle_success에서 trello_card.list_key=='list_run'이면 is_list_run=True"""
+        executor = make_executor()
+        # result.list_run은 None이지만 trello_card.list_key는 "list_run"
+        result = make_claude_result(output="완료", list_run=None)
+        session = FakeSession()
+
+        trello_card = MagicMock()
+        trello_card.has_execute = True
+        trello_card.list_key = "list_run"
+
+        client = MagicMock()
+
+        with patch.object(executor, "_handle_trello_success") as mock_trello_success:
+            executor._handle_success(
+                result, session, "admin", True, trello_card,
+                "C_TEST", "thread_1", "msg_1", "msg_thinking", "msg_main",
+                MagicMock(), client,
+                is_thread_reply=False,
+            )
+
+        mock_trello_success.assert_called_once()
+        # is_list_run=True로 전달되어야 함
+        call_kwargs = mock_trello_success.call_args
+        assert call_kwargs[1].get("is_list_run") is True or call_kwargs.kwargs.get("is_list_run") is True
+
+
 class TestIntegrationInterventionFinalResponse:
     """인터벤션 후 최종 응답 위치 통합 테스트"""
 
