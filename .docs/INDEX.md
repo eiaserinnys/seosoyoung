@@ -25,6 +25,9 @@
 - [`mcp/config.py`](modules/mcp_config.md): MCP 서버 설정
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
+- [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
+- [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화 파이프라인
+- [`memory/channel_prompts.py`](modules/memory_channel_prompts.md): 채널 관찰 프롬프트
 - [`memory/channel_store.py`](modules/memory_channel_store.md): 채널 관찰 데이터 저장소
 - [`memory/context_builder.py`](modules/memory_context_builder.md): 컨텍스트 빌더
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
@@ -71,6 +74,10 @@
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `GeneratedImage` (seosoyoung/image_gen/generator.py:24): 생성된 이미지 결과
+- `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:26): 채널 관찰 결과
+- `DigestCompressorResult` (seosoyoung/memory/channel_observer.py:37): digest 압축 결과
+- `ChannelObserver` (seosoyoung/memory/channel_observer.py:97): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
+- `DigestCompressor` (seosoyoung/memory/channel_observer.py:148): digest가 임계치를 초과할 때 압축
 - `ChannelStore` (seosoyoung/memory/channel_store.py:23): 파일 기반 채널 관찰 데이터 저장소
 - `InjectionResult` (seosoyoung/memory/context_builder.py:23): 주입 결과 — 디버그 로그용 정보를 포함
 - `ContextBuilder` (seosoyoung/memory/context_builder.py:118): 장기 기억 + 세션 관찰 로그를 시스템 프롬프트로 변환
@@ -158,6 +165,12 @@
 - `slack_get_context()` (seosoyoung/mcp/server.py:27): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
+- `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:44): Observer 응답에서 XML 태그를 파싱합니다.
+- `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:30): 채널 버퍼를 소화하여 digest를 갱신합니다.
+- `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:135): 채널 관찰 시스템 프롬프트를 반환합니다.
+- `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:140): 채널 관찰 사용자 프롬프트를 구성합니다.
+- `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:173): digest 압축 시스템 프롬프트를 반환합니다.
+- `build_digest_compressor_retry_prompt()` (seosoyoung/memory/channel_prompts.py:178): digest 압축 재시도 프롬프트를 반환합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:33): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:76): 관찰 로그를 컨텍스트 주입에 최적화합니다.
 - `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:72): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
