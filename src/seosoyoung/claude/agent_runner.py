@@ -69,8 +69,8 @@ DEFAULT_ALLOWED_TOOLS = [
     "Grep",
     "Bash",
     "TodoWrite",
-    "mcp__seosoyoung-attach__slack_attach_file",
-    "mcp__seosoyoung-attach__slack_get_context",
+    "mcp__seosoyoung-mcp__slack_attach_file",
+    "mcp__seosoyoung-mcp__slack_get_context",
 ]
 
 # Claude Code 기본 금지 도구
@@ -173,10 +173,27 @@ class ClaudeAgentRunner:
             options: ClaudeCodeOptions (새 클라이언트 생성 시 사용)
         """
         if thread_ts in self._active_clients:
+            logger.info(f"[DEBUG-CLIENT] 기존 클라이언트 재사용: thread={thread_ts}")
             return self._active_clients[thread_ts]
 
+        import time as _time
+        logger.info(f"[DEBUG-CLIENT] 새 ClaudeSDKClient 생성 시작: thread={thread_ts}")
         client = ClaudeSDKClient(options=options)
-        await client.connect()
+        logger.info(f"[DEBUG-CLIENT] ClaudeSDKClient 인스턴스 생성 완료, connect() 호출...")
+        t0 = _time.monotonic()
+        try:
+            await client.connect()
+            elapsed = _time.monotonic() - t0
+            logger.info(f"[DEBUG-CLIENT] connect() 성공: {elapsed:.2f}s")
+        except Exception as e:
+            elapsed = _time.monotonic() - t0
+            logger.error(f"[DEBUG-CLIENT] connect() 실패: {elapsed:.2f}s, error={e}")
+            # connect 실패 시 서브프로세스 정리 — 좀비 방지
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            raise
         self._active_clients[thread_ts] = client
         logger.info(f"ClaudeSDKClient 생성: thread={thread_ts}")
         return client
@@ -278,6 +295,20 @@ class ClaudeAgentRunner:
             env["SLACK_CHANNEL"] = channel
             env["SLACK_THREAD_TS"] = thread_ts
 
+        # DEBUG: CLI stderr를 파일에 캡처
+        import sys as _sys
+        # logs 디렉토리: seosoyoung 패키지 기준으로 계산
+        _runtime_dir = Path(__file__).resolve().parents[3]  # src/seosoyoung/claude/agent_runner.py -> seosoyoung_runtime
+        _stderr_log_path = _runtime_dir / "logs" / "cli_stderr.log"
+        logger.info(f"[DEBUG] CLI stderr 로그 경로: {_stderr_log_path}")
+        try:
+            _stderr_file = open(_stderr_log_path, "a", encoding="utf-8")
+            _stderr_file.write(f"\n--- CLI stderr capture start: {datetime.now(timezone.utc).isoformat()} ---\n")
+            _stderr_file.flush()
+        except Exception as _e:
+            logger.warning(f"[DEBUG] stderr 캡처 파일 열기 실패: {_e}")
+            _stderr_file = _sys.stderr
+
         options = ClaudeCodeOptions(
             allowed_tools=self.allowed_tools,
             disallowed_tools=self.disallowed_tools,
@@ -285,11 +316,9 @@ class ClaudeAgentRunner:
             cwd=self.working_dir,
             hooks=hooks,
             env=env,
+            extra_args={"debug-to-stderr": None},  # DEBUG: stderr 출력 활성화
+            debug_stderr=_stderr_file,  # DEBUG: stderr를 파일에 기록
         )
-
-        # MCP 서버 설정 (경로 지정된 경우)
-        if self.mcp_config_path and self.mcp_config_path.exists():
-            options.mcp_servers = self.mcp_config_path
 
         # 세션 재개
         if session_id:
@@ -505,7 +534,17 @@ class ClaudeAgentRunner:
         compact_events: list[dict] = []
         compact_notified_count = 0
         options = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+        # DEBUG: SDK에 전달되는 options 상세 로그
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
+        logger.info(f"[DEBUG-OPTIONS] permission_mode={options.permission_mode}")
+        logger.info(f"[DEBUG-OPTIONS] cwd={options.cwd}")
+        logger.info(f"[DEBUG-OPTIONS] env={options.env}")
+        logger.info(f"[DEBUG-OPTIONS] mcp_servers={options.mcp_servers}")
+        logger.info(f"[DEBUG-OPTIONS] resume={options.resume}")
+        logger.info(f"[DEBUG-OPTIONS] allowed_tools count={len(options.allowed_tools) if options.allowed_tools else 0}")
+        logger.info(f"[DEBUG-OPTIONS] disallowed_tools count={len(options.disallowed_tools) if options.disallowed_tools else 0}")
+        logger.info(f"[DEBUG-OPTIONS] append_system_prompt length={len(options.append_system_prompt) if options.append_system_prompt else 0}")
+        logger.info(f"[DEBUG-OPTIONS] hooks={'yes' if options.hooks else 'no'}")
 
         # 스레드 키: thread_ts가 없으면 임시 키 생성
         client_key = thread_ts or f"_ephemeral_{id(asyncio.current_task())}"
@@ -564,12 +603,14 @@ class ClaudeAgentRunner:
                                             logger.warning(f"진행 상황 콜백 오류: {e}")
 
                             elif isinstance(block, ToolUseBlock):
-                                # OM용: 도구 호출 수집 (input 요약 포함)
+                                # 도구 호출 로깅
                                 tool_input = ""
                                 if block.input:
                                     tool_input = json.dumps(block.input, ensure_ascii=False)
                                     if len(tool_input) > 2000:
                                         tool_input = tool_input[:2000] + "..."
+                                logger.info(f"[TOOL_USE] {block.name}: {tool_input[:500]}")
+                                # OM용: 도구 호출 수집
                                 collected_messages.append({
                                     "role": "assistant",
                                     "content": f"[tool_use: {block.name}] {tool_input}",
@@ -577,12 +618,13 @@ class ClaudeAgentRunner:
                                 })
 
                             elif isinstance(block, ToolResultBlock):
-                                # OM용: 도구 결과 수집 (내용이 긴 경우 truncate)
+                                # 도구 결과 수집 (내용이 긴 경우 truncate)
                                 content = ""
                                 if isinstance(block.content, str):
                                     content = block.content[:2000]
                                 elif block.content:
                                     content = json.dumps(block.content, ensure_ascii=False)[:2000]
+                                logger.info(f"[TOOL_RESULT] {content[:500]}")
                                 collected_messages.append({
                                     "role": "tool",
                                     "content": content,

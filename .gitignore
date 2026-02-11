@@ -30,3 +30,6 @@ Thumbs.db
 
 # Runtime data
 data/*.json
+
+# Observational memory (runtime only)
+memory/

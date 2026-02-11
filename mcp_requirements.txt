@@ -1,0 +1,2 @@
+fastmcp>=2.0
+slack_sdk
