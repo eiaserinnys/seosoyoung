@@ -30,11 +30,11 @@ Args:
     dependencies: 의존성 딕셔너리
 
 ### `_maybe_trigger_digest(channel_id, client, store, observer, compressor, cooldown)`
-- 위치: 줄 333
+- 위치: 줄 336
 - 설명: 버퍼 토큰 임계치를 초과하면 별도 스레드에서 소화 파이프라인을 실행합니다.
 
 ### `_maybe_trigger_intervention_response(channel_id, client, store, observer, cooldown)`
-- 위치: 줄 382
+- 위치: 줄 385
 - 설명: 개입 모드 중일 때 별도 스레드에서 반응을 생성합니다.
 
 ## 내부 의존성
