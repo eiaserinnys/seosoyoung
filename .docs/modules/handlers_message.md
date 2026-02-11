@@ -29,16 +29,22 @@ Args:
     app: Slack Bolt App 인스턴스
     dependencies: 의존성 딕셔너리
 
+### `_contains_trigger_word(text)`
+- 위치: 줄 342
+- 설명: 텍스트에 트리거 워드가 포함되어 있는지 확인합니다.
+
 ### `_maybe_trigger_digest(channel_id, client, store, observer, compressor, cooldown)`
-- 위치: 줄 340
+- 위치: 줄 350
 - 설명: 버퍼 토큰 임계치를 초과하면 별도 스레드에서 소화 파이프라인을 실행합니다.
 
+force=True이면 임계치와 무관하게 즉시 소화를 트리거합니다.
+
 ### `_maybe_trigger_intervention_response(channel_id, client, store, observer, cooldown)`
-- 위치: 줄 389
+- 위치: 줄 404
 - 설명: 개입 모드 중일 때 별도 스레드에서 반응을 생성합니다.
 
 ### `_send_collect_log(client, channel_id, store, event)`
-- 위치: 줄 435
+- 위치: 줄 450
 - 설명: 수집 디버그 로그를 전송합니다.
 
 ## 내부 의존성

@@ -121,10 +121,12 @@ def register_message_handlers(app, dependencies: dict):
                                 channel_store, channel_observer, channel_cooldown,
                             )
                     else:
+                        force = _contains_trigger_word(event.get("text", ""))
                         _maybe_trigger_digest(
                             ch, client,
                             channel_store, channel_observer,
                             channel_compressor, channel_cooldown,
+                            force=force,
                         )
             except Exception as e:
                 logger.error(f"채널 메시지 수집 실패: {e}")
@@ -337,21 +339,34 @@ def register_message_handlers(app, dependencies: dict):
         execute_thread.start()
 
 
+def _contains_trigger_word(text: str) -> bool:
+    """텍스트에 트리거 워드가 포함되어 있는지 확인합니다."""
+    if not Config.CHANNEL_OBSERVER_TRIGGER_WORDS:
+        return False
+    text_lower = text.lower()
+    return any(word.lower() in text_lower for word in Config.CHANNEL_OBSERVER_TRIGGER_WORDS)
+
+
 def _maybe_trigger_digest(
-    channel_id, client, store, observer, compressor, cooldown
+    channel_id, client, store, observer, compressor, cooldown,
+    *, force=False,
 ):
-    """버퍼 토큰 임계치를 초과하면 별도 스레드에서 소화 파이프라인을 실행합니다."""
+    """버퍼 토큰 임계치를 초과하면 별도 스레드에서 소화 파이프라인을 실행합니다.
+
+    force=True이면 임계치와 무관하게 즉시 소화를 트리거합니다.
+    """
     if not all([store, observer, cooldown]):
         return
 
-    # 간이 토큰 체크 (실제 임계치 체크는 digest_channel 내부에서 수행)
     buffer_tokens = store.count_buffer_tokens(channel_id)
-    if buffer_tokens < Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD:
+    if not force and buffer_tokens < Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD:
         return
 
     # 이미 실행 중이면 스킵
     if _digest_running.get(channel_id):
         return
+
+    threshold = 1 if force else Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD
 
     def run():
         _digest_running[channel_id] = True
@@ -365,7 +380,7 @@ def _maybe_trigger_digest(
                     channel_id=channel_id,
                     slack_client=client,
                     cooldown=cooldown,
-                    buffer_threshold=Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD,
+                    buffer_threshold=threshold,
                     compressor=compressor,
                     digest_max_tokens=Config.CHANNEL_OBSERVER_DIGEST_MAX_TOKENS,
                     digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,

@@ -198,6 +198,11 @@ class Config:
     CHANNEL_OBSERVER_PERIODIC_SEC = _parse_int(
         os.getenv("CHANNEL_OBSERVER_PERIODIC_SEC"), 300
     )
+    CHANNEL_OBSERVER_TRIGGER_WORDS = [
+        w.strip()
+        for w in os.getenv("CHANNEL_OBSERVER_TRIGGER_WORDS", "").split(",")
+        if w.strip()
+    ]
     CHANNEL_OBSERVER_DEBUG_CHANNEL = os.getenv(
         "CHANNEL_OBSERVER_DEBUG_CHANNEL", os.getenv("OM_DEBUG_CHANNEL", "")
     )
