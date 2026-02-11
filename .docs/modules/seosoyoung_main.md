@@ -11,31 +11,31 @@ SeoSoyoung 슬랙 봇 메인
 ## 함수
 
 ### `_perform_restart(restart_type)`
-- 위치: 줄 43
+- 위치: 줄 44
 - 설명: 실제 재시작 수행
 
 ### `_check_restart_on_session_stop()`
-- 위치: 줄 56
+- 위치: 줄 57
 - 설명: 세션 종료 시 재시작 확인
 
 ### `notify_startup()`
-- 위치: 줄 134
+- 위치: 줄 152
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 145
+- 위치: 줄 163
 - 설명: 봇 종료 알림
 
 ### `start_trello_watcher()`
-- 위치: 줄 156
+- 위치: 줄 174
 - 설명: Trello 워처 시작
 
 ### `start_list_runner()`
-- 위치: 줄 176
+- 위치: 줄 194
 - 설명: 리스트 러너 초기화
 
 ### `init_bot_user_id()`
-- 위치: 줄 186
+- 위치: 줄 204
 - 설명: 봇 사용자 ID 초기화
 
 ## 내부 의존성
@@ -53,6 +53,7 @@ SeoSoyoung 슬랙 봇 메인
 - `seosoyoung.memory.channel_intervention.CooldownManager`
 - `seosoyoung.memory.channel_observer.ChannelObserver`
 - `seosoyoung.memory.channel_observer.DigestCompressor`
+- `seosoyoung.memory.channel_scheduler.ChannelDigestScheduler`
 - `seosoyoung.memory.channel_store.ChannelStore`
 - `seosoyoung.restart.RestartManager`
 - `seosoyoung.restart.RestartType`

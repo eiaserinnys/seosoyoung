@@ -22,6 +22,7 @@ from seosoyoung.handlers.channel_collector import ChannelMessageCollector
 from seosoyoung.memory.channel_store import ChannelStore
 from seosoyoung.memory.channel_intervention import CooldownManager
 from seosoyoung.memory.channel_observer import ChannelObserver, DigestCompressor
+from seosoyoung.memory.channel_scheduler import ChannelDigestScheduler
 
 # 로깅 설정
 logger = setup_logging()
@@ -83,6 +84,7 @@ _channel_collector: ChannelMessageCollector | None = None
 _channel_cooldown: CooldownManager | None = None
 _channel_observer: ChannelObserver | None = None
 _channel_compressor: DigestCompressor | None = None
+_channel_scheduler: ChannelDigestScheduler | None = None
 
 if Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS:
     _channel_store = ChannelStore(base_dir=Config.get_memory_path())
@@ -103,9 +105,25 @@ if Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS:
             api_key=Config.CHANNEL_OBSERVER_API_KEY,
             model=Config.CHANNEL_OBSERVER_COMPRESSOR_MODEL,
         )
+    if _channel_observer and Config.CHANNEL_OBSERVER_PERIODIC_SEC > 0:
+        _channel_scheduler = ChannelDigestScheduler(
+            store=_channel_store,
+            observer=_channel_observer,
+            compressor=_channel_compressor,
+            cooldown=_channel_cooldown,
+            slack_client=app.client,
+            channels=Config.CHANNEL_OBSERVER_CHANNELS,
+            interval_sec=Config.CHANNEL_OBSERVER_PERIODIC_SEC,
+            buffer_threshold=Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD,
+            digest_max_tokens=Config.CHANNEL_OBSERVER_DIGEST_MAX_TOKENS,
+            digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
+            debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
+            max_intervention_turns=Config.CHANNEL_OBSERVER_MAX_INTERVENTION_TURNS,
+        )
     logger.info(
         f"채널 관찰 시스템 초기화: channels={Config.CHANNEL_OBSERVER_CHANNELS}, "
-        f"cooldown={Config.CHANNEL_OBSERVER_COOLDOWN_SEC}s"
+        f"cooldown={Config.CHANNEL_OBSERVER_COOLDOWN_SEC}s, "
+        f"periodic={Config.CHANNEL_OBSERVER_PERIODIC_SEC}s"
     )
 
 # 핸들러 의존성
@@ -203,5 +221,7 @@ if __name__ == "__main__":
     notify_startup()
     start_trello_watcher()
     start_list_runner()
+    if _channel_scheduler:
+        _channel_scheduler.start()
     handler = SocketModeHandler(app, Config.SLACK_APP_TOKEN)
     handler.start()

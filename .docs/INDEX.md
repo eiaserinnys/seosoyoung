@@ -29,6 +29,7 @@
 - [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
 - [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화 파이프라인
 - [`memory/channel_prompts.py`](modules/memory_channel_prompts.md): 채널 관찰 프롬프트
+- [`memory/channel_scheduler.py`](modules/memory_channel_scheduler.md): 채널 소화 주기적 스케줄러
 - [`memory/channel_store.py`](modules/memory_channel_store.md): 채널 관찰 데이터 저장소
 - [`memory/context_builder.py`](modules/memory_context_builder.md): 컨텍스트 빌더
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
@@ -81,6 +82,7 @@
 - `DigestCompressorResult` (seosoyoung/memory/channel_observer.py:37): digest 압축 결과
 - `ChannelObserver` (seosoyoung/memory/channel_observer.py:97): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
 - `DigestCompressor` (seosoyoung/memory/channel_observer.py:148): digest가 임계치를 초과할 때 압축
+- `ChannelDigestScheduler` (seosoyoung/memory/channel_scheduler.py:18): 주기적으로 채널 버퍼를 체크하여 소화를 트리거하는 스케줄러
 - `ChannelStore` (seosoyoung/memory/channel_store.py:23): 파일 기반 채널 관찰 데이터 저장소
 - `InjectionResult` (seosoyoung/memory/context_builder.py:31): 주입 결과 — 디버그 로그용 정보를 포함
 - `ContextBuilder` (seosoyoung/memory/context_builder.py:128): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
@@ -159,11 +161,11 @@
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `async generate_image()` (seosoyoung/image_gen/generator.py:31): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/main.py:134): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/main.py:145): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/main.py:156): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/main.py:176): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/main.py:186): 봇 사용자 ID 초기화
+- `notify_startup()` (seosoyoung/main.py:152): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/main.py:163): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/main.py:174): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/main.py:194): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/main.py:204): 봇 사용자 ID 초기화
 - `slack_attach_file()` (seosoyoung/mcp/server.py:11): 슬랙에 파일을 첨부합니다.
 - `slack_get_context()` (seosoyoung/mcp/server.py:27): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
