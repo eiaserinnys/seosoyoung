@@ -172,9 +172,9 @@
 - `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:75): InterventionAction 리스트를 슬랙 API로 발송합니다.
 - `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:249): 디버그 채널에 관찰 결과 로그를 전송합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:44): Observer 응답에서 XML 태그를 파싱합니다.
-- `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:44): 채널 버퍼를 소화하여 digest를 갱신합니다.
-- `async run_digest_and_intervene()` (seosoyoung/memory/channel_pipeline.py:154): 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
-- `async respond_in_intervention_mode()` (seosoyoung/memory/channel_pipeline.py:236): 개입 모드 중 새 메시지에 반응합니다.
+- `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:42): 채널 버퍼를 소화하여 digest를 갱신합니다.
+- `async run_digest_and_intervene()` (seosoyoung/memory/channel_pipeline.py:152): 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
+- `async respond_in_intervention_mode()` (seosoyoung/memory/channel_pipeline.py:234): 개입 모드 중 새 메시지에 반응합니다.
 - `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:176): 채널 관찰 시스템 프롬프트를 반환합니다.
 - `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:181): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:214): digest 압축 시스템 프롬프트를 반환합니다.

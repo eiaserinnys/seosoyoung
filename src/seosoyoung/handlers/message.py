@@ -104,12 +104,15 @@ def register_message_handlers(app, dependencies: dict):
                 ch = event.get("channel", "")
                 collected = channel_collector.collect(event)
                 if collected:
+                    is_bot = bool(event.get("bot_id"))
                     # 개입 모드 중이면 소화 대신 즉시 반응
+                    # 단, 봇 자신의 메시지에는 반응하지 않음 (자기 대화 루프 방지)
                     if channel_cooldown and channel_cooldown.is_active(ch):
-                        _maybe_trigger_intervention_response(
-                            ch, client,
-                            channel_store, channel_observer, channel_cooldown,
-                        )
+                        if not is_bot:
+                            _maybe_trigger_intervention_response(
+                                ch, client,
+                                channel_store, channel_observer, channel_cooldown,
+                            )
                     else:
                         _maybe_trigger_digest(
                             ch, client,

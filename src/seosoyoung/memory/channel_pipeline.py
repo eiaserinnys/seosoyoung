@@ -15,9 +15,7 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
-
-from typing import Callable
+from typing import Callable, Optional
 
 from seosoyoung.memory.channel_intervention import (
     CooldownManager,
