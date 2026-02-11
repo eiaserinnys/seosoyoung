@@ -236,6 +236,92 @@ class TestCooldownManager:
         assert filtered[0].type == "react"
 
 
+# ── CooldownManager 개입 모드 상태 머신 ─────────────────
+
+class TestCooldownManagerInterventionMode:
+    """개입 모드 상태 머신 테스트 (idle ↔ active)"""
+
+    def test_initial_state_is_idle(self, tmp_path):
+        """초기 상태는 idle"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        assert cm.is_active("C123") is False
+        assert cm.get_remaining_turns("C123") == 0
+
+    def test_enter_intervention_mode(self, tmp_path):
+        """enter_intervention_mode로 active 상태 전환"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cm.enter_intervention_mode("C123", max_turns=5)
+
+        assert cm.is_active("C123") is True
+        assert cm.get_remaining_turns("C123") == 5
+
+    def test_consume_turn_decrements(self, tmp_path):
+        """consume_turn은 턴을 1 소모하고 남은 턴을 반환"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cm.enter_intervention_mode("C123", max_turns=3)
+
+        remaining = cm.consume_turn("C123")
+        assert remaining == 2
+        assert cm.get_remaining_turns("C123") == 2
+
+    def test_consume_turn_to_zero_transitions_to_idle(self, tmp_path):
+        """턴이 0이 되면 idle로 전환되고 쿨다운 기록"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cm.enter_intervention_mode("C123", max_turns=1)
+
+        remaining = cm.consume_turn("C123")
+        assert remaining == 0
+        assert cm.is_active("C123") is False
+        # 쿨다운이 기록되어야 함
+        assert cm.can_intervene("C123") is False
+
+    def test_consume_turn_multiple(self, tmp_path):
+        """여러 턴 소모"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cm.enter_intervention_mode("C123", max_turns=3)
+
+        assert cm.consume_turn("C123") == 2
+        assert cm.consume_turn("C123") == 1
+        assert cm.consume_turn("C123") == 0
+        assert cm.is_active("C123") is False
+
+    def test_consume_turn_when_idle_returns_zero(self, tmp_path):
+        """idle 상태에서 consume_turn은 0 반환"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        remaining = cm.consume_turn("C123")
+        assert remaining == 0
+
+    def test_filter_actions_active_allows_message(self, tmp_path):
+        """active 모드에서는 message 액션도 통과"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=9999)
+        cm.enter_intervention_mode("C123", max_turns=5)
+
+        actions = [
+            InterventionAction(type="message", target="channel", content="개입"),
+            InterventionAction(type="react", target="1.1", content="smile"),
+        ]
+        filtered = cm.filter_actions("C123", actions)
+        assert len(filtered) == 2
+
+    def test_different_channels_independent(self, tmp_path):
+        """채널마다 독립적인 상태"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cm.enter_intervention_mode("C123", max_turns=3)
+
+        assert cm.is_active("C123") is True
+        assert cm.is_active("C456") is False
+
+    def test_meta_persists_mode(self, tmp_path):
+        """상태가 파일에 저장되어 새 인스턴스에서도 유지"""
+        cm1 = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cm1.enter_intervention_mode("C123", max_turns=5)
+
+        # 새 인스턴스로 상태 확인
+        cm2 = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        assert cm2.is_active("C123") is True
+        assert cm2.get_remaining_turns("C123") == 5
+
+
 # ── send_debug_log ───────────────────────────────────────
 
 class TestSendDebugLog:
@@ -469,6 +555,38 @@ class TestRunDigestAndIntervene:
 
         client.chat_postMessage.assert_not_called()
         client.reactions_add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_intervene_enters_intervention_mode(self, tmp_path):
+        """소화 → 개입 시 개입 모드 진입"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        _fill_buffer(store, "C123")
+
+        observer = FakeObserver(ChannelObserverResult(
+            digest="관찰 결과",
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="무슨 일이오?",
+        ))
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        await run_digest_and_intervene(
+            store=store,
+            observer=observer,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            buffer_threshold=1,
+            max_intervention_turns=5,
+        )
+
+        # 개입 후 개입 모드에 진입해야 함
+        assert cooldown.is_active("C123") is True
+        assert cooldown.get_remaining_turns("C123") == 5
 
     @pytest.mark.asyncio
     async def test_debug_log_sent(self, tmp_path):

@@ -2,14 +2,20 @@
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from seosoyoung.memory.channel_intervention import CooldownManager
 from seosoyoung.memory.channel_observer import (
     ChannelObserverResult,
     DigestCompressorResult,
 )
-from seosoyoung.memory.channel_pipeline import digest_channel
+from seosoyoung.memory.channel_pipeline import digest_channel, respond_in_intervention_mode
+from seosoyoung.memory.channel_prompts import (
+    build_intervention_mode_prompt,
+    INTERVENTION_MODE_SYSTEM_PROMPT,
+)
 from seosoyoung.memory.channel_store import ChannelStore
 
 
@@ -256,3 +262,219 @@ class TestDigestChannel:
         assert "token_count" in meta
         assert "last_importance" in meta
         assert meta["last_importance"] == 6
+
+
+# ── 개입 모드 프롬프트 테스트 ──────────────────────────
+
+class TestInterventionModePrompt:
+    """개입 모드 프롬프트 빌더 테스트"""
+
+    def test_system_prompt_exists(self):
+        """INTERVENTION_MODE_SYSTEM_PROMPT 상수가 존재"""
+        assert INTERVENTION_MODE_SYSTEM_PROMPT
+        assert "서소영" in INTERVENTION_MODE_SYSTEM_PROMPT
+
+    def test_build_prompt_includes_remaining_turns(self):
+        """남은 턴이 프롬프트에 포함"""
+        prompt = build_intervention_mode_prompt(
+            remaining_turns=5,
+            channel_id="C123",
+            new_messages=[{"ts": "1.1", "user": "U1", "text": "안녕"}],
+            digest="채널 다이제스트",
+        )
+        assert "5" in prompt
+
+    def test_build_prompt_includes_digest(self):
+        """다이제스트가 프롬프트에 포함"""
+        prompt = build_intervention_mode_prompt(
+            remaining_turns=3,
+            channel_id="C123",
+            new_messages=[{"ts": "1.1", "user": "U1", "text": "안녕"}],
+            digest="테스트 다이제스트 내용",
+        )
+        assert "테스트 다이제스트 내용" in prompt
+
+    def test_build_prompt_includes_messages(self):
+        """새 메시지가 프롬프트에 포함"""
+        prompt = build_intervention_mode_prompt(
+            remaining_turns=3,
+            channel_id="C123",
+            new_messages=[
+                {"ts": "1.1", "user": "U1", "text": "첫 번째 메시지"},
+                {"ts": "1.2", "user": "U2", "text": "두 번째 메시지"},
+            ],
+            digest="다이제스트",
+        )
+        assert "첫 번째 메시지" in prompt
+        assert "두 번째 메시지" in prompt
+
+    def test_last_turn_includes_farewell_instruction(self):
+        """마지막 턴에는 마무리 지시가 포함"""
+        prompt = build_intervention_mode_prompt(
+            remaining_turns=1,
+            channel_id="C123",
+            new_messages=[{"ts": "1.1", "user": "U1", "text": "안녕"}],
+            digest="다이제스트",
+        )
+        # 마지막 턴이므로 마무리 관련 지시가 있어야 함
+        assert "마지막" in prompt or "마무리" in prompt
+
+    def test_not_last_turn_no_farewell(self):
+        """마지막 턴이 아니면 마무리 지시 없음"""
+        prompt = build_intervention_mode_prompt(
+            remaining_turns=5,
+            channel_id="C123",
+            new_messages=[{"ts": "1.1", "user": "U1", "text": "안녕"}],
+            digest="다이제스트",
+        )
+        assert "마지막" not in prompt
+
+
+# ── respond_in_intervention_mode 테스트 ────────────────
+
+class TestRespondInInterventionMode:
+    """개입 모드 반응 함수 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_responds_and_consumes_turn(self, tmp_path):
+        """개입 모드 반응: LLM 호출 + 슬랙 발송 + 턴 소모"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=3)
+
+        # 버퍼에 메시지 추가
+        store.append_channel_message("C123", {
+            "ts": "1.1", "user": "U1", "text": "테스트 메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        # LLM mock
+        mock_llm = AsyncMock(return_value="아이고, 재미있는 이야기로군요.")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            llm_call=mock_llm,
+        )
+
+        # 슬랙에 메시지 발송됨
+        client.chat_postMessage.assert_called_once()
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert call_kwargs["channel"] == "C123"
+        assert "재미있는" in call_kwargs["text"]
+
+        # 턴이 소모됨
+        assert cooldown.get_remaining_turns("C123") == 2
+
+    @pytest.mark.asyncio
+    async def test_last_turn_transitions_to_idle(self, tmp_path):
+        """마지막 턴이면 idle로 전환"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=1)
+
+        store.append_channel_message("C123", {
+            "ts": "1.1", "user": "U1", "text": "메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        mock_llm = AsyncMock(return_value="이만 물러가겠소.")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            llm_call=mock_llm,
+        )
+
+        assert cooldown.is_active("C123") is False
+        assert cooldown.can_intervene("C123") is False  # 쿨다운 진입
+
+    @pytest.mark.asyncio
+    async def test_llm_receives_correct_prompt(self, tmp_path):
+        """LLM에 올바른 프롬프트가 전달되는지 확인"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=5)
+
+        store.save_digest("C123", "기존 다이제스트", {"token_count": 100})
+        store.append_channel_message("C123", {
+            "ts": "1.1", "user": "U1", "text": "새 메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        mock_llm = AsyncMock(return_value="응답")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            llm_call=mock_llm,
+        )
+
+        # LLM이 호출됨
+        mock_llm.assert_called_once()
+        call_args = mock_llm.call_args
+        system_prompt = call_args[1].get("system_prompt") or call_args[0][0]
+        user_prompt = call_args[1].get("user_prompt") or call_args[0][1]
+
+        # 시스템 프롬프트에 서소영 관련 내용
+        assert "서소영" in system_prompt
+        # 유저 프롬프트에 다이제스트와 메시지
+        assert "기존 다이제스트" in user_prompt
+        assert "새 메시지" in user_prompt
+
+    @pytest.mark.asyncio
+    async def test_empty_buffer_skips(self, tmp_path):
+        """버퍼가 비어있으면 반응 스킵"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=5)
+
+        client = MagicMock()
+        mock_llm = AsyncMock(return_value="응답")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            llm_call=mock_llm,
+        )
+
+        # 빈 버퍼: LLM 호출 안 됨
+        mock_llm.assert_not_called()
+        client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_clears_buffer_after_response(self, tmp_path):
+        """반응 후 채널 버퍼를 비움"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=5)
+
+        store.append_channel_message("C123", {
+            "ts": "1.1", "user": "U1", "text": "메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        mock_llm = AsyncMock(return_value="응답")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            llm_call=mock_llm,
+        )
+
+        assert len(store.load_channel_buffer("C123")) == 0

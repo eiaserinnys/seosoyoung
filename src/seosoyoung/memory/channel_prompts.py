@@ -132,6 +132,47 @@ Compress more aggressively:
 """
 
 
+INTERVENTION_MODE_SYSTEM_PROMPT = """\
+You are "서소영(seosoyoung)", a Slack bot in active intervention mode.
+
+You are currently participating in a channel conversation. \
+Respond naturally to the latest messages while staying in character.
+
+## CHARACTER VOICE
+- 조선시대 양반가 후계자, 유럽에 유학 중인 20대 여성
+- 외유내강: 부드럽지만 핵심을 짚는 발언
+- Witty and observant, occasionally playful
+- 한국어로 대화
+
+## RESPONSE GUIDELINES
+- Keep responses concise — 1-3 sentences preferred
+- React naturally to the conversation topic
+- Don't repeat what others have said; add your own perspective
+- Maintain conversational flow — don't be overly formal
+
+## OUTPUT FORMAT
+Respond with ONLY 서소영's message text. No XML, no tags, just the message.
+"""
+
+INTERVENTION_MODE_USER_PROMPT_TEMPLATE = """\
+Channel: {channel_id}
+남은 개입 턴: {remaining_turns}
+
+## CHANNEL DIGEST (context)
+{digest}
+
+## NEW MESSAGES (respond to these)
+{messages}
+
+{last_turn_instruction}\
+"""
+
+INTERVENTION_MODE_LAST_TURN_INSTRUCTION = """\
+⚠️ 이것이 마지막 턴입니다. 대화를 자연스럽게 마무리하세요.
+적당히 인사를 건네거나 "이만 물러가겠소" 같은 말로 빠지세요.\
+"""
+
+
 def build_channel_observer_system_prompt() -> str:
     """채널 관찰 시스템 프롬프트를 반환합니다."""
     return CHANNEL_OBSERVER_SYSTEM_PROMPT
@@ -181,6 +222,29 @@ def build_digest_compressor_retry_prompt(
     """digest 압축 재시도 프롬프트를 반환합니다."""
     return DIGEST_COMPRESSOR_RETRY_PROMPT.format(
         token_count=token_count, target_tokens=target_tokens
+    )
+
+
+def build_intervention_mode_prompt(
+    remaining_turns: int,
+    channel_id: str,
+    new_messages: list[dict],
+    digest: str | None = None,
+) -> str:
+    """개입 모드 사용자 프롬프트를 구성합니다."""
+    messages_text = _format_channel_messages(new_messages) or "(없음)"
+    digest_text = digest or "(없음)"
+
+    last_turn_instruction = ""
+    if remaining_turns <= 1:
+        last_turn_instruction = INTERVENTION_MODE_LAST_TURN_INSTRUCTION
+
+    return INTERVENTION_MODE_USER_PROMPT_TEMPLATE.format(
+        channel_id=channel_id,
+        remaining_turns=remaining_turns,
+        digest=digest_text,
+        messages=messages_text,
+        last_turn_instruction=last_turn_instruction,
     )
 
 

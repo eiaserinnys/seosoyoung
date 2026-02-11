@@ -17,6 +17,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from typing import Callable
+
 from seosoyoung.memory.channel_intervention import (
     CooldownManager,
     InterventionAction,
@@ -28,6 +30,10 @@ from seosoyoung.memory.channel_observer import (
     ChannelObserver,
     ChannelObserverResult,
     DigestCompressor,
+)
+from seosoyoung.memory.channel_prompts import (
+    INTERVENTION_MODE_SYSTEM_PROMPT,
+    build_intervention_mode_prompt,
 )
 from seosoyoung.memory.channel_store import ChannelStore
 from seosoyoung.memory.token_counter import TokenCounter
@@ -156,6 +162,7 @@ async def run_digest_and_intervene(
     digest_max_tokens: int = 10_000,
     digest_target_tokens: int = 5_000,
     debug_channel: str = "",
+    max_intervention_turns: int = 0,
 ) -> None:
     """소화 파이프라인 + 개입 실행을 일괄 수행합니다.
 
@@ -172,6 +179,7 @@ async def run_digest_and_intervene(
         digest_max_tokens: digest 압축 트리거 토큰 임계치
         digest_target_tokens: digest 압축 목표 토큰
         debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
+        max_intervention_turns: 개입 모드 최대 턴 (0이면 개입 모드 비활성)
     """
     # 1. 소화 파이프라인
     result = await digest_channel(
@@ -207,9 +215,12 @@ async def run_digest_and_intervene(
     # 4. 슬랙 발송
     if filtered:
         await execute_interventions(slack_client, channel_id, filtered)
-        # 메시지 개입이 있었으면 쿨다운 기록
+        # 메시지 개입이 있었으면 개입 모드 진입 (또는 쿨다운 기록)
         if any(a.type == "message" for a in filtered):
-            cooldown.record_intervention(channel_id)
+            if max_intervention_turns > 0:
+                cooldown.enter_intervention_mode(channel_id, max_intervention_turns)
+            else:
+                cooldown.record_intervention(channel_id)
 
     # 5. 디버그 로그
     await send_debug_log(
@@ -220,3 +231,70 @@ async def run_digest_and_intervene(
         actions=actions,
         actions_filtered=filtered,
     )
+
+
+async def respond_in_intervention_mode(
+    store: ChannelStore,
+    channel_id: str,
+    slack_client,
+    cooldown: CooldownManager,
+    llm_call: Callable,
+) -> None:
+    """개입 모드 중 새 메시지에 반응합니다.
+
+    버퍼에 쌓인 메시지를 읽고, LLM으로 서소영의 응답을 생성하여
+    슬랙에 발송하고, 턴을 소모합니다.
+
+    Args:
+        store: 채널 데이터 저장소
+        channel_id: 대상 채널
+        slack_client: Slack WebClient
+        cooldown: CooldownManager 인스턴스
+        llm_call: async callable(system_prompt, user_prompt) -> str
+    """
+    # 1. 버퍼 로드
+    messages = store.load_channel_buffer(channel_id)
+    if not messages:
+        return
+
+    # 2. 다이제스트 로드
+    digest_data = store.get_digest(channel_id)
+    digest = digest_data["content"] if digest_data else None
+
+    # 3. 프롬프트 구성
+    remaining = cooldown.get_remaining_turns(channel_id)
+    system_prompt = INTERVENTION_MODE_SYSTEM_PROMPT
+    user_prompt = build_intervention_mode_prompt(
+        remaining_turns=remaining,
+        channel_id=channel_id,
+        new_messages=messages,
+        digest=digest,
+    )
+
+    # 4. LLM 호출
+    try:
+        response_text = await llm_call(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
+    except Exception as e:
+        logger.error(f"개입 모드 LLM 호출 실패 ({channel_id}): {e}")
+        return
+
+    if not response_text or not response_text.strip():
+        logger.warning(f"개입 모드 LLM 빈 응답 ({channel_id})")
+        return
+
+    # 5. 슬랙 발송
+    try:
+        slack_client.chat_postMessage(
+            channel=channel_id,
+            text=response_text.strip(),
+        )
+    except Exception as e:
+        logger.error(f"개입 모드 슬랙 발송 실패 ({channel_id}): {e}")
+        return
+
+    # 6. 버퍼 비우기 + 턴 소모
+    store.clear_buffers(channel_id)
+    cooldown.consume_turn(channel_id)

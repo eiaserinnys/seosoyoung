@@ -125,10 +125,18 @@ async def execute_interventions(
 
 
 class CooldownManager:
-    """개입 쿨다운 관리
+    """개입 쿨다운 및 개입 모드 상태 관리
 
-    대화 개입(message)은 쿨다운 대상, 이모지 리액션(react)은 제외.
-    마지막 개입 시각을 intervention.meta.json에 기록합니다.
+    상태 머신: idle ↔ active
+    - idle: 일반 상태. 소화 시 intervene 결정 → active 전환
+    - active: 개입 모드. 메시지마다 반응하고 턴 소모. 턴 0 → idle + 쿨다운
+
+    intervention.meta.json 구조:
+    {
+        "last_intervention_at": float,
+        "mode": "idle" | "active",
+        "remaining_turns": int,
+    }
     """
 
     def __init__(self, base_dir: str | Path, cooldown_sec: int = 1800):
@@ -170,23 +178,66 @@ class CooldownManager:
         meta["last_intervention_at"] = time.time()
         self._write_meta(channel_id, meta)
 
+    # ── 개입 모드 상태 머신 ──────────────────────────────
+
+    def is_active(self, channel_id: str) -> bool:
+        """개입 모드 중인지 확인"""
+        meta = self._read_meta(channel_id)
+        return meta.get("mode") == "active"
+
+    def get_remaining_turns(self, channel_id: str) -> int:
+        """남은 개입 턴 수 반환"""
+        meta = self._read_meta(channel_id)
+        if meta.get("mode") != "active":
+            return 0
+        return meta.get("remaining_turns", 0)
+
+    def enter_intervention_mode(self, channel_id: str, max_turns: int) -> None:
+        """개입 모드 진입 (idle → active)"""
+        meta = self._read_meta(channel_id)
+        meta["mode"] = "active"
+        meta["remaining_turns"] = max_turns
+        self._write_meta(channel_id, meta)
+
+    def consume_turn(self, channel_id: str) -> int:
+        """턴 1 소모, 남은 턴 반환. 0이면 idle 전환 + 쿨다운 기록"""
+        meta = self._read_meta(channel_id)
+        if meta.get("mode") != "active":
+            return 0
+
+        remaining = meta.get("remaining_turns", 0) - 1
+        if remaining <= 0:
+            remaining = 0
+            meta["mode"] = "idle"
+            meta["remaining_turns"] = 0
+            meta["last_intervention_at"] = time.time()
+        else:
+            meta["remaining_turns"] = remaining
+
+        self._write_meta(channel_id, meta)
+        return remaining
+
+    # ── 필터링 ───────────────────────────────────────────
+
     def filter_actions(
         self, channel_id: str, actions: list[InterventionAction]
     ) -> list[InterventionAction]:
         """쿨다운에 따라 액션을 필터링합니다.
 
-        - message 타입: 쿨다운 체크 (불가하면 제외)
+        - active 모드: message 타입도 통과
+        - idle 모드: message 타입은 쿨다운 체크
         - react 타입: 항상 통과
 
         Returns:
             쿨다운을 통과한 액션 리스트
         """
+        is_active = self.is_active(channel_id)
         result = []
         for action in actions:
             if action.type == "react":
                 result.append(action)
             elif action.type == "message":
-                if self.can_intervene(channel_id):
+                if is_active or self.can_intervene(channel_id):
                     result.append(action)
                 else:
                     logger.info(
