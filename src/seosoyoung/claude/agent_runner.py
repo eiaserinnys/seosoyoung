@@ -657,12 +657,6 @@ class ClaudeAgentRunner:
                         result_is_error = message.is_error
                     if hasattr(message, 'result'):
                         result_text = message.result
-                        # OM용 대화 수집
-                        collected_messages.append({
-                            "role": "assistant",
-                            "content": message.result,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        })
                     # ResultMessage에서도 세션 ID 추출 시도
                     if hasattr(message, 'session_id') and message.session_id:
                         result_session_id = message.session_id
