@@ -171,7 +171,9 @@
 - `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:34): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
 - `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:75): InterventionAction 리스트를 슬랙 API로 발송합니다.
 - `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:249): 디버그 채널에 관찰 결과 로그를 전송합니다.
-- `send_intervention_mode_debug_log()` (seosoyoung/memory/channel_intervention.py:289): 개입 모드 이벤트를 디버그 채널에 기록합니다.
+- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:289): 메시지 수집 시 디버그 채널에 로그를 전송합니다.
+- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:335): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
+- `send_intervention_mode_debug_log()` (seosoyoung/memory/channel_intervention.py:357): 개입 모드 이벤트를 디버그 채널에 기록합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:44): Observer 응답에서 XML 태그를 파싱합니다.
 - `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:43): 채널 버퍼를 소화하여 digest를 갱신합니다.
 - `async run_digest_and_intervene()` (seosoyoung/memory/channel_pipeline.py:153): 소화 파이프라인 + 개입 실행을 일괄 수행합니다.

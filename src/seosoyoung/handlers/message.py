@@ -104,6 +104,10 @@ def register_message_handlers(app, dependencies: dict):
                 ch = event.get("channel", "")
                 collected = channel_collector.collect(event)
                 if collected:
+                    # 수집 디버그 로그
+                    _send_collect_log(
+                        client, ch, channel_store, event,
+                    )
                     is_self = (
                         Config.BOT_USER_ID
                         and event.get("user") == Config.BOT_USER_ID
@@ -426,3 +430,26 @@ def _maybe_trigger_intervention_response(
 
     intervention_thread = threading.Thread(target=run, daemon=True)
     intervention_thread.start()
+
+
+def _send_collect_log(client, channel_id, store, event):
+    """수집 디버그 로그를 전송합니다."""
+    debug_channel = Config.CHANNEL_OBSERVER_DEBUG_CHANNEL
+    if not debug_channel:
+        return
+    try:
+        from seosoyoung.memory.channel_intervention import send_collect_debug_log
+
+        buffer_tokens = store.count_buffer_tokens(channel_id) if store else 0
+        send_collect_debug_log(
+            client=client,
+            debug_channel=debug_channel,
+            source_channel=channel_id,
+            buffer_tokens=buffer_tokens,
+            threshold=Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD,
+            message_text=event.get("text", ""),
+            user=event.get("user", ""),
+            is_thread=bool(event.get("thread_ts")),
+        )
+    except Exception as e:
+        logger.error(f"수집 디버그 로그 전송 실패: {e}")

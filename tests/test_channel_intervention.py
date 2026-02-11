@@ -15,7 +15,9 @@ from seosoyoung.memory.channel_intervention import (
     parse_intervention_markup,
     execute_interventions,
     CooldownManager,
+    send_collect_debug_log,
     send_debug_log,
+    send_digest_skip_debug_log,
 )
 from seosoyoung.memory.channel_observer import ChannelObserverResult
 from seosoyoung.memory.channel_pipeline import run_digest_and_intervene
@@ -626,3 +628,135 @@ class TestRunDigestAndIntervene:
         client.chat_postMessage.assert_called_once()
         call_kwargs = client.chat_postMessage.call_args[1]
         assert call_kwargs["channel"] == "C_DEBUG"
+
+
+# ── send_collect_debug_log 테스트 ────────────────────────
+
+class TestSendCollectDebugLog:
+    """메시지 수집 디버그 로그"""
+
+    def test_sends_log_with_buffer_status(self):
+        """수집 시 버퍼 상태 포함 로그 전송"""
+        client = MagicMock()
+
+        send_collect_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            buffer_tokens=200,
+            threshold=500,
+            message_text="안녕하세요",
+            user="U001",
+        )
+
+        client.chat_postMessage.assert_called_once()
+        text = client.chat_postMessage.call_args[1]["text"]
+        assert "채널 수집" in text
+        assert "C123" in text
+        assert "200/500" in text
+        assert "안녕하세요" in text
+
+    def test_shows_trigger_when_threshold_reached(self):
+        """임계치 도달 시 소화 트리거 표시"""
+        client = MagicMock()
+
+        send_collect_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            buffer_tokens=500,
+            threshold=500,
+            message_text="길이 넘는 메시지",
+            user="U001",
+        )
+
+        text = client.chat_postMessage.call_args[1]["text"]
+        assert "소화 트리거" in text
+
+    def test_shows_thread_label(self):
+        """스레드 메시지면 '스레드' 라벨 표시"""
+        client = MagicMock()
+
+        send_collect_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            buffer_tokens=100,
+            threshold=500,
+            message_text="스레드 답글",
+            user="U002",
+            is_thread=True,
+        )
+
+        text = client.chat_postMessage.call_args[1]["text"]
+        assert "스레드" in text
+
+    def test_skips_when_no_debug_channel(self):
+        """디버그 채널 미설정이면 전송 안 함"""
+        client = MagicMock()
+
+        send_collect_debug_log(
+            client=client,
+            debug_channel="",
+            source_channel="C123",
+            buffer_tokens=100,
+            threshold=500,
+        )
+
+        client.chat_postMessage.assert_not_called()
+
+    def test_truncates_long_message(self):
+        """80자 초과 메시지는 잘림"""
+        client = MagicMock()
+        long_text = "가" * 100
+
+        send_collect_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            buffer_tokens=100,
+            threshold=500,
+            message_text=long_text,
+            user="U001",
+        )
+
+        text = client.chat_postMessage.call_args[1]["text"]
+        assert "..." in text
+
+
+# ── send_digest_skip_debug_log 테스트 ────────────────────
+
+class TestSendDigestSkipDebugLog:
+    """소화 스킵 디버그 로그"""
+
+    def test_sends_skip_log(self):
+        """스킵 시 로그 전송"""
+        client = MagicMock()
+
+        send_digest_skip_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            buffer_tokens=200,
+            threshold=500,
+        )
+
+        client.chat_postMessage.assert_called_once()
+        text = client.chat_postMessage.call_args[1]["text"]
+        assert "소화 스킵" in text
+        assert "200" in text
+        assert "500" in text
+
+    def test_skips_when_no_debug_channel(self):
+        """디버그 채널 미설정이면 전송 안 함"""
+        client = MagicMock()
+
+        send_digest_skip_debug_log(
+            client=client,
+            debug_channel="",
+            source_channel="C123",
+            buffer_tokens=200,
+            threshold=500,
+        )
+
+        client.chat_postMessage.assert_not_called()

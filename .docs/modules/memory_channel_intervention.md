@@ -87,8 +87,26 @@ Args:
     actions: 파싱된 전체 액션 리스트
     actions_filtered: 쿨다운 필터 후 실제 실행된 액션 리스트
 
-### `send_intervention_mode_debug_log(client, debug_channel, source_channel, event, remaining_turns, max_turns, response_text, new_messages, error)`
+### `send_collect_debug_log(client, debug_channel, source_channel, buffer_tokens, threshold, message_text, user, is_thread)`
 - 위치: 줄 289
+- 설명: 메시지 수집 시 디버그 채널에 로그를 전송합니다.
+
+Args:
+    client: Slack WebClient
+    debug_channel: 디버그 로그 채널 ID
+    source_channel: 관찰 대상 채널 ID
+    buffer_tokens: 현재 버퍼 토큰 수
+    threshold: 소화 트리거 임계치
+    message_text: 수집된 메시지 텍스트
+    user: 메시지 작성자
+    is_thread: 스레드 메시지 여부
+
+### `send_digest_skip_debug_log(client, debug_channel, source_channel, buffer_tokens, threshold)`
+- 위치: 줄 335
+- 설명: 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
+
+### `send_intervention_mode_debug_log(client, debug_channel, source_channel, event, remaining_turns, max_turns, response_text, new_messages, error)`
+- 위치: 줄 357
 - 설명: 개입 모드 이벤트를 디버그 채널에 기록합니다.
 
 Args:

@@ -286,6 +286,74 @@ async def send_debug_log(
         logger.error(f"디버그 로그 전송 실패: {e}")
 
 
+def send_collect_debug_log(
+    client,
+    debug_channel: str,
+    source_channel: str,
+    buffer_tokens: int,
+    threshold: int,
+    message_text: str = "",
+    user: str = "",
+    is_thread: bool = False,
+) -> None:
+    """메시지 수집 시 디버그 채널에 로그를 전송합니다.
+
+    Args:
+        client: Slack WebClient
+        debug_channel: 디버그 로그 채널 ID
+        source_channel: 관찰 대상 채널 ID
+        buffer_tokens: 현재 버퍼 토큰 수
+        threshold: 소화 트리거 임계치
+        message_text: 수집된 메시지 텍스트
+        user: 메시지 작성자
+        is_thread: 스레드 메시지 여부
+    """
+    if not debug_channel:
+        return
+
+    location = "스레드" if is_thread else "채널"
+    preview = message_text[:80]
+    if len(message_text) > 80:
+        preview += "..."
+    ratio = f"{buffer_tokens}/{threshold}"
+
+    text = (
+        f":memo: *[채널 수집]* `{source_channel}`\n"
+        f">*{location}* | <{user}> {preview}\n"
+        f">`버퍼: {ratio} tok`"
+    )
+
+    if buffer_tokens >= threshold:
+        text += " → :arrow_forward: 소화 트리거"
+
+    try:
+        client.chat_postMessage(channel=debug_channel, text=text)
+    except Exception as e:
+        logger.error(f"수집 디버그 로그 전송 실패: {e}")
+
+
+def send_digest_skip_debug_log(
+    client,
+    debug_channel: str,
+    source_channel: str,
+    buffer_tokens: int,
+    threshold: int,
+) -> None:
+    """소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다."""
+    if not debug_channel:
+        return
+
+    text = (
+        f":pause_button: *[소화 스킵]* `{source_channel}`\n"
+        f">`버퍼 {buffer_tokens} tok < 임계치 {threshold} tok`"
+    )
+
+    try:
+        client.chat_postMessage(channel=debug_channel, text=text)
+    except Exception as e:
+        logger.error(f"소화 스킵 디버그 로그 전송 실패: {e}")
+
+
 def send_intervention_mode_debug_log(
     client,
     debug_channel: str,
