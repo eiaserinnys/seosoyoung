@@ -478,3 +478,96 @@ class TestRespondInInterventionMode:
         )
 
         assert len(store.load_channel_buffer("C123")) == 0
+
+    @pytest.mark.asyncio
+    async def test_debug_log_sent_on_respond(self, tmp_path):
+        """개입 반응 시 디버그 채널에 로그 전송"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=3)
+
+        store.append_channel_message("C123", {
+            "ts": "1.1", "user": "U1", "text": "트리거 메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        mock_llm = AsyncMock(return_value="응답입니다.")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            llm_call=mock_llm,
+            debug_channel="C_DEBUG",
+        )
+
+        # chat_postMessage 호출: 1) 채널 응답 + 2) 디버그 로그
+        calls = client.chat_postMessage.call_args_list
+        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
+        assert len(debug_calls) >= 1
+        debug_text = debug_calls[0][1]["text"]
+        assert "개입 모드 반응" in debug_text
+        assert "응답입니다" in debug_text
+        assert "트리거 메시지" in debug_text
+
+    @pytest.mark.asyncio
+    async def test_debug_log_exit_on_last_turn(self, tmp_path):
+        """마지막 턴에 종료 디버그 로그 전송"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=1)
+
+        store.append_channel_message("C123", {
+            "ts": "1.1", "user": "U1", "text": "메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        mock_llm = AsyncMock(return_value="이만 물러가겠소.")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            llm_call=mock_llm,
+            debug_channel="C_DEBUG",
+        )
+
+        # 디버그 로그 중 종료 로그 확인
+        calls = client.chat_postMessage.call_args_list
+        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
+        debug_texts = [c[1]["text"] for c in debug_calls]
+        assert any("개입 모드 종료" in t for t in debug_texts)
+
+    @pytest.mark.asyncio
+    async def test_debug_log_on_llm_error(self, tmp_path):
+        """LLM 실패 시 에러 디버그 로그 전송"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=3)
+
+        store.append_channel_message("C123", {
+            "ts": "1.1", "user": "U1", "text": "메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        mock_llm = AsyncMock(side_effect=Exception("API timeout"))
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            llm_call=mock_llm,
+            debug_channel="C_DEBUG",
+        )
+
+        calls = client.chat_postMessage.call_args_list
+        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
+        assert len(debug_calls) >= 1
+        assert "오류" in debug_calls[0][1]["text"]
+        assert "API timeout" in debug_calls[0][1]["text"]

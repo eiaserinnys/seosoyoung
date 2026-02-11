@@ -284,3 +284,74 @@ async def send_debug_log(
         client.chat_postMessage(channel=debug_channel, text=text)
     except Exception as e:
         logger.error(f"디버그 로그 전송 실패: {e}")
+
+
+def send_intervention_mode_debug_log(
+    client,
+    debug_channel: str,
+    source_channel: str,
+    event: str,
+    remaining_turns: int = 0,
+    max_turns: int = 0,
+    response_text: str = "",
+    new_messages: list[dict] | None = None,
+    error: str = "",
+) -> None:
+    """개입 모드 이벤트를 디버그 채널에 기록합니다.
+
+    Args:
+        client: Slack WebClient
+        debug_channel: 디버그 로그 채널 ID
+        source_channel: 관찰 대상 채널 ID
+        event: 이벤트 종류 ("enter", "respond", "exit", "error")
+        remaining_turns: 남은 턴 수
+        max_turns: 최대 턴 수 (enter 시)
+        response_text: 서소영의 응답 텍스트 (respond 시)
+        new_messages: 트리거한 새 메시지 목록 (respond 시)
+        error: 에러 메시지 (error 시)
+    """
+    if not debug_channel:
+        return
+
+    if event == "enter":
+        text = (
+            f":loudspeaker: *[개입 모드 진입]* `{source_channel}`\n"
+            f">`최대 {max_turns}턴 동안 채널 대화에 참여합니다`"
+        )
+    elif event == "respond":
+        msg_summary = ""
+        if new_messages:
+            for msg in new_messages[:3]:
+                user = msg.get("user", "?")
+                t = msg.get("text", "")[:80]
+                msg_summary += f"\n>  <{user}>: {t}"
+            if len(new_messages) > 3:
+                msg_summary += f"\n>  ... 외 {len(new_messages) - 3}건"
+
+        resp_preview = response_text[:200]
+        if len(response_text) > 200:
+            resp_preview += "..."
+
+        text = (
+            f":speech_balloon: *[개입 모드 반응]* `{source_channel}` "
+            f"(남은 턴: {remaining_turns})\n"
+            f">*트리거 메시지:*{msg_summary}\n"
+            f">*서소영 응답:*\n>{resp_preview}"
+        )
+    elif event == "exit":
+        text = (
+            f":zzz: *[개입 모드 종료]* `{source_channel}`\n"
+            f">`턴 소진 → 쿨다운 진입`"
+        )
+    elif event == "error":
+        text = (
+            f":warning: *[개입 모드 오류]* `{source_channel}`\n"
+            f">`{error}`"
+        )
+    else:
+        return
+
+    try:
+        client.chat_postMessage(channel=debug_channel, text=text)
+    except Exception as e:
+        logger.error(f"개입 모드 디버그 로그 전송 실패: {e}")

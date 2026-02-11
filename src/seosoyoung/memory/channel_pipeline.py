@@ -23,6 +23,7 @@ from seosoyoung.memory.channel_intervention import (
     execute_interventions,
     parse_intervention_markup,
     send_debug_log,
+    send_intervention_mode_debug_log,
 )
 from seosoyoung.memory.channel_observer import (
     ChannelObserver,
@@ -217,6 +218,13 @@ async def run_digest_and_intervene(
         if any(a.type == "message" for a in filtered):
             if max_intervention_turns > 0:
                 cooldown.enter_intervention_mode(channel_id, max_intervention_turns)
+                send_intervention_mode_debug_log(
+                    client=slack_client,
+                    debug_channel=debug_channel,
+                    source_channel=channel_id,
+                    event="enter",
+                    max_turns=max_intervention_turns,
+                )
             else:
                 cooldown.record_intervention(channel_id)
 
@@ -237,6 +245,7 @@ async def respond_in_intervention_mode(
     slack_client,
     cooldown: CooldownManager,
     llm_call: Callable,
+    debug_channel: str = "",
 ) -> None:
     """개입 모드 중 새 메시지에 반응합니다.
 
@@ -249,6 +258,7 @@ async def respond_in_intervention_mode(
         slack_client: Slack WebClient
         cooldown: CooldownManager 인스턴스
         llm_call: async callable(system_prompt, user_prompt) -> str
+        debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
     """
     # 1. 버퍼 로드
     messages = store.load_channel_buffer(channel_id)
@@ -277,10 +287,20 @@ async def respond_in_intervention_mode(
         )
     except Exception as e:
         logger.error(f"개입 모드 LLM 호출 실패 ({channel_id}): {e}")
+        send_intervention_mode_debug_log(
+            client=slack_client, debug_channel=debug_channel,
+            source_channel=channel_id, event="error",
+            error=f"LLM 호출 실패: {e}",
+        )
         return
 
     if not response_text or not response_text.strip():
         logger.warning(f"개입 모드 LLM 빈 응답 ({channel_id})")
+        send_intervention_mode_debug_log(
+            client=slack_client, debug_channel=debug_channel,
+            source_channel=channel_id, event="error",
+            error="LLM 빈 응답",
+        )
         return
 
     # 5. 슬랙 발송
@@ -291,8 +311,29 @@ async def respond_in_intervention_mode(
         )
     except Exception as e:
         logger.error(f"개입 모드 슬랙 발송 실패 ({channel_id}): {e}")
+        send_intervention_mode_debug_log(
+            client=slack_client, debug_channel=debug_channel,
+            source_channel=channel_id, event="error",
+            error=f"슬랙 발송 실패: {e}",
+        )
         return
 
     # 6. 버퍼 비우기 + 턴 소모
     store.clear_buffers(channel_id)
-    cooldown.consume_turn(channel_id)
+    new_remaining = cooldown.consume_turn(channel_id)
+
+    # 7. 디버그 로그
+    send_intervention_mode_debug_log(
+        client=slack_client, debug_channel=debug_channel,
+        source_channel=channel_id, event="respond",
+        remaining_turns=new_remaining,
+        response_text=response_text.strip(),
+        new_messages=messages,
+    )
+
+    # 턴 소진 시 종료 로그
+    if new_remaining == 0:
+        send_intervention_mode_debug_log(
+            client=slack_client, debug_channel=debug_channel,
+            source_channel=channel_id, event="exit",
+        )

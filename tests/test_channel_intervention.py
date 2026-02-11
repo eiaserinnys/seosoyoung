@@ -582,11 +582,19 @@ class TestRunDigestAndIntervene:
             cooldown=cooldown,
             buffer_threshold=1,
             max_intervention_turns=5,
+            debug_channel="C_DEBUG",
         )
 
         # 개입 후 개입 모드에 진입해야 함
         assert cooldown.is_active("C123") is True
         assert cooldown.get_remaining_turns("C123") == 5
+
+        # 디버그 채널에 개입 모드 진입 로그가 전송됨
+        calls = client.chat_postMessage.call_args_list
+        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
+        assert len(debug_calls) >= 1
+        debug_texts = [c[1]["text"] for c in debug_calls]
+        assert any("개입 모드 진입" in t for t in debug_texts)
 
     @pytest.mark.asyncio
     async def test_debug_log_sent(self, tmp_path):

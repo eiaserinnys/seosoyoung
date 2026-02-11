@@ -21,7 +21,7 @@
 ## 함수
 
 ### `async digest_channel(store, observer, channel_id, buffer_threshold, compressor, digest_max_tokens, digest_target_tokens)`
-- 위치: 줄 42
+- 위치: 줄 43
 - 설명: 채널 버퍼를 소화하여 digest를 갱신합니다.
 
 Args:
@@ -37,7 +37,7 @@ Returns:
     ChannelObserverResult (반응 정보 포함) 또는 None (스킵/실패)
 
 ### `async run_digest_and_intervene(store, observer, channel_id, slack_client, cooldown, buffer_threshold, compressor, digest_max_tokens, digest_target_tokens, debug_channel, max_intervention_turns)`
-- 위치: 줄 152
+- 위치: 줄 153
 - 설명: 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
 
 message handler에서 별도 스레드로 호출합니다.
@@ -55,8 +55,8 @@ Args:
     debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
     max_intervention_turns: 개입 모드 최대 턴 (0이면 개입 모드 비활성)
 
-### `async respond_in_intervention_mode(store, channel_id, slack_client, cooldown, llm_call)`
-- 위치: 줄 234
+### `async respond_in_intervention_mode(store, channel_id, slack_client, cooldown, llm_call, debug_channel)`
+- 위치: 줄 242
 - 설명: 개입 모드 중 새 메시지에 반응합니다.
 
 버퍼에 쌓인 메시지를 읽고, LLM으로 서소영의 응답을 생성하여
@@ -68,6 +68,7 @@ Args:
     slack_client: Slack WebClient
     cooldown: CooldownManager 인스턴스
     llm_call: async callable(system_prompt, user_prompt) -> str
+    debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
 
 ## 내부 의존성
 
@@ -76,6 +77,7 @@ Args:
 - `seosoyoung.memory.channel_intervention.execute_interventions`
 - `seosoyoung.memory.channel_intervention.parse_intervention_markup`
 - `seosoyoung.memory.channel_intervention.send_debug_log`
+- `seosoyoung.memory.channel_intervention.send_intervention_mode_debug_log`
 - `seosoyoung.memory.channel_observer.ChannelObserver`
 - `seosoyoung.memory.channel_observer.ChannelObserverResult`
 - `seosoyoung.memory.channel_observer.DigestCompressor`

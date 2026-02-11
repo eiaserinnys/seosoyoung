@@ -416,6 +416,7 @@ def _maybe_trigger_intervention_response(
                     slack_client=client,
                     cooldown=cooldown,
                     llm_call=llm_call,
+                    debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
                 )
             )
         except Exception as e:

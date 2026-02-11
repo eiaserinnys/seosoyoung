@@ -87,6 +87,21 @@ Args:
     actions: 파싱된 전체 액션 리스트
     actions_filtered: 쿨다운 필터 후 실제 실행된 액션 리스트
 
+### `send_intervention_mode_debug_log(client, debug_channel, source_channel, event, remaining_turns, max_turns, response_text, new_messages, error)`
+- 위치: 줄 289
+- 설명: 개입 모드 이벤트를 디버그 채널에 기록합니다.
+
+Args:
+    client: Slack WebClient
+    debug_channel: 디버그 로그 채널 ID
+    source_channel: 관찰 대상 채널 ID
+    event: 이벤트 종류 ("enter", "respond", "exit", "error")
+    remaining_turns: 남은 턴 수
+    max_turns: 최대 턴 수 (enter 시)
+    response_text: 서소영의 응답 텍스트 (respond 시)
+    new_messages: 트리거한 새 메시지 목록 (respond 시)
+    error: 에러 메시지 (error 시)
+
 ## 내부 의존성
 
 - `seosoyoung.memory.channel_observer.ChannelObserverResult`
