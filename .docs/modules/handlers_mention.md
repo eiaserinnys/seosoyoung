@@ -36,7 +36,7 @@ Returns:
 - 리스트런 재개
 - resume list run
 
-### `build_prompt_with_recall(context, question, file_context, recall_result)`
+### `build_prompt_with_recall(context, question, file_context, recall_result, slack_context)`
 - 위치: 줄 107
 - 설명: Recall 결과를 포함한 프롬프트 구성.
 
@@ -45,16 +45,17 @@ Args:
     question: 사용자 질문
     file_context: 첨부 파일 컨텍스트
     recall_result: RecallResult 객체 (선택사항)
+    slack_context: 슬랙 컨텍스트 블록 문자열
 
 Returns:
     구성된 프롬프트 문자열
 
 ### `get_channel_history(client, channel, limit)`
-- 위치: 줄 143
+- 위치: 줄 150
 - 설명: 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 164
+- 위치: 줄 171
 - 설명: 멘션 핸들러 등록
 
 Args:
@@ -64,6 +65,7 @@ Args:
 ## 내부 의존성
 
 - `seosoyoung.config.Config`
+- `seosoyoung.handlers.message.build_slack_context`
 - `seosoyoung.handlers.message.process_thread_message`
 - `seosoyoung.restart.RestartType`
 - `seosoyoung.slack.build_file_context`

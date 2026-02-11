@@ -16,6 +16,32 @@ logger = logging.getLogger(__name__)
 _digest_running: dict[str, bool] = {}
 
 
+def build_slack_context(
+    channel: str,
+    user_id: str,
+    thread_ts: str | None = None,
+    parent_thread_ts: str | None = None,
+) -> str:
+    """슬랙 컨텍스트 블록 문자열을 생성합니다.
+
+    Args:
+        channel: 채널 ID
+        user_id: 사용자 ID
+        thread_ts: 현재 메시지의 스레드 타임스탬프
+        parent_thread_ts: 상위 스레드 타임스탬프 (스레드 내 메시지인 경우)
+    """
+    lines = [
+        "[사용자의 요청 컨텍스트는 다음과 같습니다]",
+        f"- 채널: {channel}",
+        f"- 사용자: {user_id}",
+    ]
+    if parent_thread_ts:
+        lines.append(f"- 상위 스레드: {parent_thread_ts}")
+    if thread_ts:
+        lines.append(f"- 스레드: {thread_ts}")
+    return "\n".join(lines)
+
+
 def process_thread_message(
     event, text, thread_ts, ts, channel, session, say, client,
     get_user_role, run_claude_in_session, log_prefix="메시지"
@@ -49,12 +75,19 @@ def process_thread_message(
         say(text="사용자 정보를 확인할 수 없습니다.", thread_ts=thread_ts)
         return True
 
-    prompt_parts = []
+    slack_context = build_slack_context(
+        channel=channel,
+        user_id=user_id,
+        thread_ts=ts,
+        parent_thread_ts=thread_ts,
+    )
+
+    prompt_parts = [slack_context]
     if clean_text:
         prompt_parts.append(clean_text)
     if file_context:
         prompt_parts.append(file_context)
-    prompt = "\n".join(prompt_parts)
+    prompt = "\n\n".join(prompt_parts)
 
     logger.info(
         f"{log_prefix} 처리: thread_ts={thread_ts}, "

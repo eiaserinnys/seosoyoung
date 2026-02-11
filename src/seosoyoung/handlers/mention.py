@@ -10,7 +10,7 @@ from seosoyoung.config import Config
 from seosoyoung.restart import RestartType
 from seosoyoung.translator import detect_language, translate
 from seosoyoung.slack import download_files_sync, build_file_context
-from seosoyoung.handlers.message import process_thread_message
+from seosoyoung.handlers.message import process_thread_message, build_slack_context
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +109,7 @@ def build_prompt_with_recall(
     question: str,
     file_context: str,
     recall_result=None,
+    slack_context: str = "",
 ) -> str:
     """Recall 결과를 포함한 프롬프트 구성.
 
@@ -117,11 +118,17 @@ def build_prompt_with_recall(
         question: 사용자 질문
         file_context: 첨부 파일 컨텍스트
         recall_result: RecallResult 객체 (선택사항)
+        slack_context: 슬랙 컨텍스트 블록 문자열
 
     Returns:
         구성된 프롬프트 문자열
     """
-    prompt_parts = [f"아래는 Slack 채널의 최근 대화입니다:\n\n{context}"]
+    prompt_parts = []
+
+    if slack_context:
+        prompt_parts.append(slack_context)
+
+    prompt_parts.append(f"아래는 Slack 채널의 최근 대화입니다:\n\n{context}")
 
     # Recall 결과 주입
     if recall_result and recall_result.has_recommendation:
@@ -564,12 +571,21 @@ def register_mention_handlers(app, dependencies: dict):
         # 채널 컨텍스트 가져오기
         context = get_channel_history(client, channel, limit=20)
 
-        # 프롬프트 구성 (Recall 결과 포함)
+        # 슬랙 컨텍스트 생성
+        slack_ctx = build_slack_context(
+            channel=channel,
+            user_id=user_id,
+            thread_ts=ts,
+            parent_thread_ts=thread_ts,
+        )
+
+        # 프롬프트 구성 (Recall 결과 + 슬랙 컨텍스트 포함)
         prompt = build_prompt_with_recall(
             context=context,
             question=clean_text,
             file_context=file_context,
             recall_result=recall_result,
+            slack_context=slack_ctx,
         )
 
         # Claude 실행 (스레드 락으로 동시 실행 방지)

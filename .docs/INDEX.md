@@ -153,10 +153,11 @@
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록
 - `extract_command()` (seosoyoung/handlers/mention.py:81): 멘션에서 명령어 추출
 - `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:107): Recall 결과를 포함한 프롬프트 구성.
-- `get_channel_history()` (seosoyoung/handlers/mention.py:143): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-- `register_mention_handlers()` (seosoyoung/handlers/mention.py:164): 멘션 핸들러 등록
-- `process_thread_message()` (seosoyoung/handlers/message.py:19): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
-- `register_message_handlers()` (seosoyoung/handlers/message.py:77): 메시지 핸들러 등록
+- `get_channel_history()` (seosoyoung/handlers/mention.py:150): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
+- `register_mention_handlers()` (seosoyoung/handlers/mention.py:171): 멘션 핸들러 등록
+- `build_slack_context()` (seosoyoung/handlers/message.py:19): 슬랙 컨텍스트 블록 문자열을 생성합니다.
+- `process_thread_message()` (seosoyoung/handlers/message.py:45): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
+- `register_message_handlers()` (seosoyoung/handlers/message.py:110): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `async generate_image()` (seosoyoung/image_gen/generator.py:31): Gemini API로 이미지를 생성하고 임시 파일로 저장
