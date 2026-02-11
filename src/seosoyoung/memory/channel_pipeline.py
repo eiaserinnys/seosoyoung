@@ -2,6 +2,7 @@
 
 버퍼에 쌓인 채널 메시지를 ChannelObserver로 소화하여 digest를 갱신하고,
 필요 시 DigestCompressor로 압축합니다.
+소화 결과에 개입 액션이 있으면 쿨다운 필터 후 슬랙으로 발송합니다.
 
 흐름:
 1. count_buffer_tokens() 체크 → 임계치 미만이면 스킵
@@ -9,13 +10,20 @@
 3. ChannelObserver.observe() 호출
 4. 새 digest 저장 + 버퍼 비우기
 5. digest 토큰이 max_tokens 초과 시 DigestCompressor 호출
-6. 반응 마크업 반환 (Phase 3에서 슬랙봇이 처리)
+6. 반응 마크업 → InterventionAction 변환 → 쿨다운 필터 → 슬랙 발송
 """
 
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from seosoyoung.memory.channel_intervention import (
+    CooldownManager,
+    InterventionAction,
+    execute_interventions,
+    parse_intervention_markup,
+    send_debug_log,
+)
 from seosoyoung.memory.channel_observer import (
     ChannelObserver,
     ChannelObserverResult,
@@ -135,3 +143,80 @@ async def digest_channel(
             )
 
     return result
+
+
+async def run_digest_and_intervene(
+    store: ChannelStore,
+    observer: ChannelObserver,
+    channel_id: str,
+    slack_client,
+    cooldown: CooldownManager,
+    buffer_threshold: int = 500,
+    compressor: Optional[DigestCompressor] = None,
+    digest_max_tokens: int = 10_000,
+    digest_target_tokens: int = 5_000,
+    debug_channel: str = "",
+) -> None:
+    """소화 파이프라인 + 개입 실행을 일괄 수행합니다.
+
+    message handler에서 별도 스레드로 호출합니다.
+
+    Args:
+        store: 채널 데이터 저장소
+        observer: ChannelObserver 인스턴스
+        channel_id: 대상 채널
+        slack_client: Slack WebClient
+        cooldown: CooldownManager 인스턴스
+        buffer_threshold: 소화 트리거 토큰 임계치
+        compressor: DigestCompressor (None이면 압축 건너뜀)
+        digest_max_tokens: digest 압축 트리거 토큰 임계치
+        digest_target_tokens: digest 압축 목표 토큰
+        debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
+    """
+    # 1. 소화 파이프라인
+    result = await digest_channel(
+        store=store,
+        observer=observer,
+        channel_id=channel_id,
+        buffer_threshold=buffer_threshold,
+        compressor=compressor,
+        digest_max_tokens=digest_max_tokens,
+        digest_target_tokens=digest_target_tokens,
+    )
+
+    if result is None:
+        return
+
+    # 2. 개입 액션 파싱
+    actions = parse_intervention_markup(result)
+    if not actions:
+        # 반응이 없어도 디버그 로그는 보냄
+        await send_debug_log(
+            client=slack_client,
+            debug_channel=debug_channel,
+            source_channel=channel_id,
+            observer_result=result,
+            actions=[],
+            actions_filtered=[],
+        )
+        return
+
+    # 3. 쿨다운 필터링
+    filtered = cooldown.filter_actions(channel_id, actions)
+
+    # 4. 슬랙 발송
+    if filtered:
+        await execute_interventions(slack_client, channel_id, filtered)
+        # 메시지 개입이 있었으면 쿨다운 기록
+        if any(a.type == "message" for a in filtered):
+            cooldown.record_intervention(channel_id)
+
+    # 5. 디버그 로그
+    await send_debug_log(
+        client=slack_client,
+        debug_channel=debug_channel,
+        source_channel=channel_id,
+        observer_result=result,
+        actions=actions,
+        actions_filtered=filtered,
+    )

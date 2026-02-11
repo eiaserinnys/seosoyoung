@@ -12,6 +12,9 @@ from seosoyoung.claude import get_claude_runner
 
 logger = logging.getLogger(__name__)
 
+# 채널별 소화 파이프라인 실행 중 여부 (중복 실행 방지)
+_digest_running: dict[str, bool] = {}
+
 
 def process_thread_message(
     event, text, thread_ts, ts, channel, session, say, client,
@@ -83,6 +86,10 @@ def register_message_handlers(app, dependencies: dict):
     run_claude_in_session = dependencies["run_claude_in_session"]
     get_user_role = dependencies["get_user_role"]
     channel_collector = dependencies.get("channel_collector")
+    channel_store = dependencies.get("channel_store")
+    channel_observer = dependencies.get("channel_observer")
+    channel_compressor = dependencies.get("channel_compressor")
+    channel_cooldown = dependencies.get("channel_cooldown")
 
     @app.event("message")
     def handle_message(event, say, client):
@@ -94,7 +101,16 @@ def register_message_handlers(app, dependencies: dict):
         # 채널 관찰 수집 (봇 메시지 포함이므로 bot_id 체크보다 먼저)
         if channel_collector:
             try:
-                channel_collector.collect(event)
+                collected = channel_collector.collect(event)
+                if collected:
+                    _maybe_trigger_digest(
+                        event.get("channel", ""),
+                        client,
+                        channel_store,
+                        channel_observer,
+                        channel_compressor,
+                        channel_cooldown,
+                    )
             except Exception as e:
                 logger.error(f"채널 메시지 수집 실패: {e}")
 
@@ -304,3 +320,47 @@ def register_message_handlers(app, dependencies: dict):
         # 백그라운드 스레드에서 실행
         execute_thread = threading.Thread(target=run_with_compact, daemon=True)
         execute_thread.start()
+
+
+def _maybe_trigger_digest(
+    channel_id, client, store, observer, compressor, cooldown
+):
+    """버퍼 토큰 임계치를 초과하면 별도 스레드에서 소화 파이프라인을 실행합니다."""
+    if not all([store, observer, cooldown]):
+        return
+
+    # 간이 토큰 체크 (실제 임계치 체크는 digest_channel 내부에서 수행)
+    buffer_tokens = store.count_buffer_tokens(channel_id)
+    if buffer_tokens < Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD:
+        return
+
+    # 이미 실행 중이면 스킵
+    if _digest_running.get(channel_id):
+        return
+
+    def run():
+        _digest_running[channel_id] = True
+        try:
+            from seosoyoung.memory.channel_pipeline import run_digest_and_intervene
+
+            asyncio.run(
+                run_digest_and_intervene(
+                    store=store,
+                    observer=observer,
+                    channel_id=channel_id,
+                    slack_client=client,
+                    cooldown=cooldown,
+                    buffer_threshold=Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD,
+                    compressor=compressor,
+                    digest_max_tokens=Config.CHANNEL_OBSERVER_DIGEST_MAX_TOKENS,
+                    digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
+                    debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
+                )
+            )
+        except Exception as e:
+            logger.error(f"채널 소화 파이프라인 실행 실패 ({channel_id}): {e}")
+        finally:
+            _digest_running[channel_id] = False
+
+    digest_thread = threading.Thread(target=run, daemon=True)
+    digest_thread.start()

@@ -1,0 +1,502 @@
+"""채널 개입(intervention) 단위 테스트
+
+Phase 3: 마크업 파서 + 슬랙 발송 + 쿨다운 로직 + 통합 파이프라인 테스트
+"""
+
+import json
+import time
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from seosoyoung.memory.channel_intervention import (
+    InterventionAction,
+    parse_intervention_markup,
+    execute_interventions,
+    CooldownManager,
+    send_debug_log,
+)
+from seosoyoung.memory.channel_observer import ChannelObserverResult
+from seosoyoung.memory.channel_pipeline import run_digest_and_intervene
+from seosoyoung.memory.channel_store import ChannelStore
+
+
+# ── parse_intervention_markup ────────────────────────────
+
+class TestParseInterventionMarkup:
+    """ChannelObserverResult를 InterventionAction 리스트로 변환"""
+
+    def test_none_reaction_returns_empty(self):
+        result = ChannelObserverResult(
+            digest="test",
+            importance=2,
+            reaction_type="none",
+        )
+        actions = parse_intervention_markup(result)
+        assert actions == []
+
+    def test_react_action(self):
+        result = ChannelObserverResult(
+            digest="test",
+            importance=5,
+            reaction_type="react",
+            reaction_target="1234567890.123",
+            reaction_content="laughing",
+        )
+        actions = parse_intervention_markup(result)
+        assert len(actions) == 1
+        assert actions[0].type == "react"
+        assert actions[0].target == "1234567890.123"
+        assert actions[0].content == "laughing"
+
+    def test_intervene_channel(self):
+        result = ChannelObserverResult(
+            digest="test",
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="아이고, 무슨 일이오?",
+        )
+        actions = parse_intervention_markup(result)
+        assert len(actions) == 1
+        assert actions[0].type == "message"
+        assert actions[0].target == "channel"
+        assert actions[0].content == "아이고, 무슨 일이오?"
+
+    def test_intervene_thread(self):
+        result = ChannelObserverResult(
+            digest="test",
+            importance=7,
+            reaction_type="intervene",
+            reaction_target="thread:1234567890.123",
+            reaction_content="그 이야기 자세히 해주시겠소?",
+        )
+        actions = parse_intervention_markup(result)
+        assert len(actions) == 1
+        assert actions[0].type == "message"
+        assert actions[0].target == "1234567890.123"
+        assert actions[0].content == "그 이야기 자세히 해주시겠소?"
+
+    def test_missing_content_returns_empty(self):
+        """content가 없는 react/intervene은 건너뜀"""
+        result = ChannelObserverResult(
+            digest="test",
+            importance=5,
+            reaction_type="react",
+            reaction_target="1234.5678",
+            reaction_content=None,
+        )
+        actions = parse_intervention_markup(result)
+        assert actions == []
+
+    def test_missing_target_returns_empty(self):
+        result = ChannelObserverResult(
+            digest="test",
+            importance=5,
+            reaction_type="intervene",
+            reaction_target=None,
+            reaction_content="메시지",
+        )
+        actions = parse_intervention_markup(result)
+        assert actions == []
+
+
+# ── execute_interventions ────────────────────────────────
+
+class TestExecuteInterventions:
+    """슬랙 API 발송 로직 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_send_channel_message(self):
+        """target=channel → chat_postMessage(channel=ch)"""
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        actions = [InterventionAction(type="message", target="channel", content="안녕")]
+        results = await execute_interventions(client, "C123", actions)
+
+        client.chat_postMessage.assert_called_once_with(
+            channel="C123",
+            text="안녕",
+        )
+        assert len(results) == 1
+        assert results[0]["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_send_thread_message(self):
+        """target=thread_ts → chat_postMessage(channel=ch, thread_ts=ts)"""
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        actions = [
+            InterventionAction(type="message", target="1234.5678", content="답글")
+        ]
+        results = await execute_interventions(client, "C123", actions)
+
+        client.chat_postMessage.assert_called_once_with(
+            channel="C123",
+            text="답글",
+            thread_ts="1234.5678",
+        )
+
+    @pytest.mark.asyncio
+    async def test_send_reaction(self):
+        """type=react → reactions_add"""
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+
+        actions = [
+            InterventionAction(type="react", target="1234.5678", content="laughing")
+        ]
+        results = await execute_interventions(client, "C123", actions)
+
+        client.reactions_add.assert_called_once_with(
+            channel="C123",
+            timestamp="1234.5678",
+            name="laughing",
+        )
+
+    @pytest.mark.asyncio
+    async def test_api_error_is_caught(self):
+        """API 호출 실패 시 에러가 잡히고 나머지 액션은 계속 실행"""
+        client = MagicMock()
+        client.reactions_add = MagicMock(side_effect=Exception("API error"))
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        actions = [
+            InterventionAction(type="react", target="1.1", content="smile"),
+            InterventionAction(type="message", target="channel", content="메시지"),
+        ]
+        results = await execute_interventions(client, "C123", actions)
+
+        # 첫 번째 실패, 두 번째 성공
+        assert len(results) == 2
+        assert results[0] is None  # 실패한 것
+        assert results[1]["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_empty_actions(self):
+        """빈 액션 리스트는 아무것도 하지 않음"""
+        client = MagicMock()
+        results = await execute_interventions(client, "C123", [])
+        assert results == []
+
+
+# ── CooldownManager ──────────────────────────────────────
+
+class TestCooldownManager:
+    """쿨다운 관리 테스트"""
+
+    def test_message_allowed_when_no_previous(self, tmp_path):
+        """이전 기록이 없으면 허용"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
+        assert cm.can_intervene("C123") is True
+
+    def test_message_blocked_within_cooldown(self, tmp_path):
+        """쿨다운 내에서는 차단"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
+        cm.record_intervention("C123")
+        assert cm.can_intervene("C123") is False
+
+    def test_message_allowed_after_cooldown(self, tmp_path):
+        """쿨다운 만료 후 허용"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        cm.record_intervention("C123")
+        # cooldown_sec=0이므로 즉시 허용
+        assert cm.can_intervene("C123") is True
+
+    def test_react_always_allowed(self, tmp_path):
+        """이모지 리액션은 쿨다운 대상 아님"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
+        cm.record_intervention("C123")
+        assert cm.can_react("C123") is True
+
+    def test_record_updates_timestamp(self, tmp_path):
+        """기록 시 타임스탬프가 업데이트됨"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
+        cm.record_intervention("C123")
+
+        meta_path = tmp_path / "channel" / "C123" / "intervention.meta.json"
+        assert meta_path.exists()
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        assert "last_intervention_at" in data
+
+    def test_filter_actions_by_cooldown(self, tmp_path):
+        """쿨다운에 걸린 메시지 액션은 필터링, 리액션은 유지"""
+        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
+        cm.record_intervention("C123")
+
+        actions = [
+            InterventionAction(type="message", target="channel", content="개입"),
+            InterventionAction(type="react", target="1.1", content="smile"),
+        ]
+        filtered = cm.filter_actions("C123", actions)
+        assert len(filtered) == 1
+        assert filtered[0].type == "react"
+
+
+# ── send_debug_log ───────────────────────────────────────
+
+class TestSendDebugLog:
+    """디버그 로그 발송 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_sends_to_debug_channel(self):
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        result = ChannelObserverResult(
+            digest="관찰 내용",
+            importance=7,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="개입 메시지",
+        )
+        actions_executed = [
+            InterventionAction(type="message", target="channel", content="개입 메시지"),
+        ]
+
+        await send_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            observer_result=result,
+            actions=actions_executed,
+            actions_filtered=[],
+        )
+
+        client.chat_postMessage.assert_called_once()
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert call_kwargs["channel"] == "C_DEBUG"
+        assert "C123" in call_kwargs["text"]
+        assert "7" in call_kwargs["text"]  # importance
+
+    @pytest.mark.asyncio
+    async def test_skips_when_no_debug_channel(self):
+        """디버그 채널이 없으면 아무것도 안 함"""
+        client = MagicMock()
+        result = ChannelObserverResult(digest="test", importance=0, reaction_type="none")
+
+        await send_debug_log(
+            client=client,
+            debug_channel="",
+            source_channel="C123",
+            observer_result=result,
+            actions=[],
+            actions_filtered=[],
+        )
+
+        client.chat_postMessage.assert_not_called()
+
+
+# ── run_digest_and_intervene 통합 테스트 ─────────────────
+
+class FakeObserver:
+    """ChannelObserver mock"""
+
+    def __init__(self, result: ChannelObserverResult | None = None):
+        self.result = result
+        self.call_count = 0
+
+    async def observe(self, **kwargs) -> ChannelObserverResult | None:
+        self.call_count += 1
+        return self.result
+
+
+def _fill_buffer(store: ChannelStore, channel_id: str, n: int = 10):
+    for i in range(n):
+        store.append_channel_message(channel_id, {
+            "ts": f"100{i}.000",
+            "user": f"U{i}",
+            "text": f"테스트 메시지 {i}번 - " + "내용 " * 20,
+        })
+
+
+class TestRunDigestAndIntervene:
+    """소화 + 개입 통합 파이프라인 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_intervene_sends_message(self, tmp_path):
+        """소화 → 개입 판단 → 슬랙 메시지 발송 흐름"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        _fill_buffer(store, "C123")
+
+        observer = FakeObserver(ChannelObserverResult(
+            digest="관찰 결과",
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="아이고, 무슨 소동이오?",
+        ))
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        await run_digest_and_intervene(
+            store=store,
+            observer=observer,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            buffer_threshold=1,
+        )
+
+        client.chat_postMessage.assert_called()
+        # 메시지 발송 호출 확인
+        call_args_list = client.chat_postMessage.call_args_list
+        sent_texts = [c[1]["text"] for c in call_args_list]
+        assert any("무슨 소동" in t for t in sent_texts)
+
+    @pytest.mark.asyncio
+    async def test_react_sends_emoji(self, tmp_path):
+        """소화 → 이모지 리액션 발송 흐름"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        _fill_buffer(store, "C123")
+
+        observer = FakeObserver(ChannelObserverResult(
+            digest="관찰",
+            importance=5,
+            reaction_type="react",
+            reaction_target="1001.000",
+            reaction_content="laughing",
+        ))
+
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+
+        await run_digest_and_intervene(
+            store=store,
+            observer=observer,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            buffer_threshold=1,
+        )
+
+        client.reactions_add.assert_called_once_with(
+            channel="C123",
+            timestamp="1001.000",
+            name="laughing",
+        )
+
+    @pytest.mark.asyncio
+    async def test_cooldown_blocks_message(self, tmp_path):
+        """쿨다운 중이면 메시지 개입이 스킵됨"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=9999)
+        cooldown.record_intervention("C123")
+        _fill_buffer(store, "C123")
+
+        observer = FakeObserver(ChannelObserverResult(
+            digest="관찰",
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="개입 메시지",
+        ))
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        await run_digest_and_intervene(
+            store=store,
+            observer=observer,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            buffer_threshold=1,
+        )
+
+        # 메시지 발송 호출 없음 (쿨다운)
+        client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cooldown_allows_react_while_blocking_message(self, tmp_path):
+        """쿨다운 중에도 이모지 리액션은 허용"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=9999)
+        cooldown.record_intervention("C123")
+        _fill_buffer(store, "C123")
+
+        observer = FakeObserver(ChannelObserverResult(
+            digest="관찰",
+            importance=5,
+            reaction_type="react",
+            reaction_target="1001.000",
+            reaction_content="eyes",
+        ))
+
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+
+        await run_digest_and_intervene(
+            store=store,
+            observer=observer,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            buffer_threshold=1,
+        )
+
+        client.reactions_add.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_reaction_skips_intervention(self, tmp_path):
+        """반응이 none이면 개입 없음"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        _fill_buffer(store, "C123")
+
+        observer = FakeObserver(ChannelObserverResult(
+            digest="평범한 대화",
+            importance=2,
+            reaction_type="none",
+        ))
+
+        client = MagicMock()
+
+        await run_digest_and_intervene(
+            store=store,
+            observer=observer,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            buffer_threshold=1,
+        )
+
+        client.chat_postMessage.assert_not_called()
+        client.reactions_add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_debug_log_sent(self, tmp_path):
+        """디버그 채널이 설정되면 로그 전송"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        _fill_buffer(store, "C123")
+
+        observer = FakeObserver(ChannelObserverResult(
+            digest="관찰",
+            importance=3,
+            reaction_type="none",
+        ))
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        await run_digest_and_intervene(
+            store=store,
+            observer=observer,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            buffer_threshold=1,
+            debug_channel="C_DEBUG",
+        )
+
+        # 디버그 로그가 전송됨
+        client.chat_postMessage.assert_called_once()
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert call_kwargs["channel"] == "C_DEBUG"

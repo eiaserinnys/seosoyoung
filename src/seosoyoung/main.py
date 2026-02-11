@@ -18,6 +18,10 @@ from seosoyoung.handlers.actions import send_restart_confirmation
 from seosoyoung.restart import RestartManager, RestartType
 from seosoyoung.trello.watcher import TrelloWatcher
 from seosoyoung.trello.list_runner import ListRunner
+from seosoyoung.handlers.channel_collector import ChannelMessageCollector
+from seosoyoung.memory.channel_store import ChannelStore
+from seosoyoung.memory.channel_intervention import CooldownManager
+from seosoyoung.memory.channel_observer import ChannelObserver, DigestCompressor
 
 # 로깅 설정
 logger = setup_logging()
@@ -73,6 +77,37 @@ executor = ClaudeExecutor(
     list_runner_ref=lambda: list_runner,
 )
 
+# 채널 관찰 시스템 초기화
+_channel_store: ChannelStore | None = None
+_channel_collector: ChannelMessageCollector | None = None
+_channel_cooldown: CooldownManager | None = None
+_channel_observer: ChannelObserver | None = None
+_channel_compressor: DigestCompressor | None = None
+
+if Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS:
+    _channel_store = ChannelStore(base_dir=Config.get_memory_path())
+    _channel_collector = ChannelMessageCollector(
+        store=_channel_store,
+        target_channels=Config.CHANNEL_OBSERVER_CHANNELS,
+    )
+    _channel_cooldown = CooldownManager(
+        base_dir=Config.get_memory_path(),
+        cooldown_sec=Config.CHANNEL_OBSERVER_COOLDOWN_SEC,
+    )
+    if Config.CHANNEL_OBSERVER_API_KEY:
+        _channel_observer = ChannelObserver(
+            api_key=Config.CHANNEL_OBSERVER_API_KEY,
+            model=Config.CHANNEL_OBSERVER_MODEL,
+        )
+        _channel_compressor = DigestCompressor(
+            api_key=Config.CHANNEL_OBSERVER_API_KEY,
+            model=Config.CHANNEL_OBSERVER_COMPRESSOR_MODEL,
+        )
+    logger.info(
+        f"채널 관찰 시스템 초기화: channels={Config.CHANNEL_OBSERVER_CHANNELS}, "
+        f"cooldown={Config.CHANNEL_OBSERVER_COOLDOWN_SEC}s"
+    )
+
 # 핸들러 의존성
 dependencies = {
     "session_manager": session_manager,
@@ -85,6 +120,11 @@ dependencies = {
     "send_restart_confirmation": send_restart_confirmation,
     "trello_watcher_ref": lambda: trello_watcher,
     "list_runner_ref": lambda: list_runner,
+    "channel_collector": _channel_collector,
+    "channel_store": _channel_store,
+    "channel_observer": _channel_observer,
+    "channel_compressor": _channel_compressor,
+    "channel_cooldown": _channel_cooldown,
 }
 
 # 핸들러 등록

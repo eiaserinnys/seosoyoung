@@ -25,6 +25,7 @@
 - [`mcp/config.py`](modules/mcp_config.md): MCP 서버 설정
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
+- [`memory/channel_intervention.py`](modules/memory_channel_intervention.md): 채널 개입(intervention) 모듈
 - [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
 - [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화 파이프라인
 - [`memory/channel_prompts.py`](modules/memory_channel_prompts.md): 채널 관찰 프롬프트
@@ -74,6 +75,8 @@
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `GeneratedImage` (seosoyoung/image_gen/generator.py:24): 생성된 이미지 결과
+- `InterventionAction` (seosoyoung/memory/channel_intervention.py:26): 개입 액션
+- `CooldownManager` (seosoyoung/memory/channel_intervention.py:127): 개입 쿨다운 관리
 - `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:26): 채널 관찰 결과
 - `DigestCompressorResult` (seosoyoung/memory/channel_observer.py:37): digest 압축 결과
 - `ChannelObserver` (seosoyoung/memory/channel_observer.py:97): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
@@ -150,23 +153,27 @@
 - `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:107): Recall 결과를 포함한 프롬프트 구성.
 - `get_channel_history()` (seosoyoung/handlers/mention.py:143): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 - `register_mention_handlers()` (seosoyoung/handlers/mention.py:164): 멘션 핸들러 등록
-- `process_thread_message()` (seosoyoung/handlers/message.py:16): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
-- `register_message_handlers()` (seosoyoung/handlers/message.py:74): 메시지 핸들러 등록
+- `process_thread_message()` (seosoyoung/handlers/message.py:19): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
+- `register_message_handlers()` (seosoyoung/handlers/message.py:77): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `async generate_image()` (seosoyoung/image_gen/generator.py:31): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/main.py:94): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/main.py:105): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/main.py:116): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/main.py:136): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/main.py:146): 봇 사용자 ID 초기화
+- `notify_startup()` (seosoyoung/main.py:134): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/main.py:145): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/main.py:156): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/main.py:176): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/main.py:186): 봇 사용자 ID 초기화
 - `slack_attach_file()` (seosoyoung/mcp/server.py:11): 슬랙에 파일을 첨부합니다.
 - `slack_get_context()` (seosoyoung/mcp/server.py:27): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
+- `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:34): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
+- `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:75): InterventionAction 리스트를 슬랙 API로 발송합니다.
+- `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:198): 디버그 채널에 관찰 결과 로그를 전송합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:44): Observer 응답에서 XML 태그를 파싱합니다.
-- `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:30): 채널 버퍼를 소화하여 digest를 갱신합니다.
+- `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:38): 채널 버퍼를 소화하여 digest를 갱신합니다.
+- `async run_digest_and_intervene()` (seosoyoung/memory/channel_pipeline.py:148): 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
 - `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:135): 채널 관찰 시스템 프롬프트를 반환합니다.
 - `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:140): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:173): digest 압축 시스템 프롬프트를 반환합니다.
