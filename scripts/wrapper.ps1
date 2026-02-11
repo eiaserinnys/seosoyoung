@@ -68,6 +68,34 @@ Set-Location $workspaceDir
 $env:PYTHONUTF8 = "1"
 $env:PYTHONPATH = Join-Path $runtimeDir "src"
 
+# CLAUDE_CONFIG_DIR 설정 (프로필 기반)
+function Set-ClaudeConfigDir {
+    $profilesDir = Join-Path $workspaceDir ".local\claude_profiles"
+    $activeFile = Join-Path $profilesDir "_active.txt"
+
+    if (Test-Path $activeFile) {
+        $activeName = (Get-Content -Path $activeFile -Encoding UTF8).Trim()
+        if ($activeName) {
+            $profileDir = Join-Path $profilesDir $activeName
+            if (Test-Path $profileDir) {
+                $env:CLAUDE_CONFIG_DIR = $profileDir
+                Write-Host "wrapper: CLAUDE_CONFIG_DIR=$profileDir (profile: $activeName)" -ForegroundColor Green
+                return
+            } else {
+                Write-Host "wrapper: 프로필 디렉토리 없음: $profileDir" -ForegroundColor Yellow
+            }
+        }
+    }
+
+    # 활성 프로필 없으면 환경변수 제거 (기본 ~/.claude 사용)
+    if ($env:CLAUDE_CONFIG_DIR) {
+        Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue
+    }
+    Write-Host "wrapper: CLAUDE_CONFIG_DIR 미설정 (기본 경로 사용)" -ForegroundColor Yellow
+}
+
+Set-ClaudeConfigDir
+
 Write-Host "wrapper: 봇 프로세스 관리 시작" -ForegroundColor Cyan
 Write-Host "wrapper: 작업 폴더: $workspaceDir" -ForegroundColor Cyan
 Write-Host "wrapper: 런타임 폴더: $runtimeDir" -ForegroundColor Cyan
@@ -75,6 +103,9 @@ Write-Host "wrapper: 런타임 폴더: $runtimeDir" -ForegroundColor Cyan
 $pythonExe = Join-Path $runtimeDir "venv\Scripts\python.exe"
 
 while ($true) {
+    # 매 시작 시 프로필 설정 재확인
+    Set-ClaudeConfigDir
+
     Write-Host "wrapper: 봇 시작..." -ForegroundColor Green
 
     # 직접 실행 (출력이 콘솔과 로그에 캡처됨)

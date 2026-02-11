@@ -409,13 +409,10 @@ def register_mention_handlers(app, dependencies: dict):
 
             from seosoyoung.profile.manager import ProfileManager
 
-            # 프로필 경로 설정
-            profiles_dir = Path.cwd() / ".local" / "profiles"
-            credentials_path = Path.home() / ".claude" / ".credentials.json"
-            manager = ProfileManager(
-                profiles_dir=profiles_dir,
-                credentials_path=credentials_path,
-            )
+            # 프로필 경로 설정 (CLAUDE_CONFIG_DIR + Junction 방식)
+            profiles_dir = Path.cwd() / ".local" / "claude_profiles"
+            claude_config_dir = Path.home() / ".claude"
+            manager = ProfileManager(profiles_dir=profiles_dir)
 
             # 서브커맨드 파싱
             parts = command.split()
@@ -441,7 +438,7 @@ def register_mention_handlers(app, dependencies: dict):
                     if not arg:
                         say(text="저장할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile save work`", thread_ts=reply_ts)
                     else:
-                        result = manager.save_profile(arg)
+                        result = manager.save_profile(arg, claude_config_dir)
                         say(text=f"✅ {result}", thread_ts=reply_ts)
 
                 elif subcmd == "change":
@@ -464,7 +461,7 @@ def register_mention_handlers(app, dependencies: dict):
                             "📁 *profile 명령어 사용법*\n"
                             "• `profile list` - 저장된 프로필 목록\n"
                             "• `profile save <이름>` - 현재 인증을 프로필로 저장\n"
-                            "• `profile change <이름>` - 프로필로 전환\n"
+                            "• `profile change <이름>` - 프로필로 전환 (재시작 후 적용)\n"
                             "• `profile delete <이름>` - 프로필 삭제"
                         ),
                         thread_ts=reply_ts

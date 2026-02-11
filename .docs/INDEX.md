@@ -25,6 +25,7 @@
 - [`mcp/config.py`](modules/mcp_config.md): MCP 서버 설정
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
+- [`tools/slack_messaging.py`](modules/tools_slack_messaging.md): 슬랙 메시지 전송 MCP 도구
 - [`memory/channel_intervention.py`](modules/memory_channel_intervention.md): 채널 개입(intervention) 모듈
 - [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
 - [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화 파이프라인
@@ -39,7 +40,7 @@
 - [`memory/reflector.py`](modules/memory_reflector.md): Reflector 모듈
 - [`memory/store.py`](modules/memory_store.md): 관찰 로그 저장소
 - [`memory/token_counter.py`](modules/memory_token_counter.md): 토큰 카운터
-- [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리
+- [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리 (CLAUDE_CONFIG_DIR + Junction 방식)
 - [`recall/aggregator.py`](modules/recall_aggregator.md): 결과 집계기
 - [`recall/evaluator.py`](modules/recall_evaluator.md): 하이쿠 평가 클라이언트
 - [`recall/loader.py`](modules/recall_loader.md): 도구 정의 로더
@@ -64,8 +65,8 @@
 
 ### 주요 클래스
 
-- `ClaudeResult` (seosoyoung/claude/agent_runner.py:85): Claude Code 실행 결과
-- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:100): Claude Code SDK 기반 실행기
+- `ClaudeResult` (seosoyoung/claude/agent_runner.py:86): Claude Code 실행 결과
+- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:101): Claude Code SDK 기반 실행기
 - `PendingPrompt` (seosoyoung/claude/executor.py:60): 인터벤션 대기 중인 프롬프트 정보
 - `ClaudeExecutor` (seosoyoung/claude/executor.py:73): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
@@ -97,8 +98,8 @@
 - `MemoryRecord` (seosoyoung/memory/store.py:36): 세션별 관찰 로그 레코드
 - `MemoryStore` (seosoyoung/memory/store.py:91): 파일 기반 관찰 로그 저장소
 - `TokenCounter` (seosoyoung/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
-- `ProfileInfo` (seosoyoung/profile/manager.py:14): 프로필 정보
-- `ProfileManager` (seosoyoung/profile/manager.py:24): Claude Code 인증 프로필 관리자
+- `ProfileInfo` (seosoyoung/profile/manager.py:23): 프로필 정보
+- `ProfileManager` (seosoyoung/profile/manager.py:33): Claude Code 인증 프로필 관리자 (CLAUDE_CONFIG_DIR + Junction)
 - `AggregationResult` (seosoyoung/recall/aggregator.py:121): 집계 결과
 - `ResultAggregator` (seosoyoung/recall/aggregator.py:211): 결과 집계기
 - `EvaluationResult` (seosoyoung/recall/evaluator.py:182): 도구 평가 결과
@@ -140,7 +141,7 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:808): 
+- `async main()` (seosoyoung/claude/agent_runner.py:809): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:44): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱
@@ -167,10 +168,12 @@
 - `start_trello_watcher()` (seosoyoung/main.py:174): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:194): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:204): 봇 사용자 ID 초기화
-- `slack_attach_file()` (seosoyoung/mcp/server.py:11): 슬랙에 파일을 첨부합니다.
-- `slack_get_context()` (seosoyoung/mcp/server.py:27): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `slack_attach_file()` (seosoyoung/mcp/server.py:12): 슬랙에 파일을 첨부합니다.
+- `slack_get_context()` (seosoyoung/mcp/server.py:28): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:38): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
+- `post_message()` (seosoyoung/mcp/tools/slack_messaging.py:51): 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부
 - `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:34): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
 - `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:75): InterventionAction 리스트를 슬랙 API로 발송합니다.
 - `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:249): 디버그 채널에 관찰 결과 로그를 전송합니다.
