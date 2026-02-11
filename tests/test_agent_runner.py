@@ -61,17 +61,18 @@ class TestClaudeAgentRunnerUnit:
     def test_build_options_basic(self):
         """기본 옵션 생성 테스트"""
         runner = ClaudeAgentRunner()
-        options = runner._build_options()
+        options, memory_prompt = runner._build_options()
 
         assert options.allowed_tools == DEFAULT_ALLOWED_TOOLS
         assert options.disallowed_tools == DEFAULT_DISALLOWED_TOOLS
         assert options.permission_mode == "bypassPermissions"
         assert options.resume is None
+        assert memory_prompt is None
 
     def test_build_options_with_session(self):
         """세션 ID가 있을 때 resume 옵션 추가"""
         runner = ClaudeAgentRunner()
-        options = runner._build_options(session_id="abc-123")
+        options, _ = runner._build_options(session_id="abc-123")
 
         assert options.resume == "abc-123"
 
@@ -81,7 +82,7 @@ class TestClaudeAgentRunnerUnit:
             allowed_tools=["Read", "Glob"],
             disallowed_tools=["Bash"]
         )
-        options = runner._build_options()
+        options, _ = runner._build_options()
 
         assert options.allowed_tools == ["Read", "Glob"]
         assert options.disallowed_tools == ["Bash"]
@@ -93,12 +94,12 @@ class TestClaudeAgentRunnerUnit:
 
         # 파일이 존재하지 않으면 mcp_servers 설정 안됨
         with patch.object(Path, "exists", return_value=False):
-            options = runner._build_options()
+            options, _ = runner._build_options()
             # mcp_servers는 기본값 유지
 
         # 파일이 존재하면 mcp_servers 설정
         with patch.object(Path, "exists", return_value=True):
-            options = runner._build_options()
+            options, _ = runner._build_options()
             assert options.mcp_servers == mcp_path
 
 
@@ -320,7 +321,7 @@ class TestClaudeAgentRunnerCompact:
         """compact_events 전달 시 PreCompact 훅이 등록되는지 확인"""
         runner = ClaudeAgentRunner()
         compact_events = []
-        options = runner._build_options(compact_events=compact_events)
+        options, _ = runner._build_options(compact_events=compact_events)
 
         assert options.hooks is not None
         assert "PreCompact" in options.hooks
@@ -330,7 +331,7 @@ class TestClaudeAgentRunnerCompact:
     async def test_build_options_without_compact_events(self):
         """compact_events 미전달 시 hooks가 None인지 확인"""
         runner = ClaudeAgentRunner()
-        options = runner._build_options()
+        options, _ = runner._build_options()
 
         assert options.hooks is None
 
@@ -351,13 +352,13 @@ class TestClaudeAgentRunnerCompact:
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+            options, memory_prompt = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: auto)",
                 })
-            return options
+            return options, memory_prompt
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
@@ -389,7 +390,7 @@ class TestClaudeAgentRunnerCompact:
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+            options, memory_prompt = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -399,7 +400,7 @@ class TestClaudeAgentRunnerCompact:
                     "trigger": "manual",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: manual)",
                 })
-            return options
+            return options, memory_prompt
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -425,13 +426,13 @@ class TestClaudeAgentRunnerCompact:
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
-            options = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+            options, memory_prompt = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컴팩트 실행됨",
                 })
-            return options
+            return options, memory_prompt
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):

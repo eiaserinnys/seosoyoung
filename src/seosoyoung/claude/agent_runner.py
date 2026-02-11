@@ -240,8 +240,13 @@ class ClaudeAgentRunner:
         user_id: Optional[str] = None,
         thread_ts: Optional[str] = None,
         channel: Optional[str] = None,
-    ) -> ClaudeCodeOptions:
-        """ClaudeCodeOptions 생성
+    ) -> tuple[ClaudeCodeOptions, Optional[str]]:
+        """ClaudeCodeOptions와 OM 메모리 프롬프트를 함께 반환합니다.
+
+        Returns:
+            (options, memory_prompt) - memory_prompt는 첫 번째 query에 프리픽스로 주입합니다.
+            append_system_prompt는 CLI 인자 크기 제한이 있어 장기 기억이 커지면 실패하므로,
+            메모리는 첫 번째 사용자 메시지에 주입하는 방식을 사용합니다.
 
         참고: env 파라미터를 명시적으로 전달하지 않으면
         Claude Code CLI가 현재 프로세스의 환경변수를 상속받습니다.
@@ -325,6 +330,9 @@ class ClaudeAgentRunner:
             options.resume = session_id
 
         # Observational Memory: 장기 기억은 새 세션 시작 시만, 세션 관찰은 컴팩션 후만 주입
+        # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt가 아닌
+        # 첫 번째 query 메시지에 프리픽스로 주입합니다.
+        memory_prompt: Optional[str] = None
         if thread_ts:
             try:
                 from seosoyoung.config import Config
@@ -345,9 +353,9 @@ class ClaudeAgentRunner:
                     )
 
                     if result.prompt:
-                        options.append_system_prompt = result.prompt
+                        memory_prompt = result.prompt
                         logger.info(
-                            f"OM 주입 완료 (thread={thread_ts}, "
+                            f"OM 주입 준비 완료 (thread={thread_ts}, "
                             f"LTM={result.persistent_tokens} tok, "
                             f"세션={result.session_tokens} tok)"
                         )
@@ -359,7 +367,7 @@ class ClaudeAgentRunner:
             except Exception as e:
                 logger.warning(f"OM 주입 실패 (무시): {e}")
 
-        return options
+        return options, memory_prompt
 
     @staticmethod
     def _send_injection_debug_log(
@@ -533,7 +541,7 @@ class ClaudeAgentRunner:
         """실제 실행 로직 (ClaudeSDKClient 기반)"""
         compact_events: list[dict] = []
         compact_notified_count = 0
-        options = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+        options, memory_prompt = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
         # DEBUG: SDK에 전달되는 options 상세 로그
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
         logger.info(f"[DEBUG-OPTIONS] permission_mode={options.permission_mode}")
@@ -543,7 +551,7 @@ class ClaudeAgentRunner:
         logger.info(f"[DEBUG-OPTIONS] resume={options.resume}")
         logger.info(f"[DEBUG-OPTIONS] allowed_tools count={len(options.allowed_tools) if options.allowed_tools else 0}")
         logger.info(f"[DEBUG-OPTIONS] disallowed_tools count={len(options.disallowed_tools) if options.disallowed_tools else 0}")
-        logger.info(f"[DEBUG-OPTIONS] append_system_prompt length={len(options.append_system_prompt) if options.append_system_prompt else 0}")
+        logger.info(f"[DEBUG-OPTIONS] memory_prompt length={len(memory_prompt) if memory_prompt else 0}")
         logger.info(f"[DEBUG-OPTIONS] hooks={'yes' if options.hooks else 'no'}")
 
         # 스레드 키: thread_ts가 없으면 임시 키 생성
@@ -561,7 +569,19 @@ class ClaudeAgentRunner:
 
         try:
             client = await self._get_or_create_client(client_key, options=options)
-            await client.query(prompt)
+
+            # OM 메모리를 첫 번째 메시지에 프리픽스로 주입
+            # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt 대신 이 방식 사용
+            effective_prompt = prompt
+            if memory_prompt:
+                effective_prompt = (
+                    f"{memory_prompt}\n\n"
+                    f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
+                    f"사용자의 질문: {prompt}"
+                )
+                logger.info(f"OM 메모리 프리픽스 주입 완료 (prompt 길이: {len(effective_prompt)})")
+
+            await client.query(effective_prompt)
 
             aiter = client.receive_response().__aiter__()
             while True:
