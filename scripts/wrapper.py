@@ -44,6 +44,23 @@ def run_command(cmd: list[str], cwd: Path | None = None) -> int:
     return result.returncode
 
 
+def git_pull_with_stash(cwd: Path, label: str) -> bool:
+    """git pull 수행. 실패 시 stash → pull → stash pop으로 재시도. 성공 여부 반환."""
+    exit_code = run_command(["git", "pull", "origin", "main"], cwd=cwd)
+    if exit_code == 0:
+        return True
+
+    log(f"{label} git pull 실패 - stash 후 재시도", "WARN")
+    run_command(["git", "stash"], cwd=cwd)
+    exit_code = run_command(["git", "pull", "origin", "main"], cwd=cwd)
+    run_command(["git", "stash", "pop"], cwd=cwd)
+
+    if exit_code != 0:
+        log(f"{label} git pull 재시도 실패", "ERROR")
+        return False
+    return True
+
+
 def sync_dev_seosoyoung() -> None:
     """slackbot_workspace/seosoyoung 개발용 소스 동기화"""
     if not DEV_SEOSOYOUNG.exists():
@@ -55,19 +72,20 @@ def sync_dev_seosoyoung() -> None:
             log("seosoyoung 클론 실패", "ERROR")
     else:
         log("seosoyoung 개발 소스 동기화 중...")
-        exit_code = run_command(["git", "pull", "origin", "main"], cwd=DEV_SEOSOYOUNG)
-        if exit_code == 0:
+        if git_pull_with_stash(DEV_SEOSOYOUNG, "seosoyoung"):
             log("seosoyoung 동기화 완료")
         else:
-            log("seosoyoung 동기화 실패 (로컬 변경사항 있음?)", "WARN")
+            log("seosoyoung 동기화 실패", "WARN")
 
 
 def do_update() -> None:
     """업데이트 수행: git pull + pip install"""
     log("업데이트 요청 - git pull 실행")
 
-    # runtime 폴더에서 git pull
-    run_command(["git", "pull", "origin", "main"], cwd=RUNTIME_DIR)
+    # runtime 폴더에서 git pull (실패 시 stash 재시도)
+    if not git_pull_with_stash(RUNTIME_DIR, "runtime"):
+        log("runtime 업데이트 실패 - 깨진 상태로 진행하지 않음", "ERROR")
+        return
 
     # 의존성 설치
     if REQUIREMENTS_FILE.exists():
