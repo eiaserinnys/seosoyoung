@@ -169,6 +169,35 @@ class Config:
     )
 
     # ========================================
+    # Channel Observer 설정
+    # ========================================
+    CHANNEL_OBSERVER_ENABLED = _parse_bool(os.getenv("CHANNEL_OBSERVER_ENABLED"), False)
+    CHANNEL_OBSERVER_CHANNELS = [
+        ch.strip()
+        for ch in os.getenv("CHANNEL_OBSERVER_CHANNELS", "").split(",")
+        if ch.strip()
+    ]
+    CHANNEL_OBSERVER_API_KEY = os.getenv("CHANNEL_OBSERVER_API_KEY") or os.getenv("OPENAI_API_KEY")
+    CHANNEL_OBSERVER_MODEL = os.getenv("CHANNEL_OBSERVER_MODEL", "gpt-5-mini")
+    CHANNEL_OBSERVER_COMPRESSOR_MODEL = os.getenv("CHANNEL_OBSERVER_COMPRESSOR_MODEL", "gpt-5.2")
+    CHANNEL_OBSERVER_BUFFER_THRESHOLD = _parse_int(
+        os.getenv("CHANNEL_OBSERVER_BUFFER_THRESHOLD"), 30000
+    )
+    CHANNEL_OBSERVER_DIGEST_MAX_TOKENS = _parse_int(
+        os.getenv("CHANNEL_OBSERVER_DIGEST_MAX_TOKENS"), 10000
+    )
+    CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS = _parse_int(
+        os.getenv("CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS"), 5000
+    )
+    CHANNEL_OBSERVER_COOLDOWN_SEC = _parse_int(
+        os.getenv("CHANNEL_OBSERVER_COOLDOWN_SEC"), 300
+    )
+    CHANNEL_OBSERVER_MAX_INTERVENTION_TURNS = _parse_int(
+        os.getenv("CHANNEL_OBSERVER_MAX_INTERVENTION_TURNS"), 15
+    )
+    CHANNEL_OBSERVER_DEBUG_CHANNEL = os.getenv("CHANNEL_OBSERVER_DEBUG_CHANNEL", "")
+
+    # ========================================
     # 실행 트리거 설정
     # ========================================
     EXECUTE_EMOJI = os.getenv("EXECUTE_EMOJI", "rocket")

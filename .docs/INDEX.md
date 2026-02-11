@@ -14,6 +14,7 @@
 - [`claude/session.py`](modules/claude_session.md): Claude Code 세션 관리
 - [`seosoyoung/config.py`](modules/seosoyoung_config.md): 설정 관리
 - [`handlers/actions.py`](modules/handlers_actions.md): 재시작 버튼 액션 핸들러
+- [`handlers/channel_collector.py`](modules/handlers_channel_collector.md): 채널 메시지 수집기
 - [`handlers/mention.py`](modules/handlers_mention.md): @seosoyoung 멘션 핸들러
 - [`handlers/message.py`](modules/handlers_message.md): 스레드 메시지 핸들러
 - [`handlers/translate.py`](modules/handlers_translate.md): 번역 핸들러
@@ -24,6 +25,7 @@
 - [`mcp/config.py`](modules/mcp_config.md): MCP 서버 설정
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
+- [`memory/channel_store.py`](modules/memory_channel_store.md): 채널 관찰 데이터 저장소
 - [`memory/context_builder.py`](modules/memory_context_builder.md): 컨텍스트 빌더
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
 - [`memory/observer.py`](modules/memory_observer.md): Observer 모듈
@@ -67,7 +69,9 @@
 - `SessionRuntime` (seosoyoung/claude/session.py:185): 세션 실행 상태 관리자
 - `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
+- `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `GeneratedImage` (seosoyoung/image_gen/generator.py:24): 생성된 이미지 결과
+- `ChannelStore` (seosoyoung/memory/channel_store.py:23): 파일 기반 채널 관찰 데이터 저장소
 - `InjectionResult` (seosoyoung/memory/context_builder.py:23): 주입 결과 — 디버그 로그용 정보를 포함
 - `ContextBuilder` (seosoyoung/memory/context_builder.py:118): 장기 기억 + 세션 관찰 로그를 시스템 프롬프트로 변환
 - `ObserverResult` (seosoyoung/memory/observer.py:22): Observer 출력 결과

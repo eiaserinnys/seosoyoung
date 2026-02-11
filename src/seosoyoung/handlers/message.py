@@ -82,6 +82,7 @@ def register_message_handlers(app, dependencies: dict):
     restart_manager = dependencies["restart_manager"]
     run_claude_in_session = dependencies["run_claude_in_session"]
     get_user_role = dependencies["get_user_role"]
+    channel_collector = dependencies.get("channel_collector")
 
     @app.event("message")
     def handle_message(event, say, client):
@@ -90,6 +91,13 @@ def register_message_handlers(app, dependencies: dict):
         세션이 있는 스레드 내 일반 메시지를 처리합니다.
         (멘션 없이 스레드에 작성된 메시지)
         """
+        # 채널 관찰 수집 (봇 메시지 포함이므로 bot_id 체크보다 먼저)
+        if channel_collector:
+            try:
+                channel_collector.collect(event)
+            except Exception as e:
+                logger.error(f"채널 메시지 수집 실패: {e}")
+
         # 봇 자신의 메시지는 무시
         if event.get("bot_id"):
             return
