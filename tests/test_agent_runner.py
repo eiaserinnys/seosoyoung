@@ -554,6 +554,116 @@ class TestProcessErrorHandling:
         assert "사용량 제한" in result.error
 
 
+class TestBuildOptionsChannelObservation:
+    """_build_options에서 채널 관찰 컨텍스트 주입 테스트"""
+
+    def test_channel_observation_injected_for_observed_channel(self, tmp_path):
+        """관찰 대상 채널에서 새 세션일 때 채널 관찰 컨텍스트가 주입되는지 확인"""
+        from seosoyoung.memory.channel_store import ChannelStore
+
+        # 채널 데이터 준비
+        ch_store = ChannelStore(base_dir=tmp_path)
+        ch_store.save_digest("C_OBS", content="채널에서 재미있는 일이 있었다", meta={})
+
+        config_patches = {
+            "OM_ENABLED": True,
+            "CHANNEL_OBSERVER_ENABLED": True,
+            "CHANNEL_OBSERVER_CHANNELS": ["C_OBS"],
+            "OM_MAX_OBSERVATION_TOKENS": 30000,
+            "OM_DEBUG_CHANNEL": "",
+        }
+
+        runner = ClaudeAgentRunner()
+
+        with patch("seosoyoung.config.Config") as MockConfig:
+            for k, v in config_patches.items():
+                setattr(MockConfig, k, v)
+            MockConfig.get_memory_path.return_value = str(tmp_path)
+
+            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+                mock_build.return_value = MagicMock(
+                    prompt="<channel-observation>test</channel-observation>",
+                    persistent_tokens=0,
+                    session_tokens=0,
+                    channel_digest_tokens=50,
+                    channel_buffer_tokens=0,
+                )
+                _, memory_prompt = runner._build_options(
+                    thread_ts="ts_1", channel="C_OBS",
+                )
+
+                # build_memory_prompt에 include_channel_observation=True가 전달되었는지 확인
+                call_kwargs = mock_build.call_args.kwargs
+                assert call_kwargs.get("include_channel_observation") is True
+                assert call_kwargs.get("channel_id") == "C_OBS"
+
+        assert memory_prompt is not None
+
+    def test_channel_observation_not_injected_for_non_observed_channel(self, tmp_path):
+        """관찰 대상이 아닌 채널에서는 채널 관찰 컨텍스트가 주입되지 않음"""
+        config_patches = {
+            "OM_ENABLED": True,
+            "CHANNEL_OBSERVER_ENABLED": True,
+            "CHANNEL_OBSERVER_CHANNELS": ["C_OBS"],
+            "OM_MAX_OBSERVATION_TOKENS": 30000,
+            "OM_DEBUG_CHANNEL": "",
+        }
+
+        runner = ClaudeAgentRunner()
+
+        with patch("seosoyoung.config.Config") as MockConfig:
+            for k, v in config_patches.items():
+                setattr(MockConfig, k, v)
+            MockConfig.get_memory_path.return_value = str(tmp_path)
+
+            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+                mock_build.return_value = MagicMock(
+                    prompt=None,
+                    persistent_tokens=0,
+                    session_tokens=0,
+                    channel_digest_tokens=0,
+                    channel_buffer_tokens=0,
+                )
+                runner._build_options(
+                    thread_ts="ts_1", channel="C_OTHER",
+                )
+
+                call_kwargs = mock_build.call_args.kwargs
+                assert call_kwargs.get("include_channel_observation") is False
+
+    def test_channel_observation_not_injected_when_disabled(self, tmp_path):
+        """CHANNEL_OBSERVER_ENABLED=False면 채널 관찰 미주입"""
+        config_patches = {
+            "OM_ENABLED": True,
+            "CHANNEL_OBSERVER_ENABLED": False,
+            "CHANNEL_OBSERVER_CHANNELS": ["C_OBS"],
+            "OM_MAX_OBSERVATION_TOKENS": 30000,
+            "OM_DEBUG_CHANNEL": "",
+        }
+
+        runner = ClaudeAgentRunner()
+
+        with patch("seosoyoung.config.Config") as MockConfig:
+            for k, v in config_patches.items():
+                setattr(MockConfig, k, v)
+            MockConfig.get_memory_path.return_value = str(tmp_path)
+
+            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+                mock_build.return_value = MagicMock(
+                    prompt=None,
+                    persistent_tokens=0,
+                    session_tokens=0,
+                    channel_digest_tokens=0,
+                    channel_buffer_tokens=0,
+                )
+                runner._build_options(
+                    thread_ts="ts_1", channel="C_OBS",
+                )
+
+                call_kwargs = mock_build.call_args.kwargs
+                assert call_kwargs.get("include_channel_observation") is False
+
+
 class TestServiceFactory:
     """서비스 팩토리 테스트"""
 

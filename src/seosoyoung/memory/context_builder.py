@@ -6,15 +6,23 @@ OM의 processInputStep에 해당하는 부분입니다.
 주입 계층:
 - 장기 기억 (persistent/recent.md): 매 세션 시작 시 항상 주입
 - 세션 관찰 (observations/{thread_ts}.md): inject 플래그 있을 때만 주입
+- 채널 관찰 (channel/{channel_id}/): 관찰 대상 채널에서 멘션될 때 주입
 """
 
+from __future__ import annotations
+
+import json
 import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Optional
 
 from seosoyoung.memory.store import MemoryStore
 from seosoyoung.memory.token_counter import TokenCounter
+
+if TYPE_CHECKING:
+    from seosoyoung.memory.channel_store import ChannelStore
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +36,8 @@ class InjectionResult:
     session_tokens: int = 0
     persistent_content: str = ""
     session_content: str = ""
+    channel_digest_tokens: int = 0
+    channel_buffer_tokens: int = 0
 
 
 def add_relative_time(observations: str, now: datetime | None = None) -> str:
@@ -116,11 +126,66 @@ def optimize_for_context(
 
 
 class ContextBuilder:
-    """장기 기억 + 세션 관찰 로그를 시스템 프롬프트로 변환"""
+    """장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환"""
 
-    def __init__(self, store: MemoryStore):
+    def __init__(
+        self,
+        store: MemoryStore,
+        channel_store: Optional["ChannelStore"] = None,
+    ):
         self.store = store
+        self.channel_store = channel_store
         self._counter = TokenCounter()
+
+    def _build_channel_observation(
+        self,
+        channel_id: str,
+        thread_ts: Optional[str] = None,
+    ) -> tuple[str, int, int]:
+        """채널 관찰 컨텍스트를 XML 문자열로 빌드합니다.
+
+        Returns:
+            (xml_string, digest_tokens, buffer_tokens)
+        """
+        if not self.channel_store or not channel_id:
+            return "", 0, 0
+
+        digest_tokens = 0
+        buffer_tokens = 0
+        sections = []
+
+        # digest
+        digest_data = self.channel_store.get_digest(channel_id)
+        if digest_data and digest_data["content"].strip():
+            digest_content = digest_data["content"]
+            digest_tokens = self._counter.count_string(digest_content)
+            sections.append(f"<digest>\n{digest_content}\n</digest>")
+
+        # channel buffer (미소화 채널 루트 메시지)
+        channel_messages = self.channel_store.load_channel_buffer(channel_id)
+        if channel_messages:
+            lines = [json.dumps(m, ensure_ascii=False) for m in channel_messages]
+            buf_text = "\n".join(lines)
+            buffer_tokens += self._counter.count_string(buf_text)
+            sections.append(f"<recent-channel>\n{buf_text}\n</recent-channel>")
+
+        # thread buffer (현재 스레드만)
+        if thread_ts:
+            thread_messages = self.channel_store.load_thread_buffer(channel_id, thread_ts)
+            if thread_messages:
+                lines = [json.dumps(m, ensure_ascii=False) for m in thread_messages]
+                buf_text = "\n".join(lines)
+                buffer_tokens += self._counter.count_string(buf_text)
+                sections.append(
+                    f'<recent-thread thread="{thread_ts}">\n{buf_text}\n</recent-thread>'
+                )
+
+        if not sections:
+            return "", 0, 0
+
+        inner = "\n\n".join(sections)
+        xml = f'<channel-observation channel="{channel_id}">\n{inner}\n</channel-observation>'
+        return xml, digest_tokens, buffer_tokens
 
     def build_memory_prompt(
         self,
@@ -128,23 +193,31 @@ class ContextBuilder:
         max_tokens: int = 30000,
         include_persistent: bool = False,
         include_session: bool = True,
+        include_channel_observation: bool = False,
+        channel_id: Optional[str] = None,
     ) -> InjectionResult:
-        """장기 기억과 세션 관찰 로그를 합쳐서 시스템 프롬프트로 변환합니다.
+        """장기 기억, 세션 관찰, 채널 관찰을 합쳐서 시스템 프롬프트로 변환합니다.
+
+        주입 순서: 장기 기억 → 세션 관찰 → 채널 관찰
 
         Args:
             thread_ts: 세션(스레드) 타임스탬프
             max_tokens: 세션 관찰 최대 토큰 수
             include_persistent: 장기 기억을 포함할지 여부
             include_session: 세션 관찰을 포함할지 여부
+            include_channel_observation: 채널 관찰 컨텍스트를 포함할지 여부
+            channel_id: 채널 ID (채널 관찰 시 필요)
 
         Returns:
-            InjectionResult (prompt, persistent_tokens, session_tokens)
+            InjectionResult
         """
         parts = []
         persistent_tokens = 0
         session_tokens = 0
         persistent_content = ""
         session_content = ""
+        channel_digest_tokens = 0
+        channel_buffer_tokens = 0
 
         # 1. 장기 기억 (persistent/recent.md)
         if include_persistent:
@@ -176,6 +249,16 @@ class ContextBuilder:
                     "</observational-memory>"
                 )
 
+        # 3. 채널 관찰 (channel/{channel_id}/)
+        if include_channel_observation and channel_id:
+            ch_xml, ch_digest_tok, ch_buf_tok = self._build_channel_observation(
+                channel_id, thread_ts=thread_ts,
+            )
+            if ch_xml:
+                channel_digest_tokens = ch_digest_tok
+                channel_buffer_tokens = ch_buf_tok
+                parts.append(ch_xml)
+
         prompt = "\n\n".join(parts) if parts else None
 
         return InjectionResult(
@@ -184,4 +267,6 @@ class ContextBuilder:
             session_tokens=session_tokens,
             persistent_content=persistent_content,
             session_content=session_content,
+            channel_digest_tokens=channel_digest_tokens,
+            channel_buffer_tokens=channel_buffer_tokens,
         )

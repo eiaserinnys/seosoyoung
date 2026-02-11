@@ -82,8 +82,8 @@
 - `ChannelObserver` (seosoyoung/memory/channel_observer.py:97): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
 - `DigestCompressor` (seosoyoung/memory/channel_observer.py:148): digest가 임계치를 초과할 때 압축
 - `ChannelStore` (seosoyoung/memory/channel_store.py:23): 파일 기반 채널 관찰 데이터 저장소
-- `InjectionResult` (seosoyoung/memory/context_builder.py:23): 주입 결과 — 디버그 로그용 정보를 포함
-- `ContextBuilder` (seosoyoung/memory/context_builder.py:118): 장기 기억 + 세션 관찰 로그를 시스템 프롬프트로 변환
+- `InjectionResult` (seosoyoung/memory/context_builder.py:31): 주입 결과 — 디버그 로그용 정보를 포함
+- `ContextBuilder` (seosoyoung/memory/context_builder.py:128): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
 - `ObserverResult` (seosoyoung/memory/observer.py:22): Observer 출력 결과
 - `Observer` (seosoyoung/memory/observer.py:63): 대화를 관찰하여 구조화된 관찰 로그를 생성
 - `PromoterResult` (seosoyoung/memory/promoter.py:20): Promoter 출력 결과
@@ -138,7 +138,7 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:775): 
+- `async main()` (seosoyoung/claude/agent_runner.py:808): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:44): 역할에 맞는 ClaudeAgentRunner 반환
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:10): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:29): 응답에서 요약과 상세 내용을 파싱
@@ -178,8 +178,8 @@
 - `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:140): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:173): digest 압축 시스템 프롬프트를 반환합니다.
 - `build_digest_compressor_retry_prompt()` (seosoyoung/memory/channel_prompts.py:178): digest 압축 재시도 프롬프트를 반환합니다.
-- `add_relative_time()` (seosoyoung/memory/context_builder.py:33): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
-- `optimize_for_context()` (seosoyoung/memory/context_builder.py:76): 관찰 로그를 컨텍스트 주입에 최적화합니다.
+- `add_relative_time()` (seosoyoung/memory/context_builder.py:43): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
+- `optimize_for_context()` (seosoyoung/memory/context_builder.py:86): 관찰 로그를 컨텍스트 주입에 최적화합니다.
 - `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:72): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
 - `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:108): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 - `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.

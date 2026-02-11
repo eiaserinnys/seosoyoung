@@ -344,12 +344,27 @@ class ClaudeAgentRunner:
                     is_new_session = session_id is None  # 새 세션일 때만 장기 기억 주입
                     should_inject_session = store.check_and_clear_inject_flag(thread_ts)
 
-                    builder = ContextBuilder(store)
+                    # 채널 관찰: 관찰 대상 채널에서 멘션될 때만 주입
+                    channel_store = None
+                    include_channel_obs = False
+                    if (
+                        is_new_session
+                        and Config.CHANNEL_OBSERVER_ENABLED
+                        and channel
+                        and channel in Config.CHANNEL_OBSERVER_CHANNELS
+                    ):
+                        from seosoyoung.memory.channel_store import ChannelStore
+                        channel_store = ChannelStore(Config.get_memory_path())
+                        include_channel_obs = True
+
+                    builder = ContextBuilder(store, channel_store=channel_store)
                     result: InjectionResult = builder.build_memory_prompt(
                         thread_ts,
                         max_tokens=Config.OM_MAX_OBSERVATION_TOKENS,
                         include_persistent=is_new_session,          # 장기 기억: 새 세션만
                         include_session=should_inject_session,  # 세션 관찰: 컴팩션 후만 (inject 플래그)
+                        include_channel_observation=include_channel_obs,
+                        channel_id=channel,
                     )
 
                     if result.prompt:
@@ -357,7 +372,8 @@ class ClaudeAgentRunner:
                         logger.info(
                             f"OM 주입 준비 완료 (thread={thread_ts}, "
                             f"LTM={result.persistent_tokens} tok, "
-                            f"세션={result.session_tokens} tok)"
+                            f"세션={result.session_tokens} tok, "
+                            f"채널={result.channel_digest_tokens}+{result.channel_buffer_tokens} tok)"
                         )
 
                     # 디버그 로그 이벤트 #7, #8: 주입 정보
@@ -381,7 +397,13 @@ class ClaudeAgentRunner:
         """
         if not debug_channel:
             return
-        if not result.persistent_tokens and not result.session_tokens:
+        has_any = (
+            result.persistent_tokens
+            or result.session_tokens
+            or result.channel_digest_tokens
+            or result.channel_buffer_tokens
+        )
+        if not has_any:
             return
 
         try:
@@ -411,6 +433,17 @@ class ClaudeAgentRunner:
                     f":syringe: *OM 세션 관찰 주입* `{sid}`\n"
                     f">`세션 {_format_tokens(result.session_tokens)} tok`\n"
                     f"{session_quote}",
+                )
+
+            # 채널 관찰 주입
+            if result.channel_digest_tokens or result.channel_buffer_tokens:
+                ch_total = result.channel_digest_tokens + result.channel_buffer_tokens
+                _send_debug_log(
+                    debug_channel,
+                    f":eyes: *채널 관찰 주입* `{sid}`\n"
+                    f">`digest {_format_tokens(result.channel_digest_tokens)} tok + "
+                    f"buffer {_format_tokens(result.channel_buffer_tokens)} tok = "
+                    f"총 {_format_tokens(ch_total)} tok`",
                 )
         except Exception as e:
             logger.warning(f"OM 주입 디버그 로그 실패 (무시): {e}")

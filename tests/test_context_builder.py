@@ -1,9 +1,11 @@
 """ContextBuilder 단위 테스트"""
 
+import json
 from datetime import datetime, timezone
 
 import pytest
 
+from seosoyoung.memory.channel_store import ChannelStore
 from seosoyoung.memory.context_builder import (
     ContextBuilder,
     InjectionResult,
@@ -265,3 +267,180 @@ class TestContextBuilderPersistent:
         )
         assert "<long-term-memory>" in result.prompt
         assert "<observational-memory>" in result.prompt
+
+
+class TestContextBuilderChannelObservation:
+    """채널 관찰 컨텍스트 주입 테스트"""
+
+    @pytest.fixture
+    def store(self, tmp_path):
+        return MemoryStore(base_dir=tmp_path)
+
+    @pytest.fixture
+    def channel_store(self, tmp_path):
+        return ChannelStore(base_dir=tmp_path)
+
+    @pytest.fixture
+    def builder(self, store, channel_store):
+        return ContextBuilder(store, channel_store=channel_store)
+
+    def test_no_channel_data_returns_none(self, builder):
+        """채널 데이터가 없으면 채널 관찰 토큰은 0"""
+        result = builder.build_memory_prompt(
+            "ts_1",
+            include_channel_observation=True,
+            channel_id="C_NONE",
+        )
+        assert result.channel_digest_tokens == 0
+        assert result.channel_buffer_tokens == 0
+
+    def test_digest_only(self, builder, channel_store):
+        """digest만 있고 버퍼가 없는 경우"""
+        channel_store.save_digest(
+            "C_TEST",
+            content="오늘 팀원들이 점심 메뉴를 두고 열띤 토론을 벌였다.",
+            meta={"token_count": 50},
+        )
+
+        result = builder.build_memory_prompt(
+            "ts_1",
+            include_channel_observation=True,
+            channel_id="C_TEST",
+        )
+
+        assert result.prompt is not None
+        assert '<channel-observation channel="C_TEST">' in result.prompt
+        assert "</channel-observation>" in result.prompt
+        assert "<digest>" in result.prompt
+        assert "점심 메뉴" in result.prompt
+        assert result.channel_digest_tokens > 0
+        assert result.channel_buffer_tokens == 0
+
+    def test_digest_plus_channel_buffer(self, builder, channel_store):
+        """digest + 채널 버퍼 메시지가 있는 경우"""
+        channel_store.save_digest(
+            "C_TEST",
+            content="어제의 요약",
+            meta={"token_count": 20},
+        )
+        channel_store.append_channel_message("C_TEST", {
+            "user": "U_AAA", "text": "오늘 날씨 좋다", "ts": "1000.001",
+        })
+        channel_store.append_channel_message("C_TEST", {
+            "user": "U_BBB", "text": "동의합니다", "ts": "1000.002",
+        })
+
+        result = builder.build_memory_prompt(
+            "ts_1",
+            include_channel_observation=True,
+            channel_id="C_TEST",
+        )
+
+        assert result.prompt is not None
+        assert "<recent-channel>" in result.prompt
+        assert "오늘 날씨 좋다" in result.prompt
+        assert "동의합니다" in result.prompt
+        assert result.channel_buffer_tokens > 0
+
+    def test_thread_buffer_included(self, builder, channel_store):
+        """현재 스레드의 버퍼가 포함되는 경우"""
+        channel_store.save_digest("C_TEST", content="요약", meta={})
+        channel_store.append_thread_message("C_TEST", "ts_1", {
+            "user": "U_CCC", "text": "이 스레드 내용이에요", "ts": "1000.010",
+        })
+
+        # build_memory_prompt의 첫 번째 인자가 thread_ts (세션 키)
+        result = builder.build_memory_prompt(
+            "ts_1",
+            include_channel_observation=True,
+            channel_id="C_TEST",
+        )
+
+        assert result.prompt is not None
+        assert '<recent-thread thread="ts_1">' in result.prompt
+        assert "이 스레드 내용이에요" in result.prompt
+
+    def test_other_thread_not_included(self, builder, channel_store):
+        """다른 스레드의 버퍼는 포함되지 않음"""
+        channel_store.save_digest("C_TEST", content="요약", meta={})
+        channel_store.append_thread_message("C_TEST", "ts_other", {
+            "user": "U_DDD", "text": "다른 스레드 내용", "ts": "1000.020",
+        })
+
+        # thread_ts="ts_1" → ts_other 스레드는 포함되지 않아야 함
+        result = builder.build_memory_prompt(
+            "ts_1",
+            include_channel_observation=True,
+            channel_id="C_TEST",
+        )
+
+        # 다른 스레드 내용은 포함되지 않아야 함
+        if result.prompt:
+            assert "다른 스레드 내용" not in result.prompt
+
+    def test_channel_observation_after_om(self, builder, store, channel_store):
+        """OM 장기기억 뒤에 채널 관찰이 이어서 주입됨"""
+        store.save_persistent(
+            content="🔴 장기 기억 내용",
+            meta={"token_count": 50},
+        )
+        channel_store.save_digest(
+            "C_TEST",
+            content="채널 관찰 요약",
+            meta={"token_count": 30},
+        )
+
+        result = builder.build_memory_prompt(
+            "ts_1",
+            include_persistent=True,
+            include_channel_observation=True,
+            channel_id="C_TEST",
+        )
+
+        assert result.prompt is not None
+        # 장기 기억이 채널 관찰보다 먼저 나와야 함
+        ltm_pos = result.prompt.index("<long-term-memory>")
+        ch_pos = result.prompt.index("<channel-observation")
+        assert ltm_pos < ch_pos
+
+    def test_disabled_by_default(self, builder, channel_store):
+        """include_channel_observation=False면 채널 관찰 미포함"""
+        channel_store.save_digest(
+            "C_TEST",
+            content="채널 관찰 요약",
+            meta={"token_count": 30},
+        )
+
+        result = builder.build_memory_prompt(
+            "ts_1",
+            include_channel_observation=False,
+            channel_id="C_TEST",
+        )
+
+        assert result.channel_digest_tokens == 0
+        assert result.channel_buffer_tokens == 0
+        if result.prompt:
+            assert "<channel-observation" not in result.prompt
+
+    def test_no_channel_id_returns_no_channel_data(self, builder, channel_store):
+        """channel_id가 None이면 채널 관찰 데이터 없음"""
+        channel_store.save_digest(
+            "C_TEST",
+            content="채널 관찰 요약",
+            meta={"token_count": 30},
+        )
+
+        result = builder.build_memory_prompt(
+            "ts_1",
+            include_channel_observation=True,
+            channel_id=None,
+        )
+
+        assert result.channel_digest_tokens == 0
+        assert result.channel_buffer_tokens == 0
+
+    def test_injection_result_has_channel_fields(self, builder):
+        """InjectionResult에 channel_digest_tokens, channel_buffer_tokens 필드 존재"""
+        result = builder.build_memory_prompt("ts_1")
+        assert hasattr(result, "channel_digest_tokens")
+        assert hasattr(result, "channel_buffer_tokens")

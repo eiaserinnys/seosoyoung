@@ -26,11 +26,11 @@ Claude Code SDK 기반 실행기
 - `async _remove_client(self, thread_ts)` (줄 201): 스레드의 ClaudeSDKClient를 정리
 - `async interrupt(self, thread_ts)` (줄 216): 실행 중인 스레드에 인터럽트 전송
 - `_build_options(self, session_id, compact_events, user_id, thread_ts, channel)` (줄 236): ClaudeCodeOptions와 OM 메모리 프롬프트를 함께 반환합니다.
-- `_send_injection_debug_log(thread_ts, result, debug_channel)` (줄 373): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
-- `async run(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel)` (줄 418): Claude Code 실행
-- `_trigger_observation(self, thread_ts, user_id, prompt, collected_messages)` (줄 448): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
-- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel)` (줄 531): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 745): 세션 컴팩트 처리
+- `_send_injection_debug_log(thread_ts, result, debug_channel)` (줄 389): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
+- `async run(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel)` (줄 451): Claude Code 실행
+- `_trigger_observation(self, thread_ts, user_id, prompt, collected_messages)` (줄 481): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
+- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel)` (줄 564): 실제 실행 로직 (ClaudeSDKClient 기반)
+- `async compact_session(self, session_id)` (줄 778): 세션 컴팩트 처리
 
 ## 함수
 
@@ -43,4 +43,4 @@ SDK가 stderr를 캡처하지 않아 원인 구분이 어렵습니다.
 exit_code와 stderr 패턴을 기반으로 최대한 분류합니다.
 
 ### `async main()`
-- 위치: 줄 775
+- 위치: 줄 808
