@@ -47,11 +47,12 @@ class MemoryRecord:
     last_observed_at: datetime | None = None
     total_sessions_observed: int = 0
     reflection_count: int = 0
+    anchor_ts: str = ""  # OM 디버그 채널 앵커 메시지 ts (세션 간 유지)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_meta_dict(self) -> dict:
         """메타데이터를 직렬화 가능한 dict로 변환"""
-        return {
+        d = {
             "thread_ts": self.thread_ts,
             "user_id": self.user_id,
             "username": self.username,
@@ -63,6 +64,9 @@ class MemoryRecord:
             "reflection_count": self.reflection_count,
             "created_at": self.created_at.isoformat(),
         }
+        if self.anchor_ts:
+            d["anchor_ts"] = self.anchor_ts
+        return d
 
     @classmethod
     def from_meta_dict(cls, data: dict, observations: str = "") -> "MemoryRecord":
@@ -80,6 +84,7 @@ class MemoryRecord:
             ),
             total_sessions_observed=data.get("total_sessions_observed", 0),
             reflection_count=data.get("reflection_count", 0),
+            anchor_ts=data.get("anchor_ts", ""),
             created_at=(
                 datetime.fromisoformat(created)
                 if created

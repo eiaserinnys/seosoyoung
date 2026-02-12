@@ -177,6 +177,10 @@ async def observe_conversation(
     log_label = f"session={thread_ts}"
     debug_ts = ""
 
+    # anchor_ts가 비었으면 디버그 로그를 채널 본문에 게시하게 되므로 비활성화
+    if not anchor_ts:
+        debug_channel = ""
+
     try:
         token_counter = TokenCounter()
 

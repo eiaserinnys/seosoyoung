@@ -704,7 +704,14 @@ class TestBuildOptionsAnchorTs:
         assert "테스트 프롬프트입니다" in call_args[0][1]
 
     def test_anchor_ts_not_created_for_resumed_session(self, tmp_path):
-        """기존 세션 재개 시 앵커 메시지 미생성"""
+        """기존 세션 재개 시 새 앵커 미생성, MemoryRecord에서 기존 anchor_ts 로드"""
+        from seosoyoung.memory.store import MemoryRecord, MemoryStore
+
+        # 사전 조건: MemoryRecord에 이전 세션의 anchor_ts가 저장되어 있음
+        pre_store = MemoryStore(base_dir=tmp_path)
+        pre_record = MemoryRecord(thread_ts="ts_1", anchor_ts="saved_anchor_123")
+        pre_store.save_record(pre_record)
+
         config_patches = {
             "OM_ENABLED": True,
             "CHANNEL_OBSERVER_ENABLED": False,
@@ -738,9 +745,144 @@ class TestBuildOptionsAnchorTs:
                         thread_ts="ts_1", prompt="테스트",
                     )
 
-        # 기존 세션이므로 앵커 메시지 미생성
-        assert anchor_ts == ""
+        # 기존 세션이므로 새 앵커 메시지 미생성, 하지만 저장된 anchor_ts 로드
+        assert anchor_ts == "saved_anchor_123"
         mock_send.assert_not_called()
+
+    def test_anchor_ts_empty_when_no_saved_record(self, tmp_path):
+        """기존 세션 재개 시 MemoryRecord가 없으면 anchor_ts 빈 문자열"""
+        config_patches = {
+            "OM_ENABLED": True,
+            "CHANNEL_OBSERVER_ENABLED": False,
+            "CHANNEL_OBSERVER_CHANNELS": [],
+            "OM_MAX_OBSERVATION_TOKENS": 30000,
+            "OM_DEBUG_CHANNEL": "C_DEBUG",
+        }
+
+        runner = ClaudeAgentRunner()
+
+        with patch("seosoyoung.config.Config") as MockConfig:
+            for k, v in config_patches.items():
+                setattr(MockConfig, k, v)
+            MockConfig.get_memory_path.return_value = str(tmp_path)
+
+            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+                mock_build.return_value = MagicMock(
+                    prompt=None,
+                    persistent_tokens=0,
+                    session_tokens=0,
+                    new_observation_tokens=0,
+                    new_observation_content="",
+                    persistent_content="",
+                    session_content="",
+                    channel_digest_tokens=0,
+                    channel_buffer_tokens=0,
+                )
+                _, _, anchor_ts = runner._build_options(
+                    session_id="existing-session",
+                    thread_ts="ts_no_record", prompt="테스트",
+                )
+
+        # MemoryRecord가 없으므로 anchor_ts 빈 문자열
+        assert anchor_ts == ""
+
+    def test_new_session_saves_anchor_ts_to_record(self, tmp_path):
+        """새 세션 시 생성된 anchor_ts가 MemoryRecord에 저장되는지 확인"""
+        from seosoyoung.memory.store import MemoryStore
+
+        config_patches = {
+            "OM_ENABLED": True,
+            "CHANNEL_OBSERVER_ENABLED": False,
+            "CHANNEL_OBSERVER_CHANNELS": [],
+            "OM_MAX_OBSERVATION_TOKENS": 30000,
+            "OM_DEBUG_CHANNEL": "C_DEBUG",
+        }
+
+        runner = ClaudeAgentRunner()
+
+        with patch("seosoyoung.config.Config") as MockConfig:
+            for k, v in config_patches.items():
+                setattr(MockConfig, k, v)
+            MockConfig.get_memory_path.return_value = str(tmp_path)
+
+            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+                mock_build.return_value = MagicMock(
+                    prompt=None,
+                    persistent_tokens=0,
+                    session_tokens=0,
+                    new_observation_tokens=0,
+                    new_observation_content="",
+                    persistent_content="",
+                    session_content="",
+                    channel_digest_tokens=0,
+                    channel_buffer_tokens=0,
+                )
+                with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="new_anchor_456"):
+                    _, _, anchor_ts = runner._build_options(
+                        thread_ts="ts_new", prompt="새 세션 테스트",
+                    )
+
+        assert anchor_ts == "new_anchor_456"
+
+        # MemoryRecord에 anchor_ts가 저장되었는지 확인
+        verify_store = MemoryStore(base_dir=tmp_path)
+        record = verify_store.get_record("ts_new")
+        assert record is not None
+        assert record.anchor_ts == "new_anchor_456"
+
+
+class TestInjectionDebugLogSkipsWithoutAnchor:
+    """anchor_ts가 빈 문자열일 때 _send_injection_debug_log가 디버그 로그를 스킵하는지 테스트"""
+
+    def test_skips_debug_log_when_anchor_ts_empty(self):
+        """anchor_ts가 빈 문자열이면 디버그 로그를 발송하지 않음 (채널 본문 오염 방지)"""
+        runner = ClaudeAgentRunner()
+        mock_result = MagicMock(
+            persistent_tokens=100,
+            session_tokens=50,
+            new_observation_tokens=30,
+            channel_digest_tokens=0,
+            channel_buffer_tokens=0,
+            persistent_content="장기 기억",
+            session_content="세션 관찰",
+            new_observation_content="새 관찰",
+        )
+
+        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+            runner._send_injection_debug_log(
+                thread_ts="ts_1234",
+                result=mock_result,
+                debug_channel="C_DEBUG",
+                anchor_ts="",  # 빈 문자열 — 앵커 생성 실패
+            )
+
+        # anchor_ts가 비었으므로 _send_debug_log가 호출되지 않아야 함
+        mock_send.assert_not_called()
+
+    def test_sends_debug_log_when_anchor_ts_present(self):
+        """anchor_ts가 있으면 정상적으로 디버그 로그를 발송"""
+        runner = ClaudeAgentRunner()
+        mock_result = MagicMock(
+            persistent_tokens=100,
+            session_tokens=0,
+            new_observation_tokens=0,
+            channel_digest_tokens=0,
+            channel_buffer_tokens=0,
+            persistent_content="장기 기억",
+        )
+
+        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+            with patch("seosoyoung.memory.observation_pipeline._format_tokens", return_value="100"):
+                with patch("seosoyoung.memory.observation_pipeline._blockquote", return_value=">장기 기억"):
+                    runner._send_injection_debug_log(
+                        thread_ts="ts_1234",
+                        result=mock_result,
+                        debug_channel="C_DEBUG",
+                        anchor_ts="anchor_valid",
+                    )
+
+        # anchor_ts가 있으므로 _send_debug_log가 호출되어야 함
+        mock_send.assert_called()
 
 
 class TestClaudeResultAnchorTs:
