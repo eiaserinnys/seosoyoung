@@ -91,6 +91,8 @@ class Config:
             "mcp__seosoyoung-attach__slack_attach_file",
             "mcp__seosoyoung-attach__slack_get_context",
             "mcp__seosoyoung-attach__slack_post_message",
+            "mcp__seosoyoung-attach__slack_download_thread_files",
+            "mcp__seosoyoung-attach__slack_generate_image",
         ],
         "viewer": ["Read", "Glob", "Grep"],
     }

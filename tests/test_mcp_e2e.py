@@ -29,15 +29,17 @@ class TestMCPServerStandalone:
 
         assert mcp.name == "seosoyoung-attach"
 
-    def test_server_has_three_tools(self):
-        """서버에 3개 도구가 등록됨"""
+    def test_server_has_five_tools(self):
+        """서버에 5개 도구가 등록됨"""
         from seosoyoung.mcp.server import mcp
 
         tools = list(mcp._tool_manager._tools.keys())
         assert "slack_attach_file" in tools
         assert "slack_get_context" in tools
         assert "slack_post_message" in tools
-        assert len(tools) == 3
+        assert "slack_generate_image" in tools
+        assert "slack_download_thread_files" in tools
+        assert len(tools) == 5
 
     def test_get_context_reads_env(self):
         """slack_get_context가 환경변수에서 값을 읽음"""
@@ -350,11 +352,11 @@ class TestMCPConfigIntegrity:
             assert tool_name in actual_tools, f"{tool_name} not in MCP server tools"
 
     def test_default_allowed_tools_include_all_mcp_tools(self):
-        """DEFAULT_ALLOWED_TOOLS에 MCP 도구 3개 모두 포함"""
+        """DEFAULT_ALLOWED_TOOLS에 MCP 도구 5개 모두 포함"""
         from seosoyoung.claude.agent_runner import DEFAULT_ALLOWED_TOOLS
 
         mcp_tools = [t for t in DEFAULT_ALLOWED_TOOLS if "seosoyoung-attach" in t]
-        assert len(mcp_tools) == 3
+        assert len(mcp_tools) == 5
 
     def test_viewer_has_no_mcp_tools(self):
         """viewer 역할에는 MCP 도구 없음"""
