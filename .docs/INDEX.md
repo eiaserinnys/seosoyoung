@@ -169,9 +169,9 @@
 - `start_trello_watcher()` (seosoyoung/main.py:174): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:194): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:204): 봇 사용자 ID 초기화
-- `slack_attach_file()` (seosoyoung/mcp/server.py:12): 슬랙에 파일을 첨부합니다.
-- `slack_get_context()` (seosoyoung/mcp/server.py:28): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
-- `slack_post_message()` (seosoyoung/mcp/server.py:38): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `slack_attach_file()` (seosoyoung/mcp/server.py:14): 슬랙에 파일을 첨부합니다.
+- `slack_get_context()` (seosoyoung/mcp/server.py:30): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:40): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `post_message()` (seosoyoung/mcp/tools/slack_messaging.py:51): 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부

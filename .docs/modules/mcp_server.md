@@ -9,7 +9,7 @@ seosoyoung MCP 서버 정의
 ## 함수
 
 ### `slack_attach_file(file_path, channel, thread_ts)`
-- 위치: 줄 12
+- 위치: 줄 14
 - 데코레이터: mcp.tool
 - 설명: 슬랙에 파일을 첨부합니다.
 
@@ -23,7 +23,7 @@ Args:
     thread_ts: 스레드 타임스탬프
 
 ### `slack_get_context()`
-- 위치: 줄 28
+- 위치: 줄 30
 - 데코레이터: mcp.tool
 - 설명: 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
 
@@ -31,7 +31,7 @@ Args:
 attach_file 호출 전에 컨텍스트를 조회할 때 사용합니다.
 
 ### `slack_post_message(channel, text, thread_ts, file_paths)`
-- 위치: 줄 38
+- 위치: 줄 40
 - 데코레이터: mcp.tool
 - 설명: 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
 

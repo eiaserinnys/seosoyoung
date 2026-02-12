@@ -1,5 +1,7 @@
 """seosoyoung MCP 서버 정의"""
 
+from typing import Optional
+
 from fastmcp import FastMCP
 
 from seosoyoung.mcp.tools.attach import attach_file, get_slack_context
@@ -38,8 +40,8 @@ def slack_get_context() -> dict:
 def slack_post_message(
     channel: str,
     text: str,
-    thread_ts: str = "",
-    file_paths: str = "",
+    thread_ts: Optional[str] = None,
+    file_paths: Optional[str] = None,
 ) -> dict:
     """봇 권한으로 슬랙 채널에 메시지를 보냅니다.
 
@@ -52,4 +54,4 @@ def slack_post_message(
         thread_ts: 스레드 타임스탬프 (선택)
         file_paths: 파일 경로, 쉼표 구분 (선택)
     """
-    return post_message(channel, text, thread_ts, file_paths)
+    return post_message(channel, text, thread_ts or "", file_paths or "")
