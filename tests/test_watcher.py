@@ -233,5 +233,96 @@ class TestTrelloWatcherTrackedCardLookup:
         assert "https://trello.com/c/abc123" in prompt
 
 
+class TestListRunSaySignature:
+    """정주행 say() 함수가 send_long_message와 호환되는 시그니처를 갖는지 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_list_run_say_accepts_thread_ts_keyword(self, mock_config, mock_trello_client):
+        """정주행 say()가 thread_ts= 키워드 인자를 받을 수 있어야 함
+
+        send_long_message가 say(text=..., thread_ts=thread_ts)로 호출하므로,
+        정주행용 say()도 thread_ts 키워드를 받아야 TypeError가 발생하지 않음.
+        """
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slack.helpers import send_long_message
+
+        mock_slack = MagicMock()
+        mock_slack.chat_postMessage.return_value = {"ts": "1234567890.123456"}
+
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+
+            watcher = TrelloWatcher(
+                slack_client=mock_slack,
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+            )
+
+            # 세션 생성
+            session = list_runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card_a"],
+            )
+            list_runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            card = TrelloCard(
+                id="card_a",
+                name="Test Card",
+                desc="",
+                url="https://trello.com/c/abc",
+                list_id="list_123",
+                labels=[],
+            )
+
+            # _process_list_run_card 내부에서 생성되는 say 함수를 시뮬레이션
+            # watcher._process_list_run_card를 직접 호출하지 않고,
+            # 해당 메서드 내의 say 함수 패턴을 재현하여 테스트
+            thread_ts = "1234567890.123456"
+
+            # say 함수를 캡처하기 위해 claude_runner_factory를 이용
+            captured_say = {}
+
+            def capturing_factory(**kwargs):
+                captured_say["say"] = kwargs.get("say")
+                # 실행 완료 표시를 위해 mark_card_processed 호출
+                list_runner.mark_card_processed(session.session_id, card.id, "completed")
+
+            watcher.claude_runner_factory = capturing_factory
+
+            # _process_list_run_card 호출 (별도 스레드 방지를 위해 직접 호출)
+            # get_session_lock을 None으로 설정하여 lock 부분 스킵
+            watcher.get_session_lock = None
+
+            watcher._process_list_run_card(session.session_id, thread_ts)
+
+            # say 함수가 캡처되었는지 확인
+            assert "say" in captured_say, "say 함수가 claude_runner_factory에 전달되어야 함"
+            say_fn = captured_say["say"]
+
+            # 핵심 테스트: send_long_message를 통해 호출했을 때 TypeError가 발생하지 않아야 함
+            # send_long_message는 say(text=..., thread_ts=thread_ts)로 호출
+            send_long_message(say_fn, "test message", "1234567890.999999")
+
+            # 슬랙 메시지가 정상적으로 전송되었는지 확인
+            calls = mock_slack.chat_postMessage.call_args_list
+            # 마지막 호출이 send_long_message를 통한 것이어야 함
+            last_call = calls[-1]
+            assert last_call[1]["text"] == "test message"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

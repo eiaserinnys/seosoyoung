@@ -828,13 +828,6 @@ class TrelloWatcher:
                 lock = self.get_session_lock(thread_ts)
                 lock.acquire()
             try:
-                def say(text, reply_thread_ts=None):
-                    self.slack_client.chat_postMessage(
-                        channel=self.notify_channel,
-                        thread_ts=reply_thread_ts or thread_ts,
-                        text=text
-                    )
-
                 # TrackedCard 유사 객체 생성 (정주행용)
                 tracked = TrackedCard(
                     card_id=card.id,
@@ -847,6 +840,13 @@ class TrelloWatcher:
                     detected_at=datetime.now().isoformat(),
                     has_execute=True,
                 )
+
+                def say(text, thread_ts=None, **kwargs):
+                    self.slack_client.chat_postMessage(
+                        channel=self.notify_channel,
+                        thread_ts=thread_ts or tracked.thread_ts,
+                        text=text
+                    )
 
                 self.claude_runner_factory(
                     session=claude_session,
