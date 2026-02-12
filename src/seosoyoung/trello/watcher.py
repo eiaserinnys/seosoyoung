@@ -389,6 +389,43 @@ class TrelloWatcher:
         session_display = f" | #️⃣ {session_id[:8]}" if session_id else ""
         return f"*🎫 <{card_url}|{card_name}>{session_display}*"
 
+    def _open_dm_thread(self, card_name: str, card_url: str) -> tuple[Optional[str], Optional[str]]:
+        """DM 채널을 열고 앵커 메시지를 전송하여 DM 스레드를 생성
+
+        Args:
+            card_name: 카드 이름 (앵커 메시지 헤더용)
+            card_url: 카드 URL
+
+        Returns:
+            (dm_channel_id, dm_thread_ts) - DM 채널 ID와 앵커 메시지 ts
+            실패 시 (None, None)
+        """
+        dm_target_user = Config.TRELLO_DM_TARGET_USER_ID
+        if not dm_target_user:
+            return None, None
+
+        try:
+            # DM 채널 열기
+            dm_result = self.slack_client.conversations_open(users=dm_target_user)
+            dm_channel_id = dm_result["channel"]["id"]
+
+            # 앵커 메시지 전송
+            anchor_text = f"🎫 *<{card_url}|{card_name}>*\n`사고 과정을 기록합니다...`"
+            anchor_msg = self.slack_client.chat_postMessage(
+                channel=dm_channel_id,
+                text=anchor_text,
+                blocks=[{
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": anchor_text}
+                }]
+            )
+            dm_thread_ts = anchor_msg["ts"]
+            logger.info(f"DM 스레드 생성: channel={dm_channel_id}, thread_ts={dm_thread_ts}")
+            return dm_channel_id, dm_thread_ts
+        except Exception as e:
+            logger.warning(f"DM 스레드 생성 실패 (기존 동작으로 폴백): {e}")
+            return None, None
+
     def _handle_new_card(self, card: TrelloCard, list_key: str):
         """새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행"""
         # 1. 카드를 In Progress로 이동
@@ -469,6 +506,9 @@ class TrelloWatcher:
         card_id_for_cleanup = card.id
         card_name_with_spinner = f"🌀 {card.name}"
 
+        # 9. DM 스레드 생성 (사고 과정 출력용)
+        dm_channel_id, dm_thread_ts = self._open_dm_thread(card.name, card.url)
+
         def run_claude():
             lock = None
             if self.get_session_lock:
@@ -490,7 +530,9 @@ class TrelloWatcher:
                     channel=self.notify_channel,
                     say=say,
                     client=self.slack_client,
-                    trello_card=tracked  # TrackedCard 정보 전달
+                    trello_card=tracked,
+                    dm_channel_id=dm_channel_id,
+                    dm_thread_ts=dm_thread_ts,
                 )
             except Exception as e:
                 logger.exception(f"Claude 실행 오류 (워처): {e}")
@@ -821,6 +863,9 @@ class TrelloWatcher:
         # 프롬프트 생성
         prompt = self._build_list_run_prompt(card, session_id, session.current_index + 1, len(session.card_ids))
 
+        # DM 스레드 생성 (사고 과정 출력용)
+        dm_channel_id, dm_thread_ts = self._open_dm_thread(card.name, card.url)
+
         # Claude 실행 (별도 스레드에서)
         def run_claude():
             lock = None
@@ -855,7 +900,9 @@ class TrelloWatcher:
                     channel=self.notify_channel,
                     say=say,
                     client=self.slack_client,
-                    trello_card=tracked
+                    trello_card=tracked,
+                    dm_channel_id=dm_channel_id,
+                    dm_thread_ts=dm_thread_ts,
                 )
 
                 # 카드 처리 완료 표시
