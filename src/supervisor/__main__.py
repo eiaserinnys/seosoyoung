@@ -5,18 +5,21 @@ from __future__ import annotations
 import logging
 import os
 import signal
-import subprocess
 import sys
 import time
 from pathlib import Path
 
 from .config import build_process_configs, _resolve_paths
+from .deployer import Deployer
+from .git_poller import GitPoller
 from .models import ExitAction, RESTART_DELAY_SECONDS, ProcessStatus
 from .process_manager import ProcessManager
+from .session_monitor import SessionMonitor
 
 logger = logging.getLogger("supervisor")
 
 HEALTH_CHECK_INTERVAL = 5.0  # 초
+GIT_POLL_INTERVAL = 60.0  # 초
 
 
 def _setup_logging() -> None:
@@ -26,47 +29,6 @@ def _setup_logging() -> None:
         format="[%(asctime)s] supervisor: [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-
-
-def _do_update(paths: dict[str, Path]) -> None:
-    """업데이트 수행: git pull + pip install (wrapper.py 로직 이관)"""
-    runtime = paths["runtime"]
-    workspace = paths["workspace"]
-    venv_pip = runtime / "venv" / "Scripts" / "pip.exe"
-    requirements = runtime / "requirements.txt"
-    dev_seosoyoung = workspace / "seosoyoung"
-
-    # runtime git pull
-    logger.info("업데이트: runtime git pull")
-    result = subprocess.run(
-        ["git", "pull", "origin", "main"],
-        cwd=str(runtime),
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        logger.warning("runtime git pull 실패, stash 재시도")
-        subprocess.run(["git", "stash"], cwd=str(runtime))
-        subprocess.run(["git", "pull", "origin", "main"], cwd=str(runtime))
-        subprocess.run(["git", "stash", "pop"], cwd=str(runtime))
-
-    # pip install
-    if requirements.exists():
-        logger.info("업데이트: pip install")
-        subprocess.run(
-            [str(venv_pip), "install", "-r", str(requirements), "--quiet"],
-            cwd=str(runtime),
-        )
-
-    # 개발 소스 동기화
-    if dev_seosoyoung.exists():
-        logger.info("업데이트: seosoyoung 개발 소스 동기화")
-        subprocess.run(
-            ["git", "pull", "origin", "main"],
-            cwd=str(dev_seosoyoung),
-        )
-
-    logger.info("업데이트 완료")
 
 
 def main() -> None:
@@ -89,6 +51,23 @@ def main() -> None:
     for name in pm.registered_names:
         pm.start(name)
 
+    # GitPoller: runtime 리포 변경 감지
+    git_poller = GitPoller(
+        repo_path=paths["runtime"],
+        remote="origin",
+        branch="main",
+    )
+
+    # SessionMonitor: Claude Code 세션 감지
+    session_monitor = SessionMonitor()
+
+    # Deployer: 배포 상태 머신
+    deployer = Deployer(
+        process_manager=pm,
+        session_monitor=session_monitor,
+        paths=paths,
+    )
+
     # graceful shutdown 핸들러
     shutting_down = False
 
@@ -109,9 +88,12 @@ def main() -> None:
         signal.signal(signal.SIGBREAK, _on_shutdown)
 
     # 메인 루프
+    last_git_check = 0.0
+
     while not shutting_down:
         time.sleep(HEALTH_CHECK_INTERVAL)
 
+        # 프로세스 헬스체크
         for name in pm.registered_names:
             exit_code = pm.poll(name)
             state = pm._states[name]
@@ -140,8 +122,9 @@ def main() -> None:
             if action == ExitAction.SHUTDOWN:
                 logger.info("%s: 정상 종료, 재시작하지 않음", name)
             elif action == ExitAction.UPDATE:
-                _do_update(paths)
-                pm.restart(name)
+                # exit code 42: Deployer를 통한 즉시 배포
+                deployer.notify_change()
+                deployer.tick()
             elif action == ExitAction.RESTART:
                 pm.restart(name)
             elif action == ExitAction.RESTART_DELAY:
@@ -149,6 +132,16 @@ def main() -> None:
                 logger.info("%s: %.1f초 후 재시작", name, delay)
                 time.sleep(delay)
                 pm.restart(name)
+
+        # Git polling (매 GIT_POLL_INTERVAL초마다)
+        now = time.monotonic()
+        if now - last_git_check >= GIT_POLL_INTERVAL:
+            last_git_check = now
+            if git_poller.check():
+                deployer.notify_change()
+
+        # Deployer tick (세션 대기 → 배포 진행)
+        deployer.tick()
 
 
 if __name__ == "__main__":
