@@ -78,4 +78,6 @@ thread_ts를 기본 키로 사용하고, user_id는 메타데이터로 보관합
 - `_persistent_archive_dir(self)` (줄 325): 
 - `get_persistent(self)` (줄 328): 장기 기억을 로드합니다. 없으면 None.
 - `save_persistent(self, content, meta)` (줄 347): 장기 기억을 저장합니다.
-- `archive_persistent(self)` (줄 359): 기존 장기 기억을 archive/에 백업합니다.
+- `_delivered_flag_path(self, thread_ts)` (줄 359): 
+- `get_latest_undelivered_observation(self, exclude_thread_ts)` (줄 362): 미전달된 가장 최근 관찰 레코드를 반환하고 delivered 플래그를 설정합니다.
+- `archive_persistent(self)` (줄 424): 기존 장기 기억을 archive/에 백업합니다.

@@ -367,6 +367,7 @@ class ClaudeAgentRunner:
                         include_session=should_inject_session,  # 세션 관찰: 컴팩션 후만 (inject 플래그)
                         include_channel_observation=include_channel_obs,
                         channel_id=channel,
+                        include_new_observations=is_new_session,    # 새 관찰: 새 세션만
                     )
 
                     if result.prompt:
@@ -374,6 +375,7 @@ class ClaudeAgentRunner:
                         logger.info(
                             f"OM 주입 준비 완료 (thread={thread_ts}, "
                             f"LTM={result.persistent_tokens} tok, "
+                            f"새관찰={result.new_observation_tokens} tok, "
                             f"세션={result.session_tokens} tok, "
                             f"채널={result.channel_digest_tokens}+{result.channel_buffer_tokens} tok)"
                         )
@@ -404,6 +406,7 @@ class ClaudeAgentRunner:
             or result.session_tokens
             or result.channel_digest_tokens
             or result.channel_buffer_tokens
+            or result.new_observation_tokens
         )
         if not has_any:
             return
@@ -425,6 +428,16 @@ class ClaudeAgentRunner:
                     f":syringe: *OM 장기 기억 주입* `{sid}`\n"
                     f">`LTM {_format_tokens(result.persistent_tokens)} tok`\n"
                     f"{ltm_quote}",
+                )
+
+            # 새 관찰 주입
+            if result.new_observation_tokens:
+                new_obs_quote = _blockquote(result.new_observation_content)
+                _send_debug_log(
+                    debug_channel,
+                    f":sparkles: *OM 새 관찰 주입* `{sid}`\n"
+                    f">`새관찰 {_format_tokens(result.new_observation_tokens)} tok`\n"
+                    f"{new_obs_quote}",
                 )
 
             # 세션 관찰 주입

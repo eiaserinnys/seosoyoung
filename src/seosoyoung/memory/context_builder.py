@@ -38,6 +38,8 @@ class InjectionResult:
     session_content: str = ""
     channel_digest_tokens: int = 0
     channel_buffer_tokens: int = 0
+    new_observation_tokens: int = 0
+    new_observation_content: str = ""
 
 
 def add_relative_time(observations: str, now: datetime | None = None) -> str:
@@ -195,10 +197,11 @@ class ContextBuilder:
         include_session: bool = True,
         include_channel_observation: bool = False,
         channel_id: Optional[str] = None,
+        include_new_observations: bool = False,
     ) -> InjectionResult:
-        """장기 기억, 세션 관찰, 채널 관찰을 합쳐서 시스템 프롬프트로 변환합니다.
+        """장기 기억, 세션 관찰, 채널 관찰, 새 관찰을 합쳐서 시스템 프롬프트로 변환합니다.
 
-        주입 순서: 장기 기억 → 세션 관찰 → 채널 관찰
+        주입 순서: 장기 기억 → 새 관찰 → 세션 관찰 → 채널 관찰
 
         Args:
             thread_ts: 세션(스레드) 타임스탬프
@@ -207,6 +210,7 @@ class ContextBuilder:
             include_session: 세션 관찰을 포함할지 여부
             include_channel_observation: 채널 관찰 컨텍스트를 포함할지 여부
             channel_id: 채널 ID (채널 관찰 시 필요)
+            include_new_observations: 이전 세션의 미전달 관찰을 포함할지 여부
 
         Returns:
             InjectionResult
@@ -218,6 +222,8 @@ class ContextBuilder:
         session_content = ""
         channel_digest_tokens = 0
         channel_buffer_tokens = 0
+        new_observation_tokens = 0
+        new_observation_content = ""
 
         # 1. 장기 기억 (persistent/recent.md)
         if include_persistent:
@@ -234,7 +240,23 @@ class ContextBuilder:
                     "</long-term-memory>"
                 )
 
-        # 2. 세션 관찰 (observations/{thread_ts}.md)
+        # 2. 새 관찰 (이전 세션에서 새롭게 관찰된 미전달 사항)
+        if include_new_observations:
+            record = self.store.get_latest_undelivered_observation(
+                exclude_thread_ts=thread_ts,
+            )
+            if record and record.observations.strip():
+                observations = add_relative_time(record.observations)
+                new_observation_tokens = self._counter.count_string(observations)
+                new_observation_content = observations
+                parts.append(
+                    "<new-observations>\n"
+                    "지난 사용자와 에이전트 간의 대화에서 새롭게 관찰된 사실입니다.\n\n"
+                    f"{observations}\n"
+                    "</new-observations>"
+                )
+
+        # 3. 세션 관찰 (observations/{thread_ts}.md)
         if include_session:
             record = self.store.get_record(thread_ts)
             if record and record.observations.strip():
@@ -249,7 +271,7 @@ class ContextBuilder:
                     "</observational-memory>"
                 )
 
-        # 3. 채널 관찰 (channel/{channel_id}/)
+        # 4. 채널 관찰 (channel/{channel_id}/)
         if include_channel_observation and channel_id:
             ch_xml, ch_digest_tok, ch_buf_tok = self._build_channel_observation(
                 channel_id, thread_ts=thread_ts,
@@ -269,4 +291,6 @@ class ContextBuilder:
             session_content=session_content,
             channel_digest_tokens=channel_digest_tokens,
             channel_buffer_tokens=channel_buffer_tokens,
+            new_observation_tokens=new_observation_tokens,
+            new_observation_content=new_observation_content,
         )

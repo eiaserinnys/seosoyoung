@@ -356,6 +356,71 @@ class MemoryStore:
                 encoding="utf-8",
             )
 
+    def _delivered_flag_path(self, thread_ts: str) -> Path:
+        return self.observations_dir / f"{thread_ts}.delivered"
+
+    def get_latest_undelivered_observation(
+        self, exclude_thread_ts: str = ""
+    ) -> MemoryRecord | None:
+        """미전달된 가장 최근 관찰 레코드를 반환하고 delivered 플래그를 설정합니다.
+
+        - 현재 세션(exclude_thread_ts)은 제외
+        - .delivered 파일이 있는 레코드는 건너뜀
+        - 관찰 내용이 비어있는 레코드는 건너뜀
+        - 반환 시 자동으로 delivered 플래그를 설정
+
+        Returns:
+            MemoryRecord 또는 None (미전달 관찰이 없을 때)
+        """
+        if not self.observations_dir.exists():
+            return None
+
+        # meta.json 파일을 수집하여 last_observed_at 기준으로 정렬
+        candidates = []
+        for meta_path in self.observations_dir.glob("*.meta.json"):
+            thread_ts = meta_path.stem.replace(".meta", "")
+
+            # 현재 세션 제외
+            if thread_ts == exclude_thread_ts:
+                continue
+
+            # 이미 전달된 관찰은 건너뜀
+            if self._delivered_flag_path(thread_ts).exists():
+                continue
+
+            try:
+                meta_data = json.loads(meta_path.read_text(encoding="utf-8"))
+                last_observed = meta_data.get("last_observed_at")
+                if last_observed:
+                    candidates.append((thread_ts, last_observed, meta_data))
+            except Exception:
+                continue
+
+        if not candidates:
+            return None
+
+        # last_observed_at 기준 내림차순 정렬 (최신 먼저)
+        candidates.sort(key=lambda x: x[1], reverse=True)
+
+        for thread_ts, _, meta_data in candidates:
+            obs_path = self._obs_path(thread_ts)
+            if not obs_path.exists():
+                continue
+
+            observations = obs_path.read_text(encoding="utf-8")
+            if not observations.strip():
+                continue
+
+            record = MemoryRecord.from_meta_dict(meta_data, observations)
+
+            # delivered 플래그 설정
+            self._ensure_dirs()
+            self._delivered_flag_path(thread_ts).write_text("1", encoding="utf-8")
+
+            return record
+
+        return None
+
     def archive_persistent(self) -> Path | None:
         """기존 장기 기억을 archive/에 백업합니다.
 
