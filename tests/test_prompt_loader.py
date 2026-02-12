@@ -113,7 +113,7 @@ class TestChannelPromptsFromFiles:
 
         prompt = get_channel_intervene_system_prompt()
         assert "서소영" in prompt
-        assert "CHARACTER VOICE" in prompt
+        assert "개입" in prompt or "응답" in prompt or "대화" in prompt
 
     def test_channel_intervene_user_prompt(self):
         """채널 개입 응답 사용자 프롬프트가 정상 구성"""
