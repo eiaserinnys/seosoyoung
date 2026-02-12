@@ -210,7 +210,7 @@ class ContextBuilder:
             include_session: 세션 관찰을 포함할지 여부
             include_channel_observation: 채널 관찰 컨텍스트를 포함할지 여부
             channel_id: 채널 ID (채널 관찰 시 필요)
-            include_new_observations: 이전 세션의 미전달 관찰을 포함할지 여부
+            include_new_observations: 현재 세션의 새 관찰(이전 턴 diff)을 포함할지 여부
 
         Returns:
             InjectionResult
@@ -240,25 +240,19 @@ class ContextBuilder:
                     "</long-term-memory>"
                 )
 
-        # 2. 새 관찰 (이전 세션에서 새롭게 관찰된 미전달 사항)
-        #    전체 관찰이 아닌, 마지막 턴에서 새로 추가된 관찰만 주입
+        # 2. 새 관찰 (현재 세션의 이전 턴에서 새로 추가된 관찰 diff)
         if include_new_observations:
-            record = self.store.get_latest_undelivered_observation(
-                exclude_thread_ts=thread_ts,
-            )
-            if record:
-                # 저장된 새 관찰 diff만 사용 (없으면 주입하지 않음)
-                new_obs = self.store.get_new_observations(record.thread_ts)
-                if new_obs and new_obs.strip():
-                    observations = add_relative_time(new_obs)
-                    new_observation_tokens = self._counter.count_string(observations)
-                    new_observation_content = observations
-                    parts.append(
-                        "<new-observations>\n"
-                        "지난 사용자와 에이전트 간의 대화에서 새롭게 관찰된 사실입니다.\n\n"
-                        f"{observations}\n"
-                        "</new-observations>"
-                    )
+            new_obs = self.store.get_new_observations(thread_ts)
+            if new_obs and new_obs.strip():
+                observations = add_relative_time(new_obs)
+                new_observation_tokens = self._counter.count_string(observations)
+                new_observation_content = observations
+                parts.append(
+                    "<new-observations>\n"
+                    "이전 턴의 대화에서 새롭게 관찰된 사실입니다.\n\n"
+                    f"{observations}\n"
+                    "</new-observations>"
+                )
 
         # 3. 세션 관찰 (observations/{thread_ts}.md)
         if include_session:

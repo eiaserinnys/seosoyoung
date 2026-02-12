@@ -37,11 +37,11 @@ def sample_messages():
 
 
 class TestExtractNewObservations:
-    def test_no_existing_returns_empty(self):
-        """기존 관찰이 없으면 (첫 관찰) diff 없음 — 빈 문자열 반환"""
+    def test_no_existing_returns_updated(self):
+        """기존 관찰이 없으면 (첫 관찰) 전체가 새 관찰"""
         updated = "🔴 새 관찰 1\n🟡 새 관찰 2"
-        assert _extract_new_observations(None, updated) == ""
-        assert _extract_new_observations("", updated) == ""
+        assert _extract_new_observations(None, updated) == updated
+        assert _extract_new_observations("", updated) == updated
 
     def test_extracts_only_new_lines(self):
         """기존 관찰에 없는 줄만 추출"""

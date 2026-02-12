@@ -374,7 +374,7 @@ class ClaudeAgentRunner:
                         include_session=should_inject_session,  # 세션 관찰: 컴팩션 후만 (inject 플래그)
                         include_channel_observation=include_channel_obs,
                         channel_id=channel,
-                        include_new_observations=is_new_session,    # 새 관찰: 새 세션만
+                        include_new_observations=True,               # 새 관찰: 매 턴 (현재 세션 diff)
                     )
 
                     if result.prompt:
