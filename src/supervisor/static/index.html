@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>supervisor dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #0f1117; color: #c9d1d9; line-height: 1.5;
+    padding: 1.5rem; max-width: 900px; margin: 0 auto;
+  }
+  h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1.5rem; color: #e6edf3; }
+  h2 { font-size: 0.9rem; font-weight: 600; color: #8b949e; text-transform: uppercase;
+       letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+
+  /* 프로세스 카드 */
+  .cards { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .card {
+    flex: 1; min-width: 200px; background: #161b22; border: 1px solid #30363d;
+    border-radius: 8px; padding: 1rem;
+  }
+  .card-name { font-weight: 600; font-size: 1rem; margin-bottom: 0.5rem; }
+  .card-meta { font-size: 0.8rem; color: #8b949e; }
+  .card-meta span { display: block; margin-bottom: 0.2rem; }
+
+  /* 상태 배지 */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  }
+  .badge-running { background: #1a7f37; color: #fff; }
+  .badge-stopped { background: #6e7681; color: #fff; }
+  .badge-dead    { background: #da3633; color: #fff; }
+  .badge-restarting { background: #9e6a03; color: #fff; }
+
+  /* 버튼 */
+  .btns { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+  button {
+    font-size: 0.8rem; padding: 4px 12px; border: 1px solid #30363d;
+    border-radius: 6px; background: #21262d; color: #c9d1d9; cursor: pointer;
+  }
+  button:hover { background: #30363d; }
+  button.btn-danger { border-color: #da3633; color: #f85149; }
+  button.btn-danger:hover { background: #da3633; color: #fff; }
+  button.btn-primary { border-color: #1f6feb; color: #58a6ff; }
+  button.btn-primary:hover { background: #1f6feb; color: #fff; }
+
+  /* 정보 박스 */
+  .info-box {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 1rem; margin-bottom: 1.5rem; font-size: 0.85rem;
+  }
+  .info-row { display: flex; justify-content: space-between; margin-bottom: 0.3rem; }
+  .info-label { color: #8b949e; }
+  .info-value { color: #e6edf3; font-family: monospace; }
+
+  /* 배포 상태 배지 */
+  .deploy-idle { color: #8b949e; }
+  .deploy-pending { color: #d29922; }
+  .deploy-waiting { color: #f0883e; }
+  .deploy-deploying { color: #58a6ff; }
+
+  /* 로그 뷰어 */
+  .log-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+  .log-select { background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+                border-radius: 6px; padding: 4px 8px; font-size: 0.8rem; }
+  .log-viewer {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    padding: 0.75rem; font-family: "Consolas", "Monaco", monospace;
+    font-size: 0.75rem; line-height: 1.6; height: 300px;
+    overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  }
+
+  /* 상태바 */
+  .status-bar {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.75rem; color: #484f58; margin-top: 1.5rem;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #1a7f37; display: inline-block; }
+  .dot-error { background: #da3633; }
+</style>
+</head>
+<body>
+
+<h1>supervisor dashboard</h1>
+
+<!-- 프로세스 카드 -->
+<h2>Processes</h2>
+<div class="cards" id="process-cards">
+  <div class="card"><span class="card-meta">loading...</span></div>
+</div>
+
+<!-- Git & Deploy 상태 -->
+<h2>Status</h2>
+<div class="info-box" id="status-box">
+  <div class="info-row">
+    <span class="info-label">Git HEAD</span>
+    <span class="info-value" id="git-head">-</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Remote HEAD</span>
+    <span class="info-value" id="git-remote">-</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Changes Pending</span>
+    <span class="info-value" id="git-changes">-</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Deploy State</span>
+    <span class="info-value" id="deploy-state">-</span>
+  </div>
+  <div style="margin-top:0.75rem;">
+    <button class="btn-primary" onclick="triggerDeploy()">Deploy Now</button>
+  </div>
+</div>
+
+<!-- 로그 뷰어 -->
+<h2>Logs</h2>
+<div class="log-header">
+  <select class="log-select" id="log-process" onchange="fetchLogs()">
+    <option value="">-- select --</option>
+  </select>
+  <select class="log-select" id="log-type" onchange="fetchLogs()">
+    <option value="out">stdout</option>
+    <option value="error">stderr</option>
+  </select>
+  <button onclick="fetchLogs()">Refresh</button>
+</div>
+<div class="log-viewer" id="log-viewer"></div>
+
+<!-- 상태바 -->
+<div class="status-bar">
+  <span class="dot" id="poll-dot"></span>
+  <span id="poll-time">-</span>
+</div>
+
+<script>
+const POLL_INTERVAL = 3000;
+let knownProcesses = [];
+
+function badgeClass(status) {
+  const map = { running: 'badge-running', stopped: 'badge-stopped', dead: 'badge-dead', restarting: 'badge-restarting' };
+  return map[status] || 'badge-stopped';
+}
+
+function deployClass(state) {
+  const map = { idle: 'deploy-idle', pending: 'deploy-pending', waiting_sessions: 'deploy-waiting', deploying: 'deploy-deploying' };
+  return map[state] || 'deploy-idle';
+}
+
+function shortHash(h) { return h ? h.substring(0, 8) : '-'; }
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function renderProcessCards(processes) {
+  const container = document.getElementById('process-cards');
+  const names = Object.keys(processes).sort();
+  container.innerHTML = '';
+
+  names.forEach(name => {
+    const p = processes[name];
+    const card = document.createElement('div');
+    card.className = 'card';
+    const en = esc(name);
+    card.innerHTML = `
+      <div class="card-name">${en} <span class="badge ${badgeClass(p.status)}">${esc(p.status)}</span></div>
+      <div class="card-meta">
+        <span>PID: ${p.pid || '-'}</span>
+        <span>Restarts: ${p.restart_count}</span>
+        <span>Last exit: ${p.last_exit_code !== null && p.last_exit_code !== undefined ? p.last_exit_code : '-'}</span>
+      </div>
+      <div class="btns">
+        <button class="btn-primary" onclick="processAction('${en}','start')">Start</button>
+        <button onclick="processAction('${en}','restart')">Restart</button>
+        <button class="btn-danger" onclick="processAction('${en}','stop')">Stop</button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+
+  // 로그 드롭다운 갱신
+  if (JSON.stringify(names) !== JSON.stringify(knownProcesses)) {
+    knownProcesses = names;
+    const sel = document.getElementById('log-process');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-- select --</option>';
+    names.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      if (n === cur) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+}
+
+function renderStatus(data) {
+  document.getElementById('git-head').textContent = shortHash(data.git.local_head);
+  document.getElementById('git-remote').textContent = shortHash(data.git.remote_head);
+  document.getElementById('git-changes').textContent = data.git.has_changes ? 'Yes' : 'No';
+
+  const ds = document.getElementById('deploy-state');
+  const state = data.deploy.state;
+  ds.textContent = state;
+  ds.className = 'info-value ' + deployClass(state);
+}
+
+async function pollStatus() {
+  const dot = document.getElementById('poll-dot');
+  try {
+    const resp = await fetch('/api/status');
+    if (!resp.ok) throw new Error(resp.statusText);
+    const data = await resp.json();
+    renderProcessCards(data.processes);
+    renderStatus(data);
+    dot.className = 'dot';
+    document.getElementById('poll-time').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    dot.className = 'dot dot-error';
+    document.getElementById('poll-time').textContent = 'Error: ' + e.message;
+  }
+}
+
+async function processAction(name, action) {
+  try {
+    const resp = await fetch(`/api/process/${name}/${action}`, { method: 'POST' });
+    if (!resp.ok) { const d = await resp.json(); alert(d.detail || 'Error'); }
+    setTimeout(pollStatus, 500);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function triggerDeploy() {
+  try {
+    await fetch('/api/deploy', { method: 'POST' });
+    setTimeout(pollStatus, 500);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function fetchLogs() {
+  const name = document.getElementById('log-process').value;
+  const type = document.getElementById('log-type').value;
+  const viewer = document.getElementById('log-viewer');
+  if (!name) { viewer.textContent = ''; return; }
+
+  try {
+    const resp = await fetch(`/api/logs/${name}?n=100&type=${type}`);
+    const data = await resp.json();
+    viewer.textContent = data.lines.join('\n');
+    viewer.scrollTop = viewer.scrollHeight;
+  } catch (e) {
+    viewer.textContent = 'Error: ' + e.message;
+  }
+}
+
+// 시작
+pollStatus();
+setInterval(pollStatus, POLL_INTERVAL);
+setInterval(() => {
+  if (document.getElementById('log-process').value) fetchLogs();
+}, POLL_INTERVAL * 2);
+</script>
+</body>
+</html>

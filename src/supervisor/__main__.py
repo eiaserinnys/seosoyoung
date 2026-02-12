@@ -6,10 +6,12 @@ import logging
 import os
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 
 from .config import build_process_configs, _resolve_paths
+from .dashboard import create_app
 from .deployer import Deployer, SupervisorRestartRequired
 from .git_poller import GitPoller
 from .models import ExitAction, RESTART_DELAY_SECONDS, ProcessStatus
@@ -20,6 +22,8 @@ logger = logging.getLogger("supervisor")
 
 HEALTH_CHECK_INTERVAL = 5.0  # 초
 GIT_POLL_INTERVAL = 60.0  # 초
+DASHBOARD_HOST = "127.0.0.1"
+DASHBOARD_PORT = int(os.environ.get("SUPERVISOR_DASHBOARD_PORT", "8042"))
 
 
 def _setup_logging() -> None:
@@ -29,6 +33,33 @@ def _setup_logging() -> None:
         format="[%(asctime)s] supervisor: [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+
+
+def _start_dashboard(
+    pm: ProcessManager,
+    deployer: Deployer,
+    git_poller: GitPoller,
+    log_dir: Path,
+) -> None:
+    """대시보드 서버를 데몬 스레드로 실행."""
+    import uvicorn
+
+    app = create_app(
+        process_manager=pm,
+        deployer=deployer,
+        git_poller=git_poller,
+        log_dir=log_dir,
+    )
+    config = uvicorn.Config(
+        app,
+        host=DASHBOARD_HOST,
+        port=DASHBOARD_PORT,
+        log_level="warning",
+    )
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    logger.info("대시보드 시작: http://%s:%d", DASHBOARD_HOST, DASHBOARD_PORT)
 
 
 def main() -> None:
@@ -67,6 +98,9 @@ def main() -> None:
         session_monitor=session_monitor,
         paths=paths,
     )
+
+    # 대시보드 (FastAPI + uvicorn, 백그라운드 스레드)
+    _start_dashboard(pm, deployer, git_poller, paths["logs"])
 
     # graceful shutdown 핸들러
     shutting_down = False
