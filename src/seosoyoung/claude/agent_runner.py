@@ -91,7 +91,6 @@ class ClaudeResult:
     output: str
     session_id: Optional[str] = None
     error: Optional[str] = None
-    files: list[str] = field(default_factory=list)
     update_requested: bool = False
     restart_requested: bool = False
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
@@ -727,7 +726,6 @@ class ClaudeAgentRunner:
             output = result_text or current_text
 
             # 마커 추출
-            files = re.findall(r"<!-- FILE: (.+?) -->", output)
             update_requested = "<!-- UPDATE -->" in output
             restart_requested = "<!-- RESTART -->" in output
 
@@ -746,7 +744,6 @@ class ClaudeAgentRunner:
                 success=True,
                 output=output,
                 session_id=result_session_id,
-                files=files,
                 update_requested=update_requested,
                 restart_requested=restart_requested,
                 list_run=list_run,

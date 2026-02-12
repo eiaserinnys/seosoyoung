@@ -102,13 +102,6 @@ class TestClaudeAgentRunnerUnit:
 class TestClaudeResultMarkers:
     """ClaudeResult 마커 추출 테스트"""
 
-    def test_extract_file_markers(self):
-        """FILE 마커 추출"""
-        import re
-        output = "파일을 생성했습니다.\n<!-- FILE: /path/to/file1.txt -->\n<!-- FILE: /path/to/file2.py -->"
-        files = re.findall(r"<!-- FILE: (.+?) -->", output)
-        assert files == ["/path/to/file1.txt", "/path/to/file2.py"]
-
     def test_detect_update_marker(self):
         """UPDATE 마커 감지"""
         output = "코드를 수정했습니다.\n<!-- UPDATE -->"
@@ -151,7 +144,7 @@ class TestClaudeAgentRunnerAsync:
 
         mock_client = _make_mock_client(
             MockResultMessage(
-                result="파일 생성함\n<!-- FILE: /test/file.py -->\n<!-- UPDATE -->",
+                result="코드를 수정했습니다.\n<!-- UPDATE -->",
                 session_id="marker-test"
             ),
         )
@@ -161,7 +154,6 @@ class TestClaudeAgentRunnerAsync:
                 result = await runner.run("테스트")
 
         assert result.success is True
-        assert "/test/file.py" in result.files
         assert result.update_requested is True
         assert result.restart_requested is False
 
