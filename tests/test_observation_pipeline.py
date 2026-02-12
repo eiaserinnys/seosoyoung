@@ -917,3 +917,50 @@ class TestTriggerObservationAnchorTs:
 
         mock_obs.assert_called_once()
         assert mock_obs.call_args.kwargs["anchor_ts"] == "anchor_abc"
+
+
+class TestObserveConversationSkipsDebugWithoutAnchor:
+    """anchor_ts가 빈 문자열일 때 observe_conversation이 디버그 로그를 스킵하는지 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_skips_debug_on_observation_when_anchor_ts_empty(self, store, mock_observer, sample_messages):
+        """anchor_ts가 빈 문자열이면 observe_conversation에서 디버그 로그를 발송하지 않음"""
+        mock_observer.observe.return_value = ObserverResult(
+            observations="관찰 내용",
+        )
+
+        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+            mock_send.return_value = ""
+            with patch("seosoyoung.memory.observation_pipeline._update_debug_log"):
+                await observe_conversation(
+                    store=store,
+                    observer=mock_observer,
+                    thread_ts="ts_1234",
+                    user_id="U12345",
+                    messages=sample_messages,
+                    min_turn_tokens=0,
+                    debug_channel="C_DEBUG",
+                    anchor_ts="",  # 빈 문자열 — 앵커 생성 실패
+                )
+
+        # anchor_ts가 비었으므로 _send_debug_log가 호출되지 않아야 함
+        mock_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_debug_on_skip_when_anchor_ts_empty(self, store, mock_observer):
+        """스킵 시에도 anchor_ts가 빈 문자열이면 디버그 로그를 발송하지 않음"""
+        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+            mock_send.return_value = ""
+            await observe_conversation(
+                store=store,
+                observer=mock_observer,
+                thread_ts="ts_1234",
+                user_id="U12345",
+                messages=[{"role": "user", "content": "안녕"}],
+                min_turn_tokens=999999,
+                debug_channel="C_DEBUG",
+                anchor_ts="",  # 빈 문자열
+            )
+
+        # anchor_ts가 비었으므로 스킵 로그도 발송하지 않아야 함
+        mock_send.assert_not_called()

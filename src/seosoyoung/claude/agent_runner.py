@@ -387,7 +387,7 @@ class ClaudeAgentRunner:
                             f"채널={result.channel_digest_tokens}+{result.channel_buffer_tokens} tok)"
                         )
 
-                    # 새 세션일 때 디버그 채널에 앵커 메시지 생성
+                    # 앵커 ts: 새 세션이면 생성, 기존 세션이면 MemoryRecord에서 로드
                     if is_new_session and Config.OM_DEBUG_CHANNEL:
                         try:
                             from seosoyoung.memory.observation_pipeline import _send_debug_log
@@ -398,8 +398,21 @@ class ClaudeAgentRunner:
                                 Config.OM_DEBUG_CHANNEL,
                                 f"{Config.EMOJI_TEXT_SESSION_START} *OM | 세션 시작 감지* `{thread_ts}`\n>{preview}",
                             )
+                            # 새 세션 앵커 ts를 MemoryRecord에 저장 (후속 턴에서 재사용)
+                            if anchor_ts:
+                                record = store.get_record(thread_ts)
+                                if record is None:
+                                    from seosoyoung.memory.store import MemoryRecord
+                                    record = MemoryRecord(thread_ts=thread_ts)
+                                record.anchor_ts = anchor_ts
+                                store.save_record(record)
                         except Exception as e:
                             logger.warning(f"OM 앵커 메시지 생성 실패 (무시): {e}")
+                    elif not is_new_session and Config.OM_DEBUG_CHANNEL:
+                        # 기존 세션: MemoryRecord에서 저장된 anchor_ts 로드
+                        record = store.get_record(thread_ts)
+                        if record and record.anchor_ts:
+                            anchor_ts = record.anchor_ts
 
                     # 디버그 로그 이벤트 #7, #8: 주입 정보
                     self._send_injection_debug_log(
@@ -421,8 +434,11 @@ class ClaudeAgentRunner:
 
         LTM/세션 각각 별도 메시지로 발송하며, 주입 내용을 blockquote로 표시.
         anchor_ts가 있으면 해당 스레드에 답글로 발송.
+        anchor_ts가 비었으면 채널 본문 오염 방지를 위해 스킵.
         """
         if not debug_channel:
+            return
+        if not anchor_ts:
             return
         has_any = (
             result.persistent_tokens

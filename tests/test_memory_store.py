@@ -398,6 +398,49 @@ class TestPersistent:
         assert store.persistent_dir.exists()
 
 
+class TestMemoryRecordAnchorTs:
+    """MemoryRecord.anchor_ts 필드 직렬화/역직렬화 테스트"""
+
+    def test_anchor_ts_default_empty(self):
+        """기본값은 빈 문자열"""
+        record = MemoryRecord(thread_ts="ts_1234")
+        assert record.anchor_ts == ""
+
+    def test_anchor_ts_to_meta_dict_when_set(self):
+        """anchor_ts가 설정되면 to_meta_dict에 포함"""
+        record = MemoryRecord(thread_ts="ts_1234", anchor_ts="anchor_abc")
+        meta = record.to_meta_dict()
+        assert meta["anchor_ts"] == "anchor_abc"
+
+    def test_anchor_ts_to_meta_dict_when_empty(self):
+        """anchor_ts가 비었으면 to_meta_dict에 미포함"""
+        record = MemoryRecord(thread_ts="ts_1234", anchor_ts="")
+        meta = record.to_meta_dict()
+        assert "anchor_ts" not in meta
+
+    def test_anchor_ts_from_meta_dict_present(self):
+        """anchor_ts가 dict에 있으면 복원"""
+        data = {"thread_ts": "ts_1234", "anchor_ts": "anchor_abc"}
+        record = MemoryRecord.from_meta_dict(data)
+        assert record.anchor_ts == "anchor_abc"
+
+    def test_anchor_ts_from_meta_dict_missing(self):
+        """anchor_ts가 dict에 없으면 빈 문자열 기본값"""
+        data = {"thread_ts": "ts_1234"}
+        record = MemoryRecord.from_meta_dict(data)
+        assert record.anchor_ts == ""
+
+    def test_anchor_ts_roundtrip_via_store(self, store):
+        """anchor_ts를 store에 저장/로드하면 보존"""
+        record = MemoryRecord(
+            thread_ts="ts_1234", user_id="U123", anchor_ts="anchor_xyz"
+        )
+        store.save_record(record)
+        loaded = store.get_record("ts_1234")
+        assert loaded is not None
+        assert loaded.anchor_ts == "anchor_xyz"
+
+
 class TestArchivePersistent:
     """장기 기억 아카이브 테스트"""
 
