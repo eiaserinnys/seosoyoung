@@ -363,27 +363,17 @@ class ClaudeExecutor:
 
             quote_text = f"> {initial_text}"
 
-            if is_thread_reply:
-                initial_msg = client.chat_postMessage(
-                    channel=channel,
-                    thread_ts=thread_ts,
-                    text=quote_text,
-                    blocks=[{
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": quote_text}
-                    }]
-                )
-                last_msg_ts = initial_msg["ts"]
-            else:
-                initial_msg = client.chat_postMessage(
-                    channel=channel,
-                    text=quote_text,
-                    blocks=[{
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": quote_text}
-                    }]
-                )
-                last_msg_ts = initial_msg["ts"]
+            # 사고 과정 메시지는 항상 스레드에 답글로 달기
+            initial_msg = client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=quote_text,
+                blocks=[{
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": quote_text}
+                }]
+            )
+            last_msg_ts = initial_msg["ts"]
 
         # 스트리밍 콜백
         async def on_progress(current_text: str):
@@ -833,19 +823,16 @@ class ClaudeExecutor:
         # 요약/상세 분리 파싱
         summary, details, remainder = parse_summary_details(response)
 
-        # 스레드 내 응답인지에 따라 _replace_thinking_message에 전달할 thread_ts 결정
-        # 채널 루트 메시지는 thread_ts=None, 스레드 내 메시지는 thread_ts 전달
-        reply_thread_ts = thread_ts if is_thread_reply else None
+        # P(사고 과정)는 항상 스레드 내에 있으므로 thread_ts를 전달
+        reply_thread_ts = thread_ts
 
         if not is_thread_reply:
-            # 채널 최초 응답: 요약은 채널에(P를 교체), 전문은 M의 스레드에
+            # 채널 최초 응답: P(스레드 내)를 요약으로 교체, 전문도 스레드에
             try:
                 if summary:
-                    # SUMMARY 마커가 있는 경우: 요약을 채널에 표시
                     channel_text = summary
                 else:
-                    # SUMMARY 마커가 없는 경우: 전체 응답을 채널 요약으로 사용
-                    # 3줄 이내로 잘라서 표시
+                    # SUMMARY 마커가 없는 경우: 3줄 이내 미리보기
                     lines = response.strip().split("\n")
                     preview_lines = []
                     for line in lines:
@@ -856,7 +843,7 @@ class ClaudeExecutor:
                     if len(lines) > 3:
                         channel_text += "\n..."
 
-                # 채널 메시지: 요약 + continuation hint
+                # 스레드 내 P를 요약으로 교체
                 final_text = f"{channel_text}\n\n{continuation_hint}"
                 final_blocks = [{
                     "type": "section",
@@ -864,7 +851,6 @@ class ClaudeExecutor:
                 }]
 
                 if is_list_run:
-                    # LIST_RUN: 삭제 방지, 항상 chat_update만 사용
                     client.chat_update(
                         channel=channel,
                         ts=last_msg_ts,
@@ -877,21 +863,18 @@ class ClaudeExecutor:
                         final_text, final_blocks, thread_ts=reply_thread_ts,
                     )
 
-                # 스레드에 전문 전송
+                # 전문을 스레드에 전송
                 if summary and details:
-                    # SUMMARY/DETAILS 마커가 있는 경우: remainder(도입부) + details 순서로
                     if remainder:
                         thread_content = f"{remainder}\n\n{details}"
                     else:
                         thread_content = details
                     self.send_long_message(say, thread_content, thread_ts)
                 else:
-                    # 마커가 없는 경우: 전체 응답을 스레드에
                     full_response = strip_summary_details_markers(response)
                     self.send_long_message(say, full_response, thread_ts)
 
             except Exception:
-                # 실패 시 폴백: 스레드에 전체 응답 전송
                 self.send_long_message(say, response, thread_ts)
         else:
             # 스레드 내 후속 대화: 마커가 있으면 태그만 제거하고 스레드에 응답

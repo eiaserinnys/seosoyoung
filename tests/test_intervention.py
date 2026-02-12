@@ -585,8 +585,8 @@ class TestNormalSuccessWithReplace:
         call_kwargs = mock_replace.call_args
         assert call_kwargs[1]["thread_ts"] == "thread_1"
 
-    def test_channel_root_success_passes_none_thread_ts(self):
-        """채널 루트 응답에서는 thread_ts=None으로 _replace_thinking_message 호출"""
+    def test_channel_root_success_passes_thread_ts(self):
+        """채널 루트 응답에서도 P가 스레드에 있으므로 thread_ts 전달"""
         executor = make_executor()
         result = make_claude_result(output="짧은 응답")
         client = MagicMock()
@@ -601,7 +601,7 @@ class TestNormalSuccessWithReplace:
 
         mock_replace.assert_called_once()
         call_kwargs = mock_replace.call_args
-        assert call_kwargs[1]["thread_ts"] is None
+        assert call_kwargs[1]["thread_ts"] == "thread_1"
 
 
 class TestTrelloSuccessWithReplace:
