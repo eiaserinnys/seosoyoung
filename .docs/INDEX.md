@@ -201,8 +201,8 @@
 - `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_promoter_output()` (seosoyoung/memory/promoter.py:83): Promoter 응답에서 <promoted>와 <rejected> 태그를 파싱합니다.
 - `parse_compactor_output()` (seosoyoung/memory/promoter.py:97): Compactor 응답에서 <compacted> 태그를 파싱합니다.
-- `load_prompt()` (seosoyoung/memory/prompt_loader.py:16): 프롬프트 파일을 로드합니다.
-- `load_prompt_cached()` (seosoyoung/memory/prompt_loader.py:35): 프롬프트 파일을 캐시하여 로드합니다.
+- `load_prompt()` (seosoyoung/memory/prompt_loader.py:71): 프롬프트 파일을 로드합니다.
+- `load_prompt_cached()` (seosoyoung/memory/prompt_loader.py:90): 프롬프트 파일을 캐시하여 로드합니다.
 - `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:18): Observer 시스템 프롬프트를 반환합니다.
 - `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:23): Observer 사용자 프롬프트를 구성합니다.
 - `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:66): Reflector 시스템 프롬프트를 반환합니다.
