@@ -332,7 +332,7 @@ def register_mention_handlers(app, dependencies: dict):
 
                 # 완료 리액션
                 client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
-                client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
+                client.reactions_add(channel=channel, timestamp=ts, name=Config.EMOJI_TRANSLATE_DONE)
 
             except Exception as e:
                 logger.exception(f"번역 테스트 실패: {e}")

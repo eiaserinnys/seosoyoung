@@ -396,7 +396,7 @@ class ClaudeAgentRunner:
                                 preview += "…"
                             anchor_ts = _send_debug_log(
                                 Config.OM_DEBUG_CHANNEL,
-                                f":zap: *OM | 세션 시작 감지* `{thread_ts}`\n>{preview}",
+                                f"{Config.EMOJI_TEXT_SESSION_START} *OM | 세션 시작 감지* `{thread_ts}`\n>{preview}",
                             )
                         except Exception as e:
                             logger.warning(f"OM 앵커 메시지 생성 실패 (무시): {e}")
@@ -435,6 +435,7 @@ class ClaudeAgentRunner:
             return
 
         try:
+            from seosoyoung.config import Config
             from seosoyoung.memory.observation_pipeline import (
                 _blockquote,
                 _format_tokens,
@@ -448,7 +449,7 @@ class ClaudeAgentRunner:
                 ltm_quote = _blockquote(result.persistent_content)
                 _send_debug_log(
                     debug_channel,
-                    f":syringe: *OM 장기 기억 주입* `{sid}`\n"
+                    f"{Config.EMOJI_TEXT_LTM_INJECT} *OM 장기 기억 주입* `{sid}`\n"
                     f">`LTM {_format_tokens(result.persistent_tokens)} tok`\n"
                     f"{ltm_quote}",
                     thread_ts=anchor_ts,
@@ -459,7 +460,7 @@ class ClaudeAgentRunner:
                 new_obs_quote = _blockquote(result.new_observation_content)
                 _send_debug_log(
                     debug_channel,
-                    f":sparkles: *OM 새 관찰 주입* `{sid}`\n"
+                    f"{Config.EMOJI_TEXT_NEW_OBS_INJECT} *OM 새 관찰 주입* `{sid}`\n"
                     f">`새관찰 {_format_tokens(result.new_observation_tokens)} tok`\n"
                     f"{new_obs_quote}",
                     thread_ts=anchor_ts,
@@ -470,7 +471,7 @@ class ClaudeAgentRunner:
                 session_quote = _blockquote(result.session_content)
                 _send_debug_log(
                     debug_channel,
-                    f":syringe: *OM 세션 관찰 주입* `{sid}`\n"
+                    f"{Config.EMOJI_TEXT_SESSION_OBS_INJECT} *OM 세션 관찰 주입* `{sid}`\n"
                     f">`세션 {_format_tokens(result.session_tokens)} tok`\n"
                     f"{session_quote}",
                     thread_ts=anchor_ts,
@@ -481,7 +482,7 @@ class ClaudeAgentRunner:
                 ch_total = result.channel_digest_tokens + result.channel_buffer_tokens
                 _send_debug_log(
                     debug_channel,
-                    f":eyes: *채널 관찰 주입* `{sid}`\n"
+                    f"{Config.EMOJI_TEXT_CHANNEL_OBS_INJECT} *채널 관찰 주입* `{sid}`\n"
                     f">`digest {_format_tokens(result.channel_digest_tokens)} tok + "
                     f"buffer {_format_tokens(result.channel_buffer_tokens)} tok = "
                     f"총 {_format_tokens(ch_total)} tok`",

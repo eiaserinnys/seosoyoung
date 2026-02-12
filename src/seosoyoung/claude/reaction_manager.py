@@ -5,20 +5,22 @@
 
 import logging
 
+from seosoyoung.config import Config
+
 logger = logging.getLogger(__name__)
 
 
 # 트렐로 모드 이모지 리액션 매핑
 TRELLO_REACTIONS = {
-    "planning": "thought_balloon",  # 💭 계획 중
-    "executing": "arrow_forward",   # ▶️ 실행 중
-    "success": "white_check_mark",  # ✅ 완료
-    "error": "x",                   # ❌ 오류
+    "planning": Config.EMOJI_PLANNING,
+    "executing": Config.EMOJI_EXECUTING,
+    "success": Config.EMOJI_SUCCESS,
+    "error": Config.EMOJI_ERROR,
 }
 
 # 인터벤션 이모지
-INTERVENTION_EMOJI = "incoming_envelope"  # 📩 대기 중
-INTERVENTION_ACCEPTED_EMOJI = "heavy_check_mark"  # ✅ 수락됨
+INTERVENTION_EMOJI = Config.EMOJI_INTERVENTION_WAITING
+INTERVENTION_ACCEPTED_EMOJI = Config.EMOJI_INTERVENTION_ACCEPTED
 
 
 def add_reaction(client, channel: str, ts: str, emoji: str) -> bool:

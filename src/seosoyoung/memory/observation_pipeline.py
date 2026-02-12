@@ -16,6 +16,7 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
+from seosoyoung.config import Config
 from seosoyoung.memory.observer import Observer
 from seosoyoung.memory.promoter import Compactor, Promoter
 from seosoyoung.memory.reflector import Reflector
@@ -319,7 +320,7 @@ async def observe_conversation(
             _update_debug_log(
                 debug_channel,
                 debug_ts,
-                f":white_check_mark: *OM 관찰 완료* `{sid}`\n"
+                f"{Config.EMOJI_TEXT_OBS_COMPLETE} *OM 관찰 완료* `{sid}`\n"
                 f">`{_format_tokens(turn_tokens)} tok{candidate_part}{new_obs_part}`",
             )
 
@@ -426,7 +427,7 @@ async def _try_promote(
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f":white_check_mark: *LTM 승격 완료*\n"
+                    f"{Config.EMOJI_TEXT_OBS_COMPLETE} *LTM 승격 완료*\n"
                     f">`승격 {result.promoted_count}건 ({priority_str}) | "
                     f"기각 {result.rejected_count}건 | "
                     f"장기기억 {_format_tokens(persistent_tokens)} tok`\n"
@@ -453,7 +454,7 @@ async def _try_promote(
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f":white_check_mark: *LTM 승격 완료*\n"
+                    f"{Config.EMOJI_TEXT_OBS_COMPLETE} *LTM 승격 완료*\n"
                     f">`승격 0건 | 기각 {result.rejected_count}건`",
                 )
 

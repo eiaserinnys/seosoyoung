@@ -80,8 +80,8 @@
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `GeneratedImage` (seosoyoung/image_gen/generator.py:29): 생성된 이미지 결과
-- `InterventionAction` (seosoyoung/memory/channel_intervention.py:26): 개입 액션
-- `CooldownManager` (seosoyoung/memory/channel_intervention.py:127): 개입 쿨다운 및 개입 모드 상태 관리
+- `InterventionAction` (seosoyoung/memory/channel_intervention.py:27): 개입 액션
+- `CooldownManager` (seosoyoung/memory/channel_intervention.py:128): 개입 쿨다운 및 개입 모드 상태 관리
 - `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:26): 채널 관찰 결과
 - `DigestCompressorResult` (seosoyoung/memory/channel_observer.py:37): digest 압축 결과
 - `ChannelObserver` (seosoyoung/memory/channel_observer.py:97): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
@@ -144,15 +144,15 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:853): 
+- `async main()` (seosoyoung/claude/agent_runner.py:854): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:45): 역할에 맞는 ClaudeAgentRunner 반환
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:15): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:50): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:69): 응답에서 요약과 상세 내용을 파싱
 - `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:103): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:127): 트렐로 카드용 슬랙 메시지 헤더 생성
-- `add_reaction()` (seosoyoung/claude/reaction_manager.py:24): 슬랙 메시지에 이모지 리액션 추가
-- `remove_reaction()` (seosoyoung/claude/reaction_manager.py:44): 슬랙 메시지에서 이모지 리액션 제거
+- `add_reaction()` (seosoyoung/claude/reaction_manager.py:26): 슬랙 메시지에 이모지 리액션 추가
+- `remove_reaction()` (seosoyoung/claude/reaction_manager.py:46): 슬랙 메시지에서 이모지 리액션 제거
 - `register_all_handlers()` (seosoyoung/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록
@@ -182,12 +182,12 @@
 - `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:15): 이미지를 생성하고 슬랙 스레드에 업로드
 - `post_message()` (seosoyoung/mcp/tools/slack_messaging.py:51): 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부
 - `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
-- `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:34): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
-- `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:75): InterventionAction 리스트를 슬랙 API로 발송합니다.
-- `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:249): 디버그 채널에 관찰 결과 로그를 전송합니다.
-- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:289): 메시지 수집 시 디버그 채널에 로그를 전송합니다.
-- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:335): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
-- `send_intervention_mode_debug_log()` (seosoyoung/memory/channel_intervention.py:357): 개입 모드 이벤트를 디버그 채널에 기록합니다.
+- `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:35): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
+- `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:76): InterventionAction 리스트를 슬랙 API로 발송합니다.
+- `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:250): 디버그 채널에 관찰 결과 로그를 전송합니다.
+- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:290): 메시지 수집 시 디버그 채널에 로그를 전송합니다.
+- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:336): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
+- `send_intervention_mode_debug_log()` (seosoyoung/memory/channel_intervention.py:358): 개입 모드 이벤트를 디버그 채널에 기록합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:44): Observer 응답에서 XML 태그를 파싱합니다.
 - `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:45): 채널 버퍼를 소화하여 digest를 갱신합니다.
 - `async run_digest_and_intervene()` (seosoyoung/memory/channel_pipeline.py:155): 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
@@ -202,8 +202,8 @@
 - `build_channel_intervene_user_prompt()` (seosoyoung/memory/channel_prompts.py:106): 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:45): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:88): 관찰 로그를 컨텍스트 주입에 최적화합니다.
-- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:101): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
-- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:137): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
+- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:102): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
+- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:138): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 - `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_promoter_output()` (seosoyoung/memory/promoter.py:83): Promoter 응답에서 <promoted>와 <rejected> 태그를 파싱합니다.
 - `parse_compactor_output()` (seosoyoung/memory/promoter.py:97): Compactor 응답에서 <compacted> 태그를 파싱합니다.
