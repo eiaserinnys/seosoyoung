@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -318,20 +318,51 @@ class TrelloWatcher:
             for card in cards:
                 current_cards[card.id] = (card, list_key)
 
-        # 1. 새 카드 감지
+        # 1. stale tracked 카드 정리 + 새 카드 감지
+        self._cleanup_stale_tracked(current_cards)
+
         for card_id, (card, list_key) in current_cards.items():
             if card_id not in self._tracked:
                 logger.info(f"새 카드 감지: [{list_key}] {card.name}")
                 self._handle_new_card(card, list_key)
-
-        # NOTE: _tracked 삭제는 폴링에서 하지 않음
-        # Claude 실행 완료 시 _untrack_card()로 삭제됨
 
         # 2. Review 리스트에서 dueComplete된 카드를 Done으로 이동
         self._check_review_list_for_completion()
 
         # 3. 🏃 Run List 레이블 감지
         self._check_run_list_labels()
+
+    # 만료 시간: 2시간
+    STALE_THRESHOLD = timedelta(hours=2)
+
+    def _cleanup_stale_tracked(self, current_cards: dict[str, tuple]):
+        """만료된 _tracked 항목 정리 (방안 A + C)
+
+        detected_at이 STALE_THRESHOLD 이상 경과한 카드 중:
+        - 현재 감시 리스트에 있으면: untrack 후 _handle_new_card로 재처리 (방안 C)
+        - 현재 감시 리스트에 없으면: 단순 untrack (방안 A)
+        """
+        now = datetime.now()
+        stale_ids = []
+
+        for card_id, tracked in self._tracked.items():
+            try:
+                detected = datetime.fromisoformat(tracked.detected_at)
+            except (ValueError, TypeError):
+                detected = now  # 파싱 실패 시 만료 안 시킴
+            if now - detected >= self.STALE_THRESHOLD:
+                stale_ids.append(card_id)
+
+        for card_id in stale_ids:
+            in_watch_list = card_id in current_cards
+            tracked = self._tracked[card_id]
+            logger.info(
+                f"stale 카드 정리: {tracked.card_name} "
+                f"(감시 리스트 {'내' if in_watch_list else '외'}, "
+                f"경과: {now - datetime.fromisoformat(tracked.detected_at)})"
+            )
+            self._untrack_card(card_id)
+            # 방안 C: 감시 리스트에 다시 있으면 _handle_new_card가 다음 루프에서 처리
 
     def _check_review_list_for_completion(self):
         """Review 리스트에서 dueComplete된 카드를 Done으로 자동 이동"""
