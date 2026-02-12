@@ -301,13 +301,13 @@ async def observe_conversation(
                 candidate_part = f" | 후보 +{candidate_count} ({candidate_summary})"
             else:
                 candidate_part = " | 후보 없음"
-            obs_quote = _blockquote(new_obs) if new_obs else ">새 관찰 없음"
+            new_obs_lines = len([l for l in new_obs.splitlines() if l.strip()]) if new_obs else 0
+            new_obs_part = f" | 새 관찰 {new_obs_lines}줄" if new_obs_lines else " | 새 관찰 없음"
             _update_debug_log(
                 debug_channel,
                 debug_ts,
                 f":white_check_mark: *OM 관찰 완료* `{sid}`\n"
-                f">`{_format_tokens(turn_tokens)} tok{candidate_part}`\n"
-                f"{obs_quote}",
+                f">`{_format_tokens(turn_tokens)} tok{candidate_part}{new_obs_part}`",
             )
 
         # 8. Promoter: 후보 버퍼 토큰 합산 → 임계치 초과 시 승격
