@@ -70,8 +70,8 @@
 
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:88): Claude Code 실행 결과
 - `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:103): Claude Code SDK 기반 실행기
-- `PendingPrompt` (seosoyoung/claude/executor.py:61): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:76): Claude Code 실행기
+- `PendingPrompt` (seosoyoung/claude/executor.py:62): 인터벤션 대기 중인 프롬프트 정보
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:77): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
@@ -145,21 +145,21 @@
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
 - `async main()` (seosoyoung/claude/agent_runner.py:854): 
-- `get_runner_for_role()` (seosoyoung/claude/executor.py:45): 역할에 맞는 ClaudeAgentRunner 반환
+- `get_runner_for_role()` (seosoyoung/claude/executor.py:46): 역할에 맞는 ClaudeAgentRunner 반환
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:15): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:50): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:69): 응답에서 요약과 상세 내용을 파싱
 - `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:103): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:127): 트렐로 카드용 슬랙 메시지 헤더 생성
-- `add_reaction()` (seosoyoung/claude/reaction_manager.py:26): 슬랙 메시지에 이모지 리액션 추가
-- `remove_reaction()` (seosoyoung/claude/reaction_manager.py:46): 슬랙 메시지에서 이모지 리액션 제거
+- `add_reaction()` (seosoyoung/claude/reaction_manager.py:33): 슬랙 메시지에 이모지 리액션 추가
+- `remove_reaction()` (seosoyoung/claude/reaction_manager.py:53): 슬랙 메시지에서 이모지 리액션 제거
 - `register_all_handlers()` (seosoyoung/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록
-- `extract_command()` (seosoyoung/handlers/mention.py:81): 멘션에서 명령어 추출
-- `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:107): Recall 결과를 포함한 프롬프트 구성.
-- `get_channel_history()` (seosoyoung/handlers/mention.py:150): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-- `register_mention_handlers()` (seosoyoung/handlers/mention.py:171): 멘션 핸들러 등록
+- `extract_command()` (seosoyoung/handlers/mention.py:82): 멘션에서 명령어 추출
+- `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:108): Recall 결과를 포함한 프롬프트 구성.
+- `get_channel_history()` (seosoyoung/handlers/mention.py:151): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
+- `register_mention_handlers()` (seosoyoung/handlers/mention.py:172): 멘션 핸들러 등록
 - `build_slack_context()` (seosoyoung/handlers/message.py:19): 슬랙 컨텍스트 블록 문자열을 생성합니다.
 - `process_thread_message()` (seosoyoung/handlers/message.py:45): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 - `register_message_handlers()` (seosoyoung/handlers/message.py:110): 메시지 핸들러 등록

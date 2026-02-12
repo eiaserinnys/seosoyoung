@@ -25,6 +25,7 @@ from seosoyoung.claude.message_formatter import (
 )
 from seosoyoung.claude.reaction_manager import (
     TRELLO_REACTIONS,
+    MENTION_REACTIONS,
     INTERVENTION_EMOJI,
     INTERVENTION_ACCEPTED_EMOJI,
     add_reaction,
@@ -545,7 +546,7 @@ class ClaudeExecutor:
             else:
                 self._handle_error(
                     result.error, is_trello_mode, trello_card, session,
-                    channel, last_msg_ts, main_msg_ts, say, client,
+                    channel, msg_ts, last_msg_ts, main_msg_ts, say, client,
                     is_thread_reply=is_thread_reply,
                     dm_channel_id=dm_channel_id,
                     dm_last_reply_ts=dm_last_reply_ts,
@@ -555,7 +556,7 @@ class ClaudeExecutor:
             logger.exception(f"Claude 실행 오류: {e}")
             self._handle_exception(
                 e, is_trello_mode, trello_card, session,
-                channel, thread_ts, last_msg_ts, main_msg_ts, say, client,
+                channel, msg_ts, thread_ts, last_msg_ts, main_msg_ts, say, client,
                 is_thread_reply=is_thread_reply,
                 dm_channel_id=dm_channel_id,
                 dm_last_reply_ts=dm_last_reply_ts,
@@ -566,53 +567,11 @@ class ClaudeExecutor:
 
         return last_msg_ts, thread_ts
 
-    def _is_last_message(self, client, channel: str, msg_ts: str, thread_ts: str = None) -> bool:
-        """사고 과정 메시지가 채널/스레드에서 마지막 메시지인지 확인
-
-        Args:
-            client: Slack client
-            channel: 채널 ID
-            msg_ts: 확인할 메시지의 타임스탬프
-            thread_ts: 스레드인 경우 스레드 루트 ts (None이면 채널 루트)
-
-        Returns:
-            True면 마지막 메시지 (기존 chat_update 사용), False면 마지막이 아님 (delete+post)
-        """
-        try:
-            if thread_ts:
-                # 스레드 내: conversations_replies로 msg_ts 이후 메시지 조회
-                resp = client.conversations_replies(
-                    channel=channel,
-                    ts=thread_ts,
-                    oldest=msg_ts,
-                    limit=2,
-                )
-                messages = resp.get("messages", [])
-                # 자기 자신을 제외한 메시지가 있으면 마지막이 아님
-                other_messages = [m for m in messages if m.get("ts") != msg_ts]
-                return len(other_messages) == 0
-            else:
-                # 채널 루트: conversations_history로 msg_ts 이후 메시지 조회
-                resp = client.conversations_history(
-                    channel=channel,
-                    oldest=msg_ts,
-                    limit=2,
-                )
-                messages = resp.get("messages", [])
-                other_messages = [m for m in messages if m.get("ts") != msg_ts]
-                return len(other_messages) == 0
-        except Exception as e:
-            logger.warning(f"_is_last_message 확인 실패 (기본값 True): {e}")
-            return True  # 실패 시 안전하게 기존 동작 유지
-
     def _replace_thinking_message(
         self, client, channel: str, old_msg_ts: str,
         new_text: str, new_blocks: list, thread_ts: str = None
     ) -> str:
-        """사고 과정 메시지를 삭제하고 새 메시지로 교체
-
-        마지막 메시지면 chat_update, 아니면 chat_delete + chat_postMessage.
-        chat_delete 실패 시 fallback으로 "(중단됨)"으로 업데이트 + 새 메시지 게시.
+        """사고 과정 메시지를 최종 응답으로 교체 (chat_update)
 
         Args:
             client: Slack client
@@ -620,51 +579,18 @@ class ClaudeExecutor:
             old_msg_ts: 교체 대상 메시지 ts
             new_text: 새 메시지 텍스트
             new_blocks: 새 메시지 blocks
-            thread_ts: 스레드인 경우 스레드 루트 ts
+            thread_ts: 미사용 (하위 호환용으로 유지)
 
         Returns:
             최종 메시지 ts
         """
-        if self._is_last_message(client, channel, old_msg_ts, thread_ts):
-            # 마지막 메시지면 기존대로 chat_update
-            client.chat_update(
-                channel=channel,
-                ts=old_msg_ts,
-                text=new_text,
-                blocks=new_blocks,
-            )
-            return old_msg_ts
-        else:
-            # 마지막이 아니면 delete + post
-            try:
-                client.chat_delete(channel=channel, ts=old_msg_ts)
-            except Exception as e:
-                logger.warning(f"chat_delete 실패, fallback 처리: {e}")
-                # fallback: "(중단됨)"으로 업데이트
-                try:
-                    aborted_text = "> (중단됨)"
-                    client.chat_update(
-                        channel=channel,
-                        ts=old_msg_ts,
-                        text=aborted_text,
-                        blocks=[{
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": aborted_text}
-                        }]
-                    )
-                except Exception:
-                    pass
-
-            # 새 메시지 게시
-            post_kwargs = dict(
-                channel=channel,
-                text=new_text,
-                blocks=new_blocks,
-            )
-            if thread_ts:
-                post_kwargs["thread_ts"] = thread_ts
-            new_msg = client.chat_postMessage(**post_kwargs)
-            return new_msg["ts"]
+        client.chat_update(
+            channel=channel,
+            ts=old_msg_ts,
+            text=new_text,
+            blocks=new_blocks,
+        )
+        return old_msg_ts
 
     def _handle_interrupted(
         self, last_msg_ts, main_msg_ts, is_trello_mode, trello_card,
@@ -896,6 +822,10 @@ class ClaudeExecutor:
         usage_bar: str = None,
     ):
         """일반 모드(멘션) 성공 처리"""
+        # 멘션 이모지: ssy-thinking 제거 + ssy-happy 추가
+        remove_reaction(client, channel, msg_ts, MENTION_REACTIONS["thinking"])
+        add_reaction(client, channel, msg_ts, MENTION_REACTIONS["success"])
+
         continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
         if usage_bar:
             continuation_hint = f"{usage_bar}\n{continuation_hint}"
@@ -1091,7 +1021,7 @@ class ClaudeExecutor:
 
     def _handle_error(
         self, error, is_trello_mode, trello_card, session,
-        channel, last_msg_ts, main_msg_ts, say, client,
+        channel, msg_ts, last_msg_ts, main_msg_ts, say, client,
         is_thread_reply: bool = False,
         dm_channel_id: str = None,
         dm_last_reply_ts: str = None,
@@ -1129,6 +1059,10 @@ class ClaudeExecutor:
                 }]
             )
         else:
+            # 멘션 이모지: ssy-thinking 제거 + ssy-angry 추가
+            remove_reaction(client, channel, msg_ts, MENTION_REACTIONS["thinking"])
+            add_reaction(client, channel, msg_ts, MENTION_REACTIONS["error"])
+
             # 스레드 내 후속 대화에는 continuation hint 불필요
             if is_thread_reply:
                 error_text = f"❌ {error_msg}"
@@ -1147,7 +1081,7 @@ class ClaudeExecutor:
 
     def _handle_exception(
         self, e, is_trello_mode, trello_card, session,
-        channel, thread_ts, last_msg_ts, main_msg_ts, say, client,
+        channel, msg_ts, thread_ts, last_msg_ts, main_msg_ts, say, client,
         is_thread_reply: bool = False,
         dm_channel_id: str = None,
         dm_last_reply_ts: str = None,
@@ -1183,6 +1117,10 @@ class ClaudeExecutor:
             except Exception:
                 say(text=f"❌ {error_msg}", thread_ts=thread_ts)
         else:
+            # 멘션 이모지: ssy-thinking 제거 + ssy-angry 추가
+            remove_reaction(client, channel, msg_ts, MENTION_REACTIONS["thinking"])
+            add_reaction(client, channel, msg_ts, MENTION_REACTIONS["error"])
+
             try:
                 # 스레드 내 후속 대화에는 continuation hint 불필요
                 if is_thread_reply:
