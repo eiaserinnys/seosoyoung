@@ -1452,7 +1452,8 @@ class TestStartListRunIntegration:
                 ),
             ]
 
-            with patch.object(watcher, "_process_list_run_card"):
+            with patch.object(watcher, "_process_list_run_card"), \
+                 patch("seosoyoung.trello.watcher.Config.TRELLO_DM_TARGET_USER_ID", ""):
                 watcher._start_list_run("list_backlog", "📦 Backlog", cards)
 
             # 슬랙 알림이 전송되었는지 확인

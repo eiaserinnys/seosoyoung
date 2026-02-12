@@ -536,152 +536,30 @@ class TestNotifyChannelSuppression:
         assert True  # placeholder - 실제 검증은 통합 레벨에서
 
 
-class TestDmIntervention:
-    """Phase 2: DM 채널에서 인터벤션 트리거 테스트"""
+class TestDmDirectSessionLookup:
+    """DM 모드에서 session_manager.get(dm_thread_ts)로 직접 세션을 찾는 테스트
 
-    @patch("seosoyoung.trello.watcher.TrelloClient")
-    @patch("seosoyoung.trello.watcher.Config")
-    def test_dm_thread_mapping_registered(self, mock_config, mock_trello_client):
-        """_dm_thread_map에 매핑 등록 및 lookup_dm_thread 조회 동작 확인"""
-        mock_config.get_session_path.return_value = "/tmp/sessions"
-        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
-        mock_config.TRELLO_WATCH_LISTS = {}
-        mock_config.TRELLO_REVIEW_LIST_ID = None
-        mock_config.TRELLO_DONE_LIST_ID = None
-        mock_config.TRELLO_DM_TARGET_USER_ID = ""
-
-        from seosoyoung.trello.watcher import TrelloWatcher
-
-        watcher = TrelloWatcher(
-            slack_client=MagicMock(),
-            session_manager=MagicMock(),
-            claude_runner_factory=MagicMock(),
-        )
-
-        # _dm_thread_map 속성이 존재하는지 확인
-        assert hasattr(watcher, "_dm_thread_map")
-
-        # 수동으로 매핑 등록
-        watcher._dm_thread_map["dm_anchor_ts"] = {
-            "notify_thread_ts": "main_msg_ts",
-            "notify_channel": "C_NOTIFY",
-            "dm_channel_id": "D_DM",
-        }
-
-        # lookup_dm_thread로 조회
-        mapping = watcher.lookup_dm_thread("dm_anchor_ts")
-        assert mapping is not None
-        assert mapping["notify_thread_ts"] == "main_msg_ts"
-        assert mapping["notify_channel"] == "C_NOTIFY"
-        assert mapping["dm_channel_id"] == "D_DM"
-
-        # 존재하지 않는 키 조회
-        assert watcher.lookup_dm_thread("nonexistent") is None
-
-    @patch("seosoyoung.trello.watcher.TrelloClient")
-    @patch("seosoyoung.trello.watcher.Config")
-    def test_dm_message_triggers_intervention(self, mock_config, mock_trello_client):
-        """DM 채널에서 사용자 메시지 수신 시 인터벤션 트리거"""
-        mock_config.get_session_path.return_value = "/tmp/sessions"
-        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
-        mock_config.TRELLO_WATCH_LISTS = {}
-        mock_config.TRELLO_REVIEW_LIST_ID = None
-        mock_config.TRELLO_DONE_LIST_ID = None
-        mock_config.TRELLO_DM_TARGET_USER_ID = "U_TARGET"
-
-        from seosoyoung.trello.watcher import TrelloWatcher
-
-        mock_slack = MagicMock()
-
-        watcher = TrelloWatcher(
-            slack_client=mock_slack,
-            session_manager=MagicMock(),
-            claude_runner_factory=MagicMock(),
-        )
-
-        # 수동으로 dm_thread_map에 매핑 등록
-        watcher._dm_thread_map = {
-            "dm_anchor_ts": {
-                "notify_thread_ts": "main_msg_ts",
-                "notify_channel": "C_NOTIFY",
-                "dm_channel_id": "D_DM",
-            }
-        }
-
-        result = watcher.lookup_dm_thread("dm_anchor_ts")
-        assert result is not None
-        assert result["notify_thread_ts"] == "main_msg_ts"
-
-    @patch("seosoyoung.trello.watcher.TrelloClient")
-    @patch("seosoyoung.trello.watcher.Config")
-    def test_dm_thread_map_cleanup_on_card_untrack(self, mock_config, mock_trello_client):
-        """카드 추적 해제 시 DM 스레드 매핑도 정리됨"""
-        mock_config.get_session_path.return_value = "/tmp/sessions"
-        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
-        mock_config.TRELLO_WATCH_LISTS = {}
-        mock_config.TRELLO_REVIEW_LIST_ID = None
-        mock_config.TRELLO_DONE_LIST_ID = None
-        mock_config.TRELLO_DM_TARGET_USER_ID = ""
-
-        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
-
-        watcher = TrelloWatcher(
-            slack_client=MagicMock(),
-            session_manager=MagicMock(),
-            claude_runner_factory=MagicMock(),
-        )
-
-        # 추적 카드와 DM 매핑 수동 등록
-        tracked = TrackedCard(
-            card_id="card1", card_name="테스트", card_url="url",
-            list_id="L1", list_key="to_go", thread_ts="main_msg_ts",
-            channel_id="C_NOTIFY", detected_at="2026-01-01", has_execute=True,
-        )
-        tracked.dm_thread_ts = "dm_anchor_ts"
-        watcher._tracked["card1"] = tracked
-        watcher._dm_thread_map["dm_anchor_ts"] = {
-            "notify_thread_ts": "main_msg_ts",
-            "notify_channel": "C_NOTIFY",
-            "dm_channel_id": "D_DM",
-        }
-
-        watcher._untrack_card("card1")
-
-        assert "dm_anchor_ts" not in watcher._dm_thread_map
-
-
-class TestDmInterventionMessageHandler:
-    """Phase 2: message.py의 DM 인터벤션 핸들러 통합 테스트"""
+    commit 73074ba 이후, 세션이 dm_thread_ts로 직접 등록되므로
+    _dm_thread_map 없이도 인터벤션이 동작합니다.
+    """
 
     @patch("seosoyoung.handlers.message.process_thread_message")
     @patch("seosoyoung.handlers.message.Config")
-    def test_dm_thread_message_forwarded_as_intervention(
+    def test_dm_thread_message_finds_session_directly(
         self, mock_config, mock_process_thread
     ):
-        """DM 스레드 메시지가 원본 세션으로 인터벤션 전달됨"""
+        """DM 스레드 메시지가 session_manager.get(dm_thread_ts)로 직접 세션을 찾아 처리됨"""
         mock_config.BOT_USER_ID = "B_BOT"
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
         from seosoyoung.handlers.message import register_message_handlers
 
-        # 모의 watcher
-        mock_watcher = MagicMock()
-        mock_watcher.lookup_dm_thread.return_value = {
-            "notify_thread_ts": "main_msg_ts",
-            "notify_channel": "C_NOTIFY",
-            "dm_channel_id": "D_DM",
-        }
-
-        # 모의 세션 매니저
+        # DM 모드에서 세션은 dm_thread_ts로 직접 등록됨
+        mock_session = MagicMock()
+        mock_session.thread_ts = "dm_anchor_ts"
         mock_session_manager = MagicMock()
-        # DM thread_ts로 조회 시 None (DM 세션은 없음)
-        # notify thread_ts로 조회 시 원본 세션 반환
-        mock_notify_session = MagicMock()
-        mock_notify_session.thread_ts = "main_msg_ts"
-        mock_session_manager.get.side_effect = lambda ts: (
-            None if ts == "dm_anchor_ts" else mock_notify_session
-        )
+        mock_session_manager.get.return_value = mock_session
 
         mock_run_claude = MagicMock()
         mock_get_user_role = MagicMock(return_value={
@@ -693,7 +571,6 @@ class TestDmInterventionMessageHandler:
             "restart_manager": MagicMock(is_pending=False),
             "run_claude_in_session": mock_run_claude,
             "get_user_role": mock_get_user_role,
-            "trello_watcher_ref": lambda: mock_watcher,
         }
 
         mock_app = MagicMock()
@@ -718,13 +595,52 @@ class TestDmInterventionMessageHandler:
         }
         handlers["message"](event, MagicMock(), MagicMock())
 
-        # process_thread_message가 원본 세션의 thread_ts로 호출됐는지 확인
+        # session_manager.get이 dm_thread_ts로 호출됨
+        mock_session_manager.get.assert_called_once_with("dm_anchor_ts")
+
+        # process_thread_message가 dm_thread_ts를 thread_ts로 사용하여 호출됨
         mock_process_thread.assert_called_once()
         call_args = mock_process_thread.call_args
-        # 3번째 인자가 notify_session.thread_ts ("main_msg_ts")여야 함
-        assert call_args[0][2] == "main_msg_ts"
-        # 5번째 인자가 notify_channel ("C_NOTIFY")여야 함
-        assert call_args[0][4] == "C_NOTIFY"
+        assert call_args[0][2] == "dm_anchor_ts"  # thread_ts
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_untrack_card_cleanup(self, mock_config, mock_trello_client):
+        """카드 추적 해제 시 _tracked에서 제거됨"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_DM_TARGET_USER_ID = ""
+
+        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        tracked = TrackedCard(
+            card_id="card1", card_name="테스트", card_url="url",
+            list_id="L1", list_key="to_go", thread_ts="dm_anchor_ts",
+            channel_id="D_DM", detected_at="2026-01-01", has_execute=True,
+        )
+        tracked.dm_thread_ts = "dm_anchor_ts"
+        watcher._tracked["card1"] = tracked
+
+        watcher._untrack_card("card1")
+
+        assert "card1" not in watcher._tracked
+
+
+class TestDmInterventionMessageHandler:
+    """DM 인터벤션 핸들러 테스트
+
+    commit 73074ba 이후: 세션이 dm_thread_ts로 직접 등록되므로
+    DM 스레드 메시지는 일반 메시지와 동일한 경로로 처리됩니다.
+    """
 
     @patch("seosoyoung.handlers.message.process_thread_message")
     @patch("seosoyoung.handlers.message.Config")
@@ -825,16 +741,214 @@ class TestDmInterventionMessageHandler:
         mock_process_thread.assert_not_called()
 
 
+class TestReviewCompletionDmRouting:
+    """_check_review_list_for_completion의 DM 라우팅 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_completion_notification_sent_to_dm_when_configured(self, mock_config, mock_trello_client):
+        """DM 대상 사용자가 설정되어 있으면 완료 알림이 DM으로 전송됨"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = "L_REVIEW"
+        mock_config.TRELLO_DONE_LIST_ID = "L_DONE"
+        mock_config.TRELLO_DM_TARGET_USER_ID = "U_TARGET"
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+
+        mock_slack = MagicMock()
+        mock_slack.conversations_open.return_value = {"channel": {"id": "D_DM"}}
+
+        mock_trello_instance = MagicMock()
+        due_card = TrelloCard(
+            id="card1", name="완료 카드", desc="", url="https://trello.com/c/abc",
+            list_id="L_REVIEW", due_complete=True,
+        )
+        mock_trello_instance.get_cards_in_list.return_value = [due_card]
+        mock_trello_instance.move_card.return_value = True
+
+        watcher = TrelloWatcher(
+            slack_client=mock_slack,
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+        watcher.trello = mock_trello_instance
+
+        watcher._check_review_list_for_completion()
+
+        # 완료 알림이 DM 채널로 전송되었는지 확인
+        notify_calls = [
+            call for call in mock_slack.chat_postMessage.call_args_list
+            if "✅" in call[1].get("text", "")
+        ]
+        assert len(notify_calls) == 1
+        assert notify_calls[0][1]["channel"] == "D_DM"
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_completion_notification_fallback_to_notify_channel(self, mock_config, mock_trello_client):
+        """DM 대상 사용자가 없으면 완료 알림이 notify_channel로 전송됨"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = "L_REVIEW"
+        mock_config.TRELLO_DONE_LIST_ID = "L_DONE"
+        mock_config.TRELLO_DM_TARGET_USER_ID = ""
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+
+        mock_slack = MagicMock()
+
+        mock_trello_instance = MagicMock()
+        due_card = TrelloCard(
+            id="card1", name="완료 카드", desc="", url="https://trello.com/c/abc",
+            list_id="L_REVIEW", due_complete=True,
+        )
+        mock_trello_instance.get_cards_in_list.return_value = [due_card]
+        mock_trello_instance.move_card.return_value = True
+
+        watcher = TrelloWatcher(
+            slack_client=mock_slack,
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+        watcher.trello = mock_trello_instance
+
+        watcher._check_review_list_for_completion()
+
+        # 완료 알림이 notify_channel로 전송되었는지 확인
+        notify_calls = [
+            call for call in mock_slack.chat_postMessage.call_args_list
+            if "✅" in call[1].get("text", "")
+        ]
+        assert len(notify_calls) == 1
+        assert notify_calls[0][1]["channel"] == "C_NOTIFY"
+
+
+class TestRestartMarkerDmRouting:
+    """_handle_restart_marker의 DM 라우팅 테스트"""
+
+    def test_restart_confirmation_uses_current_channel(self):
+        """재시작 확인 메시지가 현재 세션 채널로 전송됨 (DM 모드에서는 DM 채널)"""
+        from seosoyoung.claude.executor import ClaudeExecutor
+
+        mock_send_restart = MagicMock()
+        executor = ClaudeExecutor(
+            session_manager=MagicMock(),
+            get_session_lock=lambda ts: MagicMock(),
+            mark_session_running=MagicMock(),
+            mark_session_stopped=MagicMock(),
+            get_running_session_count=MagicMock(return_value=2),  # 다른 세션 1개 실행 중
+            restart_manager=MagicMock(),
+            upload_file_to_slack=MagicMock(),
+            send_long_message=MagicMock(),
+            send_restart_confirmation=mock_send_restart,
+        )
+
+        result = MagicMock()
+        result.update_requested = True
+        result.restart_requested = False
+
+        session = MagicMock()
+        session.user_id = "trello_watcher"
+
+        # DM 채널에서 실행된 경우
+        executor._handle_restart_marker(
+            result, session, "D_DM_CHANNEL", "dm_thread_ts", MagicMock()
+        )
+
+        # send_restart_confirmation에 DM 채널이 전달되었는지 확인
+        mock_send_restart.assert_called_once()
+        call_kwargs = mock_send_restart.call_args[1]
+        assert call_kwargs["channel"] == "D_DM_CHANNEL"
+
+
+class TestGetDmOrNotifyChannel:
+    """_get_dm_or_notify_channel 헬퍼 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_returns_dm_channel_when_target_configured(self, mock_config, mock_trello_client):
+        """DM 대상이 설정되어 있으면 DM 채널 반환"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_DM_TARGET_USER_ID = "U_TARGET"
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+
+        mock_slack = MagicMock()
+        mock_slack.conversations_open.return_value = {"channel": {"id": "D_DM"}}
+
+        watcher = TrelloWatcher(
+            slack_client=mock_slack,
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        result = watcher._get_dm_or_notify_channel()
+        assert result == "D_DM"
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_returns_notify_channel_when_no_target(self, mock_config, mock_trello_client):
+        """DM 대상이 없으면 notify_channel 반환"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_DM_TARGET_USER_ID = ""
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        result = watcher._get_dm_or_notify_channel()
+        assert result == "C_NOTIFY"
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_fallback_to_notify_on_dm_failure(self, mock_config, mock_trello_client):
+        """DM 채널 열기 실패 시 notify_channel로 폴백"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_DM_TARGET_USER_ID = "U_TARGET"
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+
+        mock_slack = MagicMock()
+        mock_slack.conversations_open.side_effect = Exception("API error")
+
+        watcher = TrelloWatcher(
+            slack_client=mock_slack,
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        result = watcher._get_dm_or_notify_channel()
+        assert result == "C_NOTIFY"
+
+
 class TestConfigDmTargetUser:
     """Config.TRELLO_DM_TARGET_USER_ID 설정 테스트"""
 
     def test_dm_target_user_default_empty(self):
         """기본값은 빈 문자열"""
-        # Config 모듈을 재로드하지 않고 클래스 변수를 확인
         from seosoyoung.config import Config
 
-        # 환경변수가 설정되지 않은 경우 빈 문자열
-        # (실제 테스트 환경에서는 환경변수가 없으므로 빈 문자열)
         assert hasattr(Config, "TRELLO_DM_TARGET_USER_ID")
 
 
