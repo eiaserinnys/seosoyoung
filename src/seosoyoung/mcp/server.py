@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 
 from seosoyoung.mcp.tools.attach import attach_file, get_slack_context
 from seosoyoung.mcp.tools.slack_messaging import post_message
+from seosoyoung.mcp.tools.thread_files import download_thread_files
 
 mcp = FastMCP("seosoyoung-attach")
 
@@ -55,3 +56,17 @@ def slack_post_message(
         file_paths: 파일 경로, 쉼표 구분 (선택)
     """
     return post_message(channel, text, thread_ts or "", file_paths or "")
+
+
+@mcp.tool()
+async def slack_download_thread_files(channel: str, thread_ts: str) -> dict:
+    """스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
+
+    Slack conversations.replies API로 스레드 메시지를 조회하고,
+    파일이 있는 메시지에서 파일을 로컬로 다운로드합니다.
+
+    Args:
+        channel: 슬랙 채널 ID
+        thread_ts: 스레드 타임스탬프
+    """
+    return await download_thread_files(channel, thread_ts)

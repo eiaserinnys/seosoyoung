@@ -26,6 +26,7 @@
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
 - [`tools/slack_messaging.py`](modules/tools_slack_messaging.md): 슬랙 메시지 전송 MCP 도구
+- [`tools/thread_files.py`](modules/tools_thread_files.md): 스레드 내 파일 다운로드 MCP 도구
 - [`memory/channel_intervention.py`](modules/memory_channel_intervention.md): 채널 개입(intervention) 모듈
 - [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
 - [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화 파이프라인
@@ -66,8 +67,8 @@
 
 ### 주요 클래스
 
-- `ClaudeResult` (seosoyoung/claude/agent_runner.py:86): Claude Code 실행 결과
-- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:102): Claude Code SDK 기반 실행기
+- `ClaudeResult` (seosoyoung/claude/agent_runner.py:87): Claude Code 실행 결과
+- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:103): Claude Code SDK 기반 실행기
 - `PendingPrompt` (seosoyoung/claude/executor.py:61): 인터벤션 대기 중인 프롬프트 정보
 - `ClaudeExecutor` (seosoyoung/claude/executor.py:74): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
@@ -142,7 +143,7 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:828): 
+- `async main()` (seosoyoung/claude/agent_runner.py:829): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:45): 역할에 맞는 ClaudeAgentRunner 반환
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:15): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:50): 텍스트 내 모든 백틱을 이스케이프
@@ -170,12 +171,14 @@
 - `start_trello_watcher()` (seosoyoung/main.py:174): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:194): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:204): 봇 사용자 ID 초기화
-- `slack_attach_file()` (seosoyoung/mcp/server.py:14): 슬랙에 파일을 첨부합니다.
-- `slack_get_context()` (seosoyoung/mcp/server.py:30): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
-- `slack_post_message()` (seosoyoung/mcp/server.py:40): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `slack_attach_file()` (seosoyoung/mcp/server.py:15): 슬랙에 파일을 첨부합니다.
+- `slack_get_context()` (seosoyoung/mcp/server.py:31): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:41): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:62): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `post_message()` (seosoyoung/mcp/tools/slack_messaging.py:51): 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부
+- `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
 - `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:34): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
 - `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:75): InterventionAction 리스트를 슬랙 API로 발송합니다.
 - `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:249): 디버그 채널에 관찰 결과 로그를 전송합니다.
