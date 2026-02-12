@@ -60,17 +60,17 @@ To Go 리스트에 새 카드가 들어오면:
 - `_build_header(self, card_name, card_url, session_id)` (줄 396): 슬랙 메시지 헤더 생성
 - `_open_dm_thread(self, card_name, card_url)` (줄 412): DM 채널을 열고 앵커 메시지를 전송하여 DM 스레드를 생성
 - `_handle_new_card(self, card, list_key)` (줄 449): 새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행
-- `_build_task_context_hint(self)` (줄 589): 태스크 컨텍스트 힌트 생성
-- `_build_list_ids_context(self)` (줄 596): 자주 사용하는 리스트 ID 컨텍스트 생성 (Config에서 동적으로 조회)
-- `_format_checklists(self, checklists)` (줄 612): 체크리스트를 프롬프트용 문자열로 포맷
-- `_format_comments(self, comments)` (줄 625): 코멘트를 프롬프트용 문자열로 포맷
-- `_build_card_context(self, card_id, desc)` (줄 643): 카드의 체크리스트, 코멘트, 리스트 ID 컨텍스트를 조합
-- `_build_to_go_prompt(self, card, has_execute)` (줄 668): To Go 카드용 프롬프트 생성
-- `build_reaction_execute_prompt(self, info)` (줄 705): 리액션 기반 실행용 프롬프트 생성
-- `_check_run_list_labels(self)` (줄 735): 🏃 Run List 레이블을 가진 카드 감지 및 리스트 정주행 시작
-- `_start_list_run(self, list_id, list_name, cards)` (줄 773): 리스트 정주행 시작
-- `_process_list_run_card(self, session_id, thread_ts)` (줄 829): 리스트 정주행 카드 처리
-- `_build_list_run_prompt(self, card, session_id, current, total)` (줄 977): 리스트 정주행용 프롬프트 생성
+- `_build_task_context_hint(self)` (줄 593): 태스크 컨텍스트 힌트 생성
+- `_build_list_ids_context(self)` (줄 600): 자주 사용하는 리스트 ID 컨텍스트 생성 (Config에서 동적으로 조회)
+- `_format_checklists(self, checklists)` (줄 616): 체크리스트를 프롬프트용 문자열로 포맷
+- `_format_comments(self, comments)` (줄 629): 코멘트를 프롬프트용 문자열로 포맷
+- `_build_card_context(self, card_id, desc)` (줄 647): 카드의 체크리스트, 코멘트, 리스트 ID 컨텍스트를 조합
+- `_build_to_go_prompt(self, card, has_execute)` (줄 672): To Go 카드용 프롬프트 생성
+- `build_reaction_execute_prompt(self, info)` (줄 709): 리액션 기반 실행용 프롬프트 생성
+- `_check_run_list_labels(self)` (줄 739): 🏃 Run List 레이블을 가진 카드 감지 및 리스트 정주행 시작
+- `_start_list_run(self, list_id, list_name, cards)` (줄 777): 리스트 정주행 시작
+- `_process_list_run_card(self, session_id, thread_ts, run_channel)` (줄 845): 리스트 정주행 카드 처리
+- `_build_list_run_prompt(self, card, session_id, current, total)` (줄 1000): 리스트 정주행용 프롬프트 생성
 
 ## 내부 의존성
 
