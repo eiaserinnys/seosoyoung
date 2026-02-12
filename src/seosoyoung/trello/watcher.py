@@ -28,6 +28,7 @@ class TrackedCard:
     detected_at: str
     session_id: Optional[str] = None  # Claude 세션 ID
     has_execute: bool = False  # Execute 레이블 유무
+    dm_thread_ts: Optional[str] = None  # DM 스레드 앵커 ts (인터벤션 매핑용)
 
 
 @dataclass
@@ -106,6 +107,10 @@ class TrelloWatcher:
         self._thread_cards: dict[str, ThreadCardInfo] = {}  # thread_ts -> ThreadCardInfo
         self._load_thread_cards()
 
+        # DM 스레드 ↔ notify 스레드 매핑 (DM 인터벤션용)
+        # dm_thread_ts -> {"notify_thread_ts": ..., "notify_channel": ..., "dm_channel_id": ...}
+        self._dm_thread_map: dict[str, dict] = {}
+
         # 워처 스레드
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -125,6 +130,8 @@ class TrelloWatcher:
                         card_data["session_id"] = None
                     if "has_execute" not in card_data:
                         card_data["has_execute"] = False
+                    if "dm_thread_ts" not in card_data:
+                        card_data["dm_thread_ts"] = None
                     self._tracked[card_id] = TrackedCard(**card_data)
                 logger.info(f"추적 상태 로드: {len(self._tracked)}개 카드")
             except Exception as e:
@@ -179,10 +186,23 @@ class TrelloWatcher:
         self._save_thread_cards()
         logger.debug(f"스레드-카드 매핑 등록: {tracked.thread_ts} -> {tracked.card_name}")
 
+    def lookup_dm_thread(self, dm_thread_ts: str) -> Optional[dict]:
+        """DM 스레드 ts로 notify 스레드 매핑 조회
+
+        Returns:
+            매핑 정보 dict or None
+        """
+        return self._dm_thread_map.get(dm_thread_ts)
+
     def _untrack_card(self, card_id: str):
         """To Go 추적에서 카드 제거 (Claude 실행 완료 시 호출)"""
         if card_id in self._tracked:
             tracked = self._tracked.pop(card_id)
+            # DM 스레드 매핑도 정리
+            dm_ts = getattr(tracked, "dm_thread_ts", None)
+            if dm_ts and dm_ts in self._dm_thread_map:
+                del self._dm_thread_map[dm_ts]
+                logger.debug(f"DM 스레드 매핑 해제: {dm_ts}")
             self._save_tracked()
             logger.info(f"카드 추적 해제: {tracked.card_name} (Claude 실행 완료)")
 
@@ -439,10 +459,17 @@ class TrelloWatcher:
         # 2. Execute 레이블 확인
         has_execute = self._has_execute_label(card)
 
-        # 3. 알림 메시지 전송 (새 포맷: 모드는 리액션으로 표시)
+        # 3. DM 스레드 생성 (사고 과정 출력용) - 초기 메시지 전에 생성하여 텍스트 분기
+        dm_channel_id, dm_thread_ts = self._open_dm_thread(card.name, card.url)
+
+        # 4. 알림 메시지 전송 (새 포맷: 모드는 리액션으로 표시)
         header = self._build_header(card.name, card.url)
-        # 헤더와 초기 텍스트 사이에 빈 줄 추가
-        initial_text = f"{header}\n\n`소영이 생각합니다...`"
+        if dm_channel_id:
+            # DM 스레드가 있으면 헤더만 (사고 과정은 DM에서 표시)
+            initial_text = header
+        else:
+            # DM이 없으면 기존 동작: 사고 과정 텍스트 포함
+            initial_text = f"{header}\n\n`소영이 생각합니다...`"
 
         try:
             msg_result = self.slack_client.chat_postMessage(
@@ -466,13 +493,13 @@ class TrelloWatcher:
             logger.error(f"알림 전송 실패: {e}")
             return
 
-        # 4. 🌀 prefix 추가
+        # 5. 🌀 prefix 추가
         if self._add_spinner_prefix(card):
             logger.info(f"🌀 prefix 추가: {card.name}")
         else:
             logger.warning(f"🌀 prefix 추가 실패: {card.name}")
 
-        # 5. 추적 등록
+        # 6. 추적 등록
         tracked = TrackedCard(
             card_id=card.id,
             card_name=card.name,
@@ -484,13 +511,23 @@ class TrelloWatcher:
             detected_at=datetime.now().isoformat(),
             has_execute=has_execute,
         )
+        tracked.dm_thread_ts = dm_thread_ts  # DM 스레드 ts 저장
         self._tracked[card.id] = tracked
         self._save_tracked()
 
-        # 5-1. 스레드-카드 매핑 등록 (리액션 처리용)
+        # 6-1. DM 스레드 매핑 등록 (인터벤션용)
+        if dm_channel_id and dm_thread_ts:
+            self._dm_thread_map[dm_thread_ts] = {
+                "notify_thread_ts": thread_ts,
+                "notify_channel": self.notify_channel,
+                "dm_channel_id": dm_channel_id,
+            }
+            logger.debug(f"DM 스레드 매핑 등록: {dm_thread_ts} -> {thread_ts}")
+
+        # 6-2. 스레드-카드 매핑 등록 (리액션 처리용)
         self._register_thread_card(tracked)
 
-        # 6. 세션 생성
+        # 7. 세션 생성
         session = self.session_manager.create(
             thread_ts=thread_ts,
             channel_id=self.notify_channel,
@@ -499,15 +536,12 @@ class TrelloWatcher:
             role="admin"  # 워처는 admin 권한으로 실행
         )
 
-        # 7. 프롬프트 생성 (Execute 레이블 유무에 따라)
+        # 8. 프롬프트 생성 (Execute 레이블 유무에 따라)
         prompt = self._build_to_go_prompt(card, has_execute)
 
-        # 8. Claude 실행 (별도 스레드에서)
+        # 9. Claude 실행 (별도 스레드에서)
         card_id_for_cleanup = card.id
         card_name_with_spinner = f"🌀 {card.name}"
-
-        # 9. DM 스레드 생성 (사고 과정 출력용)
-        dm_channel_id, dm_thread_ts = self._open_dm_thread(card.name, card.url)
 
         def run_claude():
             lock = None

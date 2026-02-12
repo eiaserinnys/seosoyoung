@@ -194,6 +194,24 @@ def register_message_handlers(app, dependencies: dict):
         # 세션 확인
         session = session_manager.get(thread_ts)
         if not session:
+            # DM 스레드에서 보낸 메시지인지 확인 (트렐로 워처 DM 인터벤션)
+            trello_watcher = dependencies.get("trello_watcher_ref", lambda: None)()
+            if trello_watcher:
+                dm_mapping = trello_watcher.lookup_dm_thread(thread_ts)
+                if dm_mapping:
+                    notify_session = session_manager.get(dm_mapping["notify_thread_ts"])
+                    if notify_session:
+                        logger.info(
+                            f"DM 인터벤션 감지: dm_thread={thread_ts} → "
+                            f"notify_thread={dm_mapping['notify_thread_ts']}"
+                        )
+                        process_thread_message(
+                            event, text, notify_session.thread_ts, ts,
+                            dm_mapping["notify_channel"], notify_session, say, client,
+                            get_user_role, run_claude_in_session,
+                            log_prefix="DM 인터벤션"
+                        )
+                        return
             return
 
         # 재시작 대기 중이면 안내 메시지

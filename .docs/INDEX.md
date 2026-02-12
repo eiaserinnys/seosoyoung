@@ -133,8 +133,8 @@
 - `ListRunSession` (seosoyoung/trello/list_runner.py:78): 리스트 정주행 세션 정보
 - `ListRunner` (seosoyoung/trello/list_runner.py:123): 리스트 정주행 관리자
 - `TrackedCard` (seosoyoung/trello/watcher.py:19): 추적 중인 카드 정보 (To Go 리스트 감시용)
-- `ThreadCardInfo` (seosoyoung/trello/watcher.py:34): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
-- `TrelloWatcher` (seosoyoung/trello/watcher.py:50): Trello 리스트 감시자
+- `ThreadCardInfo` (seosoyoung/trello/watcher.py:35): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
+- `TrelloWatcher` (seosoyoung/trello/watcher.py:51): Trello 리스트 감시자
 - `WebCache` (seosoyoung/web/cache.py:10): URL 기반 웹 콘텐츠 캐시 관리자
 - `ContentExtractor` (seosoyoung/web/extractor.py:30): HTML에서 본문과 메타데이터를 추출하는 클래스
 - `HtmlFetcher` (seosoyoung/web/fetcher.py:14): Selenium을 사용한 동적 웹 페이지 HTML 페처
