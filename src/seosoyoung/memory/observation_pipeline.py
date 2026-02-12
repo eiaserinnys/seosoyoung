@@ -25,14 +25,23 @@ from seosoyoung.memory.token_counter import TokenCounter
 logger = logging.getLogger(__name__)
 
 
-def _send_debug_log(channel: str, text: str) -> str:
-    """OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환."""
+def _send_debug_log(channel: str, text: str, thread_ts: str = "") -> str:
+    """OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환.
+
+    Args:
+        channel: 발송 채널
+        text: 메시지 텍스트
+        thread_ts: 스레드 앵커 ts (있으면 해당 스레드에 답글로 발송)
+    """
     try:
         from seosoyoung.config import Config
         from slack_sdk import WebClient
 
         client = WebClient(token=Config.SLACK_BOT_TOKEN)
-        resp = client.chat_postMessage(channel=channel, text=text)
+        kwargs: dict = {"channel": channel, "text": text}
+        if thread_ts:
+            kwargs["thread_ts"] = thread_ts
+        resp = client.chat_postMessage(**kwargs)
         return resp["ts"]
     except Exception as e:
         logger.warning(f"OM 디버그 로그 발송 실패: {e}")
@@ -140,6 +149,7 @@ async def observe_conversation(
     compaction_threshold: int = 15000,
     compaction_target: int = 8000,
     debug_channel: str = "",
+    anchor_ts: str = "",
 ) -> bool:
     """매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 
@@ -191,6 +201,7 @@ async def observe_conversation(
                     debug_channel,
                     f":fast_forward: *OM 스킵* `{sid}`\n"
                     f">`누적 {_format_tokens(turn_tokens)} tok < {_format_tokens(min_turn_tokens)} 최소`",
+                    thread_ts=anchor_ts,
                 )
             return False
 
@@ -203,6 +214,7 @@ async def observe_conversation(
             debug_ts = _send_debug_log(
                 debug_channel,
                 f":mag: *OM 관찰 시작* `{sid}`",
+                thread_ts=anchor_ts,
             )
 
         # 3. Observer 호출 (매턴)
@@ -278,6 +290,7 @@ async def observe_conversation(
                         f":recycle: *OM 세션 관찰 압축* `{sid}`\n"
                         f">`{_format_tokens(pre_tokens)} → {_format_tokens(reflection_result.token_count)} tok`\n"
                         f"{ref_quote}",
+                        thread_ts=anchor_ts,
                     )
 
         # 7. 새 관찰 diff 계산 및 저장 + pending 버퍼 비우기
@@ -321,6 +334,7 @@ async def observe_conversation(
                 compaction_target=compaction_target,
                 debug_channel=debug_channel,
                 token_counter=token_counter,
+                anchor_ts=anchor_ts,
             )
 
         return True
@@ -346,6 +360,7 @@ async def _try_promote(
     compaction_target: int,
     debug_channel: str,
     token_counter: TokenCounter,
+    anchor_ts: str = "",
 ) -> None:
     """후보 버퍼 토큰이 임계치를 넘으면 Promoter를 호출하고, 필요 시 Compactor도 호출."""
     try:
@@ -368,6 +383,7 @@ async def _try_promote(
                 debug_channel,
                 f":brain: *LTM 승격 검토 시작*\n"
                 f">`후보 {_format_tokens(candidate_tokens)} tok ({len(all_candidates)}건)`",
+                thread_ts=anchor_ts,
             )
 
         logger.info(
@@ -425,6 +441,7 @@ async def _try_promote(
                     compaction_target=compaction_target,
                     persistent_tokens=persistent_tokens,
                     debug_channel=debug_channel,
+                    anchor_ts=anchor_ts,
                 )
         else:
             logger.info(
@@ -453,6 +470,7 @@ async def _try_compact(
     compaction_target: int,
     persistent_tokens: int,
     debug_channel: str,
+    anchor_ts: str = "",
 ) -> None:
     """장기 기억 토큰이 임계치를 넘으면 archive 후 Compactor를 호출."""
     try:
@@ -495,6 +513,7 @@ async def _try_compact(
                 f">`{_format_tokens(persistent_tokens)} → {_format_tokens(result.token_count)} tok`"
                 f"{archive_info}\n"
                 f"{compact_quote}",
+                thread_ts=anchor_ts,
             )
 
     except Exception as e:

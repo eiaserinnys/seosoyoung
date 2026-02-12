@@ -18,36 +18,41 @@
 
 ## 함수
 
-### `_send_debug_log(channel, text)`
+### `_send_debug_log(channel, text, thread_ts)`
 - 위치: 줄 28
 - 설명: OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환.
 
+Args:
+    channel: 발송 채널
+    text: 메시지 텍스트
+    thread_ts: 스레드 앵커 ts (있으면 해당 스레드에 답글로 발송)
+
 ### `_update_debug_log(channel, ts, text)`
-- 위치: 줄 42
+- 위치: 줄 51
 - 설명: 기존 디버그 로그 메시지를 수정
 
 ### `_format_tokens(n)`
-- 위치: 줄 56
+- 위치: 줄 65
 - 설명: 토큰 수를 천 단위 콤마 포맷
 
 ### `_blockquote(text, max_chars)`
-- 위치: 줄 61
+- 위치: 줄 70
 - 설명: 텍스트를 슬랙 blockquote 형식으로 변환. 길면 잘라서 표시.
 
 ### `_extract_new_observations(existing, updated)`
-- 위치: 줄 72
+- 위치: 줄 81
 - 설명: 기존 관찰과 갱신된 관찰을 비교하여 새로 추가된 줄만 추출합니다.
 
 Observer가 전체를 재작성하므로, 기존 줄 집합에 없는 줄만 반환합니다.
 
 ### `parse_candidate_entries(candidates_text)`
-- 위치: 줄 92
+- 위치: 줄 101
 - 설명: <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
 
 각 줄에서 이모지 우선순위(🔴🟡🟢)와 내용을 추출합니다.
 
-### `async observe_conversation(store, observer, thread_ts, user_id, messages, min_turn_tokens, reflector, reflection_threshold, promoter, promotion_threshold, compactor, compaction_threshold, compaction_target, debug_channel)`
-- 위치: 줄 128
+### `async observe_conversation(store, observer, thread_ts, user_id, messages, min_turn_tokens, reflector, reflection_threshold, promoter, promotion_threshold, compactor, compaction_threshold, compaction_target, debug_channel, anchor_ts)`
+- 위치: 줄 137
 - 설명: 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 
 Args:
@@ -69,12 +74,12 @@ Args:
 Returns:
     True: 관찰 수행됨, False: 스킵 또는 실패
 
-### `async _try_promote(store, promoter, promotion_threshold, compactor, compaction_threshold, compaction_target, debug_channel, token_counter)`
-- 위치: 줄 340
+### `async _try_promote(store, promoter, promotion_threshold, compactor, compaction_threshold, compaction_target, debug_channel, token_counter, anchor_ts)`
+- 위치: 줄 354
 - 설명: 후보 버퍼 토큰이 임계치를 넘으면 Promoter를 호출하고, 필요 시 Compactor도 호출.
 
-### `async _try_compact(store, compactor, compaction_target, persistent_tokens, debug_channel)`
-- 위치: 줄 450
+### `async _try_compact(store, compactor, compaction_target, persistent_tokens, debug_channel, anchor_ts)`
+- 위치: 줄 467
 - 설명: 장기 기억 토큰이 임계치를 넘으면 archive 후 Compactor를 호출.
 
 ## 내부 의존성

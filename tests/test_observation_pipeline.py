@@ -695,6 +695,7 @@ class TestRunTriggersObservation:
             "U12345",
             "테스트",
             result.collected_messages,
+            anchor_ts=result.anchor_ts,
         )
 
     @pytest.mark.asyncio
@@ -756,3 +757,163 @@ class TestRunTriggersObservation:
 
         assert result.success is False
         mock_trigger.assert_not_called()
+
+
+class TestSendDebugLogThreadTs:
+    """_send_debug_log에 thread_ts가 올바르게 전달되는지 테스트"""
+
+    def test_send_debug_log_without_thread_ts(self):
+        """thread_ts 없이 호출하면 thread_ts가 kwargs에 포함되지 않음"""
+        from seosoyoung.memory.observation_pipeline import _send_debug_log
+
+        with patch("slack_sdk.WebClient") as MockClient:
+            mock_instance = MagicMock()
+            mock_instance.chat_postMessage.return_value = {"ts": "1234.5678"}
+            MockClient.return_value = mock_instance
+
+            with patch("seosoyoung.config.Config.SLACK_BOT_TOKEN", "xoxb-test"):
+                result = _send_debug_log("C_DEBUG", "테스트 메시지")
+
+            assert result == "1234.5678"
+            call_kwargs = mock_instance.chat_postMessage.call_args
+            assert "thread_ts" not in call_kwargs.kwargs
+
+    def test_send_debug_log_with_thread_ts(self):
+        """thread_ts가 있으면 kwargs에 포함됨"""
+        from seosoyoung.memory.observation_pipeline import _send_debug_log
+
+        with patch("slack_sdk.WebClient") as MockClient:
+            mock_instance = MagicMock()
+            mock_instance.chat_postMessage.return_value = {"ts": "9999.0001"}
+            MockClient.return_value = mock_instance
+
+            with patch("seosoyoung.config.Config.SLACK_BOT_TOKEN", "xoxb-test"):
+                result = _send_debug_log("C_DEBUG", "스레드 메시지", thread_ts="1234.5678")
+
+            assert result == "9999.0001"
+            call_kwargs = mock_instance.chat_postMessage.call_args.kwargs
+            assert call_kwargs["thread_ts"] == "1234.5678"
+
+    def test_send_debug_log_empty_thread_ts_not_included(self):
+        """thread_ts가 빈 문자열이면 kwargs에 포함되지 않음"""
+        from seosoyoung.memory.observation_pipeline import _send_debug_log
+
+        with patch("slack_sdk.WebClient") as MockClient:
+            mock_instance = MagicMock()
+            mock_instance.chat_postMessage.return_value = {"ts": "1234.5678"}
+            MockClient.return_value = mock_instance
+
+            with patch("seosoyoung.config.Config.SLACK_BOT_TOKEN", "xoxb-test"):
+                _send_debug_log("C_DEBUG", "메시지", thread_ts="")
+
+            call_kwargs = mock_instance.chat_postMessage.call_args.kwargs
+            assert "thread_ts" not in call_kwargs
+
+
+class TestObserveConversationAnchorTs:
+    """observe_conversation에 anchor_ts가 올바르게 전파되는지 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_anchor_ts_passed_to_debug_log(self, store, mock_observer, sample_messages):
+        """anchor_ts가 _send_debug_log에 전달되는지 확인"""
+        mock_observer.observe.return_value = ObserverResult(
+            observations="관찰 내용",
+        )
+
+        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+            mock_send.return_value = "debug_ts_123"
+            with patch("seosoyoung.memory.observation_pipeline._update_debug_log"):
+                await observe_conversation(
+                    store=store,
+                    observer=mock_observer,
+                    thread_ts="ts_1234",
+                    user_id="U12345",
+                    messages=sample_messages,
+                    min_turn_tokens=0,
+                    debug_channel="C_DEBUG",
+                    anchor_ts="anchor_123",
+                )
+
+        # _send_debug_log 호출 시 thread_ts=anchor_123이 전달되었는지 확인
+        for call in mock_send.call_args_list:
+            assert call.kwargs.get("thread_ts") == "anchor_123"
+
+    @pytest.mark.asyncio
+    async def test_anchor_ts_default_empty(self, store, mock_observer, sample_messages):
+        """anchor_ts 미지정 시 빈 문자열이 기본값"""
+        mock_observer.observe.return_value = ObserverResult(
+            observations="관찰 내용",
+        )
+
+        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+            mock_send.return_value = "debug_ts"
+            with patch("seosoyoung.memory.observation_pipeline._update_debug_log"):
+                await observe_conversation(
+                    store=store,
+                    observer=mock_observer,
+                    thread_ts="ts_1234",
+                    user_id="U12345",
+                    messages=sample_messages,
+                    min_turn_tokens=0,
+                    debug_channel="C_DEBUG",
+                )
+
+        for call in mock_send.call_args_list:
+            assert call.kwargs.get("thread_ts") == ""
+
+    @pytest.mark.asyncio
+    async def test_anchor_ts_passed_on_skip(self, store, mock_observer):
+        """스킵 시에도 anchor_ts가 _send_debug_log에 전달됨"""
+        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+            mock_send.return_value = ""
+            await observe_conversation(
+                store=store,
+                observer=mock_observer,
+                thread_ts="ts_1234",
+                user_id="U12345",
+                messages=[{"role": "user", "content": "안녕"}],
+                min_turn_tokens=999999,
+                debug_channel="C_DEBUG",
+                anchor_ts="anchor_skip",
+            )
+
+        mock_send.assert_called_once()
+        assert mock_send.call_args.kwargs.get("thread_ts") == "anchor_skip"
+
+
+class TestTriggerObservationAnchorTs:
+    """_trigger_observation에서 anchor_ts가 observe_conversation에 전달되는지 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_trigger_passes_anchor_ts(self):
+        """anchor_ts가 observe_conversation에 전달됨"""
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+
+        runner = ClaudeAgentRunner()
+        collected = [{"role": "assistant", "content": "응답"}]
+
+        def run_thread_target_directly(target, daemon=True):
+            mock_t = MagicMock()
+            mock_t.start = lambda: target()
+            return mock_t
+
+        with patch("seosoyoung.config.Config.OM_ENABLED", True):
+            with patch("seosoyoung.config.Config.OPENAI_API_KEY", "test-key"):
+                with patch("seosoyoung.config.Config.OM_MODEL", "gpt-4.1-mini"):
+                    with patch("seosoyoung.config.Config.get_memory_path", return_value="/tmp/test"):
+                        with patch("seosoyoung.config.Config.OM_MIN_TURN_TOKENS", 200):
+                            with patch(
+                                "seosoyoung.memory.observation_pipeline.observe_conversation",
+                                new_callable=AsyncMock,
+                            ) as mock_obs:
+                                with patch(
+                                    "seosoyoung.claude.agent_runner.threading.Thread",
+                                    side_effect=run_thread_target_directly,
+                                ):
+                                    runner._trigger_observation(
+                                        "ts_1234", "U12345", "테스트", collected,
+                                        anchor_ts="anchor_abc",
+                                    )
+
+        mock_obs.assert_called_once()
+        assert mock_obs.call_args.kwargs["anchor_ts"] == "anchor_abc"
