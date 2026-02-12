@@ -29,14 +29,15 @@ class TestMCPServerStandalone:
 
         assert mcp.name == "seosoyoung-attach"
 
-    def test_server_has_two_tools(self):
-        """서버에 2개 도구가 등록됨"""
+    def test_server_has_three_tools(self):
+        """서버에 3개 도구가 등록됨"""
         from seosoyoung.mcp.server import mcp
 
         tools = list(mcp._tool_manager._tools.keys())
         assert "slack_attach_file" in tools
         assert "slack_get_context" in tools
-        assert len(tools) == 2
+        assert "slack_post_message" in tools
+        assert len(tools) == 3
 
     def test_get_context_reads_env(self):
         """slack_get_context가 환경변수에서 값을 읽음"""
@@ -161,7 +162,7 @@ class TestMCPE2ETrelloFlow:
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner()
-        options = runner._build_options(
+        options, _memory_prompt = runner._build_options(
             channel="C_TRELLO_NOTIFY",
             thread_ts="2222222222.000001",
         )
@@ -348,12 +349,12 @@ class TestMCPConfigIntegrity:
             tool_name = tool_pattern.split("__")[-1]
             assert tool_name in actual_tools, f"{tool_name} not in MCP server tools"
 
-    def test_default_allowed_tools_include_both_mcp_tools(self):
-        """DEFAULT_ALLOWED_TOOLS에 MCP 도구 2개 모두 포함"""
+    def test_default_allowed_tools_include_all_mcp_tools(self):
+        """DEFAULT_ALLOWED_TOOLS에 MCP 도구 3개 모두 포함"""
         from seosoyoung.claude.agent_runner import DEFAULT_ALLOWED_TOOLS
 
         mcp_tools = [t for t in DEFAULT_ALLOWED_TOOLS if "seosoyoung-attach" in t]
-        assert len(mcp_tools) == 2
+        assert len(mcp_tools) == 3
 
     def test_viewer_has_no_mcp_tools(self):
         """viewer 역할에는 MCP 도구 없음"""

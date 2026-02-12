@@ -364,7 +364,8 @@ class TestRunWithSessionResume:
                     )
 
         assert len(captured_options) > 0
-        assert captured_options[0].resume == "existing-session"
+        options, _memory_prompt = captured_options[0]
+        assert options.resume == "existing-session"
 
 
 if __name__ == "__main__":

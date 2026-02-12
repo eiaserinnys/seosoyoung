@@ -69,8 +69,9 @@ DEFAULT_ALLOWED_TOOLS = [
     "Grep",
     "Bash",
     "TodoWrite",
-    "mcp__seosoyoung-mcp__slack_attach_file",
-    "mcp__seosoyoung-mcp__slack_get_context",
+    "mcp__seosoyoung-attach__slack_attach_file",
+    "mcp__seosoyoung-attach__slack_get_context",
+    "mcp__seosoyoung-attach__slack_post_message",
 ]
 
 # Claude Code 기본 금지 도구

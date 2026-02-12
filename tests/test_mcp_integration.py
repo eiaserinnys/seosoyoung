@@ -67,7 +67,7 @@ class TestBuildOptionsEnvInjection:
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner()
-        options = runner._build_options(
+        options, _memory_prompt = runner._build_options(
             channel="C12345",
             thread_ts="1234567890.123456",
         )
@@ -81,7 +81,7 @@ class TestBuildOptionsEnvInjection:
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner()
-        options = runner._build_options(
+        options, _memory_prompt = runner._build_options(
             channel="C12345",
             thread_ts="1234567890.123456",
         )
@@ -96,7 +96,7 @@ class TestBuildOptionsEnvInjection:
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner()
-        options = runner._build_options()
+        options, _memory_prompt = runner._build_options()
 
         assert isinstance(options.env, dict)
         assert "SLACK_CHANNEL" not in options.env

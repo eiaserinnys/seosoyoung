@@ -3,6 +3,7 @@
 from fastmcp import FastMCP
 
 from seosoyoung.mcp.tools.attach import attach_file, get_slack_context
+from seosoyoung.mcp.tools.slack_messaging import post_message
 
 mcp = FastMCP("seosoyoung-attach")
 
@@ -31,3 +32,24 @@ def slack_get_context() -> dict:
     attach_file 호출 전에 컨텍스트를 조회할 때 사용합니다.
     """
     return get_slack_context()
+
+
+@mcp.tool()
+def slack_post_message(
+    channel: str,
+    text: str,
+    thread_ts: str = "",
+    file_paths: str = "",
+) -> dict:
+    """봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+
+    텍스트 전송과 파일 첨부를 모두 지원합니다.
+    파일 첨부 시 workspace 내부 파일만 허용됩니다.
+
+    Args:
+        channel: 슬랙 채널 ID (필수)
+        text: 메시지 텍스트 (필수)
+        thread_ts: 스레드 타임스탬프 (선택)
+        file_paths: 파일 경로, 쉼표 구분 (선택)
+    """
+    return post_message(channel, text, thread_ts, file_paths)
