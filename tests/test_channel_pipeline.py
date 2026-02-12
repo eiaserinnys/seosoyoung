@@ -14,7 +14,7 @@ from seosoyoung.memory.channel_observer import (
 from seosoyoung.memory.channel_pipeline import digest_channel, respond_in_intervention_mode
 from seosoyoung.memory.channel_prompts import (
     build_intervention_mode_prompt,
-    INTERVENTION_MODE_SYSTEM_PROMPT,
+    get_intervention_mode_system_prompt,
 )
 from seosoyoung.memory.channel_store import ChannelStore
 
@@ -270,9 +270,10 @@ class TestInterventionModePrompt:
     """개입 모드 프롬프트 빌더 테스트"""
 
     def test_system_prompt_exists(self):
-        """INTERVENTION_MODE_SYSTEM_PROMPT 상수가 존재"""
-        assert INTERVENTION_MODE_SYSTEM_PROMPT
-        assert "서소영" in INTERVENTION_MODE_SYSTEM_PROMPT
+        """개입 모드 시스템 프롬프트가 존재"""
+        prompt = get_intervention_mode_system_prompt()
+        assert prompt
+        assert "서소영" in prompt
 
     def test_build_prompt_includes_remaining_turns(self):
         """남은 턴이 프롬프트에 포함"""

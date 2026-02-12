@@ -1,0 +1,12 @@
+The compressed observations are still too long ({token_count} tokens, \
+target is under {target} tokens).
+
+Please compress further:
+- Aim for 8/10 detail level — keep essential patterns but be more concise
+- Merge similar observations more aggressively
+- Remove 🟢 LOW priority items older than 1 week
+- Summarize repeated patterns instead of listing each instance
+
+<observations>
+[more aggressively compressed observation log]
+</observations>

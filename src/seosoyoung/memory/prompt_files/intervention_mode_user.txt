@@ -1,0 +1,10 @@
+Channel: {channel_id}
+남은 개입 턴: {remaining_turns}
+
+## CHANNEL DIGEST (context)
+{digest}
+
+## NEW MESSAGES (respond to these)
+{messages}
+
+{last_turn_instruction}

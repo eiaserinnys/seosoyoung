@@ -36,6 +36,7 @@
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
 - [`memory/observer.py`](modules/memory_observer.md): Observer 모듈
 - [`memory/promoter.py`](modules/memory_promoter.md): Promoter / Compactor 모듈
+- [`memory/prompt_loader.py`](modules/memory_prompt_loader.md): 프롬프트 파일 로더
 - [`memory/prompts.py`](modules/memory_prompts.md): Observer/Reflector 프롬프트
 - [`memory/reflector.py`](modules/memory_reflector.md): Reflector 모듈
 - [`memory/store.py`](modules/memory_store.md): 관찰 로그 저장소
@@ -183,12 +184,13 @@
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:44): Observer 응답에서 XML 태그를 파싱합니다.
 - `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:43): 채널 버퍼를 소화하여 digest를 갱신합니다.
 - `async run_digest_and_intervene()` (seosoyoung/memory/channel_pipeline.py:153): 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
-- `async respond_in_intervention_mode()` (seosoyoung/memory/channel_pipeline.py:242): 개입 모드 중 새 메시지에 반응합니다.
-- `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:176): 채널 관찰 시스템 프롬프트를 반환합니다.
-- `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:181): 채널 관찰 사용자 프롬프트를 구성합니다.
-- `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:214): digest 압축 시스템 프롬프트를 반환합니다.
-- `build_digest_compressor_retry_prompt()` (seosoyoung/memory/channel_prompts.py:219): digest 압축 재시도 프롬프트를 반환합니다.
-- `build_intervention_mode_prompt()` (seosoyoung/memory/channel_prompts.py:228): 개입 모드 사용자 프롬프트를 구성합니다.
+- `async respond_in_intervention_mode()` (seosoyoung/memory/channel_pipeline.py:249): 개입 모드 중 새 메시지에 반응합니다.
+- `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:19): 채널 관찰 시스템 프롬프트를 반환합니다.
+- `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:24): 채널 관찰 사용자 프롬프트를 구성합니다.
+- `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:58): digest 압축 시스템 프롬프트를 반환합니다.
+- `build_digest_compressor_retry_prompt()` (seosoyoung/memory/channel_prompts.py:63): digest 압축 재시도 프롬프트를 반환합니다.
+- `get_intervention_mode_system_prompt()` (seosoyoung/memory/channel_prompts.py:72): 개입 모드 시스템 프롬프트를 반환합니다.
+- `build_intervention_mode_prompt()` (seosoyoung/memory/channel_prompts.py:77): 개입 모드 사용자 프롬프트를 구성합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:43): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:86): 관찰 로그를 컨텍스트 주입에 최적화합니다.
 - `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:72): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
@@ -196,12 +198,14 @@
 - `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_promoter_output()` (seosoyoung/memory/promoter.py:83): Promoter 응답에서 <promoted>와 <rejected> 태그를 파싱합니다.
 - `parse_compactor_output()` (seosoyoung/memory/promoter.py:97): Compactor 응답에서 <compacted> 태그를 파싱합니다.
-- `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:104): Observer 시스템 프롬프트를 반환합니다.
-- `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:109): Observer 사용자 프롬프트를 구성합니다.
-- `build_promoter_prompt()` (seosoyoung/memory/prompts.py:278): Promoter 프롬프트를 구성합니다.
-- `build_compactor_prompt()` (seosoyoung/memory/prompts.py:289): Compactor 프롬프트를 구성합니다.
-- `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:300): Reflector 시스템 프롬프트를 반환합니다.
-- `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:305): Reflector 재시도 프롬프트를 반환합니다.
+- `load_prompt()` (seosoyoung/memory/prompt_loader.py:16): 프롬프트 파일을 로드합니다.
+- `load_prompt_cached()` (seosoyoung/memory/prompt_loader.py:35): 프롬프트 파일을 캐시하여 로드합니다.
+- `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:18): Observer 시스템 프롬프트를 반환합니다.
+- `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:23): Observer 사용자 프롬프트를 구성합니다.
+- `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:66): Reflector 시스템 프롬프트를 반환합니다.
+- `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:71): Reflector 재시도 프롬프트를 반환합니다.
+- `build_promoter_prompt()` (seosoyoung/memory/prompts.py:78): Promoter 프롬프트를 구성합니다.
+- `build_compactor_prompt()` (seosoyoung/memory/prompts.py:89): Compactor 프롬프트를 구성합니다.
 - `rank_results()` (seosoyoung/recall/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
 - `select_best_tool()` (seosoyoung/recall/aggregator.py:42): 최적 도구 선택.
 - `build_summary_prompt()` (seosoyoung/recall/aggregator.py:67): 요약 생성 프롬프트.

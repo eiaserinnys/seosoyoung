@@ -56,7 +56,7 @@ Args:
     max_intervention_turns: 개입 모드 최대 턴 (0이면 개입 모드 비활성)
 
 ### `async respond_in_intervention_mode(store, channel_id, slack_client, cooldown, llm_call, debug_channel)`
-- 위치: 줄 242
+- 위치: 줄 249
 - 설명: 개입 모드 중 새 메시지에 반응합니다.
 
 버퍼에 쌓인 메시지를 읽고, LLM으로 서소영의 응답을 생성하여
@@ -81,7 +81,7 @@ Args:
 - `seosoyoung.memory.channel_observer.ChannelObserver`
 - `seosoyoung.memory.channel_observer.ChannelObserverResult`
 - `seosoyoung.memory.channel_observer.DigestCompressor`
-- `seosoyoung.memory.channel_prompts.INTERVENTION_MODE_SYSTEM_PROMPT`
 - `seosoyoung.memory.channel_prompts.build_intervention_mode_prompt`
+- `seosoyoung.memory.channel_prompts.get_intervention_mode_system_prompt`
 - `seosoyoung.memory.channel_store.ChannelStore`
 - `seosoyoung.memory.token_counter.TokenCounter`

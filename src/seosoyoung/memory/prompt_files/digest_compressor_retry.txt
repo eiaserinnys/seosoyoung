@@ -1,0 +1,11 @@
+The compressed digest is still too long ({token_count} tokens, target: {target_tokens}).
+
+Compress more aggressively:
+- Summarize older events into single lines
+- Remove completed/resolved thread references
+- Keep only the last 3-5 days of detailed events
+- Older events: one-line summaries only
+
+<digest>
+(More aggressively compressed digest)
+</digest>

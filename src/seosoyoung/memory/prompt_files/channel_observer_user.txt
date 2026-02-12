@@ -1,0 +1,14 @@
+Current time: {current_time}
+Channel: {channel_id}
+
+{existing_digest_section}
+
+## BUFFERED MESSAGES (new, unprocessed)
+
+### Channel root messages:
+{channel_messages}
+
+### Thread messages:
+{thread_messages}
+
+Based on the messages above, update the digest and decide on a reaction.

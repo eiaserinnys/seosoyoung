@@ -1,0 +1,11 @@
+Current date/time: {current_time}
+
+{existing_observations_section}
+
+CONVERSATION TO ANALYZE:
+{conversation}
+
+Based on the conversation above, produce updated observations. \
+Merge new observations with existing ones where relevant. \
+Remove observations that are no longer accurate. \
+Maintain the priority emoji and temporal anchoring format.

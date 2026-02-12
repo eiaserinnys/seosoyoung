@@ -31,8 +31,8 @@ from seosoyoung.memory.channel_observer import (
     DigestCompressor,
 )
 from seosoyoung.memory.channel_prompts import (
-    INTERVENTION_MODE_SYSTEM_PROMPT,
     build_intervention_mode_prompt,
+    get_intervention_mode_system_prompt,
 )
 from seosoyoung.memory.channel_store import ChannelStore
 from seosoyoung.memory.token_counter import TokenCounter
@@ -208,14 +208,19 @@ async def run_digest_and_intervene(
         )
         return
 
-    # 3. 쿨다운 필터링
-    filtered = cooldown.filter_actions(channel_id, actions)
+    # 3. react 액션은 쿨다운 무관하게 즉시 실행
+    react_actions = [a for a in actions if a.type == "react"]
+    other_actions = [a for a in actions if a.type != "react"]
 
-    # 4. 슬랙 발송
-    if filtered:
-        await execute_interventions(slack_client, channel_id, filtered)
+    if react_actions:
+        await execute_interventions(slack_client, channel_id, react_actions)
+
+    # 4. intervene 액션은 쿨다운 필터링 후 실행
+    filtered_others = cooldown.filter_actions(channel_id, other_actions)
+    if filtered_others:
+        await execute_interventions(slack_client, channel_id, filtered_others)
         # 메시지 개입이 있었으면 개입 모드 진입 (또는 쿨다운 기록)
-        if any(a.type == "message" for a in filtered):
+        if any(a.type == "message" for a in filtered_others):
             if max_intervention_turns > 0:
                 cooldown.enter_intervention_mode(channel_id, max_intervention_turns)
                 send_intervention_mode_debug_log(
@@ -227,6 +232,8 @@ async def run_digest_and_intervene(
                 )
             else:
                 cooldown.record_intervention(channel_id)
+
+    filtered = react_actions + filtered_others
 
     # 5. 디버그 로그
     await send_debug_log(
@@ -271,7 +278,7 @@ async def respond_in_intervention_mode(
 
     # 3. 프롬프트 구성
     remaining = cooldown.get_remaining_turns(channel_id)
-    system_prompt = INTERVENTION_MODE_SYSTEM_PROMPT
+    system_prompt = get_intervention_mode_system_prompt()
     user_prompt = build_intervention_mode_prompt(
         remaining_turns=remaining,
         channel_id=channel_id,
