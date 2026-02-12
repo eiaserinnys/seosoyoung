@@ -98,6 +98,42 @@ def build_intervention_mode_prompt(
     )
 
 
+def get_channel_intervene_system_prompt() -> str:
+    """채널 개입 응답 생성 시스템 프롬프트를 반환합니다."""
+    return _load("channel_intervene_system.txt")
+
+
+def build_channel_intervene_user_prompt(
+    digest: str | None,
+    recent_messages: list[dict],
+    trigger_message: dict | None,
+    target: str,
+    observer_reason: str | None = None,
+) -> str:
+    """채널 개입 응답 생성 사용자 프롬프트를 구성합니다."""
+    digest_text = digest or "(없음)"
+    recent_text = _format_channel_messages(recent_messages) or "(없음)"
+
+    if trigger_message:
+        ts = trigger_message.get("ts", "")
+        user = trigger_message.get("user", "unknown")
+        text = trigger_message.get("text", "")
+        trigger_text = f"[{ts}] <{user}>: {text}"
+    else:
+        trigger_text = "(없음)"
+
+    observer_text = observer_reason or "(없음)"
+
+    template = _load("channel_intervene_user.txt")
+    return template.format(
+        target=target,
+        digest=digest_text,
+        recent_messages=recent_text,
+        trigger_message=trigger_text,
+        observer_reason=observer_text,
+    )
+
+
 def _format_channel_messages(messages: list[dict]) -> str:
     """채널 루트 메시지를 텍스트로 변환"""
     if not messages:

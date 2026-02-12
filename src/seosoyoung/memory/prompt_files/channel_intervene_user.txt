@@ -1,0 +1,13 @@
+Reply target: {target}
+
+## CHANNEL DIGEST (what's been happening)
+{digest}
+
+## RECENT MESSAGES (conversation context)
+{recent_messages}
+
+## TRIGGER MESSAGE (respond to this)
+{trigger_message}
+
+## OBSERVER'S DRAFT (reference only — write your own response)
+{observer_reason}

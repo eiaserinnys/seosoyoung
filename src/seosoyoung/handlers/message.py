@@ -406,6 +406,17 @@ def _maybe_trigger_digest(
         try:
             from seosoyoung.memory.channel_pipeline import run_digest_and_intervene
 
+            async def llm_call(system_prompt, user_prompt):
+                response = await observer.client.chat.completions.create(
+                    model=observer.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    max_completion_tokens=1000,
+                )
+                return response.choices[0].message.content or ""
+
             asyncio.run(
                 run_digest_and_intervene(
                     store=store,
@@ -419,6 +430,7 @@ def _maybe_trigger_digest(
                     digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
                     debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
                     max_intervention_turns=Config.CHANNEL_OBSERVER_MAX_INTERVENTION_TURNS,
+                    llm_call=llm_call,
                 )
             )
         except Exception as e:

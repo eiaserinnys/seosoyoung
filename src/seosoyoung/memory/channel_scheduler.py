@@ -121,6 +121,17 @@ class ChannelDigestScheduler:
         """소화 파이프라인을 실행합니다."""
         from seosoyoung.memory.channel_pipeline import run_digest_and_intervene
 
+        async def llm_call(system_prompt, user_prompt):
+            response = await self.observer.client.chat.completions.create(
+                model=self.observer.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_completion_tokens=1000,
+            )
+            return response.choices[0].message.content or ""
+
         try:
             asyncio.run(
                 run_digest_and_intervene(
@@ -135,6 +146,7 @@ class ChannelDigestScheduler:
                     digest_target_tokens=self.digest_target_tokens,
                     debug_channel=self.debug_channel,
                     max_intervention_turns=self.max_intervention_turns,
+                    llm_call=llm_call,
                 )
             )
         except Exception as e:

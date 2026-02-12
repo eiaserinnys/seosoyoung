@@ -41,12 +41,20 @@
 - 위치: 줄 77
 - 설명: 개입 모드 사용자 프롬프트를 구성합니다.
 
-### `_format_channel_messages(messages)`
+### `get_channel_intervene_system_prompt()`
 - 위치: 줄 101
+- 설명: 채널 개입 응답 생성 시스템 프롬프트를 반환합니다.
+
+### `build_channel_intervene_user_prompt(digest, recent_messages, trigger_message, target, observer_reason)`
+- 위치: 줄 106
+- 설명: 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
+
+### `_format_channel_messages(messages)`
+- 위치: 줄 137
 - 설명: 채널 루트 메시지를 텍스트로 변환
 
 ### `_format_thread_messages(thread_buffers)`
-- 위치: 줄 114
+- 위치: 줄 150
 - 설명: 스레드 메시지를 텍스트로 변환
 
 ## 내부 의존성

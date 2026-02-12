@@ -21,7 +21,7 @@
 ## 함수
 
 ### `async digest_channel(store, observer, channel_id, buffer_threshold, compressor, digest_max_tokens, digest_target_tokens)`
-- 위치: 줄 43
+- 위치: 줄 45
 - 설명: 채널 버퍼를 소화하여 digest를 갱신합니다.
 
 Args:
@@ -36,8 +36,8 @@ Args:
 Returns:
     ChannelObserverResult (반응 정보 포함) 또는 None (스킵/실패)
 
-### `async run_digest_and_intervene(store, observer, channel_id, slack_client, cooldown, buffer_threshold, compressor, digest_max_tokens, digest_target_tokens, debug_channel, max_intervention_turns)`
-- 위치: 줄 153
+### `async run_digest_and_intervene(store, observer, channel_id, slack_client, cooldown, buffer_threshold, compressor, digest_max_tokens, digest_target_tokens, debug_channel, max_intervention_turns, llm_call)`
+- 위치: 줄 155
 - 설명: 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
 
 message handler에서 별도 스레드로 호출합니다.
@@ -54,9 +54,24 @@ Args:
     digest_target_tokens: digest 압축 목표 토큰
     debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
     max_intervention_turns: 개입 모드 최대 턴 (0이면 개입 모드 비활성)
+    llm_call: async callable(system_prompt, user_prompt) -> str
+              intervene 시 서소영 응답 생성에 사용
+
+### `async _execute_intervene_with_llm(store, channel_id, slack_client, llm_call, action, pre_digest_messages, observer_reason)`
+- 위치: 줄 278
+- 설명: LLM을 호출하여 서소영의 개입 응답을 생성하고 발송합니다.
+
+Args:
+    store: 채널 데이터 저장소
+    channel_id: 대상 채널
+    slack_client: Slack WebClient
+    llm_call: async callable(system_prompt, user_prompt) -> str
+    action: 실행할 InterventionAction (type="message")
+    pre_digest_messages: 소화 전 버퍼 메시지 (트리거/컨텍스트 분리용)
+    observer_reason: Observer의 reaction_content (판단 근거/초안)
 
 ### `async respond_in_intervention_mode(store, channel_id, slack_client, cooldown, llm_call, debug_channel)`
-- 위치: 줄 249
+- 위치: 줄 363
 - 설명: 개입 모드 중 새 메시지에 반응합니다.
 
 버퍼에 쌓인 메시지를 읽고, LLM으로 서소영의 응답을 생성하여
@@ -81,7 +96,9 @@ Args:
 - `seosoyoung.memory.channel_observer.ChannelObserver`
 - `seosoyoung.memory.channel_observer.ChannelObserverResult`
 - `seosoyoung.memory.channel_observer.DigestCompressor`
+- `seosoyoung.memory.channel_prompts.build_channel_intervene_user_prompt`
 - `seosoyoung.memory.channel_prompts.build_intervention_mode_prompt`
+- `seosoyoung.memory.channel_prompts.get_channel_intervene_system_prompt`
 - `seosoyoung.memory.channel_prompts.get_intervention_mode_system_prompt`
 - `seosoyoung.memory.channel_store.ChannelStore`
 - `seosoyoung.memory.token_counter.TokenCounter`

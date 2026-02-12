@@ -405,8 +405,45 @@ class TestRunDigestAndIntervene:
     """소화 + 개입 통합 파이프라인 테스트"""
 
     @pytest.mark.asyncio
-    async def test_intervene_sends_message(self, tmp_path):
-        """소화 → 개입 판단 → 슬랙 메시지 발송 흐름"""
+    async def test_intervene_sends_message_via_llm(self, tmp_path):
+        """소화 → 개입 판단 → LLM 호출 → 슬랙 메시지 발송 흐름"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        _fill_buffer(store, "C123")
+
+        observer = FakeObserver(ChannelObserverResult(
+            digest="관찰 결과",
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="아이고, 무슨 소동이오?",
+        ))
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        async def mock_llm_call(system_prompt, user_prompt):
+            return "이런 일이 벌어지다니, 놀랍구려."
+
+        await run_digest_and_intervene(
+            store=store,
+            observer=observer,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            buffer_threshold=1,
+            llm_call=mock_llm_call,
+        )
+
+        client.chat_postMessage.assert_called()
+        call_args_list = client.chat_postMessage.call_args_list
+        sent_texts = [c[1]["text"] for c in call_args_list]
+        # LLM 생성 응답이 발송됨 (Observer 텍스트가 아님)
+        assert any("놀랍구려" in t for t in sent_texts)
+
+    @pytest.mark.asyncio
+    async def test_intervene_fallback_without_llm(self, tmp_path):
+        """llm_call 없으면 Observer 텍스트로 직접 발송 (폴백)"""
         store = ChannelStore(base_dir=tmp_path)
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
         _fill_buffer(store, "C123")
@@ -429,10 +466,10 @@ class TestRunDigestAndIntervene:
             slack_client=client,
             cooldown=cooldown,
             buffer_threshold=1,
+            # llm_call 없음 → 폴백
         )
 
         client.chat_postMessage.assert_called()
-        # 메시지 발송 호출 확인
         call_args_list = client.chat_postMessage.call_args_list
         sent_texts = [c[1]["text"] for c in call_args_list]
         assert any("무슨 소동" in t for t in sent_texts)
@@ -489,6 +526,9 @@ class TestRunDigestAndIntervene:
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
 
+        async def mock_llm_call(system_prompt, user_prompt):
+            return "LLM 응답"
+
         await run_digest_and_intervene(
             store=store,
             observer=observer,
@@ -496,6 +536,7 @@ class TestRunDigestAndIntervene:
             slack_client=client,
             cooldown=cooldown,
             buffer_threshold=1,
+            llm_call=mock_llm_call,
         )
 
         # 메시지 발송 호출 없음 (쿨다운)
@@ -576,6 +617,9 @@ class TestRunDigestAndIntervene:
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
 
+        async def mock_llm_call(system_prompt, user_prompt):
+            return "LLM 개입 응답"
+
         await run_digest_and_intervene(
             store=store,
             observer=observer,
@@ -585,6 +629,7 @@ class TestRunDigestAndIntervene:
             buffer_threshold=1,
             max_intervention_turns=5,
             debug_channel="C_DEBUG",
+            llm_call=mock_llm_call,
         )
 
         # 개입 후 개입 모드에 진입해야 함
