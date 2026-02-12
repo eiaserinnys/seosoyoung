@@ -343,13 +343,13 @@ class TestHandleInterruptedWithDm:
         assert "(중단됨)" in dm_update_calls[0][1]["text"]
 
 
-class TestNotifyChannelLogSuppression:
-    """Phase 1: DM 스레드가 있을 때 notify_channel 로그 억제 테스트"""
+class TestNotifyChannelSuppression:
+    """DM 스레드가 있을 때 notify_channel 메시지 완전 억제 테스트"""
 
     @patch("seosoyoung.trello.watcher.TrelloClient")
     @patch("seosoyoung.trello.watcher.Config")
-    def test_initial_message_header_only_when_dm_available(self, mock_config, mock_trello_client):
-        """DM 스레드가 생성될 때 notify_channel 초기 메시지는 헤더만 포함"""
+    def test_no_notify_channel_message_when_dm_available(self, mock_config, mock_trello_client):
+        """DM이 생성되면 notify_channel에 메시지를 전혀 보내지 않음"""
         mock_config.get_session_path.return_value = "/tmp/sessions"
         mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
         mock_config.TRELLO_WATCH_LISTS = {"to_go": "L_TO_GO"}
@@ -361,13 +361,9 @@ class TestNotifyChannelLogSuppression:
         from seosoyoung.trello.watcher import TrelloWatcher
 
         mock_slack = MagicMock()
-        # conversations_open → DM 채널
         mock_slack.conversations_open.return_value = {"channel": {"id": "D_DM"}}
-        # 순서: (1) DM 앵커 메시지 (2) notify_channel 메인 메시지
-        mock_slack.chat_postMessage.side_effect = [
-            {"ts": "dm_anchor_ts"},  # DM 앵커 (먼저 생성됨)
-            {"ts": "main_msg_ts"},   # notify_channel 메인 메시지
-        ]
+        # DM 앵커 메시지만 생성됨 (notify_channel 메시지는 없음)
+        mock_slack.chat_postMessage.return_value = {"ts": "dm_anchor_ts"}
 
         mock_trello_instance = MagicMock()
         mock_trello_instance.move_card.return_value = True
@@ -375,7 +371,7 @@ class TestNotifyChannelLogSuppression:
 
         mock_session_manager = MagicMock()
         mock_session_manager.create.return_value = MagicMock(
-            thread_ts="main_msg_ts", session_id="sess1", message_count=0
+            thread_ts="dm_anchor_ts", session_id="sess1", message_count=0
         )
 
         mock_runner = MagicMock()
@@ -395,36 +391,147 @@ class TestNotifyChannelLogSuppression:
 
         watcher._handle_new_card(card, "to_go")
 
-        # notify_channel 메인 메시지는 call_args_list[1] (DM 앵커가 [0])
-        notify_post = mock_slack.chat_postMessage.call_args_list[1]
-        notify_post_text = notify_post[1]["text"] if "text" in notify_post[1] else notify_post[0][0]
-        assert "소영이 생각합니다" not in notify_post_text
+        # chat_postMessage 호출 중 notify_channel(C_NOTIFY)로 보낸 것이 없어야 함
+        notify_calls = [
+            call for call in mock_slack.chat_postMessage.call_args_list
+            if call[1].get("channel") == "C_NOTIFY"
+        ]
+        assert len(notify_calls) == 0, (
+            f"notify_channel에 메시지가 전송됨: {notify_calls}"
+        )
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_dm_channel_used_as_main_channel(self, mock_config, mock_trello_client):
+        """DM이 있으면 세션과 claude_runner에 DM 채널이 전달됨"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
+        mock_config.TRELLO_WATCH_LISTS = {"to_go": "L_TO_GO"}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_DM_TARGET_USER_ID = "U_TARGET"
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = "L_IN_PROGRESS"
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        import threading
+
+        mock_slack = MagicMock()
+        mock_slack.conversations_open.return_value = {"channel": {"id": "D_DM"}}
+        mock_slack.chat_postMessage.return_value = {"ts": "dm_anchor_ts"}
+
+        mock_trello_instance = MagicMock()
+        mock_trello_instance.move_card.return_value = True
+        mock_trello_instance.update_card_name.return_value = True
+
+        mock_session_manager = MagicMock()
+        mock_session_manager.create.return_value = MagicMock(
+            thread_ts="dm_anchor_ts", session_id="sess1", message_count=0
+        )
+
+        # claude_runner_factory가 호출될 때까지 블록하고, 전달된 kwargs를 캡처
+        captured = {}
+        runner_called = threading.Event()
+
+        def capturing_runner(**kwargs):
+            captured.update(kwargs)
+            runner_called.set()
+
+        watcher = TrelloWatcher(
+            slack_client=mock_slack,
+            session_manager=mock_session_manager,
+            claude_runner_factory=capturing_runner,
+        )
+        watcher.trello = mock_trello_instance
+
+        from seosoyoung.trello.watcher import TrelloCard
+        card = TrelloCard(
+            id="card1", name="테스트 카드", desc="", url="https://trello.com/c/abc",
+            list_id="L_TO_GO", labels=[]
+        )
+
+        watcher._handle_new_card(card, "to_go")
+
+        # 스레드에서 runner가 호출될 때까지 대기
+        runner_called.wait(timeout=5)
+
+        # 세션 생성 시 channel_id가 DM 채널
+        mock_session_manager.create.assert_called_once()
+        create_kwargs = mock_session_manager.create.call_args[1]
+        assert create_kwargs["channel_id"] == "D_DM"
+
+        # claude_runner_factory에 DM 채널이 전달됨
+        assert captured.get("channel") == "D_DM"
+        assert captured.get("dm_channel_id") == "D_DM"
+        assert captured.get("dm_thread_ts") == "dm_anchor_ts"
+
+        # trello_card의 channel_id도 DM
+        assert captured.get("trello_card").channel_id == "D_DM"
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_fallback_to_notify_channel_when_dm_fails(self, mock_config, mock_trello_client):
+        """DM 생성 실패 시 notify_channel로 폴백"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C_NOTIFY"
+        mock_config.TRELLO_WATCH_LISTS = {"to_go": "L_TO_GO"}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_DM_TARGET_USER_ID = ""  # DM 대상 없음
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = "L_IN_PROGRESS"
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        import threading
+
+        mock_slack = MagicMock()
+        mock_slack.chat_postMessage.return_value = {"ts": "notify_msg_ts"}
+
+        mock_trello_instance = MagicMock()
+        mock_trello_instance.move_card.return_value = True
+        mock_trello_instance.update_card_name.return_value = True
+
+        mock_session_manager = MagicMock()
+        mock_session_manager.create.return_value = MagicMock(
+            thread_ts="notify_msg_ts", session_id="sess1", message_count=0
+        )
+
+        captured = {}
+        runner_called = threading.Event()
+
+        def capturing_runner(**kwargs):
+            captured.update(kwargs)
+            runner_called.set()
+
+        watcher = TrelloWatcher(
+            slack_client=mock_slack,
+            session_manager=mock_session_manager,
+            claude_runner_factory=capturing_runner,
+        )
+        watcher.trello = mock_trello_instance
+
+        from seosoyoung.trello.watcher import TrelloCard
+        card = TrelloCard(
+            id="card1", name="테스트 카드", desc="", url="https://trello.com/c/abc",
+            list_id="L_TO_GO", labels=[]
+        )
+
+        watcher._handle_new_card(card, "to_go")
+        runner_called.wait(timeout=5)
+
+        # notify_channel에 메시지가 전송되어야 함
+        notify_calls = [
+            call for call in mock_slack.chat_postMessage.call_args_list
+            if call[1].get("channel") == "C_NOTIFY"
+        ]
+        assert len(notify_calls) >= 1
+
+        # claude_runner에 notify_channel이 전달됨
+        assert captured.get("channel") == "C_NOTIFY"
+        assert captured.get("trello_card").channel_id == "C_NOTIFY"
 
     def test_on_progress_skips_notify_channel_when_dm_exists(self):
         """on_progress에서 DM 스레드가 있으면 notify_channel 메시지를 업데이트하지 않음"""
         # on_progress의 trello 모드에서 dm_channel_id가 있을 때
-        # notify_channel의 main_msg_ts를 chat_update하지 않아야 함
-        from seosoyoung.claude.executor import ClaudeExecutor
-
-        mock_client = MagicMock()
-        mock_client.chat_postMessage.return_value = {"ts": "dm_reply_1"}
-
-        executor = ClaudeExecutor(
-            session_manager=MagicMock(),
-            get_session_lock=lambda ts: MagicMock(),
-            mark_session_running=MagicMock(),
-            mark_session_stopped=MagicMock(),
-            get_running_session_count=MagicMock(return_value=0),
-            restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
-            send_long_message=MagicMock(),
-            send_restart_confirmation=MagicMock(),
-        )
-
-        # on_progress에서 DM이 있을 때 notify_channel(C_NOTIFY)에 대한
-        # chat_update가 호출되지 않아야 함을 검증
-        # 이 테스트는 on_progress 콜백의 동작을 직접 테스트하는 것이 아니라
-        # _execute_once에서 생성되는 on_progress 클로저의 동작을 검증함
+        # notify_channel의 main_msg_ts를 chat_update하지 않아야 함을 검증
         # 실제 검증은 통합 테스트에서 수행
         assert True  # placeholder - 실제 검증은 통합 레벨에서
 
