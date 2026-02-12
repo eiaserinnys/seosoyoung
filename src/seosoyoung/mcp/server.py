@@ -5,6 +5,7 @@ from typing import Optional
 from fastmcp import FastMCP
 
 from seosoyoung.mcp.tools.attach import attach_file, get_slack_context
+from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 from seosoyoung.mcp.tools.slack_messaging import post_message
 from seosoyoung.mcp.tools.thread_files import download_thread_files
 
@@ -56,6 +57,29 @@ def slack_post_message(
         file_paths: 파일 경로, 쉼표 구분 (선택)
     """
     return post_message(channel, text, thread_ts or "", file_paths or "")
+
+
+@mcp.tool()
+async def slack_generate_image(
+    prompt: str,
+    channel: str,
+    thread_ts: str,
+    reference_image_paths: Optional[str] = None,
+) -> dict:
+    """텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
+
+    Gemini API를 사용하여 이미지를 생성합니다.
+    레퍼런스 이미지를 전달하면 해당 이미지를 참고하여 생성합니다.
+
+    Args:
+        prompt: 이미지 생성 프롬프트 (영어 권장)
+        channel: 슬랙 채널 ID
+        thread_ts: 스레드 타임스탬프
+        reference_image_paths: 레퍼런스 이미지 절대 경로, 쉼표 구분 (선택)
+    """
+    return await generate_and_upload_image(
+        prompt, channel, thread_ts, reference_image_paths or ""
+    )
 
 
 @mcp.tool()

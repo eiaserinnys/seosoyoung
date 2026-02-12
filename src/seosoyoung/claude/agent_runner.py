@@ -73,6 +73,7 @@ DEFAULT_ALLOWED_TOOLS = [
     "mcp__seosoyoung-attach__slack_get_context",
     "mcp__seosoyoung-attach__slack_post_message",
     "mcp__seosoyoung-attach__slack_download_thread_files",
+    "mcp__seosoyoung-attach__slack_generate_image",
 ]
 
 # Claude Code 기본 금지 도구
@@ -91,7 +92,6 @@ class ClaudeResult:
     session_id: Optional[str] = None
     error: Optional[str] = None
     files: list[str] = field(default_factory=list)
-    image_gen_prompts: list[str] = field(default_factory=list)
     update_requested: bool = False
     restart_requested: bool = False
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
@@ -728,7 +728,6 @@ class ClaudeAgentRunner:
 
             # 마커 추출
             files = re.findall(r"<!-- FILE: (.+?) -->", output)
-            image_gen_prompts = re.findall(r"<!-- IMAGE_GEN: (.+?) -->", output)
             update_requested = "<!-- UPDATE -->" in output
             restart_requested = "<!-- RESTART -->" in output
 
@@ -736,8 +735,6 @@ class ClaudeAgentRunner:
             list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
             list_run = list_run_match.group(1).strip() if list_run_match else None
 
-            if image_gen_prompts:
-                logger.info(f"이미지 생성 요청: {image_gen_prompts}")
             if update_requested:
                 logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
             if restart_requested:
@@ -750,7 +747,6 @@ class ClaudeAgentRunner:
                 output=output,
                 session_id=result_session_id,
                 files=files,
-                image_gen_prompts=image_gen_prompts,
                 update_requested=update_requested,
                 restart_requested=restart_requested,
                 list_run=list_run,
