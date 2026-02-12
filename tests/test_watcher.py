@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta
 import threading
 
 
@@ -322,6 +323,215 @@ class TestListRunSaySignature:
             # 마지막 호출이 send_long_message를 통한 것이어야 함
             last_call = calls[-1]
             assert last_call[1]["text"] == "test message"
+
+
+class TestStaleTrackedCardCleanup:
+    """방안 A: _poll() 시 만료된 _tracked 항목 자동 정리 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_stale_card_auto_untracked_after_timeout(self, mock_config, mock_trello_client):
+        """2시간 이상 경과 + To Go에 없는 카드는 자동 untrack"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {"to_go": "list_togo"}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_POLLING_DEBUG = False
+
+        mock_trello = MagicMock()
+        mock_trello.get_cards_in_list.return_value = []  # To Go 비어있음
+        mock_trello.get_lists.return_value = []
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock()
+        )
+
+        # 3시간 전에 추적 시작된 카드 (만료 기준 초과)
+        stale_time = (datetime.now() - timedelta(hours=3)).isoformat()
+        tracked = TrackedCard(
+            card_id="stale_card",
+            card_name="Stuck Card",
+            card_url="https://trello.com/c/stale",
+            list_id="list_togo",
+            list_key="to_go",
+            thread_ts="1111.2222",
+            channel_id="C12345",
+            detected_at=stale_time,
+            session_id=None,  # 세션 없음
+        )
+        watcher._tracked["stale_card"] = tracked
+
+        # 폴링 실행
+        watcher._poll()
+
+        # stale 카드가 untrack 되었어야 함
+        assert "stale_card" not in watcher._tracked
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_recent_card_not_untracked(self, mock_config, mock_trello_client):
+        """30분 전 추적 시작된 카드는 아직 만료되지 않아 유지"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {"to_go": "list_togo"}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_POLLING_DEBUG = False
+
+        mock_trello = MagicMock()
+        mock_trello.get_cards_in_list.return_value = []
+        mock_trello.get_lists.return_value = []
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock()
+        )
+
+        # 30분 전 추적 시작 (만료 기준 미달)
+        recent_time = (datetime.now() - timedelta(minutes=30)).isoformat()
+        tracked = TrackedCard(
+            card_id="recent_card",
+            card_name="Recent Card",
+            card_url="https://trello.com/c/recent",
+            list_id="list_togo",
+            list_key="to_go",
+            thread_ts="3333.4444",
+            channel_id="C12345",
+            detected_at=recent_time,
+        )
+        watcher._tracked["recent_card"] = tracked
+
+        watcher._poll()
+
+        # 아직 유지되어야 함
+        assert "recent_card" in watcher._tracked
+
+
+class TestHandleNewCardFailureUntrack:
+    """방안 B: _handle_new_card 실패 시 untrack 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_untrack_on_slack_message_failure(self, mock_config, mock_trello_client):
+        """Slack 메시지 전송 실패 시 카드가 _tracked에 남지 않아야 함"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = "list_inprogress"
+        mock_config.TRELLO_DM_TARGET_USER_ID = None
+
+        mock_trello = MagicMock()
+        mock_trello.move_card.return_value = True
+        mock_trello.update_card_name.return_value = True
+        mock_trello_client.return_value = mock_trello
+
+        mock_slack = MagicMock()
+        # DM 모드 비활성, notify_channel 메시지 전송 실패
+        mock_slack.chat_postMessage.side_effect = Exception("Slack API error")
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+
+        watcher = TrelloWatcher(
+            slack_client=mock_slack,
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock()
+        )
+
+        card = TrelloCard(
+            id="fail_card",
+            name="Fail Card",
+            desc="",
+            url="https://trello.com/c/fail",
+            list_id="list_togo",
+            labels=[],
+        )
+
+        watcher._handle_new_card(card, "to_go")
+
+        # Slack 메시지 실패 시 _tracked에 카드가 남지 않아야 함
+        assert "fail_card" not in watcher._tracked
+
+
+class TestToGoReturnRetrack:
+    """방안 C: 카드가 To Go로 다시 돌아왔을 때 re-track 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_card_returned_to_togo_is_retracked(self, mock_config, mock_trello_client):
+        """이미 _tracked에 있는 카드가 다시 To Go에 나타나면 re-track"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {"to_go": "list_togo"}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = "list_inprogress"
+        mock_config.TRELLO_DM_TARGET_USER_ID = None
+        mock_config.TRELLO_POLLING_DEBUG = False
+
+        mock_trello = MagicMock()
+        mock_trello.move_card.return_value = True
+        mock_trello.update_card_name.return_value = True
+        mock_trello.get_lists.return_value = []
+        mock_trello_client.return_value = mock_trello
+
+        mock_slack = MagicMock()
+        mock_slack.chat_postMessage.return_value = {"ts": "9999.0000"}
+
+        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
+        from seosoyoung.trello.client import TrelloCard
+
+        watcher = TrelloWatcher(
+            slack_client=mock_slack,
+            session_manager=MagicMock(create=MagicMock()),
+            claude_runner_factory=MagicMock()
+        )
+
+        # stale tracked card (3시간 전)
+        stale_time = (datetime.now() - timedelta(hours=3)).isoformat()
+        old_tracked = TrackedCard(
+            card_id="return_card",
+            card_name="Return Card",
+            card_url="https://trello.com/c/return",
+            list_id="list_togo",
+            list_key="to_go",
+            thread_ts="old_thread",
+            channel_id="C12345",
+            detected_at=stale_time,
+            session_id=None,
+        )
+        watcher._tracked["return_card"] = old_tracked
+
+        # 이 카드가 다시 To Go에 있음
+        card = TrelloCard(
+            id="return_card",
+            name="Return Card",
+            desc="",
+            url="https://trello.com/c/return",
+            list_id="list_togo",
+            labels=[],
+        )
+        mock_trello.get_cards_in_list.return_value = [card]
+
+        watcher._poll()
+
+        # stale 카드가 제거된 후 _handle_new_card로 다시 처리되어야 함
+        # 또는 detected_at이 갱신되었어야 함
+        # 핵심: 카드가 stuck 상태로 남지 않고 재처리됨
+        assert "return_card" not in watcher._tracked or \
+            watcher._tracked["return_card"].detected_at != stale_time
 
 
 if __name__ == "__main__":
