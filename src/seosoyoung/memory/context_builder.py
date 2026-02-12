@@ -241,20 +241,26 @@ class ContextBuilder:
                 )
 
         # 2. 새 관찰 (이전 세션에서 새롭게 관찰된 미전달 사항)
+        #    전체 관찰이 아닌, 마지막 턴에서 새로 추가된 관찰만 주입
         if include_new_observations:
             record = self.store.get_latest_undelivered_observation(
                 exclude_thread_ts=thread_ts,
             )
-            if record and record.observations.strip():
-                observations = add_relative_time(record.observations)
-                new_observation_tokens = self._counter.count_string(observations)
-                new_observation_content = observations
-                parts.append(
-                    "<new-observations>\n"
-                    "지난 사용자와 에이전트 간의 대화에서 새롭게 관찰된 사실입니다.\n\n"
-                    f"{observations}\n"
-                    "</new-observations>"
-                )
+            if record:
+                # 저장된 새 관찰 diff 사용 (없으면 전체 관찰 fallback)
+                new_obs = self.store.get_new_observations(record.thread_ts)
+                if not new_obs and record.observations.strip():
+                    new_obs = record.observations
+                if new_obs and new_obs.strip():
+                    observations = add_relative_time(new_obs)
+                    new_observation_tokens = self._counter.count_string(observations)
+                    new_observation_content = observations
+                    parts.append(
+                        "<new-observations>\n"
+                        "지난 사용자와 에이전트 간의 대화에서 새롭게 관찰된 사실입니다.\n\n"
+                        f"{observations}\n"
+                        "</new-observations>"
+                    )
 
         # 3. 세션 관찰 (observations/{thread_ts}.md)
         if include_session:

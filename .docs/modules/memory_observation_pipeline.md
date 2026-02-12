@@ -70,11 +70,11 @@ Returns:
     True: 관찰 수행됨, False: 스킵 또는 실패
 
 ### `async _try_promote(store, promoter, promotion_threshold, compactor, compaction_threshold, compaction_target, debug_channel, token_counter)`
-- 위치: 줄 339
+- 위치: 줄 340
 - 설명: 후보 버퍼 토큰이 임계치를 넘으면 Promoter를 호출하고, 필요 시 Compactor도 호출.
 
 ### `async _try_compact(store, compactor, compaction_target, persistent_tokens, debug_channel)`
-- 위치: 줄 449
+- 위치: 줄 450
 - 설명: 장기 기억 토큰이 임계치를 넘으면 archive 후 Compactor를 호출.
 
 ## 내부 의존성

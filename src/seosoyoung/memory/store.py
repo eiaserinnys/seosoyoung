@@ -196,6 +196,21 @@ class MemoryStore:
             with lock:
                 pending_path.unlink()
 
+    def _new_obs_path(self, thread_ts: str) -> Path:
+        return self.observations_dir / f"{thread_ts}.new.md"
+
+    def save_new_observations(self, thread_ts: str, content: str) -> None:
+        """이번 턴에서 새로 추가된 관찰만 별도 저장합니다."""
+        self._ensure_dirs()
+        self._new_obs_path(thread_ts).write_text(content, encoding="utf-8")
+
+    def get_new_observations(self, thread_ts: str) -> str:
+        """저장된 새 관찰을 반환합니다. 없으면 빈 문자열."""
+        path = self._new_obs_path(thread_ts)
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+        return ""
+
     def _inject_flag_path(self, thread_ts: str) -> Path:
         return self.observations_dir / f"{thread_ts}.inject"
 

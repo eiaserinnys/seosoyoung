@@ -60,24 +60,27 @@ thread_ts를 기본 키로 사용하고, user_id는 메타데이터로 보관합
 - `append_pending_messages(self, thread_ts, messages)` (줄 165): 미관찰 대화를 세션별 버퍼에 누적합니다.
 - `load_pending_messages(self, thread_ts)` (줄 175): 미관찰 대화 버퍼를 로드합니다. 없으면 빈 리스트.
 - `clear_pending_messages(self, thread_ts)` (줄 191): 관찰 완료 후 미관찰 대화 버퍼를 비웁니다.
-- `_inject_flag_path(self, thread_ts)` (줄 199): 
-- `set_inject_flag(self, thread_ts)` (줄 202): 다음 요청에 OM을 주입하도록 플래그를 설정합니다.
-- `check_and_clear_inject_flag(self, thread_ts)` (줄 207): inject 플래그를 확인하고 있으면 제거합니다.
-- `save_conversation(self, thread_ts, messages)` (줄 219): 세션 대화 로그를 JSONL로 저장합니다.
-- `load_conversation(self, thread_ts)` (줄 228): 세션 대화 로그를 로드합니다. 없으면 None.
-- `_candidates_path(self, thread_ts)` (줄 244): 
-- `_candidates_lock_path(self, thread_ts)` (줄 247): 
-- `append_candidates(self, thread_ts, entries)` (줄 250): 후보 항목을 세션별 파일에 누적합니다.
-- `load_candidates(self, thread_ts)` (줄 260): 세션별 후보를 로드합니다. 없으면 빈 리스트.
-- `load_all_candidates(self)` (줄 276): 전체 세션의 후보를 수집합니다.
-- `count_all_candidate_tokens(self)` (줄 290): 전체 후보의 content 필드 토큰 합산.
-- `clear_all_candidates(self)` (줄 304): 모든 후보 파일을 삭제합니다.
-- `_persistent_content_path(self)` (줄 316): 
-- `_persistent_meta_path(self)` (줄 319): 
-- `_persistent_lock_path(self)` (줄 322): 
-- `_persistent_archive_dir(self)` (줄 325): 
-- `get_persistent(self)` (줄 328): 장기 기억을 로드합니다. 없으면 None.
-- `save_persistent(self, content, meta)` (줄 347): 장기 기억을 저장합니다.
-- `_delivered_flag_path(self, thread_ts)` (줄 359): 
-- `get_latest_undelivered_observation(self, exclude_thread_ts)` (줄 362): 미전달된 가장 최근 관찰 레코드를 반환하고 delivered 플래그를 설정합니다.
-- `archive_persistent(self)` (줄 424): 기존 장기 기억을 archive/에 백업합니다.
+- `_new_obs_path(self, thread_ts)` (줄 199): 
+- `save_new_observations(self, thread_ts, content)` (줄 202): 이번 턴에서 새로 추가된 관찰만 별도 저장합니다.
+- `get_new_observations(self, thread_ts)` (줄 207): 저장된 새 관찰을 반환합니다. 없으면 빈 문자열.
+- `_inject_flag_path(self, thread_ts)` (줄 214): 
+- `set_inject_flag(self, thread_ts)` (줄 217): 다음 요청에 OM을 주입하도록 플래그를 설정합니다.
+- `check_and_clear_inject_flag(self, thread_ts)` (줄 222): inject 플래그를 확인하고 있으면 제거합니다.
+- `save_conversation(self, thread_ts, messages)` (줄 234): 세션 대화 로그를 JSONL로 저장합니다.
+- `load_conversation(self, thread_ts)` (줄 243): 세션 대화 로그를 로드합니다. 없으면 None.
+- `_candidates_path(self, thread_ts)` (줄 259): 
+- `_candidates_lock_path(self, thread_ts)` (줄 262): 
+- `append_candidates(self, thread_ts, entries)` (줄 265): 후보 항목을 세션별 파일에 누적합니다.
+- `load_candidates(self, thread_ts)` (줄 275): 세션별 후보를 로드합니다. 없으면 빈 리스트.
+- `load_all_candidates(self)` (줄 291): 전체 세션의 후보를 수집합니다.
+- `count_all_candidate_tokens(self)` (줄 305): 전체 후보의 content 필드 토큰 합산.
+- `clear_all_candidates(self)` (줄 319): 모든 후보 파일을 삭제합니다.
+- `_persistent_content_path(self)` (줄 331): 
+- `_persistent_meta_path(self)` (줄 334): 
+- `_persistent_lock_path(self)` (줄 337): 
+- `_persistent_archive_dir(self)` (줄 340): 
+- `get_persistent(self)` (줄 343): 장기 기억을 로드합니다. 없으면 None.
+- `save_persistent(self, content, meta)` (줄 362): 장기 기억을 저장합니다.
+- `_delivered_flag_path(self, thread_ts)` (줄 374): 
+- `get_latest_undelivered_observation(self, exclude_thread_ts)` (줄 377): 미전달된 가장 최근 관찰 레코드를 반환하고 delivered 플래그를 설정합니다.
+- `archive_persistent(self)` (줄 439): 기존 장기 기억을 archive/에 백업합니다.

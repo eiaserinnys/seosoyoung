@@ -51,11 +51,11 @@ class TestExtractNewObservations:
         assert "새 관찰" in result
         assert "기존 관찰" not in result
 
-    def test_all_lines_same_returns_updated(self):
-        """모든 줄이 동일하면 전체 반환 (fallback)"""
+    def test_all_lines_same_returns_empty(self):
+        """모든 줄이 동일하면 빈 문자열 반환"""
         text = "🔴 동일한 관찰"
         result = _extract_new_observations(text, text)
-        assert result == text
+        assert result == ""
 
     def test_header_changes_included(self):
         """날짜 헤더가 변경되면 새 헤더 포함"""

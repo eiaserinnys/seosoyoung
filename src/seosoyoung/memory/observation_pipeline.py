@@ -86,7 +86,7 @@ def _extract_new_observations(
         if stripped and stripped not in existing_lines:
             new_lines.append(line)
 
-    return "\n".join(new_lines) if new_lines else updated
+    return "\n".join(new_lines) if new_lines else ""
 
 
 def parse_candidate_entries(candidates_text: str) -> list[dict]:
@@ -280,7 +280,11 @@ async def observe_conversation(
                         f"{ref_quote}",
                     )
 
-        # 7. 저장 + pending 버퍼 비우기
+        # 7. 새 관찰 diff 계산 및 저장 + pending 버퍼 비우기
+        new_obs = _extract_new_observations(
+            existing_observations, result.observations
+        )
+        store.save_new_observations(thread_ts, new_obs)
         store.save_record(record)
         store.clear_pending_messages(thread_ts)
 
@@ -297,10 +301,7 @@ async def observe_conversation(
                 candidate_part = f" | 후보 +{candidate_count} ({candidate_summary})"
             else:
                 candidate_part = " | 후보 없음"
-            new_obs = _extract_new_observations(
-                existing_observations, result.observations
-            )
-            obs_quote = _blockquote(new_obs)
+            obs_quote = _blockquote(new_obs) if new_obs else ">새 관찰 없음"
             _update_debug_log(
                 debug_channel,
                 debug_ts,
