@@ -71,7 +71,7 @@
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:88): Claude Code 실행 결과
 - `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:103): Claude Code SDK 기반 실행기
 - `PendingPrompt` (seosoyoung/claude/executor.py:61): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:74): Claude Code 실행기
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:76): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저

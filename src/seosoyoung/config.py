@@ -126,6 +126,7 @@ class Config:
     TRELLO_IN_PROGRESS_LIST_ID = os.getenv("TRELLO_IN_PROGRESS_LIST_ID", "")
     TRELLO_REVIEW_LIST_ID = os.getenv("TRELLO_REVIEW_LIST_ID", "")
     TRELLO_DONE_LIST_ID = os.getenv("TRELLO_DONE_LIST_ID", "")
+    TRELLO_DM_TARGET_USER_ID = os.getenv("TRELLO_DM_TARGET_USER_ID", "")
 
     # ========================================
     # 번역 설정
