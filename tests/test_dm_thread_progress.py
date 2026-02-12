@@ -96,6 +96,116 @@ class TestOpenDmThread:
 class TestOnProgressDmThread:
     """on_progress 콜백의 DM 스레드 blockquote 추가 테스트"""
 
+    def test_dm_progress_always_posts_new_message(self):
+        """DM 사고 과정은 항상 chat_postMessage로 새 메시지를 추가해야 함 (chat_update 사용 안 함)"""
+        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.trello.watcher import TrackedCard
+
+        mock_client = MagicMock()
+        # 첫 번째, 두 번째 chat_postMessage 호출에 각각 다른 ts 반환
+        mock_client.chat_postMessage.side_effect = [
+            {"ts": "dm_reply_1"},
+            {"ts": "dm_reply_2"},
+            {"ts": "dm_reply_3"},
+        ]
+
+        executor = ClaudeExecutor(
+            session_manager=MagicMock(),
+            get_session_lock=lambda ts: MagicMock(),
+            mark_session_running=MagicMock(),
+            mark_session_stopped=MagicMock(),
+            get_running_session_count=MagicMock(return_value=0),
+            restart_manager=MagicMock(),
+            upload_file_to_slack=MagicMock(),
+            send_long_message=MagicMock(),
+            send_restart_confirmation=MagicMock(),
+        )
+
+        trello_card = TrackedCard(
+            card_id="card123",
+            card_name="테스트",
+            card_url="https://trello.com/c/abc",
+            list_id="list123",
+            list_key="to_go",
+            thread_ts="1234.5678",
+            channel_id="C12345",
+            detected_at="2026-01-01",
+            has_execute=True,
+        )
+
+        session = MagicMock()
+        session.thread_ts = "1234.5678"
+        session.session_id = "sess123"
+        session.message_count = 0
+        session.role = "admin"
+
+        # on_progress를 캡처하기 위해 runner를 모킹
+        captured_on_progress = None
+
+        def mock_run(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel):
+            nonlocal captured_on_progress
+            captured_on_progress = on_progress
+            result = MagicMock()
+            result.session_id = "sess123"
+            result.success = True
+            result.interrupted = False
+            result.output = "최종 응답"
+            result.update_requested = False
+            result.restart_requested = False
+            result.list_run = None
+            result.usage = None
+            return result
+
+        mock_runner = MagicMock()
+        mock_runner.run = MagicMock(side_effect=mock_run)
+        mock_runner.run_sync = lambda coro: coro  # coro가 이미 result를 반환
+
+        with patch("seosoyoung.claude.executor.get_runner_for_role", return_value=mock_runner):
+            executor._execute_once(
+                session=session,
+                prompt="테스트",
+                msg_ts="1234.5678",
+                channel="C12345",
+                say=MagicMock(),
+                client=mock_client,
+                effective_role="admin",
+                trello_card=trello_card,
+                is_existing_thread=False,
+                initial_msg_ts=None,
+                is_trello_mode=True,
+                dm_channel_id="D_DM_CHANNEL",
+                dm_thread_ts="1111.0000",
+            )
+
+        # on_progress가 캡처됐는지 확인
+        assert captured_on_progress is not None
+
+        # 첫 번째 호출: 짧은 텍스트 → 새 메시지
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(captured_on_progress("첫 번째 사고 과정입니다"))
+
+        # 두 번째 호출: 더 긴 텍스트 (delta 발생) → 또 새 메시지 (chat_update가 아님)
+        loop.run_until_complete(captured_on_progress("첫 번째 사고 과정입니다\n두 번째 사고 과정입니다"))
+        loop.close()
+
+        # chat_postMessage가 DM 채널로 호출되었는지 확인
+        dm_post_calls = [
+            call for call in mock_client.chat_postMessage.call_args_list
+            if call[1].get("channel") == "D_DM_CHANNEL"
+        ]
+        assert len(dm_post_calls) >= 2, (
+            f"DM에 새 메시지가 2회 이상 추가되어야 하지만 {len(dm_post_calls)}회: {dm_post_calls}"
+        )
+
+        # chat_update가 DM 채널로 호출되지 않아야 함 (사고 과정에서는 갱신 안 함)
+        dm_update_calls = [
+            call for call in mock_client.chat_update.call_args_list
+            if call[1].get("channel") == "D_DM_CHANNEL"
+        ]
+        assert len(dm_update_calls) == 0, (
+            f"DM 사고 과정에서 chat_update가 호출되면 안 됨: {dm_update_calls}"
+        )
+
     def test_dm_thread_blockquote_new_reply(self):
         """DM 스레드에 새 blockquote 답글 추가"""
         from seosoyoung.claude.executor import ClaudeExecutor

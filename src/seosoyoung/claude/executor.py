@@ -408,44 +408,19 @@ class ClaudeExecutor:
                         quote_lines = [f"> {line}" for line in escaped_delta.split("\n")]
                         quote_text = "\n".join(quote_lines)
 
-                        if dm_last_reply_ts and len(escaped_delta) < DM_MSG_MAX_LEN:
-                            # 마지막 답글이 짧으면 업데이트
-                            try:
-                                client.chat_update(
-                                    channel=dm_channel_id,
-                                    ts=dm_last_reply_ts,
-                                    text=quote_text,
-                                    blocks=[{
-                                        "type": "section",
-                                        "text": {"type": "mrkdwn", "text": quote_text}
-                                    }]
-                                )
-                            except Exception:
-                                # 업데이트 실패 시 새 답글
-                                reply = client.chat_postMessage(
-                                    channel=dm_channel_id,
-                                    thread_ts=dm_thread_ts,
-                                    text=quote_text,
-                                    blocks=[{
-                                        "type": "section",
-                                        "text": {"type": "mrkdwn", "text": quote_text}
-                                    }]
-                                )
-                                dm_last_reply_ts = reply["ts"]
-                                dm_sent_length = len(full_text)
-                        else:
-                            # 새 답글 추가 (첫 번째이거나 길이 초과)
-                            reply = client.chat_postMessage(
-                                channel=dm_channel_id,
-                                thread_ts=dm_thread_ts,
-                                text=quote_text,
-                                blocks=[{
-                                    "type": "section",
-                                    "text": {"type": "mrkdwn", "text": quote_text}
-                                }]
-                            )
-                            dm_last_reply_ts = reply["ts"]
-                            dm_sent_length = len(full_text)
+                        # 항상 새 메시지로 추가 (로그처럼 쌓이는 방식)
+                        # dm_last_reply_ts는 최종 응답 교체용으로만 추적
+                        reply = client.chat_postMessage(
+                            channel=dm_channel_id,
+                            thread_ts=dm_thread_ts,
+                            text=quote_text,
+                            blocks=[{
+                                "type": "section",
+                                "text": {"type": "mrkdwn", "text": quote_text}
+                            }]
+                        )
+                        dm_last_reply_ts = reply["ts"]
+                        dm_sent_length = len(full_text)
                     else:
                         # DM 스레드 없으면 기존 동작: 알림 채널 메인 메시지 덮어쓰기
                         header = build_trello_header(trello_card, session.session_id or "")
