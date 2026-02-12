@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from seosoyoung.memory.observation_pipeline import (
+    _extract_new_observations,
     observe_conversation,
     parse_candidate_entries,
 )
@@ -33,6 +34,36 @@ def sample_messages():
         {"role": "assistant", "content": "네, 찾아보겠습니다. 펜릭스는 엠버 앤 블레이드의 핵심 캐릭터입니다."},
         {"role": "assistant", "content": "펜릭스는 마법검사이며, 고대 성채를 탐험하는 여정을 떠나는 주인공입니다."},
     ]
+
+
+class TestExtractNewObservations:
+    def test_no_existing_returns_updated(self):
+        """기존 관찰이 없으면 전체 반환"""
+        updated = "🔴 새 관찰 1\n🟡 새 관찰 2"
+        assert _extract_new_observations(None, updated) == updated
+        assert _extract_new_observations("", updated) == updated
+
+    def test_extracts_only_new_lines(self):
+        """기존 관찰에 없는 줄만 추출"""
+        existing = "## [2026-02-12] Session Observations\n\n🔴 기존 관찰"
+        updated = "## [2026-02-12] Session Observations\n\n🔴 기존 관찰\n🟡 새 관찰"
+        result = _extract_new_observations(existing, updated)
+        assert "새 관찰" in result
+        assert "기존 관찰" not in result
+
+    def test_all_lines_same_returns_updated(self):
+        """모든 줄이 동일하면 전체 반환 (fallback)"""
+        text = "🔴 동일한 관찰"
+        result = _extract_new_observations(text, text)
+        assert result == text
+
+    def test_header_changes_included(self):
+        """날짜 헤더가 변경되면 새 헤더 포함"""
+        existing = "## [2026-02-11] Session Observations\n\n🔴 기존"
+        updated = "## [2026-02-11] Session Observations\n\n🔴 기존\n## [2026-02-12] Session Observations\n\n🟡 새로운"
+        result = _extract_new_observations(existing, updated)
+        assert "2026-02-12" in result
+        assert "새로운" in result
 
 
 class TestParseCandidateEntries:

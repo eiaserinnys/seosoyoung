@@ -196,8 +196,8 @@
 - `build_channel_intervene_user_prompt()` (seosoyoung/memory/channel_prompts.py:106): 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:45): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:88): 관찰 로그를 컨텍스트 주입에 최적화합니다.
-- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:72): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
-- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:108): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
+- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:92): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
+- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:128): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 - `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_promoter_output()` (seosoyoung/memory/promoter.py:83): Promoter 응답에서 <promoted>와 <rejected> 태그를 파싱합니다.
 - `parse_compactor_output()` (seosoyoung/memory/promoter.py:97): Compactor 응답에서 <compacted> 태그를 파싱합니다.

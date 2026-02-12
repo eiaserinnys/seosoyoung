@@ -69,6 +69,26 @@ def _blockquote(text: str, max_chars: int = 800) -> str:
     return "\n".join(f">{line}" for line in lines)
 
 
+def _extract_new_observations(
+    existing: str | None, updated: str
+) -> str:
+    """기존 관찰과 갱신된 관찰을 비교하여 새로 추가된 줄만 추출합니다.
+
+    Observer가 전체를 재작성하므로, 기존 줄 집합에 없는 줄만 반환합니다.
+    """
+    if not existing or not existing.strip():
+        return updated
+
+    existing_lines = set(line.strip() for line in existing.strip().splitlines() if line.strip())
+    new_lines = []
+    for line in updated.strip().splitlines():
+        stripped = line.strip()
+        if stripped and stripped not in existing_lines:
+            new_lines.append(line)
+
+    return "\n".join(new_lines) if new_lines else updated
+
+
 def parse_candidate_entries(candidates_text: str) -> list[dict]:
     """<candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
 
@@ -277,7 +297,10 @@ async def observe_conversation(
                 candidate_part = f" | 후보 +{candidate_count} ({candidate_summary})"
             else:
                 candidate_part = " | 후보 없음"
-            obs_quote = _blockquote(result.observations)
+            new_obs = _extract_new_observations(
+                existing_observations, result.observations
+            )
+            obs_quote = _blockquote(new_obs)
             _update_debug_log(
                 debug_channel,
                 debug_ts,
