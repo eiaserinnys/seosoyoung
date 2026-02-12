@@ -15,8 +15,14 @@ CONTEXT_WINDOW = 200_000
 def build_context_usage_bar(usage: Optional[dict], bar_length: int = 20) -> Optional[str]:
     """usage dict에서 컨텍스트 사용량 바를 생성
 
+    SDK의 ResultMessage.usage 구조:
+    - input_tokens: 캐시 미스분 (새로 보낸 토큰)
+    - cache_creation_input_tokens: 이번 턴에 새로 캐시에 쓴 토큰
+    - cache_read_input_tokens: 캐시에서 읽은 토큰
+    → 실제 컨텍스트 크기 = 세 값의 합
+
     Args:
-        usage: ResultMessage.usage dict (input_tokens, output_tokens 등)
+        usage: ResultMessage.usage dict
         bar_length: 바의 전체 칸 수
 
     Returns:
@@ -26,8 +32,9 @@ def build_context_usage_bar(usage: Optional[dict], bar_length: int = 20) -> Opti
         return None
 
     input_tokens = usage.get("input_tokens", 0)
-    output_tokens = usage.get("output_tokens", 0)
-    total_tokens = input_tokens + output_tokens
+    cache_creation = usage.get("cache_creation_input_tokens", 0)
+    cache_read = usage.get("cache_read_input_tokens", 0)
+    total_tokens = input_tokens + cache_creation + cache_read
 
     if total_tokens <= 0:
         return None

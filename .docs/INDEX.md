@@ -145,10 +145,10 @@
 - `async main()` (seosoyoung/claude/agent_runner.py:815): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:45): 역할에 맞는 ClaudeAgentRunner 반환
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:15): usage dict에서 컨텍스트 사용량 바를 생성
-- `escape_backticks()` (seosoyoung/claude/message_formatter.py:43): 텍스트 내 모든 백틱을 이스케이프
-- `parse_summary_details()` (seosoyoung/claude/message_formatter.py:62): 응답에서 요약과 상세 내용을 파싱
-- `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:96): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
-- `build_trello_header()` (seosoyoung/claude/message_formatter.py:120): 트렐로 카드용 슬랙 메시지 헤더 생성
+- `escape_backticks()` (seosoyoung/claude/message_formatter.py:50): 텍스트 내 모든 백틱을 이스케이프
+- `parse_summary_details()` (seosoyoung/claude/message_formatter.py:69): 응답에서 요약과 상세 내용을 파싱
+- `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:103): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
+- `build_trello_header()` (seosoyoung/claude/message_formatter.py:127): 트렐로 카드용 슬랙 메시지 헤더 생성
 - `add_reaction()` (seosoyoung/claude/reaction_manager.py:24): 슬랙 메시지에 이모지 리액션 추가
 - `remove_reaction()` (seosoyoung/claude/reaction_manager.py:44): 슬랙 메시지에서 이모지 리액션 제거
 - `register_all_handlers()` (seosoyoung/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
