@@ -530,9 +530,10 @@ def register_mention_handlers(app, dependencies: dict):
             )
             initial_msg_ts = initial_msg["ts"]
         else:
-            # 채널에서 최초 멘션: 채널 루트에 응답
+            # 채널에서 최초 멘션: M(멘션 메시지)의 스레드에 답글
             initial_msg = client.chat_postMessage(
                 channel=channel,
+                thread_ts=session_thread_ts,
                 text=initial_text,
                 blocks=[{
                     "type": "section",
