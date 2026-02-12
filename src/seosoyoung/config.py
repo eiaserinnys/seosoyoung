@@ -134,7 +134,9 @@ class Config:
     TRANSLATE_CHANNELS = [
         ch.strip() for ch in os.getenv("TRANSLATE_CHANNELS", "").split(",") if ch.strip()
     ]
+    TRANSLATE_BACKEND = os.getenv("TRANSLATE_BACKEND", "anthropic")  # "anthropic" | "openai"
     TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "")
+    TRANSLATE_OPENAI_MODEL = os.getenv("TRANSLATE_OPENAI_MODEL", "gpt-5-mini")
     TRANSLATE_CONTEXT_COUNT = _parse_int(os.getenv("TRANSLATE_CONTEXT_COUNT"), 0)
     TRANSLATE_API_KEY = os.getenv("TRANSLATE_API_KEY")
 

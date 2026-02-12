@@ -1,10 +1,12 @@
 """번역 모듈
 
-Anthropic API를 직접 호출하여 번역합니다.
+Anthropic 또는 OpenAI API를 호출하여 번역합니다.
+backend 설정(Config.TRANSLATE_BACKEND)에 따라 분기합니다.
 """
 
 import logging
 import anthropic
+import openai
 
 from seosoyoung.config import Config
 from seosoyoung.translator.detector import Language
@@ -91,14 +93,22 @@ Text to translate:
     return prompt, glossary_terms, match_result
 
 
-# 모델별 가격 (2025년 기준, USD per 1M tokens)
+# 모델별 가격 (USD per 1M tokens)
 MODEL_PRICING = {
+    # Anthropic
     "claude-3-5-haiku-latest": {"input": 0.80, "output": 4.00},
     "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00},
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "claude-3-5-sonnet-latest": {"input": 3.00, "output": 15.00},
     "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
     "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
+    # OpenAI
+    "gpt-5-mini": {"input": 0.40, "output": 1.60},
+    "gpt-4.1-mini": {"input": 0.40, "output": 1.60},
+    "gpt-4.1-nano": {"input": 0.10, "output": 0.40},
+    "gpt-4.1": {"input": 2.00, "output": 8.00},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-4o": {"input": 2.50, "output": 10.00},
 }
 
 # 기본 가격 (알 수 없는 모델용)
@@ -122,11 +132,46 @@ def _calculate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     return input_cost + output_cost
 
 
+def _translate_anthropic(prompt: str, model: str, api_key: str) -> tuple[str, int, int]:
+    """Anthropic API로 번역
+
+    Returns:
+        (번역된 텍스트, 입력 토큰 수, 출력 토큰 수)
+    """
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model=model,
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    translated = response.content[0].text.strip()
+    return translated, response.usage.input_tokens, response.usage.output_tokens
+
+
+def _translate_openai(prompt: str, model: str, api_key: str) -> tuple[str, int, int]:
+    """OpenAI API로 번역
+
+    Returns:
+        (번역된 텍스트, 입력 토큰 수, 출력 토큰 수)
+    """
+    client = openai.OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=2048,
+    )
+    translated = response.choices[0].message.content.strip()
+    input_tokens = response.usage.prompt_tokens
+    output_tokens = response.usage.completion_tokens
+    return translated, input_tokens, output_tokens
+
+
 def translate(
     text: str,
     source_lang: Language,
     context_messages: list[dict] | None = None,
     model: str | None = None,
+    backend: str | None = None,
 ) -> tuple[str, float, list[tuple[str, str]], GlossaryMatchResult | None]:
     """텍스트를 번역
 
@@ -134,40 +179,39 @@ def translate(
         text: 번역할 텍스트
         source_lang: 원본 언어
         context_messages: 이전 대화 컨텍스트
-        model: 사용할 모델 (기본값: Config.TRANSLATE_MODEL)
+        model: 사용할 모델 (기본값: backend에 따라 Config에서 결정)
+        backend: 번역 백엔드 ("anthropic" | "openai", 기본값: Config.TRANSLATE_BACKEND)
 
     Returns:
         (번역된 텍스트, 예상 비용 USD, 참고한 용어 목록, 매칭 결과 객체)
 
     Raises:
-        Exception: API 호출 실패 시
+        ValueError: API 키 미설정 또는 잘못된 backend
     """
-    api_key = Config.TRANSLATE_API_KEY
-    if not api_key:
-        raise ValueError("TRANSLATE_API_KEY가 설정되지 않았습니다.")
+    backend = backend or Config.TRANSLATE_BACKEND
 
-    model = model or Config.TRANSLATE_MODEL
+    if backend == "openai":
+        api_key = Config.OPENAI_API_KEY
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다.")
+        model = model or Config.TRANSLATE_OPENAI_MODEL
+    else:
+        api_key = Config.TRANSLATE_API_KEY
+        if not api_key:
+            raise ValueError("TRANSLATE_API_KEY가 설정되지 않았습니다.")
+        model = model or Config.TRANSLATE_MODEL
+
     prompt, glossary_terms, match_result = _build_prompt(text, source_lang, context_messages)
 
-    logger.debug(f"번역 요청: {text[:50]}... -> {source_lang.value}")
+    logger.debug(f"번역 요청 [{backend}]: {text[:50]}... -> {source_lang.value}")
 
-    client = anthropic.Anthropic(api_key=api_key)
+    if backend == "openai":
+        translated, input_tokens, output_tokens = _translate_openai(prompt, model, api_key)
+    else:
+        translated, input_tokens, output_tokens = _translate_anthropic(prompt, model, api_key)
 
-    response = client.messages.create(
-        model=model,
-        max_tokens=2048,
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
-
-    translated = response.content[0].text.strip()
-
-    # 토큰 사용량에서 비용 계산
-    input_tokens = response.usage.input_tokens
-    output_tokens = response.usage.output_tokens
     cost = _calculate_cost(input_tokens, output_tokens, model)
 
-    logger.debug(f"번역 완료: {translated[:50]}... (비용: ${cost:.6f})")
+    logger.debug(f"번역 완료 [{backend}]: {translated[:50]}... (비용: ${cost:.6f})")
 
     return translated, cost, glossary_terms, match_result

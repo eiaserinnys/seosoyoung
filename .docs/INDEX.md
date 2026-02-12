@@ -242,6 +242,6 @@
 - `find_relevant_terms_v2()` (seosoyoung/translator/glossary.py:287): 텍스트에서 관련 용어 추출 (개선된 버전, 디버그 정보 포함)
 - `get_term_mappings()` (seosoyoung/translator/glossary.py:403): 용어 매핑 딕셔너리 생성 (하위 호환성 유지)
 - `clear_cache()` (seosoyoung/translator/glossary.py:433): 캐시 초기화 (테스트 또는 용어집 갱신 시 사용)
-- `translate()` (seosoyoung/translator/translator.py:125): 텍스트를 번역
+- `translate()` (seosoyoung/translator/translator.py:169): 텍스트를 번역
 - `async get_article()` (seosoyoung/web/__init__.py:22): URL에서 아티클 추출
 - `format_article_for_prompt()` (seosoyoung/web/__init__.py:97): 아티클 데이터를 프롬프트용 문자열로 포맷
