@@ -241,6 +241,7 @@ class ContextBuilder:
                 )
 
         # 2. 새 관찰 (현재 세션의 이전 턴에서 새로 추가된 관찰 diff)
+        #    주입 후 클리어하여 다음 턴에 재주입 방지
         if include_new_observations:
             new_obs = self.store.get_new_observations(thread_ts)
             if new_obs and new_obs.strip():
@@ -253,6 +254,7 @@ class ContextBuilder:
                     f"{observations}\n"
                     "</new-observations>"
                 )
+                self.store.clear_new_observations(thread_ts)
 
         # 3. 세션 관찰 (observations/{thread_ts}.md)
         if include_session:

@@ -211,6 +211,12 @@ class MemoryStore:
             return path.read_text(encoding="utf-8")
         return ""
 
+    def clear_new_observations(self, thread_ts: str) -> None:
+        """주입 완료된 새 관찰을 클리어합니다."""
+        path = self._new_obs_path(thread_ts)
+        if path.exists():
+            path.unlink()
+
     def _inject_flag_path(self, thread_ts: str) -> Path:
         return self.observations_dir / f"{thread_ts}.inject"
 

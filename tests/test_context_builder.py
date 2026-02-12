@@ -473,6 +473,22 @@ class TestContextBuilderNewObservations:
         assert "한국어 커밋" in result.prompt
         assert result.new_observation_tokens > 0
 
+    def test_new_observations_cleared_after_injection(self, builder, store):
+        """주입 후 .new.md가 클리어되어 다음 턴에 재주입되지 않음"""
+        store.save_new_observations("ts_session", "🔴 한 번만 주입되어야 하는 관찰")
+
+        # 첫 번째 호출: 주입됨
+        result1 = builder.build_memory_prompt(
+            "ts_session", include_new_observations=True,
+        )
+        assert result1.new_observation_tokens > 0
+
+        # 두 번째 호출: .new.md가 클리어되었으므로 주입 없음
+        result2 = builder.build_memory_prompt(
+            "ts_session", include_new_observations=True,
+        )
+        assert result2.new_observation_tokens == 0
+
     def test_no_new_md_no_injection(self, builder, store):
         """현재 세션의 .new.md가 없으면 주입 없음"""
         result = builder.build_memory_prompt(
