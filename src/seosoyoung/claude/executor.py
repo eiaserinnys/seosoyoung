@@ -658,7 +658,7 @@ class ClaudeExecutor:
         if effective_role == "admin":
             if result.update_requested or result.restart_requested:
                 self._handle_restart_marker(
-                    result, session, thread_ts, say
+                    result, session, channel, thread_ts, say
                 )
 
         # LIST_RUN 마커 감지 (admin 역할만, 새 정주행 시작 마커일 때만)
@@ -885,7 +885,7 @@ class ClaudeExecutor:
             except Exception:
                 self.send_long_message(say, display_response, thread_ts)
 
-    def _handle_restart_marker(self, result, session, thread_ts, say):
+    def _handle_restart_marker(self, result, session, channel, thread_ts, say):
         """재기동 마커 처리"""
         restart_type = RestartType.UPDATE if result.update_requested else RestartType.RESTART
         type_name = "업데이트" if result.update_requested else "재시작"
@@ -897,7 +897,7 @@ class ClaudeExecutor:
             say(text=f"코드가 변경되었습니다. 다른 대화가 진행 중이어서 확인이 필요합니다.", thread_ts=thread_ts)
             self.send_restart_confirmation(
                 client=None,  # Not needed for this call path
-                channel=Config.TRELLO_NOTIFY_CHANNEL,
+                channel=channel,
                 restart_type=restart_type,
                 running_count=running_count,
                 user_id=session.user_id,
