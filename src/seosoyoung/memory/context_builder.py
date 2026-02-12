@@ -247,10 +247,8 @@ class ContextBuilder:
                 exclude_thread_ts=thread_ts,
             )
             if record:
-                # 저장된 새 관찰 diff 사용 (없으면 전체 관찰 fallback)
+                # 저장된 새 관찰 diff만 사용 (없으면 주입하지 않음)
                 new_obs = self.store.get_new_observations(record.thread_ts)
-                if not new_obs and record.observations.strip():
-                    new_obs = record.observations
                 if new_obs and new_obs.strip():
                     observations = add_relative_time(new_obs)
                     new_observation_tokens = self._counter.count_string(observations)

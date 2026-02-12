@@ -458,13 +458,14 @@ class TestContextBuilderNewObservations:
         return ContextBuilder(store)
 
     def test_new_observations_injected(self, builder, store):
-        """이전 세션의 미전달 관찰이 새 세션에 주입됨"""
+        """이전 세션의 미전달 새 관찰(.new.md)이 새 세션에 주입됨"""
         store.save_record(MemoryRecord(
             thread_ts="ts_prev",
             user_id="U123",
             observations="## [2026-02-10] 이전 세션\n\n🔴 사용자가 한국어 커밋을 선호",
             last_observed_at=datetime(2026, 2, 10, 15, 0, tzinfo=timezone.utc),
         ))
+        store.save_new_observations("ts_prev", "🔴 사용자가 한국어 커밋을 선호")
 
         result = builder.build_memory_prompt(
             "ts_new",
@@ -478,6 +479,27 @@ class TestContextBuilderNewObservations:
         assert "</new-observations>" in result.prompt
         assert "한국어 커밋" in result.prompt
         assert result.new_observation_tokens > 0
+
+    def test_no_new_md_no_injection(self, builder, store):
+        """새 관찰 diff(.new.md)가 없으면 전체 관찰을 fallback 주입하지 않음"""
+        store.save_record(MemoryRecord(
+            thread_ts="ts_prev",
+            user_id="U123",
+            observations="## [2026-02-10] 이전 세션\n\n🔴 큰 관찰 내용",
+            last_observed_at=datetime(2026, 2, 10, 15, 0, tzinfo=timezone.utc),
+        ))
+        # .new.md를 저장하지 않음
+
+        result = builder.build_memory_prompt(
+            "ts_new",
+            include_persistent=False,
+            include_session=False,
+            include_new_observations=True,
+        )
+
+        assert result.new_observation_tokens == 0
+        if result.prompt:
+            assert "<new-observations>" not in result.prompt
 
     def test_new_observations_not_injected_when_disabled(self, builder, store):
         """include_new_observations=False면 주입되지 않음"""
@@ -514,6 +536,7 @@ class TestContextBuilderNewObservations:
             observations="## 관찰",
             last_observed_at=datetime(2026, 2, 10, 15, 0, tzinfo=timezone.utc),
         ))
+        store.save_new_observations("ts_prev", "## 관찰")
 
         # 첫 번째 호출: 주입됨
         result1 = builder.build_memory_prompt("ts_new", include_new_observations=True)
@@ -532,6 +555,7 @@ class TestContextBuilderNewObservations:
             observations="## 이전 관찰",
             last_observed_at=datetime(2026, 2, 10, 15, 0, tzinfo=timezone.utc),
         ))
+        store.save_new_observations("ts_prev", "## 이전 관찰")
 
         result = builder.build_memory_prompt(
             "ts_new",

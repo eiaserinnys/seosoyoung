@@ -164,7 +164,7 @@ class TestMCPE2ETrelloFlow:
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner()
-        options, _memory_prompt = runner._build_options(
+        options, _memory_prompt, _anchor_ts = runner._build_options(
             channel="C_TRELLO_NOTIFY",
             thread_ts="2222222222.000001",
         )

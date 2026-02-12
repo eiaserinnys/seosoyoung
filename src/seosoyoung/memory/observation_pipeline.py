@@ -86,7 +86,7 @@ def _extract_new_observations(
     Observer가 전체를 재작성하므로, 기존 줄 집합에 없는 줄만 반환합니다.
     """
     if not existing or not existing.strip():
-        return updated
+        return ""
 
     existing_lines = set(line.strip() for line in existing.strip().splitlines() if line.strip())
     new_lines = []

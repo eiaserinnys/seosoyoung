@@ -349,8 +349,8 @@ class TestRunWithSessionResume:
 
         original_build = runner._build_options
 
-        def capture_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
-            opts = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+        def capture_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None, prompt=None):
+            opts = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel, prompt=prompt)
             captured_options.append(opts)
             return opts
 
@@ -364,7 +364,7 @@ class TestRunWithSessionResume:
                     )
 
         assert len(captured_options) > 0
-        options, _memory_prompt = captured_options[0]
+        options, _memory_prompt, _anchor_ts = captured_options[0]
         assert options.resume == "existing-session"
 
 
