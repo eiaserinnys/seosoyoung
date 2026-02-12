@@ -209,6 +209,11 @@ class Config:
     )
 
     # ========================================
+    # 컨텍스트 사용량 표시 설정
+    # ========================================
+    SHOW_CONTEXT_USAGE = _parse_bool(os.getenv("SHOW_CONTEXT_USAGE"), False)
+
+    # ========================================
     # 실행 트리거 설정
     # ========================================
     EXECUTE_EMOJI = os.getenv("EXECUTE_EMOJI", "rocket")

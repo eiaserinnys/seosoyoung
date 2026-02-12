@@ -20,7 +20,8 @@ from seosoyoung.claude.message_formatter import (
     escape_backticks,
     parse_summary_details,
     strip_summary_details_markers,
-    build_trello_header
+    build_trello_header,
+    build_context_usage_bar,
 )
 from seosoyoung.claude.reaction_manager import (
     TRELLO_REACTIONS,
@@ -615,6 +616,11 @@ class ClaudeExecutor:
             )
             return
 
+        # 컨텍스트 사용량 바 (설정이 켜져 있고 usage 정보가 있을 때)
+        usage_bar = None
+        if Config.SHOW_CONTEXT_USAGE:
+            usage_bar = build_context_usage_bar(result.usage)
+
         # LIST_RUN: 초기 메시지 삭제를 방지해야 하는 경우
         # 1) result.list_run 마커가 있거나 (새 정주행 시작)
         # 2) trello_card.list_key == "list_run"이면 (정주행 중 개별 카드 실행)
@@ -628,13 +634,15 @@ class ClaudeExecutor:
             self._handle_trello_success(
                 result, response, session, trello_card,
                 channel, thread_ts, main_msg_ts, say, client,
-                is_list_run=is_list_run
+                is_list_run=is_list_run,
+                usage_bar=usage_bar,
             )
         else:
             self._handle_normal_success(
                 result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client,
                 is_thread_reply=is_thread_reply,
-                is_list_run=is_list_run
+                is_list_run=is_list_run,
+                usage_bar=usage_bar,
             )
 
         # 재기동 마커 감지 (admin 역할만 허용)
@@ -653,7 +661,8 @@ class ClaudeExecutor:
     def _handle_trello_success(
         self, result, response, session, trello_card,
         channel, thread_ts, main_msg_ts, say, client,
-        is_list_run: bool = False
+        is_list_run: bool = False,
+        usage_bar: str = None,
     ):
         """트렐로 모드 성공 처리"""
         # 이전 상태 리액션 제거 후 완료 리액션 추가
@@ -664,6 +673,8 @@ class ClaudeExecutor:
         final_session_id = result.session_id or session.session_id or ""
         header = build_trello_header(trello_card, final_session_id)
         continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
+        if usage_bar:
+            continuation_hint = f"{usage_bar}\n{continuation_hint}"
 
         # 요약/상세 분리 파싱 (멘션과 동일하게 처리)
         summary, details, remainder = parse_summary_details(response)
@@ -747,10 +758,13 @@ class ClaudeExecutor:
     def _handle_normal_success(
         self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client,
         is_thread_reply: bool = False,
-        is_list_run: bool = False
+        is_list_run: bool = False,
+        usage_bar: str = None,
     ):
         """일반 모드(멘션) 성공 처리"""
         continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
+        if usage_bar:
+            continuation_hint = f"{usage_bar}\n{continuation_hint}"
 
         # 요약/상세 분리 파싱
         summary, details, remainder = parse_summary_details(response)
@@ -818,6 +832,8 @@ class ClaudeExecutor:
         else:
             # 스레드 내 후속 대화: 마커가 있으면 태그만 제거하고 스레드에 응답
             display_response = strip_summary_details_markers(response) if (summary or details) else response
+            if usage_bar:
+                display_response = f"{display_response}\n\n{usage_bar}"
 
             try:
                 if len(display_response) <= 3900:

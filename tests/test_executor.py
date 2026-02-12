@@ -2,6 +2,7 @@
 
 import pytest
 from seosoyoung.claude.message_formatter import (
+    build_context_usage_bar,
     parse_summary_details,
     strip_summary_details_markers,
 )
@@ -200,3 +201,79 @@ print("hello")
         assert "• 포인트 2" in result
         assert "## 제목" in result
         assert "```python" in result
+
+
+class TestBuildContextUsageBar:
+    """build_context_usage_bar 함수 테스트"""
+
+    def test_none_usage(self):
+        """usage가 None이면 None 반환"""
+        assert build_context_usage_bar(None) is None
+
+    def test_empty_usage(self):
+        """usage가 빈 dict이면 None 반환"""
+        assert build_context_usage_bar({}) is None
+
+    def test_zero_tokens(self):
+        """토큰이 0이면 None 반환"""
+        assert build_context_usage_bar({"input_tokens": 0, "output_tokens": 0}) is None
+
+    def test_low_usage(self):
+        """낮은 사용량 (10%)"""
+        usage = {"input_tokens": 15000, "output_tokens": 5000}  # 20k / 200k = 10%
+        result = build_context_usage_bar(usage)
+        assert result is not None
+        assert "10%" in result
+        assert "■■" in result
+        assert "□" in result
+
+    def test_half_usage(self):
+        """절반 사용량 (50%)"""
+        usage = {"input_tokens": 80000, "output_tokens": 20000}  # 100k / 200k = 50%
+        result = build_context_usage_bar(usage)
+        assert result is not None
+        assert "50%" in result
+        filled = result.count("■")
+        empty = result.count("□")
+        assert filled == 10
+        assert empty == 10
+
+    def test_full_usage(self):
+        """거의 만석 (100%)"""
+        usage = {"input_tokens": 180000, "output_tokens": 20000}  # 200k / 200k = 100%
+        result = build_context_usage_bar(usage)
+        assert result is not None
+        assert "100%" in result
+        assert "□" not in result
+
+    def test_over_capacity(self):
+        """초과해도 100%로 캡"""
+        usage = {"input_tokens": 200000, "output_tokens": 50000}  # 250k / 200k > 100%
+        result = build_context_usage_bar(usage)
+        assert result is not None
+        assert "100%" in result
+
+    def test_format_structure(self):
+        """출력 포맷이 올바른지 확인"""
+        usage = {"input_tokens": 60000, "output_tokens": 0}  # 30%
+        result = build_context_usage_bar(usage)
+        assert result is not None
+        assert result.startswith("`Context`")
+        assert "30%" in result
+
+    def test_only_input_tokens(self):
+        """input_tokens만 있는 경우"""
+        usage = {"input_tokens": 40000}  # 20%
+        result = build_context_usage_bar(usage)
+        assert result is not None
+        assert "20%" in result
+
+    def test_custom_bar_length(self):
+        """bar_length 커스텀"""
+        usage = {"input_tokens": 100000, "output_tokens": 0}  # 50%
+        result = build_context_usage_bar(usage, bar_length=10)
+        assert result is not None
+        filled = result.count("■")
+        empty = result.count("□")
+        assert filled == 5
+        assert empty == 5

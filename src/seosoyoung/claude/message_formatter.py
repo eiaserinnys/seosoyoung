@@ -4,7 +4,40 @@ Claude 응답을 슬랙 메시지 형식으로 변환하는 함수들을 제공�
 """
 
 import re
+from typing import Optional
+
 from seosoyoung.trello.watcher import TrackedCard
+
+# Claude 모델별 컨텍스트 윈도우 (tokens)
+CONTEXT_WINDOW = 200_000
+
+
+def build_context_usage_bar(usage: Optional[dict], bar_length: int = 20) -> Optional[str]:
+    """usage dict에서 컨텍스트 사용량 바를 생성
+
+    Args:
+        usage: ResultMessage.usage dict (input_tokens, output_tokens 등)
+        bar_length: 바의 전체 칸 수
+
+    Returns:
+        "Context | ■■■■■■□□□□□□□□□□□□□□ | 30%" 형태 문자열, 또는 None
+    """
+    if not usage:
+        return None
+
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    total_tokens = input_tokens + output_tokens
+
+    if total_tokens <= 0:
+        return None
+
+    percent = min(total_tokens / CONTEXT_WINDOW * 100, 100)
+    filled = round(percent / 100 * bar_length)
+    empty = bar_length - filled
+
+    bar = "■" * filled + "□" * empty
+    return f"`Context` | `{bar}` | `{percent:.0f}%`"
 
 
 def escape_backticks(text: str) -> str:

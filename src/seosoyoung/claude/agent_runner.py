@@ -96,6 +96,7 @@ class ClaudeResult:
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
     collected_messages: list[dict] = field(default_factory=list)  # OM용 대화 수집
     interrupted: bool = False  # interrupt로 중단된 경우 True
+    usage: Optional[dict] = None  # ResultMessage.usage (input_tokens, output_tokens 등)
 
 
 class ClaudeAgentRunner:
@@ -595,6 +596,7 @@ class ClaudeAgentRunner:
         current_text = ""
         result_text = ""
         result_is_error = False  # ResultMessage.is_error 추적
+        result_usage: Optional[dict] = None  # ResultMessage.usage 추적
         collected_messages: list[dict] = []  # OM용 대화 수집
         last_progress_time = asyncio.get_event_loop().time()
         progress_interval = 2.0
@@ -694,6 +696,9 @@ class ClaudeAgentRunner:
                     # ResultMessage에서도 세션 ID 추출 시도
                     if hasattr(message, 'session_id') and message.session_id:
                         result_session_id = message.session_id
+                    # usage 정보 추출
+                    if hasattr(message, 'usage') and message.usage:
+                        result_usage = message.usage
 
                 # 컴팩션 이벤트 확인 (PreCompact 훅에서 추가된 이벤트)
                 if on_compact and len(compact_events) > compact_notified_count:
@@ -737,6 +742,7 @@ class ClaudeAgentRunner:
                 list_run=list_run,
                 collected_messages=collected_messages,
                 interrupted=result_is_error,
+                usage=result_usage,
             )
 
         except asyncio.TimeoutError:
