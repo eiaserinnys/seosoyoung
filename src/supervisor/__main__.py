@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from .config import build_process_configs, _resolve_paths
-from .deployer import Deployer
+from .deployer import Deployer, SupervisorRestartRequired
 from .git_poller import GitPoller
 from .models import ExitAction, RESTART_DELAY_SECONDS, ProcessStatus
 from .process_manager import ProcessManager
@@ -88,60 +88,67 @@ def main() -> None:
         signal.signal(signal.SIGBREAK, _on_shutdown)
 
     # 메인 루프
+    EXIT_CODE_SUPERVISOR_RESTART = 42
     last_git_check = 0.0
 
-    while not shutting_down:
-        time.sleep(HEALTH_CHECK_INTERVAL)
+    try:
+        while not shutting_down:
+            time.sleep(HEALTH_CHECK_INTERVAL)
 
-        # 프로세스 헬스체크
-        for name in pm.registered_names:
-            exit_code = pm.poll(name)
-            state = pm._states[name]
+            # 프로세스 헬스체크
+            for name in pm.registered_names:
+                exit_code = pm.poll(name)
+                state = pm._states[name]
 
-            if state.status != ProcessStatus.STOPPED:
-                continue  # 아직 실행 중
+                if state.status != ProcessStatus.STOPPED:
+                    continue  # 아직 실행 중
 
-            if exit_code is None:
-                continue  # poll 했지만 변화 없음 (이미 stopped)
+                if exit_code is None:
+                    continue  # poll 했지만 변화 없음 (이미 stopped)
 
-            config = state.config
-            policy = config.restart_policy
+                config = state.config
+                policy = config.restart_policy
 
-            if policy.use_exit_codes:
-                action = pm.resolve_exit_action(exit_code)
-            elif policy.auto_restart:
-                action = ExitAction.RESTART_DELAY
-            else:
-                action = ExitAction.SHUTDOWN
+                if policy.use_exit_codes:
+                    action = pm.resolve_exit_action(exit_code)
+                elif policy.auto_restart:
+                    action = ExitAction.RESTART_DELAY
+                else:
+                    action = ExitAction.SHUTDOWN
 
-            logger.info(
-                "%s: exit_code=%s → action=%s",
-                name, exit_code, action.value,
-            )
+                logger.info(
+                    "%s: exit_code=%s → action=%s",
+                    name, exit_code, action.value,
+                )
 
-            if action == ExitAction.SHUTDOWN:
-                logger.info("%s: 정상 종료, 재시작하지 않음", name)
-            elif action == ExitAction.UPDATE:
-                # exit code 42: Deployer를 통한 즉시 배포
-                deployer.notify_change()
-                deployer.tick()
-            elif action == ExitAction.RESTART:
-                pm.restart(name)
-            elif action == ExitAction.RESTART_DELAY:
-                delay = policy.restart_delay or RESTART_DELAY_SECONDS
-                logger.info("%s: %.1f초 후 재시작", name, delay)
-                time.sleep(delay)
-                pm.restart(name)
+                if action == ExitAction.SHUTDOWN:
+                    logger.info("%s: 정상 종료, 재시작하지 않음", name)
+                elif action == ExitAction.UPDATE:
+                    # exit code 42: Deployer를 통한 즉시 배포
+                    deployer.notify_change()
+                    deployer.tick()
+                elif action == ExitAction.RESTART:
+                    pm.restart(name)
+                elif action == ExitAction.RESTART_DELAY:
+                    delay = policy.restart_delay or RESTART_DELAY_SECONDS
+                    logger.info("%s: %.1f초 후 재시작", name, delay)
+                    time.sleep(delay)
+                    pm.restart(name)
 
-        # Git polling (매 GIT_POLL_INTERVAL초마다)
-        now = time.monotonic()
-        if now - last_git_check >= GIT_POLL_INTERVAL:
-            last_git_check = now
-            if git_poller.check():
-                deployer.notify_change()
+            # Git polling (매 GIT_POLL_INTERVAL초마다)
+            now = time.monotonic()
+            if now - last_git_check >= GIT_POLL_INTERVAL:
+                last_git_check = now
+                if git_poller.check():
+                    deployer.notify_change()
 
-        # Deployer tick (세션 대기 → 배포 진행)
-        deployer.tick()
+            # Deployer tick (세션 대기 → 배포 진행)
+            deployer.tick()
+
+    except SupervisorRestartRequired:
+        logger.info("supervisor 자체 코드 변경 감지 → exit %d", EXIT_CODE_SUPERVISOR_RESTART)
+        pm.stop_all()
+        sys.exit(EXIT_CODE_SUPERVISOR_RESTART)
 
 
 if __name__ == "__main__":

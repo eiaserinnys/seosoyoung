@@ -125,6 +125,79 @@ class TestExecuteDeploy:
         assert mock_pm.start.call_count >= 1
 
 
+class TestSupervisorChangeDetection:
+    """supervisor 자체 코드 변경 감지 테스트"""
+
+    def test_has_supervisor_changes_true(self, deployer):
+        """src/supervisor/ 경로 변경이 있으면 True"""
+        files = [
+            "src/supervisor/deployer.py",
+            "src/seosoyoung/bot.py",
+        ]
+        assert deployer._has_supervisor_changes(files) is True
+
+    def test_has_supervisor_changes_false(self, deployer):
+        """supervisor 외 변경만 있으면 False"""
+        files = [
+            "src/seosoyoung/bot.py",
+            "scripts/start.ps1",
+        ]
+        assert deployer._has_supervisor_changes(files) is False
+
+    def test_has_supervisor_changes_empty(self, deployer):
+        """변경 파일 없으면 False"""
+        assert deployer._has_supervisor_changes([]) is False
+
+    def test_get_changed_files_success(self, deployer):
+        """git diff 성공 시 파일 목록 반환"""
+        with patch("supervisor.deployer.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="src/supervisor/deployer.py\nsrc/seosoyoung/bot.py\n",
+            )
+            files = deployer._get_changed_files()
+            assert files == ["src/supervisor/deployer.py", "src/seosoyoung/bot.py"]
+
+    def test_get_changed_files_failure(self, deployer):
+        """git diff 실패 시 빈 리스트"""
+        with patch("supervisor.deployer.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="error")
+            files = deployer._get_changed_files()
+            assert files == []
+
+    def test_deploy_with_supervisor_changes_raises(self, deployer, mock_pm):
+        """supervisor 변경 시 SupervisorRestartRequired 예외 발생"""
+        from supervisor.deployer import SupervisorRestartRequired
+
+        deployer._state = DeployState.PENDING
+        deployer._session_monitor.is_safe_to_deploy.return_value = True
+
+        with patch.object(
+            deployer, "_get_changed_files",
+            return_value=["src/supervisor/deployer.py"],
+        ), patch.object(deployer, "_do_update"):
+            with pytest.raises(SupervisorRestartRequired):
+                deployer.tick()
+
+        # supervisor 변경 시 프로세스 중지는 호출됨
+        mock_pm.stop_all.assert_called_once()
+
+    def test_deploy_without_supervisor_changes_normal(self, deployer, mock_pm):
+        """supervisor 외 변경 시 정상 배포"""
+        deployer._state = DeployState.PENDING
+        deployer._session_monitor.is_safe_to_deploy.return_value = True
+
+        with patch.object(
+            deployer, "_get_changed_files",
+            return_value=["src/seosoyoung/bot.py"],
+        ), patch.object(deployer, "_do_update"):
+            deployer.tick()
+
+        assert deployer.state == DeployState.IDLE
+        mock_pm.stop_all.assert_called_once()
+        assert mock_pm.start.call_count == 2
+
+
 class TestStatus:
     def test_status_returns_current_state(self, deployer):
         info = deployer.status()

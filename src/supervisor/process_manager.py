@@ -84,8 +84,10 @@ class ProcessManager:
                 env=env,
                 stdout=stdout_fh or subprocess.DEVNULL,
                 stderr=stderr_fh or subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                if os.name == "nt" else 0,
+                creationflags=(
+                    subprocess.CREATE_NEW_PROCESS_GROUP
+                    | subprocess.CREATE_NO_WINDOW
+                ) if os.name == "nt" else 0,
             )
         except Exception:
             self._close_log_files(name)

@@ -14,6 +14,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("supervisor")
 
+# supervisor 코드가 포함된 경로 접두사
+_SUPERVISOR_PATH_PREFIX = "src/supervisor/"
+
+
+class SupervisorRestartRequired(Exception):
+    """supervisor 자체 코드 변경으로 프로세스 재시작이 필요할 때 발생."""
+
 
 class DeployState(enum.Enum):
     """배포 상태"""
@@ -64,8 +71,42 @@ class Deployer:
                 self._state = DeployState.WAITING_SESSIONS
                 logger.info("배포 상태: pending → waiting_sessions (세션 대기)")
 
+    def _get_changed_files(self) -> list[str]:
+        """원격 대비 변경된 파일 목록을 가져온다."""
+        runtime = self._paths["runtime"]
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD..origin/main"],
+                cwd=str(runtime),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                logger.warning("git diff 실패: %s", result.stderr.strip())
+                return []
+            return [f for f in result.stdout.strip().split("\n") if f]
+        except (subprocess.SubprocessError, OSError) as exc:
+            logger.warning("변경 파일 목록 조회 실패: %s", exc)
+            return []
+
+    def _has_supervisor_changes(self, changed_files: list[str]) -> bool:
+        """변경 파일 중 supervisor 코드가 포함되어 있는지 확인."""
+        return any(f.startswith(_SUPERVISOR_PATH_PREFIX) for f in changed_files)
+
     def _execute_deploy(self) -> None:
-        """배포 실행: stop → update → restart."""
+        """배포 실행: stop → update → restart.
+
+        supervisor 자체 코드 변경이 감지되면 SupervisorRestartRequired를 발생시켜
+        watchdog이 pull 후 supervisor를 재시작하도록 한다.
+        """
+        changed_files = self._get_changed_files()
+        supervisor_changed = self._has_supervisor_changes(changed_files)
+
+        if supervisor_changed:
+            logger.info("supervisor 코드 변경 감지 → 자식 프로세스 중지 후 exit 42")
+            self._pm.stop_all()
+            raise SupervisorRestartRequired()
+
         try:
             logger.info("배포 시작: 프로세스 중지")
             self._pm.stop_all()
