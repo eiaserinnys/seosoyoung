@@ -1,6 +1,6 @@
 """슬랙 리액션 관리
 
-트렐로 모드에서 메시지에 이모지 리액션을 추가/제거하는 기능을 제공합니다.
+트렐로 모드 및 멘션 모드에서 메시지에 이모지 리액션을 추가/제거하는 기능을 제공합니다.
 """
 
 import logging
@@ -16,6 +16,13 @@ TRELLO_REACTIONS = {
     "executing": Config.EMOJI_EXECUTING,
     "success": Config.EMOJI_SUCCESS,
     "error": Config.EMOJI_ERROR,
+}
+
+# 멘션 모드 이모지 리액션 매핑
+MENTION_REACTIONS = {
+    "thinking": Config.EMOJI_PLANNING,   # ssy-thinking
+    "success": Config.EMOJI_SUCCESS,     # ssy-happy
+    "error": Config.EMOJI_ERROR,         # ssy-angry
 }
 
 # 인터벤션 이모지
