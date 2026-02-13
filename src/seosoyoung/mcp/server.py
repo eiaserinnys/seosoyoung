@@ -8,6 +8,7 @@ from seosoyoung.mcp.tools.attach import attach_file, get_slack_context
 from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 from seosoyoung.mcp.tools.slack_messaging import post_message
 from seosoyoung.mcp.tools.thread_files import download_thread_files
+from seosoyoung.mcp.tools.user_profile import download_user_avatar, get_user_profile
 
 mcp = FastMCP("seosoyoung-attach")
 
@@ -94,3 +95,30 @@ async def slack_download_thread_files(channel: str, thread_ts: str) -> dict:
         thread_ts: 스레드 타임스탬프
     """
     return await download_thread_files(channel, thread_ts)
+
+
+@mcp.tool()
+def slack_get_user_profile(user_id: str) -> dict:
+    """Slack 사용자의 프로필 정보를 조회합니다.
+
+    display_name, real_name, title, status, email, 프로필 이미지 URL 등을 반환합니다.
+
+    Args:
+        user_id: Slack User ID (예: U08HWT0C6K1)
+    """
+    return get_user_profile(user_id)
+
+
+@mcp.tool()
+async def slack_download_user_avatar(
+    user_id: str, size: Optional[int] = None
+) -> dict:
+    """Slack 사용자의 프로필 이미지를 다운로드합니다.
+
+    지정한 크기의 프로필 이미지를 로컬에 저장하고 절대 경로를 반환합니다.
+
+    Args:
+        user_id: Slack User ID (예: U08HWT0C6K1)
+        size: 이미지 크기 (24, 32, 48, 72, 192, 512, 1024). 기본값 512.
+    """
+    return await download_user_avatar(user_id, size)
