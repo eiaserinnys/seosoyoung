@@ -74,19 +74,8 @@ class TestSchedulerStartStop:
 class TestCheckAndDigest:
     """_check_and_digest 메서드 테스트"""
 
-    def test_skips_active_channels(self, mock_deps):
-        """개입 모드 중인 채널은 스킵합니다."""
-        mock_deps["cooldown"].is_active.return_value = True
-        mock_deps["store"].count_pending_tokens.return_value = 100
-
-        scheduler = make_scheduler(mock_deps, channels=["C001"])
-        scheduler._check_and_digest()
-
-        mock_deps["store"].count_pending_tokens.assert_not_called()
-
     def test_skips_empty_buffer(self, mock_deps):
         """버퍼가 비어 있으면 스킵합니다."""
-        mock_deps["cooldown"].is_active.return_value = False
         mock_deps["store"].count_pending_tokens.return_value = 0
 
         scheduler = make_scheduler(mock_deps, channels=["C001"])
@@ -97,7 +86,6 @@ class TestCheckAndDigest:
 
     def test_skips_over_threshold(self, mock_deps):
         """임계치 이상이면 스킵합니다 (메시지 이벤트에서 처리)."""
-        mock_deps["cooldown"].is_active.return_value = False
         mock_deps["store"].count_pending_tokens.return_value = 50000
 
         scheduler = make_scheduler(
@@ -110,7 +98,6 @@ class TestCheckAndDigest:
 
     def test_triggers_under_threshold(self, mock_deps):
         """임계치 미만 & 버퍼 있으면 소화를 트리거합니다."""
-        mock_deps["cooldown"].is_active.return_value = False
         mock_deps["store"].count_pending_tokens.return_value = 100
 
         scheduler = make_scheduler(
@@ -123,7 +110,6 @@ class TestCheckAndDigest:
 
     def test_multiple_channels(self, mock_deps):
         """여러 채널을 순회합니다."""
-        mock_deps["cooldown"].is_active.return_value = False
         mock_deps["store"].count_pending_tokens.side_effect = [100, 0, 200]
 
         scheduler = make_scheduler(
@@ -138,7 +124,6 @@ class TestCheckAndDigest:
 
     def test_error_in_one_channel_does_not_block_others(self, mock_deps):
         """한 채널에서 오류가 발생해도 다른 채널 처리에 영향 없음."""
-        mock_deps["cooldown"].is_active.return_value = False
         mock_deps["store"].count_pending_tokens.side_effect = [
             Exception("test error"),
             100,
@@ -163,7 +148,7 @@ class TestRunDigest:
             channels=["C001"],
             buffer_threshold=30000,
             debug_channel="D001",
-            max_intervention_turns=15,
+            intervention_threshold=0.3,
         )
 
         with patch(
@@ -192,7 +177,6 @@ class TestTick:
         scheduler = make_scheduler(mock_deps, channels=["C001"])
         scheduler._running = True
 
-        mock_deps["cooldown"].is_active.return_value = False
         mock_deps["store"].count_pending_tokens.return_value = 0
 
         with patch.object(scheduler, "_schedule_next") as mock_schedule:

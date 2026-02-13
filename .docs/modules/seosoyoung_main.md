@@ -19,23 +19,23 @@ SeoSoyoung 슬랙 봇 메인
 - 설명: 세션 종료 시 재시작 확인
 
 ### `notify_startup()`
-- 위치: 줄 152
+- 위치: 줄 151
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 163
+- 위치: 줄 162
 - 설명: 봇 종료 알림
 
 ### `start_trello_watcher()`
-- 위치: 줄 174
+- 위치: 줄 173
 - 설명: Trello 워처 시작
 
 ### `start_list_runner()`
-- 위치: 줄 194
+- 위치: 줄 193
 - 설명: 리스트 러너 초기화
 
 ### `init_bot_user_id()`
-- 위치: 줄 204
+- 위치: 줄 203
 - 설명: 봇 사용자 ID 초기화
 
 ## 내부 의존성
@@ -50,7 +50,7 @@ SeoSoyoung 슬랙 봇 메인
 - `seosoyoung.handlers.channel_collector.ChannelMessageCollector`
 - `seosoyoung.handlers.register_all_handlers`
 - `seosoyoung.logging_config.setup_logging`
-- `seosoyoung.memory.channel_intervention.CooldownManager`
+- `seosoyoung.memory.channel_intervention.InterventionHistory`
 - `seosoyoung.memory.channel_observer.ChannelObserver`
 - `seosoyoung.memory.channel_observer.DigestCompressor`
 - `seosoyoung.memory.channel_scheduler.ChannelDigestScheduler`

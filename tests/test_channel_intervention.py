@@ -1,6 +1,6 @@
 """채널 개입(intervention) 단위 테스트
 
-Phase 3: 마크업 파서 + 슬랙 발송 + 쿨다운 로직 + 통합 파이프라인 테스트
+InterventionHistory + intervention_probability + 마크업 파서 + 슬랙 발송 테스트
 """
 
 import json
@@ -12,12 +12,14 @@ import pytest
 
 from seosoyoung.memory.channel_intervention import (
     InterventionAction,
+    InterventionHistory,
+    intervention_probability,
     parse_intervention_markup,
     execute_interventions,
-    CooldownManager,
     send_collect_debug_log,
     send_debug_log,
     send_digest_skip_debug_log,
+    send_intervention_probability_debug_log,
 )
 from seosoyoung.memory.channel_observer import (
     ChannelObserverResult,
@@ -189,143 +191,156 @@ class TestExecuteInterventions:
         assert results == []
 
 
-# ── CooldownManager ──────────────────────────────────────
+# ── intervention_probability ─────────────────────────────
 
-class TestCooldownManager:
-    """쿨다운 관리 테스트"""
+class TestInterventionProbability:
+    """확률 함수 단위 테스트"""
 
-    def test_message_allowed_when_no_previous(self, tmp_path):
-        """이전 기록이 없으면 허용"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
-        assert cm.can_intervene("C123") is True
+    def test_zero_minutes_returns_near_zero(self):
+        """경과 시간 0분이면 확률이 거의 0"""
+        # jitter 범위를 고려해서 여러 번 실행하여 평균 확인
+        values = [intervention_probability(0.0, 0) for _ in range(100)]
+        avg = sum(values) / len(values)
+        assert avg < 0.05
 
-    def test_message_blocked_within_cooldown(self, tmp_path):
-        """쿨다운 내에서는 차단"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
-        cm.record_intervention("C123")
-        assert cm.can_intervene("C123") is False
+    def test_long_time_returns_near_one(self):
+        """경과 시간이 충분히 길면 확률이 1에 가까움"""
+        values = [intervention_probability(300.0, 0) for _ in range(100)]
+        avg = sum(values) / len(values)
+        assert avg > 0.9
 
-    def test_message_allowed_after_cooldown(self, tmp_path):
-        """쿨다운 만료 후 허용"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
-        cm.record_intervention("C123")
-        # cooldown_sec=0이므로 즉시 허용
-        assert cm.can_intervene("C123") is True
+    def test_recent_count_suppresses(self):
+        """최근 개입 횟수가 많으면 확률이 낮아짐"""
+        values_0 = [intervention_probability(60.0, 0) for _ in range(100)]
+        values_5 = [intervention_probability(60.0, 5) for _ in range(100)]
+        avg_0 = sum(values_0) / len(values_0)
+        avg_5 = sum(values_5) / len(values_5)
+        assert avg_5 < avg_0
+
+    def test_result_capped_at_one(self):
+        """결과는 최대 1.0"""
+        for _ in range(100):
+            p = intervention_probability(10000.0, 0)
+            assert p <= 1.0
+
+    def test_result_non_negative(self):
+        """결과는 0 이상"""
+        for _ in range(100):
+            p = intervention_probability(0.0, 10)
+            assert p >= 0.0
+
+    def test_monotonic_time_increase(self):
+        """시간이 길수록 확률 증가 (통계적)"""
+        avg_10 = sum(intervention_probability(10, 0) for _ in range(200)) / 200
+        avg_60 = sum(intervention_probability(60, 0) for _ in range(200)) / 200
+        avg_120 = sum(intervention_probability(120, 0) for _ in range(200)) / 200
+        assert avg_10 < avg_60 < avg_120
+
+
+# ── InterventionHistory ──────────────────────────────────
+
+class TestInterventionHistory:
+    """개입 이력 관리 테스트"""
+
+    def test_minutes_since_last_no_history(self, tmp_path):
+        """이력 없으면 무한대 반환"""
+        h = InterventionHistory(base_dir=tmp_path)
+        assert h.minutes_since_last("C123") == float("inf")
+
+    def test_record_and_minutes_since(self, tmp_path):
+        """기록 후 경과 시간이 0에 가까움"""
+        h = InterventionHistory(base_dir=tmp_path)
+        h.record("C123")
+        mins = h.minutes_since_last("C123")
+        assert mins < 1.0  # 방금 기록했으므로 1분 미만
+
+    def test_recent_count_empty(self, tmp_path):
+        """이력 없으면 0"""
+        h = InterventionHistory(base_dir=tmp_path)
+        assert h.recent_count("C123") == 0
+
+    def test_recent_count_after_records(self, tmp_path):
+        """기록 후 카운트 증가"""
+        h = InterventionHistory(base_dir=tmp_path)
+        h.record("C123")
+        h.record("C123")
+        h.record("C123")
+        assert h.recent_count("C123") == 3
+
+    def test_recent_count_window(self, tmp_path):
+        """윈도우 밖의 기록은 카운트에서 제외"""
+        h = InterventionHistory(base_dir=tmp_path)
+        # 3시간 전 기록 직접 삽입
+        meta = h._read_meta("C123")
+        meta["history"].append({"at": time.time() - 3 * 3600, "type": "message"})
+        h._write_meta("C123", meta)
+
+        assert h.recent_count("C123", window_minutes=120) == 0
+        assert h.recent_count("C123", window_minutes=300) == 1
 
     def test_react_always_allowed(self, tmp_path):
-        """이모지 리액션은 쿨다운 대상 아님"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
-        cm.record_intervention("C123")
-        assert cm.can_react("C123") is True
+        """이모지 리액션은 항상 허용"""
+        h = InterventionHistory(base_dir=tmp_path)
+        assert h.can_react("C123") is True
 
-    def test_record_updates_timestamp(self, tmp_path):
-        """기록 시 타임스탬프가 업데이트됨"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
-        cm.record_intervention("C123")
-
-        meta_path = tmp_path / "channel" / "C123" / "intervention.meta.json"
-        assert meta_path.exists()
-        data = json.loads(meta_path.read_text(encoding="utf-8"))
-        assert "last_intervention_at" in data
-
-    def test_filter_actions_by_cooldown(self, tmp_path):
-        """쿨다운에 걸린 메시지 액션은 필터링, 리액션은 유지"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=1800)
-        cm.record_intervention("C123")
-
+    def test_filter_actions_passes_all(self, tmp_path):
+        """filter_actions는 react와 message 모두 통과"""
+        h = InterventionHistory(base_dir=tmp_path)
         actions = [
             InterventionAction(type="message", target="channel", content="개입"),
             InterventionAction(type="react", target="1.1", content="smile"),
         ]
-        filtered = cm.filter_actions("C123", actions)
-        assert len(filtered) == 1
-        assert filtered[0].type == "react"
-
-
-# ── CooldownManager 개입 모드 상태 머신 ─────────────────
-
-class TestCooldownManagerInterventionMode:
-    """개입 모드 상태 머신 테스트 (idle ↔ active)"""
-
-    def test_initial_state_is_idle(self, tmp_path):
-        """초기 상태는 idle"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        assert cm.is_active("C123") is False
-        assert cm.get_remaining_turns("C123") == 0
-
-    def test_enter_intervention_mode(self, tmp_path):
-        """enter_intervention_mode로 active 상태 전환"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cm.enter_intervention_mode("C123", max_turns=5)
-
-        assert cm.is_active("C123") is True
-        assert cm.get_remaining_turns("C123") == 5
-
-    def test_consume_turn_decrements(self, tmp_path):
-        """consume_turn은 턴을 1 소모하고 남은 턴을 반환"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cm.enter_intervention_mode("C123", max_turns=3)
-
-        remaining = cm.consume_turn("C123")
-        assert remaining == 2
-        assert cm.get_remaining_turns("C123") == 2
-
-    def test_consume_turn_to_zero_transitions_to_idle(self, tmp_path):
-        """턴이 0이 되면 idle로 전환되고 쿨다운 기록"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cm.enter_intervention_mode("C123", max_turns=1)
-
-        remaining = cm.consume_turn("C123")
-        assert remaining == 0
-        assert cm.is_active("C123") is False
-        # 쿨다운이 기록되어야 함
-        assert cm.can_intervene("C123") is False
-
-    def test_consume_turn_multiple(self, tmp_path):
-        """여러 턴 소모"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cm.enter_intervention_mode("C123", max_turns=3)
-
-        assert cm.consume_turn("C123") == 2
-        assert cm.consume_turn("C123") == 1
-        assert cm.consume_turn("C123") == 0
-        assert cm.is_active("C123") is False
-
-    def test_consume_turn_when_idle_returns_zero(self, tmp_path):
-        """idle 상태에서 consume_turn은 0 반환"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        remaining = cm.consume_turn("C123")
-        assert remaining == 0
-
-    def test_filter_actions_active_allows_message(self, tmp_path):
-        """active 모드에서는 message 액션도 통과"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=9999)
-        cm.enter_intervention_mode("C123", max_turns=5)
-
-        actions = [
-            InterventionAction(type="message", target="channel", content="개입"),
-            InterventionAction(type="react", target="1.1", content="smile"),
-        ]
-        filtered = cm.filter_actions("C123", actions)
+        filtered = h.filter_actions("C123", actions)
         assert len(filtered) == 2
 
     def test_different_channels_independent(self, tmp_path):
-        """채널마다 독립적인 상태"""
-        cm = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cm.enter_intervention_mode("C123", max_turns=3)
+        """채널마다 독립적인 이력"""
+        h = InterventionHistory(base_dir=tmp_path)
+        h.record("C123")
+        h.record("C123")
+        h.record("C456")
 
-        assert cm.is_active("C123") is True
-        assert cm.is_active("C456") is False
+        assert h.recent_count("C123") == 2
+        assert h.recent_count("C456") == 1
 
-    def test_meta_persists_mode(self, tmp_path):
-        """상태가 파일에 저장되어 새 인스턴스에서도 유지"""
-        cm1 = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cm1.enter_intervention_mode("C123", max_turns=5)
+    def test_history_persists(self, tmp_path):
+        """이력이 파일에 저장되어 새 인스턴스에서도 유지"""
+        h1 = InterventionHistory(base_dir=tmp_path)
+        h1.record("C123")
+        h1.record("C123")
 
-        # 새 인스턴스로 상태 확인
-        cm2 = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        assert cm2.is_active("C123") is True
-        assert cm2.get_remaining_turns("C123") == 5
+        h2 = InterventionHistory(base_dir=tmp_path)
+        assert h2.recent_count("C123") == 2
+
+    def test_prune_old_entries(self, tmp_path):
+        """record 시 2시간 초과 항목 자동 정리"""
+        h = InterventionHistory(base_dir=tmp_path)
+        # 오래된 기록 직접 삽입
+        meta = {"history": [
+            {"at": time.time() - 3 * 3600, "type": "message"},
+            {"at": time.time() - 4 * 3600, "type": "message"},
+        ]}
+        h._write_meta("C123", meta)
+
+        # 새 기록 추가 시 오래된 것들이 정리됨
+        h.record("C123")
+        meta = h._read_meta("C123")
+        assert len(meta["history"]) == 1
+
+    def test_old_format_compat(self, tmp_path):
+        """이전 형식(mode/remaining_turns)의 메타 파일도 처리"""
+        h = InterventionHistory(base_dir=tmp_path)
+        # 이전 형식 메타 직접 작성
+        old_meta = {
+            "last_intervention_at": time.time(),
+            "mode": "active",
+            "remaining_turns": 5,
+        }
+        h._write_meta("C123", old_meta)
+
+        # history 키가 없으면 빈 history로 초기화
+        assert h.recent_count("C123") == 0
+        assert h.minutes_since_last("C123") == float("inf")
 
 
 # ── send_debug_log ───────────────────────────────────────
@@ -382,6 +397,75 @@ class TestSendDebugLog:
         client.chat_postMessage.assert_not_called()
 
 
+# ── send_intervention_probability_debug_log 테스트 ────────
+
+class TestSendInterventionProbabilityDebugLog:
+    """확률 판단 디버그 로그 테스트"""
+
+    def test_sends_passed_log(self):
+        """통과 시 체크마크 로그"""
+        client = MagicMock()
+
+        send_intervention_probability_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            importance=8,
+            time_factor=0.78,
+            freq_factor=0.77,
+            probability=0.6,
+            final_score=0.48,
+            threshold=0.3,
+            passed=True,
+        )
+
+        client.chat_postMessage.assert_called_once()
+        text = client.chat_postMessage.call_args[1]["text"]
+        assert "white_check_mark" in text
+        assert "C123" in text
+        assert "8/10" in text
+
+    def test_sends_blocked_log(self):
+        """차단 시 no_entry 로그"""
+        client = MagicMock()
+
+        send_intervention_probability_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            importance=3,
+            time_factor=0.2,
+            freq_factor=0.5,
+            probability=0.1,
+            final_score=0.03,
+            threshold=0.3,
+            passed=False,
+        )
+
+        text = client.chat_postMessage.call_args[1]["text"]
+        assert "no_entry_sign" in text
+        assert "<" in text
+
+    def test_skips_when_no_debug_channel(self):
+        """디버그 채널 미설정이면 전송 안 함"""
+        client = MagicMock()
+
+        send_intervention_probability_debug_log(
+            client=client,
+            debug_channel="",
+            source_channel="C123",
+            importance=5,
+            time_factor=0.5,
+            freq_factor=1.0,
+            probability=0.5,
+            final_score=0.25,
+            threshold=0.3,
+            passed=False,
+        )
+
+        client.chat_postMessage.assert_not_called()
+
+
 # ── run_channel_pipeline 통합 테스트 ─────────────────
 
 class FakeObserver:
@@ -426,7 +510,7 @@ class TestRunChannelPipeline:
     async def test_intervene_sends_message_via_llm(self, tmp_path):
         """판단 → 개입 → LLM 호출 → 슬랙 메시지 발송 흐름"""
         store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        history = InterventionHistory(base_dir=tmp_path)
         _fill_buffer(store, "C123")
 
         observer = FakeObserver(judge_result=JudgeResult(
@@ -447,8 +531,9 @@ class TestRunChannelPipeline:
             observer=observer,
             channel_id="C123",
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
+            intervention_threshold=0.0,  # 항상 통과
             llm_call=mock_llm_call,
         )
 
@@ -462,7 +547,7 @@ class TestRunChannelPipeline:
     async def test_intervene_fallback_without_llm(self, tmp_path):
         """llm_call 없으면 직접 발송 (폴백)"""
         store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        history = InterventionHistory(base_dir=tmp_path)
         _fill_buffer(store, "C123")
 
         observer = FakeObserver(judge_result=JudgeResult(
@@ -480,8 +565,9 @@ class TestRunChannelPipeline:
             observer=observer,
             channel_id="C123",
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
+            intervention_threshold=0.0,
             # llm_call 없음 → 폴백
         )
 
@@ -494,7 +580,7 @@ class TestRunChannelPipeline:
     async def test_react_sends_emoji(self, tmp_path):
         """판단 → 이모지 리액션 발송 흐름"""
         store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        history = InterventionHistory(base_dir=tmp_path)
         _fill_buffer(store, "C123")
 
         observer = FakeObserver(judge_result=JudgeResult(
@@ -512,7 +598,7 @@ class TestRunChannelPipeline:
             observer=observer,
             channel_id="C123",
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
         )
 
@@ -523,15 +609,16 @@ class TestRunChannelPipeline:
         )
 
     @pytest.mark.asyncio
-    async def test_cooldown_blocks_message(self, tmp_path):
-        """쿨다운 중이면 메시지 개입이 스킵됨"""
+    async def test_probability_blocks_low_score(self, tmp_path):
+        """확률 점수가 임계치 미만이면 메시지 개입이 차단됨"""
         store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=9999)
-        cooldown.record_intervention("C123")
+        history = InterventionHistory(base_dir=tmp_path)
+        # 방금 개입한 이력 추가 → minutes_since_last ≈ 0 → probability ≈ 0
+        history.record("C123")
         _fill_buffer(store, "C123")
 
         observer = FakeObserver(judge_result=JudgeResult(
-            importance=8,
+            importance=3,  # 낮은 중요도
             reaction_type="intervene",
             reaction_target="channel",
             reaction_content="개입 메시지",
@@ -548,48 +635,99 @@ class TestRunChannelPipeline:
             observer=observer,
             channel_id="C123",
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
+            intervention_threshold=0.5,  # 높은 임계치
             llm_call=mock_llm_call,
         )
 
-        # 메시지 발송 호출 없음 (쿨다운)
-        client.chat_postMessage.assert_not_called()
+        # 채널에 메시지 발송 없음 (디버그 로그는 제외)
+        channel_calls = [
+            c for c in client.chat_postMessage.call_args_list
+            if c[1].get("channel") == "C123"
+        ]
+        assert len(channel_calls) == 0
 
     @pytest.mark.asyncio
-    async def test_cooldown_allows_react_while_blocking_message(self, tmp_path):
-        """쿨다운 중에도 이모지 리액션은 허용"""
+    async def test_high_importance_passes(self, tmp_path):
+        """높은 중요도 + 충분한 시간 경과면 개입 통과"""
         store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=9999)
-        cooldown.record_intervention("C123")
+        history = InterventionHistory(base_dir=tmp_path)
+        # 이력 없음 → minutes_since_last = inf → probability ≈ 1.0
         _fill_buffer(store, "C123")
 
         observer = FakeObserver(judge_result=JudgeResult(
-            importance=5,
-            reaction_type="react",
-            reaction_target="1001.000",
-            reaction_content="eyes",
+            importance=9,  # 높은 중요도
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="중요한 대화",
         ))
 
         client = MagicMock()
-        client.reactions_add = MagicMock(return_value={"ok": True})
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        async def mock_llm_call(system_prompt, user_prompt):
+            return "중요한 응답입니다."
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id="C123",
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
+            intervention_threshold=0.3,
+            llm_call=mock_llm_call,
         )
 
-        client.reactions_add.assert_called_once()
+        # LLM 응답이 채널에 발송됨
+        channel_calls = [
+            c for c in client.chat_postMessage.call_args_list
+            if c[1].get("channel") == "C123"
+        ]
+        assert len(channel_calls) >= 1
+        assert any("중요한 응답" in c[1]["text"] for c in channel_calls)
+
+    @pytest.mark.asyncio
+    async def test_intervene_records_history(self, tmp_path):
+        """개입 성공 후 이력이 기록됨"""
+        store = ChannelStore(base_dir=tmp_path)
+        history = InterventionHistory(base_dir=tmp_path)
+        _fill_buffer(store, "C123")
+
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=9,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="개입",
+        ))
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        async def mock_llm_call(system_prompt, user_prompt):
+            return "응답"
+
+        assert history.recent_count("C123") == 0
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
+            llm_call=mock_llm_call,
+        )
+
+        assert history.recent_count("C123") == 1
 
     @pytest.mark.asyncio
     async def test_no_reaction_skips_intervention(self, tmp_path):
         """반응이 none이면 개입 없음"""
         store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        history = InterventionHistory(base_dir=tmp_path)
         _fill_buffer(store, "C123")
 
         observer = FakeObserver(judge_result=JudgeResult(
@@ -604,7 +742,7 @@ class TestRunChannelPipeline:
             observer=observer,
             channel_id="C123",
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
         )
 
@@ -612,53 +750,10 @@ class TestRunChannelPipeline:
         client.reactions_add.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_intervene_enters_intervention_mode(self, tmp_path):
-        """판단 → 개입 시 개입 모드 진입"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
-        _fill_buffer(store, "C123")
-
-        observer = FakeObserver(judge_result=JudgeResult(
-            importance=8,
-            reaction_type="intervene",
-            reaction_target="channel",
-            reaction_content="무슨 일이오?",
-        ))
-
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-
-        async def mock_llm_call(system_prompt, user_prompt):
-            return "LLM 개입 응답"
-
-        await run_channel_pipeline(
-            store=store,
-            observer=observer,
-            channel_id="C123",
-            slack_client=client,
-            cooldown=cooldown,
-            threshold_a=1,
-            max_intervention_turns=5,
-            debug_channel="C_DEBUG",
-            llm_call=mock_llm_call,
-        )
-
-        # 개입 후 개입 모드에 진입해야 함
-        assert cooldown.is_active("C123") is True
-        assert cooldown.get_remaining_turns("C123") == 5
-
-        # 디버그 채널에 개입 모드 진입 로그가 전송됨
-        calls = client.chat_postMessage.call_args_list
-        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
-        assert len(debug_calls) >= 1
-        debug_texts = [c[1]["text"] for c in debug_calls]
-        assert any("개입 모드 진입" in t for t in debug_texts)
-
-    @pytest.mark.asyncio
     async def test_debug_log_sent(self, tmp_path):
         """디버그 채널이 설정되면 로그 전송"""
         store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
+        history = InterventionHistory(base_dir=tmp_path)
         _fill_buffer(store, "C123")
 
         observer = FakeObserver(judge_result=JudgeResult(
@@ -674,7 +769,7 @@ class TestRunChannelPipeline:
             observer=observer,
             channel_id="C123",
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             debug_channel="C_DEBUG",
         )

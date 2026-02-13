@@ -141,26 +141,13 @@ def register_message_handlers(app, dependencies: dict):
                     _send_collect_log(
                         client, ch, channel_store, event,
                     )
-                    is_self = (
-                        Config.BOT_USER_ID
-                        and event.get("user") == Config.BOT_USER_ID
+                    force = _contains_trigger_word(event.get("text", ""))
+                    _maybe_trigger_digest(
+                        ch, client,
+                        channel_store, channel_observer,
+                        channel_compressor, channel_cooldown,
+                        force=force,
                     )
-                    # 개입 모드 중이면 소화 대신 즉시 반응
-                    # 단, 자기 자신의 메시지에는 반응하지 않음 (자기 대화 루프 방지)
-                    if channel_cooldown and channel_cooldown.is_active(ch):
-                        if not is_self:
-                            _maybe_trigger_intervention_response(
-                                ch, client,
-                                channel_store, channel_observer, channel_cooldown,
-                            )
-                    else:
-                        force = _contains_trigger_word(event.get("text", ""))
-                        _maybe_trigger_digest(
-                            ch, client,
-                            channel_store, channel_observer,
-                            channel_compressor, channel_cooldown,
-                            force=force,
-                        )
             except Exception as e:
                 logger.error(f"채널 메시지 수집 실패: {e}")
 
@@ -422,7 +409,7 @@ def _maybe_trigger_digest(
                     digest_max_tokens=Config.CHANNEL_OBSERVER_DIGEST_MAX_TOKENS,
                     digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
                     debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
-                    max_intervention_turns=Config.CHANNEL_OBSERVER_MAX_INTERVENTION_TURNS,
+                    intervention_threshold=Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD,
                     claude_runner=runner,
                 )
             )
@@ -433,48 +420,6 @@ def _maybe_trigger_digest(
 
     digest_thread = threading.Thread(target=run, daemon=True)
     digest_thread.start()
-
-
-# 채널별 개입 반응 실행 중 여부 (중복 실행 방지)
-_intervention_running: dict[str, bool] = {}
-
-
-def _maybe_trigger_intervention_response(
-    channel_id, client, store, observer, cooldown
-):
-    """개입 모드 중일 때 별도 스레드에서 반응을 생성합니다."""
-    if not all([store, observer, cooldown]):
-        return
-
-    # 이미 실행 중이면 스킵
-    if _intervention_running.get(channel_id):
-        return
-
-    def run():
-        _intervention_running[channel_id] = True
-        try:
-            from seosoyoung.memory.channel_pipeline import respond_in_intervention_mode
-            from seosoyoung.claude import get_claude_runner
-
-            runner = get_claude_runner()
-
-            asyncio.run(
-                respond_in_intervention_mode(
-                    store=store,
-                    channel_id=channel_id,
-                    slack_client=client,
-                    cooldown=cooldown,
-                    debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
-                    claude_runner=runner,
-                )
-            )
-        except Exception as e:
-            logger.error(f"개입 모드 반응 실패 ({channel_id}): {e}")
-        finally:
-            _intervention_running[channel_id] = False
-
-    intervention_thread = threading.Thread(target=run, daemon=True)
-    intervention_thread.start()
 
 
 def _send_collect_log(client, channel_id, store, event):

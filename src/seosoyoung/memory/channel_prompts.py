@@ -69,35 +69,6 @@ def build_digest_compressor_retry_prompt(
     )
 
 
-def get_intervention_mode_system_prompt() -> str:
-    """개입 모드 시스템 프롬프트를 반환합니다."""
-    return _load("intervention_mode_system.txt")
-
-
-def build_intervention_mode_prompt(
-    remaining_turns: int,
-    channel_id: str,
-    new_messages: list[dict],
-    digest: str | None = None,
-) -> str:
-    """개입 모드 사용자 프롬프트를 구성합니다."""
-    messages_text = _format_channel_messages(new_messages) or "(없음)"
-    digest_text = digest or "(없음)"
-
-    last_turn_instruction = ""
-    if remaining_turns <= 1:
-        last_turn_instruction = _load("intervention_mode_last_turn.txt")
-
-    template = _load("intervention_mode_user.txt")
-    return template.format(
-        channel_id=channel_id,
-        remaining_turns=remaining_turns,
-        digest=digest_text,
-        messages=messages_text,
-        last_turn_instruction=last_turn_instruction,
-    )
-
-
 def get_channel_intervene_system_prompt() -> str:
     """채널 개입 응답 생성 시스템 프롬프트를 반환합니다."""
     return _load("channel_intervene_system.txt")

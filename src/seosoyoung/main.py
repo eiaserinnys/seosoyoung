@@ -20,7 +20,7 @@ from seosoyoung.trello.watcher import TrelloWatcher
 from seosoyoung.trello.list_runner import ListRunner
 from seosoyoung.handlers.channel_collector import ChannelMessageCollector
 from seosoyoung.memory.channel_store import ChannelStore
-from seosoyoung.memory.channel_intervention import CooldownManager
+from seosoyoung.memory.channel_intervention import InterventionHistory
 from seosoyoung.memory.channel_observer import ChannelObserver, DigestCompressor
 from seosoyoung.memory.channel_scheduler import ChannelDigestScheduler
 
@@ -81,7 +81,7 @@ executor = ClaudeExecutor(
 # 채널 관찰 시스템 초기화
 _channel_store: ChannelStore | None = None
 _channel_collector: ChannelMessageCollector | None = None
-_channel_cooldown: CooldownManager | None = None
+_channel_cooldown: InterventionHistory | None = None
 _channel_observer: ChannelObserver | None = None
 _channel_compressor: DigestCompressor | None = None
 _channel_scheduler: ChannelDigestScheduler | None = None
@@ -92,9 +92,8 @@ if Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS:
         store=_channel_store,
         target_channels=Config.CHANNEL_OBSERVER_CHANNELS,
     )
-    _channel_cooldown = CooldownManager(
+    _channel_cooldown = InterventionHistory(
         base_dir=Config.get_memory_path(),
-        cooldown_sec=Config.CHANNEL_OBSERVER_COOLDOWN_SEC,
     )
     if Config.CHANNEL_OBSERVER_API_KEY:
         _channel_observer = ChannelObserver(
@@ -118,11 +117,11 @@ if Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS:
             digest_max_tokens=Config.CHANNEL_OBSERVER_DIGEST_MAX_TOKENS,
             digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
             debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
-            max_intervention_turns=Config.CHANNEL_OBSERVER_MAX_INTERVENTION_TURNS,
+            intervention_threshold=Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD,
         )
     logger.info(
         f"채널 관찰 시스템 초기화: channels={Config.CHANNEL_OBSERVER_CHANNELS}, "
-        f"cooldown={Config.CHANNEL_OBSERVER_COOLDOWN_SEC}s, "
+        f"threshold={Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD}, "
         f"periodic={Config.CHANNEL_OBSERVER_PERIODIC_SEC}s"
     )
 
