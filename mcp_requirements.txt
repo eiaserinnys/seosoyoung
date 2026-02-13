@@ -1,3 +1,4 @@
 fastmcp>=2.0
 slack_sdk
 google-genai>=1.0.0
+anthropic>=0.40.0
