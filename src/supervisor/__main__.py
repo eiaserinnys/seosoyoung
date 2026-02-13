@@ -107,8 +107,8 @@ def main() -> None:
         branch="main",
     )
 
-    # SessionMonitor: Claude Code 세션 감지
-    session_monitor = SessionMonitor()
+    # SessionMonitor: 봇 자식 프로세스 중 Claude Code 세션 감지
+    session_monitor = SessionMonitor(process_manager=pm)
 
     # Deployer: 배포 상태 머신
     deployer = Deployer(

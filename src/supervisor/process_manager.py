@@ -194,6 +194,13 @@ class ProcessManager:
             except Exception:
                 logger.exception("%s: 종료 중 오류", name)
 
+    def get_pid(self, name: str) -> int | None:
+        """등록된 프로세스의 PID 반환. 미실행 또는 미등록이면 None."""
+        state = self._states.get(name)
+        if state is None:
+            return None
+        return state.pid
+
     @property
     def registered_names(self) -> list[str]:
         return list(self._states.keys())
