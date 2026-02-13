@@ -18,7 +18,7 @@ _DEFAULT_CHARACTERS_DIR = (
     Path(__file__).resolve().parents[5] / "eb_lore" / "content" / "characters"
 )
 _DEFAULT_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "npc_system.txt"
-_DEFAULT_PROMPT_OVERRIDE_DIR = Path(__file__).resolve().parents[4] / ".local" / "prompts"
+_DEFAULT_PROMPT_OVERRIDE_DIR = Path(__file__).resolve().parents[5] / ".local" / "prompts"
 
 # 캐릭터 파일에서 제외할 파일명 (확장자 제외)
 _SKIP_FILES = {"actor_code"}
