@@ -286,6 +286,76 @@ class TestPromptBuilder:
         builder = PromptBuilder(loader, template_path)
         assert builder.build("zz") is None
 
+    def test_prompt_override_replaces_template(self, char_dir: Path, tmp_path: Path):
+        """오버라이드 파일이 있으면 기본 템플릿 대신 사용."""
+        from seosoyoung.mcp.tools.npc_chat import CharacterLoader, PromptBuilder
+
+        template_path = tmp_path / "npc_system.txt"
+        template_path.write_text(SAMPLE_TEMPLATE, encoding="utf-8")
+
+        # 오버라이드 디렉토리에 hn.txt 생성
+        override_dir = tmp_path / "overrides"
+        override_dir.mkdir()
+        override_content = "Custom prompt for {name}. Role: {role}. Situation: {situation}"
+        (override_dir / "hn.txt").write_text(override_content, encoding="utf-8")
+
+        loader = CharacterLoader(char_dir)
+        builder = PromptBuilder(loader, template_path, prompt_override_dir=override_dir)
+        prompt = builder.build("hn", lang="kr")
+
+        assert "Custom prompt for 하니엘" in prompt
+        assert "Role: 천사, 펜릭스 부활 담당" in prompt
+        # 기본 템플릿의 내용은 없어야 함
+        assert "## Personality" not in prompt
+
+    def test_prompt_override_missing_falls_back(self, char_dir: Path, tmp_path: Path):
+        """오버라이드 파일이 없으면 기본 템플릿 사용."""
+        from seosoyoung.mcp.tools.npc_chat import CharacterLoader, PromptBuilder
+
+        template_path = tmp_path / "npc_system.txt"
+        template_path.write_text(SAMPLE_TEMPLATE, encoding="utf-8")
+
+        # 오버라이드 디렉토리는 있지만 hn.txt는 없음
+        override_dir = tmp_path / "overrides"
+        override_dir.mkdir()
+
+        loader = CharacterLoader(char_dir)
+        builder = PromptBuilder(loader, template_path, prompt_override_dir=override_dir)
+        prompt = builder.build("hn", lang="kr")
+
+        # 기본 템플릿이 사용되어야 함
+        assert "## Personality" in prompt
+        assert "하니엘" in prompt
+
+    def test_prompt_override_dir_not_exists(self, char_dir: Path, tmp_path: Path):
+        """오버라이드 디렉토리 자체가 없으면 기본 템플릿 사용."""
+        from seosoyoung.mcp.tools.npc_chat import CharacterLoader, PromptBuilder
+
+        template_path = tmp_path / "npc_system.txt"
+        template_path.write_text(SAMPLE_TEMPLATE, encoding="utf-8")
+
+        override_dir = tmp_path / "nonexistent_overrides"
+        loader = CharacterLoader(char_dir)
+        builder = PromptBuilder(loader, template_path, prompt_override_dir=override_dir)
+        prompt = builder.build("hn", lang="kr")
+
+        assert "## Personality" in prompt
+        assert "하니엘" in prompt
+
+    def test_prompt_override_none_uses_default(self, char_dir: Path, tmp_path: Path):
+        """prompt_override_dir=None이면 기본 동작."""
+        from seosoyoung.mcp.tools.npc_chat import CharacterLoader, PromptBuilder
+
+        template_path = tmp_path / "npc_system.txt"
+        template_path.write_text(SAMPLE_TEMPLATE, encoding="utf-8")
+
+        loader = CharacterLoader(char_dir)
+        builder = PromptBuilder(loader, template_path, prompt_override_dir=None)
+        prompt = builder.build("hn", lang="kr")
+
+        assert "## Personality" in prompt
+        assert "하니엘" in prompt
+
 
 # ── npc_list_characters 도구 테스트 ───────────────────────────
 

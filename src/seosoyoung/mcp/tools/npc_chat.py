@@ -18,6 +18,7 @@ _DEFAULT_CHARACTERS_DIR = (
     Path(__file__).resolve().parents[5] / "eb_lore" / "content" / "characters"
 )
 _DEFAULT_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "npc_system.txt"
+_DEFAULT_PROMPT_OVERRIDE_DIR = Path(__file__).resolve().parents[4] / ".local" / "prompts"
 
 # 캐릭터 파일에서 제외할 파일명 (확장자 제외)
 _SKIP_FILES = {"actor_code"}
@@ -129,12 +130,19 @@ class PromptBuilder:
         self,
         loader: CharacterLoader,
         template_path: Optional[Path] = None,
+        prompt_override_dir: Optional[Path] = None,
     ):
         self._loader = loader
         self._template_path = template_path or _DEFAULT_TEMPLATE_PATH
+        self._prompt_override_dir = prompt_override_dir
         self._template: Optional[str] = None
 
-    def _load_template(self) -> str:
+    def _load_template(self, character_id: str) -> str:
+        """캐릭터별 오버라이드 파일이 있으면 우선 사용, 없으면 기본 템플릿."""
+        if self._prompt_override_dir is not None:
+            override_path = self._prompt_override_dir / f"{character_id}.txt"
+            if override_path.is_file():
+                return override_path.read_text(encoding="utf-8")
         if self._template is None:
             self._template = self._template_path.read_text(encoding="utf-8")
         return self._template
@@ -149,7 +157,7 @@ class PromptBuilder:
         fields = self._loader.extract_fields(character_id, lang=lang)
         if fields is None:
             return None
-        template = self._load_template()
+        template = self._load_template(character_id)
         return template.format(
             **fields,
             situation=situation,
@@ -313,7 +321,7 @@ def npc_open_session(
 ) -> dict[str, Any]:
     """NPC 대화 세션을 열고 NPC의 첫 반응을 반환한다."""
     loader = _get_loader()
-    builder = PromptBuilder(loader)
+    builder = PromptBuilder(loader, prompt_override_dir=_DEFAULT_PROMPT_OVERRIDE_DIR)
     system_prompt = builder.build(character_id, lang=language, situation=situation)
     if system_prompt is None:
         return {"success": False, "error": f"캐릭터를 찾을 수 없습니다: {character_id}"}
@@ -380,7 +388,7 @@ def npc_set_situation(session_id: str, situation: str) -> dict[str, Any]:
 
     # 시스템 프롬프트 재빌드
     loader = _get_loader()
-    builder = PromptBuilder(loader)
+    builder = PromptBuilder(loader, prompt_override_dir=_DEFAULT_PROMPT_OVERRIDE_DIR)
     new_prompt = builder.build(
         session.character_id, lang=session.language, situation=situation
     )

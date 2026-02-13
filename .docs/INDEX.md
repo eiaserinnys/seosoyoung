@@ -80,9 +80,9 @@
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `GeneratedImage` (seosoyoung/mcp/tools/image_gen.py:32): 생성된 이미지 결과
-- `CharacterLoader` (seosoyoung/mcp/tools/npc_chat.py:29): eb_lore 캐릭터 YAML 파일을 로드하고 필드를 추출한다.
-- `PromptBuilder` (seosoyoung/mcp/tools/npc_chat.py:125): 캐릭터 데이터를 프롬프트 템플릿에 채워 시스템 프롬프트를 생성한다.
-- `NpcSession` (seosoyoung/mcp/tools/npc_chat.py:190): NPC 대화 세션. 세션별 대화 이력과 설정을 보관한다.
+- `CharacterLoader` (seosoyoung/mcp/tools/npc_chat.py:30): eb_lore 캐릭터 YAML 파일을 로드하고 필드를 추출한다.
+- `PromptBuilder` (seosoyoung/mcp/tools/npc_chat.py:126): 캐릭터 데이터를 프롬프트 템플릿에 채워 시스템 프롬프트를 생성한다.
+- `NpcSession` (seosoyoung/mcp/tools/npc_chat.py:198): NPC 대화 세션. 세션별 대화 이력과 설정을 보관한다.
 - `InterventionAction` (seosoyoung/memory/channel_intervention.py:29): 개입 액션
 - `InterventionHistory` (seosoyoung/memory/channel_intervention.py:152): 개입 이력 관리
 - `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:30): 채널 관찰 결과 (하위호환 유지)
@@ -191,12 +191,12 @@
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:57): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:132): 이미지를 생성하고 슬랙 스레드에 업로드
-- `npc_list_characters()` (seosoyoung/mcp/tools/npc_chat.py:175): 대화 가능한 NPC 캐릭터 목록을 반환한다.
-- `npc_open_session()` (seosoyoung/mcp/tools/npc_chat.py:309): NPC 대화 세션을 열고 NPC의 첫 반응을 반환한다.
-- `npc_talk()` (seosoyoung/mcp/tools/npc_chat.py:351): NPC에게 말하기. 사용자 메시지를 보내고 NPC 응답을 받는다.
-- `npc_set_situation()` (seosoyoung/mcp/tools/npc_chat.py:374): 대화 중 상황을 변경한다. NPC가 새 상황에 반응한다.
-- `npc_close_session()` (seosoyoung/mcp/tools/npc_chat.py:408): 세션을 종료하고 대화 이력을 반환한다.
-- `npc_get_history()` (seosoyoung/mcp/tools/npc_chat.py:430): 세션의 대화 이력을 조회한다 (세션 유지).
+- `npc_list_characters()` (seosoyoung/mcp/tools/npc_chat.py:183): 대화 가능한 NPC 캐릭터 목록을 반환한다.
+- `npc_open_session()` (seosoyoung/mcp/tools/npc_chat.py:317): NPC 대화 세션을 열고 NPC의 첫 반응을 반환한다.
+- `npc_talk()` (seosoyoung/mcp/tools/npc_chat.py:359): NPC에게 말하기. 사용자 메시지를 보내고 NPC 응답을 받는다.
+- `npc_set_situation()` (seosoyoung/mcp/tools/npc_chat.py:382): 대화 중 상황을 변경한다. NPC가 새 상황에 반응한다.
+- `npc_close_session()` (seosoyoung/mcp/tools/npc_chat.py:416): 세션을 종료하고 대화 이력을 반환한다.
+- `npc_get_history()` (seosoyoung/mcp/tools/npc_chat.py:438): 세션의 대화 이력을 조회한다 (세션 유지).
 - `post_message()` (seosoyoung/mcp/tools/slack_messaging.py:51): 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부
 - `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
 - `get_user_profile()` (seosoyoung/mcp/tools/user_profile.py:25): Slack 사용자 프로필 정보를 조회
