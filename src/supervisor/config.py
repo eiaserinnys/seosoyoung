@@ -17,7 +17,13 @@ _CLAUDE_CLI_CANDIDATES = [
 
 
 def _find_claude_cli_dir() -> str | None:
-    """claude CLI가 설치된 디렉토리를 찾는다. 없으면 None."""
+    """claude CLI가 설치된 디렉토리를 찾는다. 없으면 None.
+
+    CLAUDE_CLI_DIR 환경변수로 직접 지정 가능.
+    """
+    env_dir = os.environ.get("CLAUDE_CLI_DIR")
+    if env_dir and Path(env_dir).is_dir():
+        return env_dir
     if shutil.which("claude"):
         return None  # 이미 PATH에 있음
     for candidate in _CLAUDE_CLI_CANDIDATES:
