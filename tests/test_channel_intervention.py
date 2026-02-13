@@ -19,8 +19,12 @@ from seosoyoung.memory.channel_intervention import (
     send_debug_log,
     send_digest_skip_debug_log,
 )
-from seosoyoung.memory.channel_observer import ChannelObserverResult
-from seosoyoung.memory.channel_pipeline import run_digest_and_intervene
+from seosoyoung.memory.channel_observer import (
+    ChannelObserverResult,
+    DigestResult,
+    JudgeResult,
+)
+from seosoyoung.memory.channel_pipeline import run_channel_pipeline
 from seosoyoung.memory.channel_store import ChannelStore
 
 
@@ -378,41 +382,54 @@ class TestSendDebugLog:
         client.chat_postMessage.assert_not_called()
 
 
-# ── run_digest_and_intervene 통합 테스트 ─────────────────
+# ── run_channel_pipeline 통합 테스트 ─────────────────
 
 class FakeObserver:
-    """ChannelObserver mock"""
+    """ChannelObserver mock (digest + judge)"""
 
-    def __init__(self, result: ChannelObserverResult | None = None):
-        self.result = result
-        self.call_count = 0
+    def __init__(
+        self,
+        judge_result: JudgeResult | None = None,
+        digest_result: DigestResult | None = None,
+    ):
+        self.judge_result = judge_result or JudgeResult(
+            importance=4, reaction_type="none",
+        )
+        self.digest_result = digest_result or DigestResult(
+            digest="digest 결과", token_count=100,
+        )
+        self.judge_call_count = 0
+        self.digest_call_count = 0
 
-    async def observe(self, **kwargs) -> ChannelObserverResult | None:
-        self.call_count += 1
-        return self.result
+    async def judge(self, **kwargs) -> JudgeResult | None:
+        self.judge_call_count += 1
+        return self.judge_result
+
+    async def digest(self, **kwargs) -> DigestResult | None:
+        self.digest_call_count += 1
+        return self.digest_result
 
 
 def _fill_buffer(store: ChannelStore, channel_id: str, n: int = 10):
     for i in range(n):
-        store.append_channel_message(channel_id, {
+        store.append_pending(channel_id, {
             "ts": f"100{i}.000",
             "user": f"U{i}",
             "text": f"테스트 메시지 {i}번 - " + "내용 " * 20,
         })
 
 
-class TestRunDigestAndIntervene:
-    """소화 + 개입 통합 파이프라인 테스트"""
+class TestRunChannelPipeline:
+    """소화/판단 분리 파이프라인 통합 테스트"""
 
     @pytest.mark.asyncio
     async def test_intervene_sends_message_via_llm(self, tmp_path):
-        """소화 → 개입 판단 → LLM 호출 → 슬랙 메시지 발송 흐름"""
+        """판단 → 개입 → LLM 호출 → 슬랙 메시지 발송 흐름"""
         store = ChannelStore(base_dir=tmp_path)
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
         _fill_buffer(store, "C123")
 
-        observer = FakeObserver(ChannelObserverResult(
-            digest="관찰 결과",
+        observer = FakeObserver(judge_result=JudgeResult(
             importance=8,
             reaction_type="intervene",
             reaction_target="channel",
@@ -425,31 +442,30 @@ class TestRunDigestAndIntervene:
         async def mock_llm_call(system_prompt, user_prompt):
             return "이런 일이 벌어지다니, 놀랍구려."
 
-        await run_digest_and_intervene(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id="C123",
             slack_client=client,
             cooldown=cooldown,
-            buffer_threshold=1,
+            threshold_a=1,
             llm_call=mock_llm_call,
         )
 
         client.chat_postMessage.assert_called()
         call_args_list = client.chat_postMessage.call_args_list
         sent_texts = [c[1]["text"] for c in call_args_list]
-        # LLM 생성 응답이 발송됨 (Observer 텍스트가 아님)
+        # LLM 생성 응답이 발송됨
         assert any("놀랍구려" in t for t in sent_texts)
 
     @pytest.mark.asyncio
     async def test_intervene_fallback_without_llm(self, tmp_path):
-        """llm_call 없으면 Observer 텍스트로 직접 발송 (폴백)"""
+        """llm_call 없으면 직접 발송 (폴백)"""
         store = ChannelStore(base_dir=tmp_path)
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
         _fill_buffer(store, "C123")
 
-        observer = FakeObserver(ChannelObserverResult(
-            digest="관찰 결과",
+        observer = FakeObserver(judge_result=JudgeResult(
             importance=8,
             reaction_type="intervene",
             reaction_target="channel",
@@ -459,13 +475,13 @@ class TestRunDigestAndIntervene:
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
 
-        await run_digest_and_intervene(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id="C123",
             slack_client=client,
             cooldown=cooldown,
-            buffer_threshold=1,
+            threshold_a=1,
             # llm_call 없음 → 폴백
         )
 
@@ -476,13 +492,12 @@ class TestRunDigestAndIntervene:
 
     @pytest.mark.asyncio
     async def test_react_sends_emoji(self, tmp_path):
-        """소화 → 이모지 리액션 발송 흐름"""
+        """판단 → 이모지 리액션 발송 흐름"""
         store = ChannelStore(base_dir=tmp_path)
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
         _fill_buffer(store, "C123")
 
-        observer = FakeObserver(ChannelObserverResult(
-            digest="관찰",
+        observer = FakeObserver(judge_result=JudgeResult(
             importance=5,
             reaction_type="react",
             reaction_target="1001.000",
@@ -492,13 +507,13 @@ class TestRunDigestAndIntervene:
         client = MagicMock()
         client.reactions_add = MagicMock(return_value={"ok": True})
 
-        await run_digest_and_intervene(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id="C123",
             slack_client=client,
             cooldown=cooldown,
-            buffer_threshold=1,
+            threshold_a=1,
         )
 
         client.reactions_add.assert_called_once_with(
@@ -515,8 +530,7 @@ class TestRunDigestAndIntervene:
         cooldown.record_intervention("C123")
         _fill_buffer(store, "C123")
 
-        observer = FakeObserver(ChannelObserverResult(
-            digest="관찰",
+        observer = FakeObserver(judge_result=JudgeResult(
             importance=8,
             reaction_type="intervene",
             reaction_target="channel",
@@ -529,13 +543,13 @@ class TestRunDigestAndIntervene:
         async def mock_llm_call(system_prompt, user_prompt):
             return "LLM 응답"
 
-        await run_digest_and_intervene(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id="C123",
             slack_client=client,
             cooldown=cooldown,
-            buffer_threshold=1,
+            threshold_a=1,
             llm_call=mock_llm_call,
         )
 
@@ -550,8 +564,7 @@ class TestRunDigestAndIntervene:
         cooldown.record_intervention("C123")
         _fill_buffer(store, "C123")
 
-        observer = FakeObserver(ChannelObserverResult(
-            digest="관찰",
+        observer = FakeObserver(judge_result=JudgeResult(
             importance=5,
             reaction_type="react",
             reaction_target="1001.000",
@@ -561,13 +574,13 @@ class TestRunDigestAndIntervene:
         client = MagicMock()
         client.reactions_add = MagicMock(return_value={"ok": True})
 
-        await run_digest_and_intervene(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id="C123",
             slack_client=client,
             cooldown=cooldown,
-            buffer_threshold=1,
+            threshold_a=1,
         )
 
         client.reactions_add.assert_called_once()
@@ -579,21 +592,20 @@ class TestRunDigestAndIntervene:
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
         _fill_buffer(store, "C123")
 
-        observer = FakeObserver(ChannelObserverResult(
-            digest="평범한 대화",
+        observer = FakeObserver(judge_result=JudgeResult(
             importance=2,
             reaction_type="none",
         ))
 
         client = MagicMock()
 
-        await run_digest_and_intervene(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id="C123",
             slack_client=client,
             cooldown=cooldown,
-            buffer_threshold=1,
+            threshold_a=1,
         )
 
         client.chat_postMessage.assert_not_called()
@@ -601,13 +613,12 @@ class TestRunDigestAndIntervene:
 
     @pytest.mark.asyncio
     async def test_intervene_enters_intervention_mode(self, tmp_path):
-        """소화 → 개입 시 개입 모드 진입"""
+        """판단 → 개입 시 개입 모드 진입"""
         store = ChannelStore(base_dir=tmp_path)
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
         _fill_buffer(store, "C123")
 
-        observer = FakeObserver(ChannelObserverResult(
-            digest="관찰 결과",
+        observer = FakeObserver(judge_result=JudgeResult(
             importance=8,
             reaction_type="intervene",
             reaction_target="channel",
@@ -620,13 +631,13 @@ class TestRunDigestAndIntervene:
         async def mock_llm_call(system_prompt, user_prompt):
             return "LLM 개입 응답"
 
-        await run_digest_and_intervene(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id="C123",
             slack_client=client,
             cooldown=cooldown,
-            buffer_threshold=1,
+            threshold_a=1,
             max_intervention_turns=5,
             debug_channel="C_DEBUG",
             llm_call=mock_llm_call,
@@ -650,8 +661,7 @@ class TestRunDigestAndIntervene:
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=0)
         _fill_buffer(store, "C123")
 
-        observer = FakeObserver(ChannelObserverResult(
-            digest="관찰",
+        observer = FakeObserver(judge_result=JudgeResult(
             importance=3,
             reaction_type="none",
         ))
@@ -659,13 +669,13 @@ class TestRunDigestAndIntervene:
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
 
-        await run_digest_and_intervene(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id="C123",
             slack_client=client,
             cooldown=cooldown,
-            buffer_threshold=1,
+            threshold_a=1,
             debug_channel="C_DEBUG",
         )
 

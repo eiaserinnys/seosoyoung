@@ -16,6 +16,10 @@ from seosoyoung.memory.channel_prompts import (
     build_channel_observer_user_prompt,
     build_digest_compressor_retry_prompt,
     build_digest_compressor_system_prompt,
+    build_digest_only_system_prompt,
+    build_digest_only_user_prompt,
+    build_judge_system_prompt,
+    build_judge_user_prompt,
 )
 from seosoyoung.memory.token_counter import TokenCounter
 
@@ -24,13 +28,31 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ChannelObserverResult:
-    """채널 관찰 결과"""
+    """채널 관찰 결과 (하위호환 유지)"""
 
     digest: str = ""
     importance: int = 0
     reaction_type: str = "none"  # "none" | "react" | "intervene"
     reaction_target: Optional[str] = None  # ts, "channel", "thread:{ts}"
     reaction_content: Optional[str] = None  # emoji name or message text
+
+
+@dataclass
+class DigestResult:
+    """소화 전용 결과"""
+
+    digest: str
+    token_count: int
+
+
+@dataclass
+class JudgeResult:
+    """리액션 판단 결과"""
+
+    importance: int = 0
+    reaction_type: str = "none"  # "none" | "react" | "intervene"
+    reaction_target: Optional[str] = None
+    reaction_content: Optional[str] = None
 
 
 @dataclass
@@ -56,6 +78,38 @@ def parse_channel_observer_output(text: str) -> ChannelObserverResult:
     importance = max(0, min(10, importance))
 
     # reaction
+    reaction_type, reaction_target, reaction_content = _parse_reaction(text)
+
+    return ChannelObserverResult(
+        digest=digest,
+        importance=importance,
+        reaction_type=reaction_type,
+        reaction_target=reaction_target,
+        reaction_content=reaction_content,
+    )
+
+
+def parse_judge_output(text: str) -> JudgeResult:
+    """Judge 응답에서 XML 태그를 파싱합니다."""
+    importance_str = _extract_tag(text, "importance")
+    try:
+        importance = int(importance_str)
+    except (ValueError, TypeError):
+        importance = 0
+    importance = max(0, min(10, importance))
+
+    reaction_type, reaction_target, reaction_content = _parse_reaction(text)
+
+    return JudgeResult(
+        importance=importance,
+        reaction_type=reaction_type,
+        reaction_target=reaction_target,
+        reaction_content=reaction_content,
+    )
+
+
+def _parse_reaction(text: str) -> tuple[str, Optional[str], Optional[str]]:
+    """XML 텍스트에서 reaction 정보를 추출합니다."""
     reaction_type = "none"
     reaction_target = None
     reaction_content = None
@@ -85,13 +139,7 @@ def parse_channel_observer_output(text: str) -> ChannelObserverResult:
             reaction_target = intervene_match.group(1)
             reaction_content = intervene_match.group(2).strip()
 
-    return ChannelObserverResult(
-        digest=digest,
-        importance=importance,
-        reaction_type=reaction_type,
-        reaction_target=reaction_target,
-        reaction_content=reaction_content,
-    )
+    return reaction_type, reaction_target, reaction_content
 
 
 class ChannelObserver:
@@ -108,7 +156,7 @@ class ChannelObserver:
         channel_messages: list[dict],
         thread_buffers: dict[str, list[dict]],
     ) -> ChannelObserverResult | None:
-        """채널 버퍼를 분석하여 관찰 결과를 반환합니다.
+        """채널 버퍼를 분석하여 관찰 결과를 반환합니다 (하위호환).
 
         Args:
             channel_id: 채널 ID
@@ -142,6 +190,96 @@ class ChannelObserver:
 
         except Exception as e:
             logger.error(f"ChannelObserver API 호출 실패: {e}")
+            return None
+
+    async def digest(
+        self,
+        channel_id: str,
+        existing_digest: str | None,
+        judged_messages: list[dict],
+    ) -> DigestResult | None:
+        """judged 메시지를 digest에 편입합니다 (소화 전용).
+
+        Args:
+            channel_id: 채널 ID
+            existing_digest: 기존 digest (없으면 None)
+            judged_messages: 편입할 메시지들
+
+        Returns:
+            DigestResult 또는 None (API 오류 시)
+        """
+        system_prompt = build_digest_only_system_prompt()
+        user_prompt = build_digest_only_user_prompt(
+            channel_id=channel_id,
+            existing_digest=existing_digest,
+            judged_messages=judged_messages,
+        )
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_completion_tokens=16_000,
+            )
+
+            result_text = response.choices[0].message.content or ""
+            digest_text = _extract_tag(result_text, "digest")
+            if not digest_text:
+                digest_text = result_text.strip()
+
+            token_counter = TokenCounter()
+            token_count = token_counter.count_string(digest_text)
+
+            return DigestResult(digest=digest_text, token_count=token_count)
+
+        except Exception as e:
+            logger.error(f"ChannelObserver.digest API 호출 실패: {e}")
+            return None
+
+    async def judge(
+        self,
+        channel_id: str,
+        digest: str | None,
+        judged_messages: list[dict],
+        pending_messages: list[dict],
+    ) -> JudgeResult | None:
+        """pending 메시지에 대해 리액션을 판단합니다 (판단 전용).
+
+        Args:
+            channel_id: 채널 ID
+            digest: 현재 digest (컨텍스트)
+            judged_messages: 이미 판단을 거친 최근 대화
+            pending_messages: 아직 판단하지 않은 새 대화
+
+        Returns:
+            JudgeResult 또는 None (API 오류 시)
+        """
+        system_prompt = build_judge_system_prompt()
+        user_prompt = build_judge_user_prompt(
+            channel_id=channel_id,
+            digest=digest,
+            judged_messages=judged_messages,
+            pending_messages=pending_messages,
+        )
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_completion_tokens=4_000,
+            )
+
+            result_text = response.choices[0].message.content or ""
+            return parse_judge_output(result_text)
+
+        except Exception as e:
+            logger.error(f"ChannelObserver.judge API 호출 실패: {e}")
             return None
 
 

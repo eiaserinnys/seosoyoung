@@ -49,12 +49,28 @@
 - 위치: 줄 106
 - 설명: 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
 
-### `_format_channel_messages(messages)`
+### `build_digest_only_system_prompt()`
 - 위치: 줄 137
+- 설명: 소화 전용 시스템 프롬프트를 반환합니다.
+
+### `build_digest_only_user_prompt(channel_id, existing_digest, judged_messages, current_time)`
+- 위치: 줄 142
+- 설명: 소화 전용 사용자 프롬프트를 구성합니다.
+
+### `build_judge_system_prompt()`
+- 위치: 줄 173
+- 설명: 리액션 판단 전용 시스템 프롬프트를 반환합니다.
+
+### `build_judge_user_prompt(channel_id, digest, judged_messages, pending_messages)`
+- 위치: 줄 178
+- 설명: 리액션 판단 전용 사용자 프롬프트를 구성합니다.
+
+### `_format_channel_messages(messages)`
+- 위치: 줄 198
 - 설명: 채널 루트 메시지를 텍스트로 변환
 
 ### `_format_thread_messages(thread_buffers)`
-- 위치: 줄 150
+- 위치: 줄 211
 - 설명: 스레드 메시지를 텍스트로 변환
 
 ## 내부 의존성

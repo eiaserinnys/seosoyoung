@@ -1,0 +1,16 @@
+Channel: {channel_id}
+
+## DIGEST (background context)
+
+{digest}
+
+## ALREADY JUDGED MESSAGES [ALREADY REACTED]
+
+{judged_messages}
+
+## PENDING MESSAGES (new, decide reaction for these)
+
+{pending_messages}
+
+Based on the pending messages above (with digest and judged messages as context), decide on a reaction.
+Do NOT react to messages marked [ALREADY REACTED].

@@ -1,17 +1,19 @@
-"""채널 소화 파이프라인 통합 테스트"""
+"""채널 소화/판단 파이프라인 통합 테스트"""
 
-import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from seosoyoung.memory.channel_intervention import CooldownManager
 from seosoyoung.memory.channel_observer import (
-    ChannelObserverResult,
     DigestCompressorResult,
+    DigestResult,
+    JudgeResult,
 )
-from seosoyoung.memory.channel_pipeline import digest_channel, respond_in_intervention_mode
+from seosoyoung.memory.channel_pipeline import (
+    run_channel_pipeline,
+    respond_in_intervention_mode,
+)
 from seosoyoung.memory.channel_prompts import (
     build_intervention_mode_prompt,
     get_intervention_mode_system_prompt,
@@ -29,35 +31,54 @@ def channel_id():
     return "C_TEST_CHANNEL"
 
 
-def _fill_buffer(store: ChannelStore, channel_id: str, n: int = 10):
-    """버퍼에 테스트 메시지를 채운다."""
+def _fill_pending(store: ChannelStore, channel_id: str, n: int = 10):
+    """pending 버퍼에 테스트 메시지를 채운다."""
     for i in range(n):
-        store.append_channel_message(channel_id, {
+        store.append_pending(channel_id, {
             "ts": f"100{i}.000",
             "user": f"U{i}",
             "text": f"테스트 메시지 {i}번 - " + "내용 " * 20,
         })
-    store.append_thread_message(channel_id, "1000.000", {
-        "ts": "1000.001",
-        "user": "U99",
-        "text": "스레드 답글",
-    })
+
+
+def _fill_judged(store: ChannelStore, channel_id: str, n: int = 5):
+    """judged 버퍼에 테스트 메시지를 채운다."""
+    messages = []
+    for i in range(n):
+        messages.append({
+            "ts": f"200{i}.000",
+            "user": f"U{i}",
+            "text": f"판단 완료 메시지 {i}번 - " + "내용 " * 20,
+        })
+    store.append_judged(channel_id, messages)
 
 
 class FakeObserver:
-    """ChannelObserver mock"""
+    """ChannelObserver mock (digest + judge)"""
 
-    def __init__(self, result: ChannelObserverResult | None = None):
-        self.result = result or ChannelObserverResult(
+    def __init__(
+        self,
+        digest_result: DigestResult | None = None,
+        judge_result: JudgeResult | None = None,
+    ):
+        self.digest_result = digest_result or DigestResult(
             digest="새로운 digest 결과",
+            token_count=100,
+        )
+        self.judge_result = judge_result or JudgeResult(
             importance=4,
             reaction_type="none",
         )
-        self.call_count = 0
+        self.digest_call_count = 0
+        self.judge_call_count = 0
 
-    async def observe(self, **kwargs) -> ChannelObserverResult | None:
-        self.call_count += 1
-        return self.result
+    async def digest(self, **kwargs) -> DigestResult | None:
+        self.digest_call_count += 1
+        return self.digest_result
+
+    async def judge(self, **kwargs) -> JudgeResult | None:
+        self.judge_call_count += 1
+        return self.judge_result
 
 
 class FakeCompressor:
@@ -75,193 +96,333 @@ class FakeCompressor:
         return self.result
 
 
-class TestDigestChannel:
-    """소화 파이프라인 통합 테스트"""
+# ── run_channel_pipeline 테스트 ──────────────────────────
+
+class TestRunChannelPipeline:
+    """소화/판단 분리 파이프라인 통합 테스트"""
 
     @pytest.mark.asyncio
-    async def test_skip_when_buffer_below_threshold(self, store, channel_id):
-        """버퍼 토큰이 임계치 미만이면 스킵"""
-        store.append_channel_message(channel_id, {
+    async def test_skip_when_pending_below_threshold_a(self, store, channel_id):
+        """pending 토큰이 threshold_A 미만이면 스킵"""
+        store.append_pending(channel_id, {
             "ts": "1.1", "user": "U1", "text": "짧은 메시지",
         })
         observer = FakeObserver()
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
 
-        result = await digest_channel(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
-            buffer_threshold=99999,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=99999,
         )
 
-        assert result is None
-        assert observer.call_count == 0
-        # 버퍼는 그대로 유지
-        assert len(store.load_channel_buffer(channel_id)) == 1
+        assert observer.judge_call_count == 0
+        assert observer.digest_call_count == 0
+        # pending은 그대로 유지
+        assert len(store.load_pending(channel_id)) == 1
 
     @pytest.mark.asyncio
-    async def test_digest_success(self, store, channel_id):
-        """정상 소화: Observer 호출 → digest 저장 → 버퍼 비우기"""
-        _fill_buffer(store, channel_id)
+    async def test_judge_called_when_above_threshold_a(self, store, channel_id):
+        """pending이 threshold_A 이상이면 judge 호출"""
+        _fill_pending(store, channel_id)
         observer = FakeObserver()
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
 
-        result = await digest_channel(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
-            buffer_threshold=1,  # 낮은 임계치로 즉시 트리거
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            threshold_b=999999,
         )
 
-        assert result is not None
-        assert result.digest == "새로운 digest 결과"
-        assert result.importance == 4
-        assert observer.call_count == 1
+        assert observer.judge_call_count == 1
+        # digest는 threshold_b 이하이므로 호출 안 됨
+        assert observer.digest_call_count == 0
 
-        # digest가 저장되었는지 확인
+    @pytest.mark.asyncio
+    async def test_pending_moved_to_judged_after_pipeline(self, store, channel_id):
+        """파이프라인 실행 후 pending이 judged로 이동"""
+        _fill_pending(store, channel_id, n=5)
+        observer = FakeObserver()
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            threshold_b=999999,
+        )
+
+        # pending은 비어야 하고 judged에 이동
+        assert len(store.load_pending(channel_id)) == 0
+        assert len(store.load_judged(channel_id)) == 5
+
+    @pytest.mark.asyncio
+    async def test_digest_triggered_when_above_threshold_b(self, store, channel_id):
+        """judged+pending이 threshold_B 초과하면 digest 호출"""
+        _fill_judged(store, channel_id, n=10)
+        _fill_pending(store, channel_id, n=10)
+        observer = FakeObserver()
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            threshold_b=1,  # 매우 낮은 임계치
+        )
+
+        assert observer.digest_call_count == 1
+        assert observer.judge_call_count == 1
+        # digest 저장 확인
         saved = store.get_digest(channel_id)
         assert saved is not None
         assert saved["content"] == "새로운 digest 결과"
 
-        # 버퍼가 비워졌는지 확인
-        assert len(store.load_channel_buffer(channel_id)) == 0
-        assert len(store.load_all_thread_buffers(channel_id)) == 0
-
     @pytest.mark.asyncio
-    async def test_digest_with_existing_digest(self, store, channel_id):
-        """기존 digest가 있을 때 Observer에 전달되는지 확인"""
-        store.save_digest(channel_id, "이전 digest", {"token_count": 50})
-        _fill_buffer(store, channel_id)
-
+    async def test_digest_clears_judged(self, store, channel_id):
+        """digest 편입 후 judged가 비워짐"""
+        _fill_judged(store, channel_id, n=5)
+        _fill_pending(store, channel_id, n=5)
         observer = FakeObserver()
-        result = await digest_channel(
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
-            buffer_threshold=1,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            threshold_b=1,
         )
 
-        assert result is not None
-        assert observer.call_count == 1
+        # digest 편입으로 judged 비워진 후, pending이 judged로 이동
+        judged = store.load_judged(channel_id)
+        assert len(judged) == 5  # pending에서 이동된 것만
 
     @pytest.mark.asyncio
-    async def test_digest_triggers_compressor(self, store, channel_id):
-        """digest 토큰이 임계치 초과하면 Compressor 호출"""
-        _fill_buffer(store, channel_id)
+    async def test_digest_compressor_triggered(self, store, channel_id):
+        """digest 토큰이 max 초과하면 compressor 호출"""
+        _fill_judged(store, channel_id, n=5)
+        _fill_pending(store, channel_id, n=5)
 
-        long_digest = "장문의 digest " * 500
-        observer = FakeObserver(ChannelObserverResult(
-            digest=long_digest,
-            importance=3,
-            reaction_type="none",
-        ))
+        long_digest = DigestResult(
+            digest="장문의 digest " * 500,
+            token_count=20000,
+        )
+        observer = FakeObserver(digest_result=long_digest)
         compressor = FakeCompressor()
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
 
-        result = await digest_channel(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
-            buffer_threshold=1,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            threshold_b=1,
             compressor=compressor,
-            digest_max_tokens=10,  # 매우 낮은 임계치
+            digest_max_tokens=10,
             digest_target_tokens=5,
         )
 
-        assert result is not None
         assert compressor.call_count == 1
-        # 압축된 digest가 저장됨
         saved = store.get_digest(channel_id)
         assert saved["content"] == "압축된 digest"
 
     @pytest.mark.asyncio
-    async def test_digest_no_compressor_when_under_threshold(self, store, channel_id):
-        """digest 토큰이 임계치 이하면 Compressor 호출 안 함"""
-        _fill_buffer(store, channel_id)
+    async def test_no_compressor_when_under_max(self, store, channel_id):
+        """digest 토큰이 max 이하면 compressor 호출 안 함"""
+        _fill_judged(store, channel_id, n=5)
+        _fill_pending(store, channel_id, n=5)
         observer = FakeObserver()
         compressor = FakeCompressor()
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
 
-        result = await digest_channel(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
-            buffer_threshold=1,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            threshold_b=1,
             compressor=compressor,
             digest_max_tokens=999999,
         )
 
-        assert result is not None
         assert compressor.call_count == 0
 
     @pytest.mark.asyncio
-    async def test_observer_returns_none(self, store, channel_id):
-        """Observer가 None을 반환하면 파이프라인도 None"""
-        _fill_buffer(store, channel_id)
-        observer = FakeObserver(result=None)
-        observer.result = None  # 명시적 None 설정
+    async def test_judge_returns_none(self, store, channel_id):
+        """judge가 None을 반환하면 파이프라인 중단"""
+        _fill_pending(store, channel_id)
 
-        class NoneObserver:
-            call_count = 0
-            async def observe(self, **kwargs):
-                self.call_count += 1
-                return None
+        observer = FakeObserver()
+        observer.judge_result = None
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
 
-        none_observer = NoneObserver()
-        result = await digest_channel(
+        await run_channel_pipeline(
             store=store,
-            observer=none_observer,
+            observer=observer,
             channel_id=channel_id,
-            buffer_threshold=1,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
         )
 
-        assert result is None
-        # 버퍼는 비우지 않음 (실패했으므로)
-        assert len(store.load_channel_buffer(channel_id)) > 0
+        # pending은 이동되지 않음 (judge 실패)
+        assert len(store.load_pending(channel_id)) > 0
 
     @pytest.mark.asyncio
-    async def test_reaction_returned(self, store, channel_id):
-        """반응 정보가 결과에 포함되는지 확인"""
-        _fill_buffer(store, channel_id)
-
-        observer = FakeObserver(ChannelObserverResult(
-            digest="관찰 결과",
+    async def test_react_action_executed(self, store, channel_id):
+        """judge가 react를 반환하면 이모지 리액션 실행"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
             importance=7,
             reaction_type="react",
             reaction_target="1001.000",
             reaction_content="laughing",
         ))
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
 
-        result = await digest_channel(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
-            buffer_threshold=1,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
         )
 
-        assert result is not None
-        assert result.reaction_type == "react"
-        assert result.reaction_target == "1001.000"
-        assert result.reaction_content == "laughing"
+        # 이모지 리액션 API 호출 확인
+        client.reactions_add.assert_called_once_with(
+            channel=channel_id,
+            name="laughing",
+            timestamp="1001.000",
+        )
 
     @pytest.mark.asyncio
-    async def test_meta_updated(self, store, channel_id):
-        """digest meta에 토큰 수와 중요도가 기록되는지"""
-        _fill_buffer(store, channel_id)
-        observer = FakeObserver(ChannelObserverResult(
-            digest="관찰 내용",
-            importance=6,
-            reaction_type="none",
+    async def test_intervene_action_with_llm(self, store, channel_id):
+        """judge가 intervene을 반환하면 LLM으로 응답 생성"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="1005.000",
+            reaction_content="이 대화에 끼어들어야 할 것 같습니다",
         ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+        mock_llm = AsyncMock(return_value="흥미로운 이야기로군요.")
 
-        await digest_channel(
+        await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
-            buffer_threshold=1,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            llm_call=mock_llm,
         )
 
-        saved = store.get_digest(channel_id)
-        meta = saved["meta"]
-        assert "token_count" in meta
-        assert "last_importance" in meta
-        assert meta["last_importance"] == 6
+        # LLM이 호출되고 슬랙에 발송됨
+        mock_llm.assert_called_once()
+        client.chat_postMessage.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_intervene_without_llm_fallback(self, store, channel_id):
+        """llm_call이 없으면 직접 발송"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="직접 발송 텍스트",
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            llm_call=None,
+        )
+
+        client.chat_postMessage.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_debug_log_sent(self, store, channel_id):
+        """디버그 채널에 로그 전송"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver()
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            debug_channel="C_DEBUG",
+        )
+
+        # 디버그 채널에 로그가 전송됨
+        calls = client.chat_postMessage.call_args_list
+        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
+        assert len(debug_calls) >= 1
+
+    @pytest.mark.asyncio
+    async def test_existing_digest_passed_to_judge(self, store, channel_id):
+        """기존 digest가 judge에 전달되는지 확인"""
+        store.save_digest(channel_id, "이전 digest", {"token_count": 50})
+        _fill_pending(store, channel_id)
+        observer = FakeObserver()
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+        )
+
+        assert observer.judge_call_count == 1
 
 
 # ── 개입 모드 프롬프트 테스트 ──────────────────────────
@@ -317,7 +478,6 @@ class TestInterventionModePrompt:
             new_messages=[{"ts": "1.1", "user": "U1", "text": "안녕"}],
             digest="다이제스트",
         )
-        # 마지막 턴이므로 마무리 관련 지시가 있어야 함
         assert "마지막" in prompt or "마무리" in prompt
 
     def test_not_last_turn_no_farewell(self):
@@ -343,15 +503,12 @@ class TestRespondInInterventionMode:
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
         cooldown.enter_intervention_mode("C123", max_turns=3)
 
-        # 버퍼에 메시지 추가
-        store.append_channel_message("C123", {
+        store.append_pending("C123", {
             "ts": "1.1", "user": "U1", "text": "테스트 메시지",
         })
 
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
-
-        # LLM mock
         mock_llm = AsyncMock(return_value="아이고, 재미있는 이야기로군요.")
 
         await respond_in_intervention_mode(
@@ -378,7 +535,7 @@ class TestRespondInInterventionMode:
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
         cooldown.enter_intervention_mode("C123", max_turns=1)
 
-        store.append_channel_message("C123", {
+        store.append_pending("C123", {
             "ts": "1.1", "user": "U1", "text": "메시지",
         })
 
@@ -405,7 +562,7 @@ class TestRespondInInterventionMode:
         cooldown.enter_intervention_mode("C123", max_turns=5)
 
         store.save_digest("C123", "기존 다이제스트", {"token_count": 100})
-        store.append_channel_message("C123", {
+        store.append_pending("C123", {
             "ts": "1.1", "user": "U1", "text": "새 메시지",
         })
 
@@ -421,21 +578,18 @@ class TestRespondInInterventionMode:
             llm_call=mock_llm,
         )
 
-        # LLM이 호출됨
         mock_llm.assert_called_once()
         call_args = mock_llm.call_args
         system_prompt = call_args[1].get("system_prompt") or call_args[0][0]
         user_prompt = call_args[1].get("user_prompt") or call_args[0][1]
 
-        # 시스템 프롬프트에 서소영 관련 내용
         assert "서소영" in system_prompt
-        # 유저 프롬프트에 다이제스트와 메시지
         assert "기존 다이제스트" in user_prompt
         assert "새 메시지" in user_prompt
 
     @pytest.mark.asyncio
     async def test_empty_buffer_skips(self, tmp_path):
-        """버퍼가 비어있으면 반응 스킵"""
+        """pending 버퍼가 비어있으면 반응 스킵"""
         store = ChannelStore(base_dir=tmp_path)
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
         cooldown.enter_intervention_mode("C123", max_turns=5)
@@ -451,18 +605,17 @@ class TestRespondInInterventionMode:
             llm_call=mock_llm,
         )
 
-        # 빈 버퍼: LLM 호출 안 됨
         mock_llm.assert_not_called()
         client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_clears_buffer_after_response(self, tmp_path):
-        """반응 후 채널 버퍼를 비움"""
+        """반응 후 pending 버퍼를 비움"""
         store = ChannelStore(base_dir=tmp_path)
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
         cooldown.enter_intervention_mode("C123", max_turns=5)
 
-        store.append_channel_message("C123", {
+        store.append_pending("C123", {
             "ts": "1.1", "user": "U1", "text": "메시지",
         })
 
@@ -478,7 +631,7 @@ class TestRespondInInterventionMode:
             llm_call=mock_llm,
         )
 
-        assert len(store.load_channel_buffer("C123")) == 0
+        assert len(store.load_pending("C123")) == 0
 
     @pytest.mark.asyncio
     async def test_debug_log_sent_on_respond(self, tmp_path):
@@ -487,7 +640,7 @@ class TestRespondInInterventionMode:
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
         cooldown.enter_intervention_mode("C123", max_turns=3)
 
-        store.append_channel_message("C123", {
+        store.append_pending("C123", {
             "ts": "1.1", "user": "U1", "text": "트리거 메시지",
         })
 
@@ -504,7 +657,6 @@ class TestRespondInInterventionMode:
             debug_channel="C_DEBUG",
         )
 
-        # chat_postMessage 호출: 1) 채널 응답 + 2) 디버그 로그
         calls = client.chat_postMessage.call_args_list
         debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
         assert len(debug_calls) >= 1
@@ -520,7 +672,7 @@ class TestRespondInInterventionMode:
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
         cooldown.enter_intervention_mode("C123", max_turns=1)
 
-        store.append_channel_message("C123", {
+        store.append_pending("C123", {
             "ts": "1.1", "user": "U1", "text": "메시지",
         })
 
@@ -537,7 +689,6 @@ class TestRespondInInterventionMode:
             debug_channel="C_DEBUG",
         )
 
-        # 디버그 로그 중 종료 로그 확인
         calls = client.chat_postMessage.call_args_list
         debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
         debug_texts = [c[1]["text"] for c in debug_calls]
@@ -550,7 +701,7 @@ class TestRespondInInterventionMode:
         cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
         cooldown.enter_intervention_mode("C123", max_turns=3)
 
-        store.append_channel_message("C123", {
+        store.append_pending("C123", {
             "ts": "1.1", "user": "U1", "text": "메시지",
         })
 

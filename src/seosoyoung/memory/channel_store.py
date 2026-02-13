@@ -6,7 +6,8 @@
     memory/channel/{channel_id}/
     ├── digest.md              # 전체 누적 관찰 요약
     ├── digest.meta.json       # 메타데이터
-    ├── buffer_channel.jsonl   # 미소화 채널 루트 메시지
+    ├── pending.jsonl          # 아직 LLM이 보지 않은 새 대화
+    ├── judged.jsonl           # LLM이 이미 리액션 판단을 거친 대화
     └── buffer_threads/
         └── {thread_ts}.jsonl  # 미소화 스레드별 메시지
 """
@@ -45,31 +46,89 @@ class ChannelStore:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    # ── 채널 루트 메시지 버퍼 ────────────────────────────
+    # ── pending 버퍼 (아직 LLM이 보지 않은 새 대화) ────────
 
-    def _channel_buffer_path(self, channel_id: str) -> Path:
-        return self._channel_dir(channel_id) / "buffer_channel.jsonl"
+    def _pending_path(self, channel_id: str) -> Path:
+        return self._channel_dir(channel_id) / "pending.jsonl"
 
-    def _channel_buffer_lock(self, channel_id: str) -> Path:
-        return self._channel_dir(channel_id) / "buffer_channel.lock"
+    def _pending_lock(self, channel_id: str) -> Path:
+        return self._channel_dir(channel_id) / "pending.lock"
 
-    def append_channel_message(self, channel_id: str, message: dict) -> None:
-        """채널 루트 메시지를 버퍼에 추가"""
+    def append_pending(self, channel_id: str, message: dict) -> None:
+        """채널 루트 메시지를 pending 버퍼에 추가"""
         self._ensure_channel_dir(channel_id)
-        lock = FileLock(str(self._channel_buffer_lock(channel_id)), timeout=5)
+        lock = FileLock(str(self._pending_lock(channel_id)), timeout=5)
         with lock:
-            with open(self._channel_buffer_path(channel_id), "a", encoding="utf-8") as f:
+            with open(self._pending_path(channel_id), "a", encoding="utf-8") as f:
                 f.write(json.dumps(message, ensure_ascii=False) + "\n")
 
-    def load_channel_buffer(self, channel_id: str) -> list[dict]:
-        """채널 루트 메시지 버퍼를 로드. 없으면 빈 리스트."""
-        path = self._channel_buffer_path(channel_id)
+    def load_pending(self, channel_id: str) -> list[dict]:
+        """pending 버퍼를 로드. 없으면 빈 리스트."""
+        path = self._pending_path(channel_id)
         if not path.exists():
             return []
 
-        lock = FileLock(str(self._channel_buffer_lock(channel_id)), timeout=5)
+        lock = FileLock(str(self._pending_lock(channel_id)), timeout=5)
         with lock:
             return self._read_jsonl(path)
+
+    def clear_pending(self, channel_id: str) -> None:
+        """pending 버퍼만 비운다."""
+        path = self._pending_path(channel_id)
+        if path.exists():
+            path.unlink()
+
+    # ── 하위호환 별칭 ──────────────────────────────────────
+
+    def append_channel_message(self, channel_id: str, message: dict) -> None:
+        """append_pending의 하위호환 별칭"""
+        return self.append_pending(channel_id, message)
+
+    def load_channel_buffer(self, channel_id: str) -> list[dict]:
+        """load_pending의 하위호환 별칭"""
+        return self.load_pending(channel_id)
+
+    # ── judged 버퍼 (LLM이 이미 판단을 거친 대화) ──────────
+
+    def _judged_path(self, channel_id: str) -> Path:
+        return self._channel_dir(channel_id) / "judged.jsonl"
+
+    def _judged_lock(self, channel_id: str) -> Path:
+        return self._channel_dir(channel_id) / "judged.lock"
+
+    def append_judged(self, channel_id: str, messages: list[dict]) -> None:
+        """judged 버퍼에 메시지들을 추가"""
+        self._ensure_channel_dir(channel_id)
+        lock = FileLock(str(self._judged_lock(channel_id)), timeout=5)
+        with lock:
+            with open(self._judged_path(channel_id), "a", encoding="utf-8") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+    def load_judged(self, channel_id: str) -> list[dict]:
+        """judged 버퍼를 로드. 없으면 빈 리스트."""
+        path = self._judged_path(channel_id)
+        if not path.exists():
+            return []
+
+        lock = FileLock(str(self._judged_lock(channel_id)), timeout=5)
+        with lock:
+            return self._read_jsonl(path)
+
+    def clear_judged(self, channel_id: str) -> None:
+        """judged 버퍼만 비운다."""
+        path = self._judged_path(channel_id)
+        if path.exists():
+            path.unlink()
+
+    # ── pending → judged 이동 ──────────────────────────────
+
+    def move_pending_to_judged(self, channel_id: str) -> None:
+        """pending 내용을 judged에 append 후 pending 클리어"""
+        pending = self.load_pending(channel_id)
+        if pending:
+            self.append_judged(channel_id, pending)
+        self.clear_pending(channel_id)
 
     # ── 스레드 메시지 버퍼 ───────────────────────────────
 
@@ -113,32 +172,44 @@ class ChannelStore:
 
     # ── 토큰 카운팅 ─────────────────────────────────────
 
-    def count_buffer_tokens(self, channel_id: str) -> int:
-        """버퍼 총 토큰 수 (채널 + 스레드 합산)"""
+    def _count_messages_tokens(self, messages: list[dict]) -> int:
+        """메시지 리스트의 총 토큰 수를 계산"""
         from seosoyoung.memory.token_counter import TokenCounter
 
         counter = TokenCounter()
         total = 0
-
-        # 채널 버퍼
-        for msg in self.load_channel_buffer(channel_id):
+        for msg in messages:
             total += counter.count_string(msg.get("text", ""))
+        return total
 
-        # 스레드 버퍼
+    def count_pending_tokens(self, channel_id: str) -> int:
+        """pending 버퍼 총 토큰 수 (채널 + 스레드 합산)"""
+        total = self._count_messages_tokens(self.load_pending(channel_id))
+
         for thread_msgs in self.load_all_thread_buffers(channel_id).values():
-            for msg in thread_msgs:
-                total += counter.count_string(msg.get("text", ""))
+            total += self._count_messages_tokens(thread_msgs)
 
         return total
+
+    def count_judged_plus_pending_tokens(self, channel_id: str) -> int:
+        """judged + pending 합산 토큰 수"""
+        judged_tokens = self._count_messages_tokens(self.load_judged(channel_id))
+        pending_tokens = self.count_pending_tokens(channel_id)
+        return judged_tokens + pending_tokens
+
+    def count_buffer_tokens(self, channel_id: str) -> int:
+        """count_pending_tokens의 하위호환 별칭"""
+        return self.count_pending_tokens(channel_id)
 
     # ── 버퍼 비우기 ──────────────────────────────────────
 
     def clear_buffers(self, channel_id: str) -> None:
-        """소화 완료 후 채널+스레드 버퍼를 비운다."""
-        # 채널 버퍼
-        channel_buf = self._channel_buffer_path(channel_id)
-        if channel_buf.exists():
-            channel_buf.unlink()
+        """pending + judged + 스레드 버퍼를 모두 비운다."""
+        # pending 버퍼
+        self.clear_pending(channel_id)
+
+        # judged 버퍼
+        self.clear_judged(channel_id)
 
         # 스레드 버퍼 디렉토리
         threads_dir = self._threads_dir(channel_id)
