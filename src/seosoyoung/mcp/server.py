@@ -8,6 +8,7 @@ from seosoyoung.mcp.tools.attach import attach_file, get_slack_context
 from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 from seosoyoung.mcp.tools.slack_messaging import post_message
 from seosoyoung.mcp.tools.thread_files import download_thread_files
+from seosoyoung.mcp.tools.npc_chat import npc_list_characters as _npc_list_characters
 from seosoyoung.mcp.tools.user_profile import download_user_avatar, get_user_profile
 
 mcp = FastMCP("seosoyoung-attach")
@@ -122,3 +123,13 @@ async def slack_download_user_avatar(
         size: 이미지 크기 (24, 32, 48, 72, 192, 512, 1024). 기본값 512.
     """
     return await download_user_avatar(user_id, size)
+
+
+@mcp.tool()
+def npc_list_characters() -> dict:
+    """대화 가능한 NPC 캐릭터 목록을 반환합니다.
+
+    eb_lore 캐릭터 데이터에서 speech_guide와 example_lines가 있는 캐릭터만 포함합니다.
+    각 캐릭터의 id, name(kr/en), role(kr/en), tagline(있는 경우)을 반환합니다.
+    """
+    return _npc_list_characters()

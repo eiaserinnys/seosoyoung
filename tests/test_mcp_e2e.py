@@ -39,7 +39,7 @@ class TestMCPServerStandalone:
         assert "slack_post_message" in tools
         assert "slack_generate_image" in tools
         assert "slack_download_thread_files" in tools
-        assert len(tools) == 5
+        assert len(tools) == 8
 
     def test_get_context_reads_env(self):
         """slack_get_context가 환경변수에서 값을 읽음"""
