@@ -338,8 +338,6 @@ class ClaudeExecutor:
 
         # DM 스레드 사고 과정: 마지막 답글 ts 추적 (트렐로 DM 모드용)
         dm_last_reply_ts: Optional[str] = None
-        # DM 스레드에 보낸 텍스트 길이 추적 (delta 계산용)
-        dm_sent_length: int = 0
         # DM 스레드 사고 과정 메시지 길이 제한 (슬랙 메시지 최대 길이 고려)
         DM_MSG_MAX_LEN = 3000
 
@@ -376,7 +374,7 @@ class ClaudeExecutor:
 
         # 스트리밍 콜백
         async def on_progress(current_text: str):
-            nonlocal last_msg_ts, trello_reaction_added, dm_last_reply_ts, dm_sent_length
+            nonlocal last_msg_ts, trello_reaction_added, dm_last_reply_ts
             try:
                 display_text = current_text.lstrip("\n")
                 if not display_text:
@@ -391,20 +389,13 @@ class ClaudeExecutor:
                         trello_reaction_added = True
 
                     # DM 스레드가 있으면 DM에 blockquote 답글 추가
+                    # current_text는 턴 단위 텍스트이므로 전체를 새 메시지로 전송
                     if dm_channel_id and dm_thread_ts:
-                        # delta 계산: 이전에 보낸 부분 이후의 새 텍스트만
-                        full_text = current_text.lstrip("\n")
-                        if len(full_text) <= dm_sent_length:
-                            return  # 변화 없음
-                        delta = full_text[dm_sent_length:]
-                        if not delta.strip():
-                            return
-
                         # blockquote 형태로 변환
-                        escaped_delta = escape_backticks(delta)
-                        if len(escaped_delta) > DM_MSG_MAX_LEN:
-                            escaped_delta = escaped_delta[-DM_MSG_MAX_LEN:]
-                        quote_lines = [f"> {line}" for line in escaped_delta.split("\n")]
+                        escaped_text = escape_backticks(display_text)
+                        if len(escaped_text) > DM_MSG_MAX_LEN:
+                            escaped_text = escaped_text[-DM_MSG_MAX_LEN:]
+                        quote_lines = [f"> {line}" for line in escaped_text.split("\n")]
                         quote_text = "\n".join(quote_lines)
 
                         # 항상 새 메시지로 추가 (로그처럼 쌓이는 방식)
@@ -419,7 +410,6 @@ class ClaudeExecutor:
                             }]
                         )
                         dm_last_reply_ts = reply["ts"]
-                        dm_sent_length = len(full_text)
                     else:
                         # DM 스레드 없으면 기존 동작: 알림 채널 메인 메시지 덮어쓰기
                         header = build_trello_header(trello_card, session.session_id or "")

@@ -206,6 +206,110 @@ class TestOnProgressDmThread:
             f"DM 사고 과정에서 chat_update가 호출되면 안 됨: {dm_update_calls}"
         )
 
+    def test_dm_progress_per_turn_text_not_skipped(self):
+        """턴별 독립 텍스트가 올 때 이전 턴의 누적 길이 때문에 스킵되면 안 됨
+
+        버그: dm_sent_length(누적)와 current_text(턴별)를 비교하여
+        두 번째 턴 이후 텍스트가 dm_sent_length보다 짧으면 전부 스킵됨.
+        """
+        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.trello.watcher import TrackedCard
+
+        mock_client = MagicMock()
+        mock_client.chat_postMessage.side_effect = [
+            {"ts": "dm_reply_1"},
+            {"ts": "dm_reply_2"},
+            {"ts": "dm_reply_3"},
+        ]
+
+        executor = ClaudeExecutor(
+            session_manager=MagicMock(),
+            get_session_lock=lambda ts: MagicMock(),
+            mark_session_running=MagicMock(),
+            mark_session_stopped=MagicMock(),
+            get_running_session_count=MagicMock(return_value=0),
+            restart_manager=MagicMock(),
+            upload_file_to_slack=MagicMock(),
+            send_long_message=MagicMock(),
+            send_restart_confirmation=MagicMock(),
+        )
+
+        trello_card = TrackedCard(
+            card_id="card123",
+            card_name="테스트",
+            card_url="https://trello.com/c/abc",
+            list_id="list123",
+            list_key="to_go",
+            thread_ts="1234.5678",
+            channel_id="C12345",
+            detected_at="2026-01-01",
+            has_execute=True,
+        )
+
+        session = MagicMock()
+        session.thread_ts = "1234.5678"
+        session.session_id = "sess123"
+        session.message_count = 0
+        session.role = "admin"
+
+        captured_on_progress = None
+
+        def mock_run(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel):
+            nonlocal captured_on_progress
+            captured_on_progress = on_progress
+            result = MagicMock()
+            result.session_id = "sess123"
+            result.success = True
+            result.interrupted = False
+            result.output = "최종 응답"
+            result.update_requested = False
+            result.restart_requested = False
+            result.list_run = None
+            result.usage = None
+            return result
+
+        mock_runner = MagicMock()
+        mock_runner.run = MagicMock(side_effect=mock_run)
+        mock_runner.run_sync = lambda coro: coro
+
+        with patch("seosoyoung.claude.executor.get_runner_for_role", return_value=mock_runner):
+            executor._execute_once(
+                session=session,
+                prompt="테스트",
+                msg_ts="1234.5678",
+                channel="C12345",
+                say=MagicMock(),
+                client=mock_client,
+                effective_role="admin",
+                trello_card=trello_card,
+                is_existing_thread=False,
+                initial_msg_ts=None,
+                is_trello_mode=True,
+                dm_channel_id="D_DM_CHANNEL",
+                dm_thread_ts="1111.0000",
+            )
+
+        assert captured_on_progress is not None
+
+        loop = asyncio.new_event_loop()
+        # 턴 1: 긴 텍스트
+        loop.run_until_complete(captured_on_progress("첫 번째 턴의 사고 과정입니다. 이것은 꽤 긴 텍스트입니다."))
+        # 턴 2: 짧은 텍스트 (독립적인 턴 — 이전 턴보다 짧음)
+        loop.run_until_complete(captured_on_progress("두 번째 턴"))
+        # 턴 3: 또 짧은 텍스트
+        loop.run_until_complete(captured_on_progress("세 번째"))
+        loop.close()
+
+        # 3개의 턴 모두 DM에 새 메시지로 전송되어야 함
+        dm_post_calls = [
+            call for call in mock_client.chat_postMessage.call_args_list
+            if call[1].get("channel") == "D_DM_CHANNEL"
+        ]
+        assert len(dm_post_calls) == 3, (
+            f"3개 턴 모두 DM에 전송되어야 하지만 {len(dm_post_calls)}회만 전송됨: "
+            f"{[c[1].get('text', '')[:50] for c in dm_post_calls]}"
+        )
+
     def test_dm_thread_blockquote_new_reply(self):
         """DM 스레드에 새 blockquote 답글 추가"""
         from seosoyoung.claude.executor import ClaudeExecutor
