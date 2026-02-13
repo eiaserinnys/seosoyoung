@@ -96,9 +96,12 @@ def main() -> None:
     for cfg in configs:
         pm.register(cfg)
 
-    # 전체 시작
+    # 전체 시작 (개별 실패가 supervisor를 죽이지 않도록 보호)
     for name in pm.registered_names:
-        pm.start(name)
+        try:
+            pm.start(name)
+        except Exception:
+            logger.exception("%s: 초기 시작 실패, 메인 루프에서 재시도 예정", name)
 
     # GitPoller: runtime 리포 변경 감지
     git_poller = GitPoller(

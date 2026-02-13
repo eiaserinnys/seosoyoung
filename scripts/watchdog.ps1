@@ -39,6 +39,7 @@ $BASE_DELAY = 5             # 백오프 기본 대기(초)
 $MAX_DELAY = 300            # 백오프 상한(초, 5분)
 $ROLLBACK_TRIGGER = 3       # 연속 빠른 크래시 N회 → 롤백
 $MAX_POST_ROLLBACK = 10     # 롤백 후 최대 재시도 횟수
+$MAX_ABSOLUTE_FAILURES = 30 # 절대 최대 재시도 (롤백 여부 무관)
 
 # ============================================================
 # 설정 로드 (시작 시 1회)
@@ -438,7 +439,8 @@ while ($true) {
         # 롤백 실패 → 백오프로 진행
     }
 
-    # --- 롤백 후 반복 실패: circuit breaker ---
+    # --- circuit breaker ---
+    # 롤백 후 반복 실패
     if ($state.rolledBack -and $state.consecutiveFailures -ge $ROLLBACK_TRIGGER) {
         if ($state.consecutiveFailures -eq $ROLLBACK_TRIGGER) {
             Send-SlackNotification ":warning: 롤백 후에도 supervisor 크래시 지속. 수동 개입이 필요합니다."
@@ -448,6 +450,12 @@ while ($true) {
             Send-SlackNotification ":skull: watchdog 최대 재시도 초과. 감시를 종료합니다. 수동 개입이 필요합니다."
             break
         }
+    }
+    # 절대 최대 재시도 (롤백 여부 무관)
+    if ($state.consecutiveFailures -ge $MAX_ABSOLUTE_FAILURES) {
+        Write-Log "절대 최대 재시도($MAX_ABSOLUTE_FAILURES) 초과, 감시 종료"
+        Send-SlackNotification ":skull: supervisor 연속 크래시 $($state.consecutiveFailures)회. 롤백 불가 상태에서 최대 재시도 초과. 수동 개입이 필요합니다."
+        break
     }
 
     # --- 지수적 백오프 대기 ---

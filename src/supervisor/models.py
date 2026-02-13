@@ -53,6 +53,7 @@ class ProcessConfig:
     env: dict[str, str] = field(default_factory=dict)
     restart_policy: RestartPolicy = field(default_factory=RestartPolicy)
     log_dir: str | None = None
+    port: int | None = None  # 프로세스가 바인딩하는 포트 (시작 전 좀비 정리용)
 
     @property
     def log_path(self) -> Path | None:

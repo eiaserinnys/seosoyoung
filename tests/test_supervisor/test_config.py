@@ -68,9 +68,12 @@ class TestFinders:
             assert _find_mcp_outline_exe() == str(exe)
 
     def test_find_mcp_outline_from_which(self):
+        from pathlib import Path
+
         with patch.dict(os.environ, {"MCP_OUTLINE_EXE": ""}):
             with patch("shutil.which", return_value="C:/scripts/mcp-outline.exe"):
-                assert _find_mcp_outline_exe() == "C:/scripts/mcp-outline.exe"
+                result = _find_mcp_outline_exe()
+                assert Path(result) == Path("C:/scripts/mcp-outline.exe").resolve()
 
     def test_find_mcp_outline_not_found(self):
         with patch.dict(os.environ, {"MCP_OUTLINE_EXE": ""}):

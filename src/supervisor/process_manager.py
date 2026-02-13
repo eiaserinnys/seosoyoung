@@ -63,6 +63,42 @@ class ProcessManager:
                 except Exception:
                     pass
 
+    def _kill_port_holder(self, port: int) -> None:
+        """지정된 포트를 점유 중인 프로세스를 강제 종료한다 (Windows 전용)."""
+        if os.name != "nt":
+            return
+        try:
+            result = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True, text=True, timeout=5,
+            )
+            my_pid = os.getpid()
+            known_pids = {
+                p.pid for p in self._procs.values() if p.poll() is None
+            }
+            for line in result.stdout.splitlines():
+                if "LISTENING" not in line:
+                    continue
+                if f"127.0.0.1:{port}" not in line and f"0.0.0.0:{port}" not in line:
+                    continue
+                parts = line.split()
+                pid = int(parts[-1])
+                if pid == my_pid:
+                    logger.warning("포트 %d: supervisor 자신 (PID %d), 건너뜀", port, pid)
+                    continue
+                if pid in known_pids:
+                    logger.warning("포트 %d: 관리 중인 프로세스 (PID %d), 건너뜀", port, pid)
+                    continue
+                logger.warning("포트 %d 점유 프로세스 종료: PID %d", port, pid)
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", str(pid)],
+                    capture_output=True, timeout=5,
+                )
+                time.sleep(0.5)
+                break
+        except Exception:
+            logger.debug("포트 %d 정리 중 오류 (무시)", port, exc_info=True)
+
     def start(self, name: str) -> None:
         """프로세스 시작"""
         state = self._ensure_registered(name)
@@ -71,6 +107,11 @@ class ProcessManager:
             return
 
         config = state.config
+
+        # 포트 좀비 정리
+        if config.port is not None:
+            self._kill_port_holder(config.port)
+
         env = {**os.environ, **config.env}
         cmd = [config.command, *config.args]
         cwd = config.cwd

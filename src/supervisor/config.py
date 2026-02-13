@@ -50,14 +50,22 @@ def _find_supergateway() -> str:
     )
 
 
+def _resolve_mcp_servers_dir() -> str:
+    """MCP 서버들의 작업 디렉토리를 해석한다. 없으면 생성."""
+    raw = os.environ.get("MCP_SERVERS_DIR", os.path.expanduser("~/.mcp-servers"))
+    resolved = str(Path(raw).resolve())
+    Path(resolved).mkdir(parents=True, exist_ok=True)
+    return resolved
+
+
 def _find_mcp_outline_exe() -> str:
     """mcp-outline 실행 파일 경로를 찾는다."""
     path = os.environ.get("MCP_OUTLINE_EXE")
     if path and Path(path).exists():
-        return path
+        return str(Path(path).resolve())
     exe = shutil.which("mcp-outline")
     if exe:
-        return exe
+        return str(Path(exe).resolve())
     raise FileNotFoundError(
         "mcp-outline을 찾을 수 없습니다. "
         "MCP_OUTLINE_EXE 환경변수를 설정하거나 pip install mcp-outline을 실행하세요."
@@ -65,14 +73,25 @@ def _find_mcp_outline_exe() -> str:
 
 
 def build_process_configs() -> list[ProcessConfig]:
-    """봇 + MCP 프로세스 설정 생성"""
-    paths = _resolve_paths()
+    """봇 + MCP 프로세스 설정 생성.
 
-    bot = ProcessConfig(
+    필수 프로세스(bot) 실패 시 예외 전파, 선택적 MCP 서버는
+    FileNotFoundError 시 건너뛰고 로그만 남긴다.
+    """
+    import logging
+
+    logger = logging.getLogger("supervisor")
+    paths = _resolve_paths()
+    mcp_servers_dir = _resolve_mcp_servers_dir()
+
+    configs: list[ProcessConfig] = []
+
+    # --- 필수: bot ---
+    configs.append(ProcessConfig(
         name="bot",
         command=str(paths["venv_python"]),
         args=["-m", "seosoyoung.main"],
-        cwd=str(paths["workspace"]),
+        cwd=str(paths["workspace"].resolve()),
         env={
             "PYTHONUTF8": "1",
             "PYTHONPATH": str(paths["runtime"] / "src"),
@@ -82,15 +101,16 @@ def build_process_configs() -> list[ProcessConfig]:
             auto_restart=True,
         ),
         log_dir=str(paths["logs"]),
-    )
+    ))
 
+    # --- 필수: mcp-seosoyoung ---
     # .env에서 로드되는 추가 환경변수: SLACK_BOT_TOKEN, GEMINI_API_KEY,
     # NPC_CLAUDE_API_KEY 등은 process_manager가 os.environ을 병합하여 전달
-    mcp_seosoyoung = ProcessConfig(
+    configs.append(ProcessConfig(
         name="mcp-seosoyoung",
         command=str(paths["mcp_venv_python"]),
         args=["-m", "seosoyoung.mcp", "--transport=sse", "--port=3104"],
-        cwd=str(paths["root"]),
+        cwd=str(paths["root"].resolve()),
         env={
             "PYTHONUTF8": "1",
             "PYTHONPATH": str(paths["workspace"] / "seosoyoung" / "src"),
@@ -101,65 +121,77 @@ def build_process_configs() -> list[ProcessConfig]:
             restart_delay=3.0,
         ),
         log_dir=str(paths["logs"]),
-    )
+        port=3104,
+    ))
 
-    mcp_outline = ProcessConfig(
-        name="mcp-outline",
-        command=_find_mcp_outline_exe(),
-        args=[],
-        cwd=os.environ.get("MCP_SERVERS_DIR", os.path.expanduser("~/.mcp-servers")),
-        env={
-            "MCP_TRANSPORT": "sse",
-            "MCP_HOST": "127.0.0.1",
-            "MCP_PORT": "3103",
-        },
-        restart_policy=RestartPolicy(
-            use_exit_codes=False,
-            auto_restart=True,
-            restart_delay=3.0,
-        ),
-        log_dir=str(paths["logs"]),
-    )
+    # --- 선택적: mcp-outline ---
+    try:
+        configs.append(ProcessConfig(
+            name="mcp-outline",
+            command=_find_mcp_outline_exe(),
+            args=[],
+            cwd=mcp_servers_dir,
+            env={
+                "MCP_TRANSPORT": "sse",
+                "MCP_HOST": "127.0.0.1",
+                "MCP_PORT": "3103",
+            },
+            restart_policy=RestartPolicy(
+                use_exit_codes=False,
+                auto_restart=True,
+                restart_delay=3.0,
+            ),
+            log_dir=str(paths["logs"]),
+            port=3103,
+        ))
+    except FileNotFoundError as e:
+        logger.warning("mcp-outline 설정 건너뜀: %s", e)
 
-    node = _find_node()
-    supergateway = _find_supergateway()
+    # --- 선택적: node 기반 MCP 서버들 ---
+    try:
+        node = _find_node()
+        supergateway = _find_supergateway()
 
-    mcp_slack = ProcessConfig(
-        name="mcp-slack",
-        command=node,
-        args=[
-            supergateway,
-            "--stdio", "npx -y slack-mcp-server@latest",
-            "--port", "3101",
-            "--logLevel", "info",
-        ],
-        cwd=str(paths["root"]),
-        env={},
-        restart_policy=RestartPolicy(
-            use_exit_codes=False,
-            auto_restart=True,
-            restart_delay=3.0,
-        ),
-        log_dir=str(paths["logs"]),
-    )
+        configs.append(ProcessConfig(
+            name="mcp-slack",
+            command=node,
+            args=[
+                supergateway,
+                "--stdio", "npx -y slack-mcp-server@latest",
+                "--port", "3101",
+                "--logLevel", "info",
+            ],
+            cwd=str(paths["root"].resolve()),
+            env={},
+            restart_policy=RestartPolicy(
+                use_exit_codes=False,
+                auto_restart=True,
+                restart_delay=3.0,
+            ),
+            log_dir=str(paths["logs"]),
+            port=3101,
+        ))
 
-    mcp_trello = ProcessConfig(
-        name="mcp-trello",
-        command=node,
-        args=[
-            supergateway,
-            "--stdio", "npx -y @delorenj/mcp-server-trello",
-            "--port", "3102",
-            "--logLevel", "info",
-        ],
-        cwd=os.environ.get("MCP_SERVERS_DIR", os.path.expanduser("~/.mcp-servers")),
-        env={},
-        restart_policy=RestartPolicy(
-            use_exit_codes=False,
-            auto_restart=True,
-            restart_delay=3.0,
-        ),
-        log_dir=str(paths["logs"]),
-    )
+        configs.append(ProcessConfig(
+            name="mcp-trello",
+            command=node,
+            args=[
+                supergateway,
+                "--stdio", "npx -y @delorenj/mcp-server-trello",
+                "--port", "3102",
+                "--logLevel", "info",
+            ],
+            cwd=mcp_servers_dir,
+            env={},
+            restart_policy=RestartPolicy(
+                use_exit_codes=False,
+                auto_restart=True,
+                restart_delay=3.0,
+            ),
+            log_dir=str(paths["logs"]),
+            port=3102,
+        ))
+    except FileNotFoundError as e:
+        logger.warning("node 기반 MCP 서버 설정 건너뜀: %s", e)
 
-    return [bot, mcp_seosoyoung, mcp_outline, mcp_slack, mcp_trello]
+    return configs

@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import logging
 import subprocess
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,9 @@ logger = logging.getLogger("supervisor")
 
 # supervisor 코드가 포함된 경로 접두사
 _SUPERVISOR_PATH_PREFIX = "src/supervisor/"
+
+# waiting_sessions 상태 최대 대기 시간 (초)
+_WAITING_SESSIONS_TIMEOUT = 600  # 10분
 
 
 class SupervisorRestartRequired(Exception):
@@ -49,6 +53,7 @@ class Deployer:
         self._session_monitor = session_monitor
         self._paths = paths
         self._state = DeployState.IDLE
+        self._waiting_since: float | None = None
         self._webhook_config = paths["runtime"] / "data" / "watchdog_config.json"
 
     @property
@@ -67,15 +72,28 @@ class Deployer:
             return
 
         if self._state in (DeployState.PENDING, DeployState.WAITING_SESSIONS):
-            if self._session_monitor.is_safe_to_deploy():
+            timed_out = False
+            if self._state == DeployState.WAITING_SESSIONS:
+                if self._waiting_since is None:
+                    self._waiting_since = time.monotonic()
+                elapsed = time.monotonic() - self._waiting_since
+                if elapsed >= _WAITING_SESSIONS_TIMEOUT:
+                    logger.warning(
+                        "세션 대기 타임아웃 (%.0f초 경과), 강제 배포 진행", elapsed,
+                    )
+                    timed_out = True
+
+            if self._session_monitor.is_safe_to_deploy() or timed_out:
                 self._state = DeployState.DEPLOYING
-                logger.info("배포 상태: → deploying (세션 0)")
+                self._waiting_since = None
+                logger.info("배포 상태: → deploying (세션 0 또는 타임아웃)")
                 try:
                     self._execute_deploy()
                 finally:
                     self._state = DeployState.IDLE
             elif self._state == DeployState.PENDING:
                 self._state = DeployState.WAITING_SESSIONS
+                self._waiting_since = time.monotonic()
                 logger.info("배포 상태: pending → waiting_sessions (세션 대기)")
 
     def _get_changed_files(self) -> list[str]:
