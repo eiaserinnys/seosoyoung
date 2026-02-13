@@ -237,11 +237,11 @@
 - `main()` (seosoyoung/translator/__main__.py:18): 
 - `is_korean_char()` (seosoyoung/translator/detector.py:14): 한글 문자인지 확인 (한글 자모, 음절 모두 포함)
 - `detect_language()` (seosoyoung/translator/detector.py:27): 텍스트의 언어를 감지
-- `get_glossary_entries()` (seosoyoung/translator/glossary.py:135): 용어집 항목들을 (한국어, 영어) 쌍으로 반환 (캐싱)
-- `find_relevant_terms()` (seosoyoung/translator/glossary.py:268): 텍스트에서 관련 용어 추출 (하위 호환성 유지)
-- `find_relevant_terms_v2()` (seosoyoung/translator/glossary.py:287): 텍스트에서 관련 용어 추출 (개선된 버전, 디버그 정보 포함)
-- `get_term_mappings()` (seosoyoung/translator/glossary.py:403): 용어 매핑 딕셔너리 생성 (하위 호환성 유지)
-- `clear_cache()` (seosoyoung/translator/glossary.py:433): 캐시 초기화 (테스트 또는 용어집 갱신 시 사용)
+- `get_glossary_entries()` (seosoyoung/translator/glossary.py:137): 용어집 항목들을 (한국어, 영어) 쌍으로 반환 (캐싱)
+- `find_relevant_terms()` (seosoyoung/translator/glossary.py:271): 텍스트에서 관련 용어 추출 (하위 호환성 유지)
+- `find_relevant_terms_v2()` (seosoyoung/translator/glossary.py:290): 텍스트에서 관련 용어 추출 (개선된 버전, 디버그 정보 포함)
+- `get_term_mappings()` (seosoyoung/translator/glossary.py:406): 용어 매핑 딕셔너리 생성 (하위 호환성 유지)
+- `clear_cache()` (seosoyoung/translator/glossary.py:436): 캐시 초기화 (테스트 또는 용어집 갱신 시 사용)
 - `translate()` (seosoyoung/translator/translator.py:169): 텍스트를 번역
 - `async get_article()` (seosoyoung/web/__init__.py:22): URL에서 아티클 추출
 - `format_article_for_prompt()` (seosoyoung/web/__init__.py:97): 아티클 데이터를 프롬프트용 문자열로 포맷

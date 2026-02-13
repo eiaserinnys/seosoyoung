@@ -15,32 +15,23 @@ from seosoyoung.translator.glossary import (
 )
 
 
-# 테스트용 샘플 YAML 데이터
+# 테스트용 샘플 YAML 데이터 (glossary.yaml 실제 구조: name: {kr, en})
 SAMPLE_GLOSSARY_YAML = """
 id: glossary
 
 main_characters:
   items:
-    - name_kr:
+    - name:
         kr: 펜릭스 헤이븐
         en: Fenrix Haven
-      name_en:
-        kr: Fenrix Haven
-        en: Fenrix Haven
-    - name_kr:
+    - name:
         kr: 성채의 수호자, 아리엘라 애시우드
-        en: Ariella Ashwood, the Guardian of the Sanctuary
-      name_en:
-        kr: Ariella Ashwood, the Guardian of the Sanctuary
         en: Ariella Ashwood, the Guardian of the Sanctuary
 
 main_places:
   items:
-    - name_kr:
+    - name:
         kr: 망각의 성채
-        en: The Sanctuary of Oblivion
-      name_en:
-        kr: The Sanctuary of Oblivion
         en: The Sanctuary of Oblivion
 """
 
@@ -49,23 +40,40 @@ class TestExtractNamePair:
     """이름 쌍 추출 테스트"""
 
     def test_extract_valid_pair(self):
-        """유효한 이름 쌍 추출"""
+        """유효한 이름 쌍 추출 (name: {kr, en} 구조)"""
         item = {
-            "name_kr": {"kr": "펜릭스", "en": "Fenrix"},
-            "name_en": {"kr": "Fenrix", "en": "Fenrix"},
+            "name": {"kr": "펜릭스", "en": "Fenrix"},
         }
         result = _extract_name_pair(item)
         assert result == ("펜릭스", "Fenrix")
 
-    def test_extract_missing_name_kr(self):
-        """name_kr 누락"""
-        item = {"name_en": {"kr": "Fenrix", "en": "Fenrix"}}
+    def test_extract_missing_name(self):
+        """name 키 누락"""
+        item = {"description": {"kr": "주인공", "en": "protagonist"}}
+        result = _extract_name_pair(item)
+        assert result is None
+
+    def test_extract_missing_kr(self):
+        """name.kr 누락"""
+        item = {"name": {"en": "Fenrix"}}
+        result = _extract_name_pair(item)
+        assert result is None
+
+    def test_extract_missing_en(self):
+        """name.en 누락"""
+        item = {"name": {"kr": "펜릭스"}}
         result = _extract_name_pair(item)
         assert result is None
 
     def test_extract_empty_item(self):
         """빈 항목"""
         result = _extract_name_pair({})
+        assert result is None
+
+    def test_extract_name_not_dict(self):
+        """name이 dict가 아닌 경우"""
+        item = {"name": "펜릭스"}
+        result = _extract_name_pair(item)
         assert result is None
 
 

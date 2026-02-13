@@ -71,18 +71,20 @@ def _load_glossary_raw() -> dict:
 def _extract_name_pair(item: dict) -> tuple[str, str] | None:
     """아이템에서 한국어-영어 이름 쌍 추출
 
+    glossary.yaml 구조: item.name.kr / item.name.en
+
     Args:
-        item: glossary 항목 (name_kr, name_en 포함)
+        item: glossary 항목 (name: {kr, en} 포함)
 
     Returns:
         (한국어명, 영어명) 튜플 또는 None
     """
-    name_kr = item.get("name_kr", {})
-    name_en = item.get("name_en", {})
+    name = item.get("name", {})
+    if not isinstance(name, dict):
+        return None
 
-    # name_kr, name_en 내부의 kr/en 키에서 실제 이름 추출
-    kr_name = name_kr.get("kr") if isinstance(name_kr, dict) else name_kr
-    en_name = name_en.get("en") if isinstance(name_en, dict) else name_en
+    kr_name = name.get("kr")
+    en_name = name.get("en")
 
     if kr_name and en_name:
         return (str(kr_name), str(en_name))
@@ -142,9 +144,10 @@ def get_glossary_entries() -> tuple[tuple[str, str], ...]:
     entries = []
 
     categories_with_items = [
-        "main_characters", "ariella_variants", "bosses", "boss_human_era",
-        "blessing_angels", "npcs", "golems", "system_characters",
-        "main_places", "seal_structure", "concepts"
+        "main_characters", "ariella_variants", "bosses", "sub_bosses",
+        "boss_human_era", "blessing_angels", "blessings", "npcs", "golems",
+        "system_characters", "main_places", "sanctuary_places",
+        "seal_structure", "concepts", "items_resources", "terminology",
     ]
 
     for category in categories_with_items:
