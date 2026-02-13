@@ -31,6 +31,9 @@ Thumbs.db
 # Runtime data
 data/*.json
 
+# Local workspace data
+.local/
+
 # Observational memory (runtime only)
 memory/
 !src/seosoyoung/memory/
