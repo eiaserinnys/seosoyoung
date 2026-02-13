@@ -405,17 +405,9 @@ def _maybe_trigger_digest(
         _digest_running[channel_id] = True
         try:
             from seosoyoung.memory.channel_pipeline import run_channel_pipeline
+            from seosoyoung.claude import get_claude_runner
 
-            async def llm_call(system_prompt, user_prompt):
-                response = await observer.client.chat.completions.create(
-                    model=observer.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    max_completion_tokens=1000,
-                )
-                return response.choices[0].message.content or ""
+            runner = get_claude_runner()
 
             asyncio.run(
                 run_channel_pipeline(
@@ -431,7 +423,7 @@ def _maybe_trigger_digest(
                     digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
                     debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
                     max_intervention_turns=Config.CHANNEL_OBSERVER_MAX_INTERVENTION_TURNS,
-                    llm_call=llm_call,
+                    claude_runner=runner,
                 )
             )
         except Exception as e:
@@ -462,17 +454,9 @@ def _maybe_trigger_intervention_response(
         _intervention_running[channel_id] = True
         try:
             from seosoyoung.memory.channel_pipeline import respond_in_intervention_mode
+            from seosoyoung.claude import get_claude_runner
 
-            async def llm_call(system_prompt, user_prompt):
-                response = await observer.client.chat.completions.create(
-                    model=observer.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    max_completion_tokens=1000,
-                )
-                return response.choices[0].message.content or ""
+            runner = get_claude_runner()
 
             asyncio.run(
                 respond_in_intervention_mode(
@@ -480,8 +464,8 @@ def _maybe_trigger_intervention_response(
                     channel_id=channel_id,
                     slack_client=client,
                     cooldown=cooldown,
-                    llm_call=llm_call,
                     debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
+                    claude_runner=runner,
                 )
             )
         except Exception as e:

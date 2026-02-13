@@ -50,11 +50,11 @@ Args:
 force=True이면 임계치와 무관하게 즉시 트리거합니다.
 
 ### `_maybe_trigger_intervention_response(channel_id, client, store, observer, cooldown)`
-- 위치: 줄 450
+- 위치: 줄 442
 - 설명: 개입 모드 중일 때 별도 스레드에서 반응을 생성합니다.
 
 ### `_send_collect_log(client, channel_id, store, event)`
-- 위치: 줄 496
+- 위치: 줄 480
 - 설명: 수집 디버그 로그를 전송합니다.
 
 ## 내부 의존성

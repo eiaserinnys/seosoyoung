@@ -192,8 +192,8 @@
 - `send_intervention_mode_debug_log()` (seosoyoung/memory/channel_intervention.py:358): 개입 모드 이벤트를 디버그 채널에 기록합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:66): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_judge_output()` (seosoyoung/memory/channel_observer.py:92): Judge 응답에서 XML 태그를 파싱합니다.
-- `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:75): 소화/판단 분리 파이프라인을 실행합니다.
-- `async respond_in_intervention_mode()` (seosoyoung/memory/channel_pipeline.py:368): 개입 모드 중 새 메시지에 반응합니다.
+- `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:78): 소화/판단 분리 파이프라인을 실행합니다.
+- `async respond_in_intervention_mode()` (seosoyoung/memory/channel_pipeline.py:389): 개입 모드 중 새 메시지에 반응합니다.
 - `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:19): 채널 관찰 시스템 프롬프트를 반환합니다.
 - `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:24): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:58): digest 압축 시스템 프롬프트를 반환합니다.

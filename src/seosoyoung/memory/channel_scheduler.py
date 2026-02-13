@@ -120,17 +120,9 @@ class ChannelDigestScheduler:
     def _run_pipeline(self, channel_id: str) -> None:
         """소화/판단 파이프라인을 실행합니다."""
         from seosoyoung.memory.channel_pipeline import run_channel_pipeline
+        from seosoyoung.claude import get_claude_runner
 
-        async def llm_call(system_prompt, user_prompt):
-            response = await self.observer.client.chat.completions.create(
-                model=self.observer.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                max_completion_tokens=1000,
-            )
-            return response.choices[0].message.content or ""
+        runner = get_claude_runner()
 
         try:
             asyncio.run(
@@ -147,7 +139,7 @@ class ChannelDigestScheduler:
                     digest_target_tokens=self.digest_target_tokens,
                     debug_channel=self.debug_channel,
                     max_intervention_turns=self.max_intervention_turns,
-                    llm_call=llm_call,
+                    claude_runner=runner,
                 )
             )
         except Exception as e:

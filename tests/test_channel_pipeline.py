@@ -1,5 +1,7 @@
 """채널 소화/판단 파이프라인 통합 테스트"""
 
+from dataclasses import dataclass, field
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -779,3 +781,232 @@ class TestRespondInInterventionMode:
         assert len(debug_calls) >= 1
         assert "오류" in debug_calls[0][1]["text"]
         assert "API timeout" in debug_calls[0][1]["text"]
+
+
+# ── ClaudeAgentRunner Mock ────────────────────────────
+
+@dataclass
+class FakeClaudeResult:
+    """ClaudeResult mock"""
+    success: bool = True
+    output: str = ""
+    session_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class FakeClaudeRunner:
+    """ClaudeAgentRunner mock for testing"""
+
+    def __init__(self, output: str = "테스트 응답", success: bool = True, error: str = None):
+        self._output = output
+        self._success = success
+        self._error = error
+        self.run_call_count = 0
+        self.last_prompt = None
+
+    async def run(self, prompt: str, **kwargs) -> FakeClaudeResult:
+        self.run_call_count += 1
+        self.last_prompt = prompt
+        return FakeClaudeResult(
+            success=self._success,
+            output=self._output if self._success else "",
+            error=self._error,
+        )
+
+
+# ── Claude Runner 경로 테스트 ────────────────────────────
+
+class TestIntervenWithClaudeRunner:
+    """Claude Code SDK (claude_runner) 경로 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_intervene_with_claude_runner(self, store, channel_id):
+        """claude_runner가 있으면 Claude SDK로 응답 생성"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="1005.000",
+            reaction_content="대화에 참여하고 싶습니다",
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+        runner = FakeClaudeRunner(output="Claude SDK 응답입니다.")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            claude_runner=runner,
+        )
+
+        # Claude runner가 호출됨
+        assert runner.run_call_count == 1
+        # 프롬프트에 system+user가 합쳐져 있어야 함
+        assert runner.last_prompt is not None
+        # 슬랙에 발송됨
+        client.chat_postMessage.assert_called()
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert "Claude SDK 응답입니다" in call_kwargs["text"]
+
+    @pytest.mark.asyncio
+    async def test_claude_runner_takes_priority_over_llm_call(self, store, channel_id):
+        """claude_runner와 llm_call 모두 있으면 claude_runner가 우선"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="개입",
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+        runner = FakeClaudeRunner(output="Claude 응답")
+        mock_llm = AsyncMock(return_value="LLM 응답")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            llm_call=mock_llm,
+            claude_runner=runner,
+        )
+
+        # Claude runner가 호출됨
+        assert runner.run_call_count == 1
+        # llm_call은 호출되지 않음
+        mock_llm.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_claude_runner_failure_no_message_sent(self, store, channel_id):
+        """Claude runner 실패 시 메시지 발송 안 됨"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="개입",
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+        runner = FakeClaudeRunner(success=False, error="타임아웃")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            claude_runner=runner,
+        )
+
+        # 채널에 메시지 발송 안 됨 (디버그 채널이 아닌)
+        calls = [c for c in client.chat_postMessage.call_args_list
+                 if c[1].get("channel") == channel_id]
+        assert len(calls) == 0
+
+
+class TestRespondInInterventionModeWithClaudeRunner:
+    """개입 모드 Claude Code SDK 경로 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_responds_with_claude_runner(self, tmp_path):
+        """claude_runner로 개입 모드 반응 생성"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=3)
+
+        store.append_pending("C123", {
+            "ts": "1.1", "user": "U1", "text": "테스트 메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        runner = FakeClaudeRunner(output="Claude 개입 모드 응답")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            claude_runner=runner,
+        )
+
+        # Claude runner가 호출됨
+        assert runner.run_call_count == 1
+        # 슬랙에 메시지 발송됨
+        client.chat_postMessage.assert_called_once()
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert "Claude 개입 모드 응답" in call_kwargs["text"]
+        # 턴이 소모됨
+        assert cooldown.get_remaining_turns("C123") == 2
+
+    @pytest.mark.asyncio
+    async def test_claude_runner_prompt_includes_context(self, tmp_path):
+        """claude_runner 프롬프트에 system+user가 모두 포함"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=5)
+
+        store.save_digest("C123", "채널 다이제스트 내용", {"token_count": 100})
+        store.append_pending("C123", {
+            "ts": "1.1", "user": "U1", "text": "새 메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        runner = FakeClaudeRunner(output="응답")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            claude_runner=runner,
+        )
+
+        assert runner.run_call_count == 1
+        # 프롬프트에 system prompt (서소영) + user prompt (다이제스트, 메시지) 모두 포함
+        prompt = runner.last_prompt
+        assert "서소영" in prompt
+        assert "채널 다이제스트 내용" in prompt
+        assert "새 메시지" in prompt
+
+    @pytest.mark.asyncio
+    async def test_claude_runner_failure_sends_debug_log(self, tmp_path):
+        """Claude runner 실패 시 디버그 로그 전송"""
+        store = ChannelStore(base_dir=tmp_path)
+        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
+        cooldown.enter_intervention_mode("C123", max_turns=3)
+
+        store.append_pending("C123", {
+            "ts": "1.1", "user": "U1", "text": "메시지",
+        })
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        runner = FakeClaudeRunner(success=False, error="CLI 프로세스 오류")
+
+        await respond_in_intervention_mode(
+            store=store,
+            channel_id="C123",
+            slack_client=client,
+            cooldown=cooldown,
+            claude_runner=runner,
+            debug_channel="C_DEBUG",
+        )
+
+        calls = client.chat_postMessage.call_args_list
+        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
+        assert len(debug_calls) >= 1
+        assert "오류" in debug_calls[0][1]["text"]

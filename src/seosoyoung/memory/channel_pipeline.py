@@ -10,7 +10,7 @@ pending 버퍼에 쌓인 메시지를 기반으로:
 
 import logging
 from datetime import datetime, timezone
-from typing import Callable, Optional
+from typing import Callable, Optional, TYPE_CHECKING
 
 from seosoyoung.memory.channel_intervention import (
     CooldownManager,
@@ -33,6 +33,9 @@ from seosoyoung.memory.channel_prompts import (
 )
 from seosoyoung.memory.channel_store import ChannelStore
 from seosoyoung.memory.token_counter import TokenCounter
+
+if TYPE_CHECKING:
+    from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +89,7 @@ async def run_channel_pipeline(
     debug_channel: str = "",
     max_intervention_turns: int = 0,
     llm_call: Optional[Callable] = None,
+    claude_runner: Optional["ClaudeAgentRunner"] = None,
 ) -> None:
     """소화/판단 분리 파이프라인을 실행합니다.
 
@@ -109,7 +113,8 @@ async def run_channel_pipeline(
         digest_target_tokens: digest 압축 목표 토큰
         debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
         max_intervention_turns: 개입 모드 최대 턴 (0이면 개입 모드 비활성)
-        llm_call: async callable(system_prompt, user_prompt) -> str
+        llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
+        claude_runner: Claude Code SDK 기반 실행기 (우선 사용, 없으면 llm_call 폴백)
     """
     token_counter = TokenCounter()
 
@@ -231,16 +236,17 @@ async def run_channel_pipeline(
             await execute_interventions(slack_client, channel_id, react_actions)
 
         filtered_messages = cooldown.filter_actions(channel_id, message_actions)
-        if filtered_messages and llm_call:
+        if filtered_messages and (claude_runner or llm_call):
             for action in filtered_messages:
-                await _execute_intervene_with_llm(
+                await _execute_intervene(
                     store=store,
                     channel_id=channel_id,
                     slack_client=slack_client,
-                    llm_call=llm_call,
                     action=action,
                     pending_messages=pending_messages,
                     observer_reason=judge_result.reaction_content,
+                    claude_runner=claude_runner,
+                    llm_call=llm_call,
                 )
 
             if max_intervention_turns > 0:
@@ -283,25 +289,29 @@ async def run_channel_pipeline(
     store.move_pending_to_judged(channel_id)
 
 
-async def _execute_intervene_with_llm(
+async def _execute_intervene(
     store: ChannelStore,
     channel_id: str,
     slack_client,
-    llm_call: Callable,
     action: InterventionAction,
     pending_messages: list[dict],
     observer_reason: str | None = None,
+    claude_runner: Optional["ClaudeAgentRunner"] = None,
+    llm_call: Optional[Callable] = None,
 ) -> None:
-    """LLM을 호출하여 서소영의 개입 응답을 생성하고 발송합니다.
+    """서소영의 개입 응답을 생성하고 발송합니다.
+
+    claude_runner가 있으면 Claude Code SDK로, 없으면 llm_call 폴백으로 응답을 생성합니다.
 
     Args:
         store: 채널 데이터 저장소
         channel_id: 대상 채널
         slack_client: Slack WebClient
-        llm_call: async callable(system_prompt, user_prompt) -> str
         action: 실행할 InterventionAction (type="message")
         pending_messages: pending 메시지 (트리거/컨텍스트 분리용)
         observer_reason: judge의 reaction_content (판단 근거/초안)
+        claude_runner: Claude Code SDK 기반 실행기 (우선 사용)
+        llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
     """
     # 1. 갱신된 digest 로드
     digest_data = store.get_digest(channel_id)
@@ -334,18 +344,29 @@ async def _execute_intervene_with_llm(
         observer_reason=observer_reason,
     )
 
-    # 4. LLM 호출
+    # 4. 응답 생성 (Claude Code SDK 우선, llm_call 폴백)
     try:
-        response_text = await llm_call(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-        )
+        if claude_runner:
+            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+            result = await claude_runner.run(prompt=combined_prompt)
+            response_text = result.output if result.success else None
+            if not result.success:
+                logger.error(f"intervene Claude SDK 실패 ({channel_id}): {result.error}")
+                return
+        elif llm_call:
+            response_text = await llm_call(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+        else:
+            logger.warning(f"intervene: claude_runner와 llm_call 모두 없음 ({channel_id})")
+            return
     except Exception as e:
-        logger.error(f"intervene LLM 호출 실패 ({channel_id}): {e}")
+        logger.error(f"intervene 응답 생성 실패 ({channel_id}): {e}")
         return
 
     if not response_text or not response_text.strip():
-        logger.warning(f"intervene LLM 빈 응답 ({channel_id})")
+        logger.warning(f"intervene 빈 응답 ({channel_id})")
         return
 
     # 5. 슬랙 발송
@@ -370,21 +391,23 @@ async def respond_in_intervention_mode(
     channel_id: str,
     slack_client,
     cooldown: CooldownManager,
-    llm_call: Callable,
+    llm_call: Optional[Callable] = None,
     debug_channel: str = "",
+    claude_runner: Optional["ClaudeAgentRunner"] = None,
 ) -> None:
     """개입 모드 중 새 메시지에 반응합니다.
 
-    버퍼에 쌓인 메시지를 읽고, LLM으로 서소영의 응답을 생성하여
-    슬랙에 발송하고, 턴을 소모합니다.
+    버퍼에 쌓인 메시지를 읽고, Claude Code SDK(또는 LLM 폴백)으로
+    서소영의 응답을 생성하여 슬랙에 발송하고, 턴을 소모합니다.
 
     Args:
         store: 채널 데이터 저장소
         channel_id: 대상 채널
         slack_client: Slack WebClient
         cooldown: CooldownManager 인스턴스
-        llm_call: async callable(system_prompt, user_prompt) -> str
+        llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
         debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
+        claude_runner: Claude Code SDK 기반 실행기 (우선 사용, 없으면 llm_call 폴백)
     """
     # 1. pending 버퍼 로드
     messages = store.load_pending(channel_id)
@@ -405,27 +428,43 @@ async def respond_in_intervention_mode(
         digest=digest,
     )
 
-    # 4. LLM 호출
+    # 4. 응답 생성 (Claude Code SDK 우선, llm_call 폴백)
     try:
-        response_text = await llm_call(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-        )
+        if claude_runner:
+            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+            result = await claude_runner.run(prompt=combined_prompt)
+            response_text = result.output if result.success else None
+            if not result.success:
+                logger.error(f"개입 모드 Claude SDK 실패 ({channel_id}): {result.error}")
+                send_intervention_mode_debug_log(
+                    client=slack_client, debug_channel=debug_channel,
+                    source_channel=channel_id, event="error",
+                    error=f"Claude SDK 실패: {result.error}",
+                )
+                return
+        elif llm_call:
+            response_text = await llm_call(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+        else:
+            logger.warning(f"개입 모드: claude_runner와 llm_call 모두 없음 ({channel_id})")
+            return
     except Exception as e:
-        logger.error(f"개입 모드 LLM 호출 실패 ({channel_id}): {e}")
+        logger.error(f"개입 모드 응답 생성 실패 ({channel_id}): {e}")
         send_intervention_mode_debug_log(
             client=slack_client, debug_channel=debug_channel,
             source_channel=channel_id, event="error",
-            error=f"LLM 호출 실패: {e}",
+            error=f"응답 생성 실패: {e}",
         )
         return
 
     if not response_text or not response_text.strip():
-        logger.warning(f"개입 모드 LLM 빈 응답 ({channel_id})")
+        logger.warning(f"개입 모드 빈 응답 ({channel_id})")
         send_intervention_mode_debug_log(
             client=slack_client, debug_channel=debug_channel,
             source_channel=channel_id, event="error",
-            error="LLM 빈 응답",
+            error="빈 응답",
         )
         return
 
