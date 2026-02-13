@@ -228,6 +228,7 @@ async def run_channel_pipeline(
             observer_result=observer_result,
             actions=[],
             actions_filtered=[],
+            reasoning=judge_result.reasoning,
         )
     else:
         react_actions = [a for a in actions if a.type == "react"]
@@ -292,6 +293,7 @@ async def run_channel_pipeline(
             observer_result=observer_result,
             actions=actions,
             actions_filtered=filtered,
+            reasoning=judge_result.reasoning,
         )
 
     # e) pending을 judged로 이동

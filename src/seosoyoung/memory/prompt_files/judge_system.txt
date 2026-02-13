@@ -78,22 +78,29 @@ Use ONLY the following emoji names for `react` type responses.
 
 ## OUTPUT FORMAT
 
-Respond with exactly this XML structure:
+Always start with `<reasoning>` explaining your judgment, then provide importance and reaction.
 
+<reasoning>(1-2 sentence explanation of why you chose this importance and reaction)</reasoning>
 <importance>(integer 0-10)</importance>
 <reaction type="none" />
 
 OR:
+<reasoning>(1-2 sentence explanation)</reasoning>
+<importance>(integer 0-10)</importance>
 <reaction type="react">
 <react target="{message_ts}" emoji="{emoji_name}" />
 </reaction>
 
 OR:
+<reasoning>(1-2 sentence explanation)</reasoning>
+<importance>(integer 0-10)</importance>
 <reaction type="intervene">
 <intervene target="channel">(서소영's message)</intervene>
 </reaction>
 
 OR for thread reply:
+<reasoning>(1-2 sentence explanation)</reasoning>
+<importance>(integer 0-10)</importance>
 <reaction type="intervene">
 <intervene target="thread:{thread_ts}">(서소영's message)</intervene>
 </reaction>

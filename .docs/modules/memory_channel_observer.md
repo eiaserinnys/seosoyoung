@@ -24,45 +24,45 @@ DigestCompressor는 digest가 임계치를 초과할 때 압축합니다.
 - 설명: 리액션 판단 결과
 
 ### `DigestCompressorResult`
-- 위치: 줄 59
+- 위치: 줄 60
 - 설명: digest 압축 결과
 
 ### `ChannelObserver`
-- 위치: 줄 145
+- 위치: 줄 149
 - 설명: 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
 
 #### 메서드
 
-- `__init__(self, api_key, model)` (줄 148): 
-- `async observe(self, channel_id, existing_digest, channel_messages, thread_buffers)` (줄 152): 채널 버퍼를 분석하여 관찰 결과를 반환합니다 (하위호환).
-- `async digest(self, channel_id, existing_digest, judged_messages)` (줄 195): judged 메시지를 digest에 편입합니다 (소화 전용).
-- `async judge(self, channel_id, digest, judged_messages, pending_messages, thread_buffers)` (줄 242): pending 메시지에 대해 리액션을 판단합니다 (판단 전용).
+- `__init__(self, api_key, model)` (줄 152): 
+- `async observe(self, channel_id, existing_digest, channel_messages, thread_buffers)` (줄 156): 채널 버퍼를 분석하여 관찰 결과를 반환합니다 (하위호환).
+- `async digest(self, channel_id, existing_digest, judged_messages)` (줄 199): judged 메시지를 digest에 편입합니다 (소화 전용).
+- `async judge(self, channel_id, digest, judged_messages, pending_messages, thread_buffers)` (줄 246): pending 메시지에 대해 리액션을 판단합니다 (판단 전용).
 
 ### `DigestCompressor`
-- 위치: 줄 289
+- 위치: 줄 293
 - 설명: digest가 임계치를 초과할 때 압축
 
 #### 메서드
 
-- `__init__(self, api_key, model)` (줄 292): 
-- `async compress(self, digest, target_tokens)` (줄 297): digest를 압축합니다.
+- `__init__(self, api_key, model)` (줄 296): 
+- `async compress(self, digest, target_tokens)` (줄 301): digest를 압축합니다.
 
 ## 함수
 
 ### `parse_channel_observer_output(text)`
-- 위치: 줄 66
+- 위치: 줄 67
 - 설명: Observer 응답에서 XML 태그를 파싱합니다.
 
 ### `parse_judge_output(text)`
-- 위치: 줄 92
+- 위치: 줄 93
 - 설명: Judge 응답에서 XML 태그를 파싱합니다.
 
 ### `_parse_reaction(text)`
-- 위치: 줄 111
+- 위치: 줄 115
 - 설명: XML 텍스트에서 reaction 정보를 추출합니다.
 
 ### `_extract_tag(text, tag_name)`
-- 위치: 줄 371
+- 위치: 줄 375
 - 설명: XML 태그 내용을 추출합니다. 없으면 빈 문자열.
 
 ## 내부 의존성

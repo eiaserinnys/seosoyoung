@@ -51,7 +51,7 @@ Args:
     claude_runner: Claude Code SDK 기반 실행기 (우선 사용, 없으면 llm_call 폴백)
 
 ### `async _execute_intervene(store, channel_id, slack_client, action, pending_messages, observer_reason, claude_runner, llm_call)`
-- 위치: 줄 301
+- 위치: 줄 303
 - 설명: 서소영의 개입 응답을 생성하고 발송합니다.
 
 claude_runner가 있으면 Claude Code SDK로, 없으면 llm_call 폴백으로 응답을 생성합니다.

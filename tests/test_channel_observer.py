@@ -266,6 +266,7 @@ class TestParseJudgeOutput:
         assert result.importance == 2
         assert result.reaction_type == "none"
         assert result.reaction_target is None
+        assert result.reasoning is None
 
     def test_parse_react(self):
         text = (
@@ -279,6 +280,7 @@ class TestParseJudgeOutput:
         assert result.reaction_type == "react"
         assert result.reaction_target == "111.222"
         assert result.reaction_content == "laughing"
+        assert result.reasoning is None
 
     def test_parse_intervene(self):
         text = (
@@ -292,11 +294,44 @@ class TestParseJudgeOutput:
         assert result.reaction_type == "intervene"
         assert result.reaction_target == "channel"
         assert result.reaction_content == "한마디 하겠소."
+        assert result.reasoning is None
 
     def test_parse_fallback(self):
         result = parse_judge_output("뭔가 이상한 응답")
         assert result.importance == 0
         assert result.reaction_type == "none"
+        assert result.reasoning is None
+
+    def test_parse_reasoning(self):
+        """reasoning 태그가 있으면 파싱"""
+        text = (
+            '<reasoning>서소영이 직접 언급되어 중요도 높음</reasoning>\n'
+            '<importance>7</importance>\n'
+            '<reaction type="react">\n'
+            '<react target="111.222" emoji="eyes" />\n'
+            '</reaction>'
+        )
+        result = parse_judge_output(text)
+        assert result.reasoning == "서소영이 직접 언급되어 중요도 높음"
+        assert result.importance == 7
+        assert result.reaction_type == "react"
+        assert result.reaction_target == "111.222"
+        assert result.reaction_content == "eyes"
+
+    def test_parse_reasoning_with_intervene(self):
+        """intervene과 함께 reasoning 파싱"""
+        text = (
+            '<reasoning>EB 프로젝트 관련 흥미로운 논의가 진행 중</reasoning>\n'
+            '<importance>8</importance>\n'
+            '<reaction type="intervene">\n'
+            '<intervene target="channel">그 이야기, 저도 한마디 보태겠습니다.</intervene>\n'
+            '</reaction>'
+        )
+        result = parse_judge_output(text)
+        assert result.reasoning == "EB 프로젝트 관련 흥미로운 논의가 진행 중"
+        assert result.importance == 8
+        assert result.reaction_type == "intervene"
+        assert result.reaction_content == "그 이야기, 저도 한마디 보태겠습니다."
 
 
 # ── ChannelObserver.digest() ─────────────────────────────

@@ -83,7 +83,7 @@ Args:
 Returns:
     0.0~1.0 사이의 확률 값
 
-### `async send_debug_log(client, debug_channel, source_channel, observer_result, actions, actions_filtered)`
+### `async send_debug_log(client, debug_channel, source_channel, observer_result, actions, actions_filtered, reasoning)`
 - 위치: 줄 256
 - 설명: 디버그 채널에 관찰 결과 로그를 전송합니다.
 
@@ -94,9 +94,10 @@ Args:
     observer_result: 관찰 결과
     actions: 파싱된 전체 액션 리스트
     actions_filtered: 쿨다운 필터 후 실제 실행된 액션 리스트
+    reasoning: Judge의 판단 이유
 
 ### `send_collect_debug_log(client, debug_channel, source_channel, buffer_tokens, threshold, message_text, user, is_thread)`
-- 위치: 줄 296
+- 위치: 줄 300
 - 설명: 메시지 수집 시 디버그 채널에 로그를 전송합니다.
 
 Args:
@@ -110,11 +111,11 @@ Args:
     is_thread: 스레드 메시지 여부
 
 ### `send_digest_skip_debug_log(client, debug_channel, source_channel, buffer_tokens, threshold)`
-- 위치: 줄 342
+- 위치: 줄 346
 - 설명: 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
 
 ### `send_intervention_probability_debug_log(client, debug_channel, source_channel, importance, time_factor, freq_factor, probability, final_score, threshold, passed)`
-- 위치: 줄 364
+- 위치: 줄 368
 - 설명: 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다.
 
 Args:

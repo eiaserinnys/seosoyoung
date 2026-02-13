@@ -260,6 +260,7 @@ async def send_debug_log(
     observer_result: ChannelObserverResult,
     actions: list[InterventionAction],
     actions_filtered: list[InterventionAction],
+    reasoning: Optional[str] = None,
 ) -> None:
     """디버그 채널에 관찰 결과 로그를 전송합니다.
 
@@ -270,6 +271,7 @@ async def send_debug_log(
         observer_result: 관찰 결과
         actions: 파싱된 전체 액션 리스트
         actions_filtered: 쿨다운 필터 후 실제 실행된 액션 리스트
+        reasoning: Judge의 판단 이유
     """
     if not debug_channel:
         return
@@ -286,6 +288,8 @@ async def send_debug_log(
         f"• 실행 액션: {action_summary}\n"
         f"• 쿨다운 스킵: {skipped}건"
     )
+    if reasoning:
+        text += f"\n• 판단 이유: {reasoning}"
 
     try:
         client.chat_postMessage(channel=debug_channel, text=text)
