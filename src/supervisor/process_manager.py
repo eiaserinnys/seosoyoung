@@ -113,6 +113,9 @@ class ProcessManager:
             self._kill_port_holder(config.port)
 
         env = {**os.environ, **config.env}
+        # PATH는 덮어쓰기가 아닌 prepend (config.env의 PATH가 우선)
+        if "PATH" in config.env and "PATH" in os.environ:
+            env["PATH"] = config.env["PATH"] + os.pathsep + os.environ["PATH"]
         cmd = [config.command, *config.args]
         cwd = config.cwd
 

@@ -8,6 +8,23 @@ from pathlib import Path
 
 from .models import ProcessConfig, RestartPolicy
 
+# claude CLI가 설치될 수 있는 경로 후보 (SYSTEM 계정에서 PATH에 없을 때 탐색)
+_CLAUDE_CLI_CANDIDATES = [
+    Path(os.path.expandvars(r"%USERPROFILE%\.local\bin")),
+    Path(os.path.expandvars(r"%LOCALAPPDATA%\Programs\claude-code\bin")),
+    Path.home() / ".local" / "bin",
+]
+
+
+def _find_claude_cli_dir() -> str | None:
+    """claude CLI가 설치된 디렉토리를 찾는다. 없으면 None."""
+    if shutil.which("claude"):
+        return None  # 이미 PATH에 있음
+    for candidate in _CLAUDE_CLI_CANDIDATES:
+        if (candidate / "claude.exe").exists():
+            return str(candidate)
+    return None
+
 
 def _resolve_paths() -> dict[str, Path]:
     """경로 해석. 환경변수 SOYOUNG_ROOT로 오버라이드 가능."""
@@ -86,16 +103,24 @@ def build_process_configs() -> list[ProcessConfig]:
 
     configs: list[ProcessConfig] = []
 
+    # claude CLI 경로 탐색 (SYSTEM 계정에서 PATH에 없을 수 있음)
+    claude_cli_dir = _find_claude_cli_dir()
+
     # --- 필수: bot ---
+    bot_env: dict[str, str] = {
+        "PYTHONUTF8": "1",
+        "PYTHONPATH": str(paths["runtime"] / "src"),
+    }
+    if claude_cli_dir:
+        logger.info("claude CLI 발견: %s (PATH에 추가)", claude_cli_dir)
+        bot_env["PATH"] = claude_cli_dir
+
     configs.append(ProcessConfig(
         name="bot",
         command=str(paths["venv_python"]),
         args=["-m", "seosoyoung.main"],
         cwd=str(paths["workspace"].resolve()),
-        env={
-            "PYTHONUTF8": "1",
-            "PYTHONPATH": str(paths["runtime"] / "src"),
-        },
+        env=bot_env,
         restart_policy=RestartPolicy(
             use_exit_codes=True,
             auto_restart=True,
