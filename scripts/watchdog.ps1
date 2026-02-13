@@ -15,7 +15,7 @@ $runtimeDir = Split-Path -Parent $scriptDir  # seosoyoung_runtime
 $devCloneDir = Join-Path (Split-Path -Parent $runtimeDir) "slackbot_workspace\seosoyoung"
 $workspaceDir = Join-Path (Split-Path -Parent $runtimeDir) "slackbot_workspace"
 
-$pythonw = Join-Path $runtimeDir "venv\Scripts\pythonw.exe"
+$python = Join-Path $runtimeDir "venv\Scripts\python.exe"
 $pip = Join-Path $runtimeDir "venv\Scripts\pip.exe"
 
 $stateFile = Join-Path $runtimeDir "data\watchdog_state.json"
@@ -297,7 +297,7 @@ while ($true) {
     $currentCommits = Get-CurrentCommits
 
     Write-Log "supervisor 시작"
-    & $pythonw -m supervisor
+    & $python -m supervisor
     $exitCode = $LASTEXITCODE
     $state.lastExitCode = $exitCode
 
