@@ -235,6 +235,9 @@ You are {name}, {role}.
 
 ## Situation
 {situation}
+
+## Previous Conversation
+{conversation_history}
 """
 
 
@@ -296,7 +299,7 @@ class TestPromptBuilder:
         # 오버라이드 디렉토리에 hn.txt 생성
         override_dir = tmp_path / "overrides"
         override_dir.mkdir()
-        override_content = "Custom prompt for {name}. Role: {role}. Situation: {situation}"
+        override_content = "Custom prompt for {name}. Role: {role}. Situation: {situation}. History: {conversation_history}"
         (override_dir / "hn.txt").write_text(override_content, encoding="utf-8")
 
         loader = CharacterLoader(char_dir)
@@ -387,12 +390,15 @@ class TestNpcSession:
         session = NpcSession(
             session_id="test123",
             character_id="hn",
+            character_name="하니엘",
             system_prompt="You are Haniel.",
         )
         assert session.session_id == "test123"
         assert session.character_id == "hn"
+        assert session.character_name == "하니엘"
         assert session.language == "kr"
         assert session.messages == []
+        assert session.conversation_log == []
         assert session.digest == ""
         assert session.created_at > 0
 
@@ -402,6 +408,7 @@ class TestNpcSession:
         session = NpcSession(
             session_id="test456",
             character_id="hn",
+            character_name="Haniel",
             system_prompt="You are Haniel.",
             language="en",
         )
@@ -459,8 +466,8 @@ class TestDigest:
             return_value="Summary: user greeted NPC.",
         ):
             digest = _build_digest("sys", [
-                {"role": "user", "content": "Hi"},
-                {"role": "assistant", "content": "Hello."},
+                "User: Hi",
+                "하니엘: Hello.",
             ])
         assert "Summary" in digest
 
@@ -468,13 +475,14 @@ class TestDigest:
         from seosoyoung.mcp.tools.npc_chat import NpcSession, _maybe_compress
 
         session = NpcSession(
-            session_id="s1", character_id="hn", system_prompt="sys"
+            session_id="s1", character_id="hn", character_name="하니엘",
+            system_prompt="sys",
         )
-        # 10턴 (threshold=20 이하)
+        # 10 로그 (threshold=20 이하)
         for i in range(10):
-            session.messages.append({"role": "user", "content": f"msg-{i}"})
+            session.conversation_log.append(f"User: msg-{i}")
         _maybe_compress(session)
-        assert len(session.messages) == 10
+        assert len(session.conversation_log) == 10
         assert session.digest == ""
 
     def test_maybe_compress_over_threshold(self, monkeypatch):
@@ -487,12 +495,13 @@ class TestDigest:
 
         monkeypatch.setenv("NPC_CLAUDE_API_KEY", "test-key")
         session = NpcSession(
-            session_id="s2", character_id="hn", system_prompt="sys"
+            session_id="s2", character_id="hn", character_name="하니엘",
+            system_prompt="sys",
         )
-        # threshold + 5 메시지
+        # threshold + 5 로그
         for i in range(DIGEST_THRESHOLD + 5):
-            role = "user" if i % 2 == 0 else "assistant"
-            session.messages.append({"role": role, "content": f"msg-{i}"})
+            speaker = "User" if i % 2 == 0 else "하니엘"
+            session.conversation_log.append(f"{speaker}: msg-{i}")
 
         with patch(
             "seosoyoung.mcp.tools.npc_chat._build_digest",
@@ -500,7 +509,7 @@ class TestDigest:
         ):
             _maybe_compress(session)
 
-        assert len(session.messages) == DIGEST_KEEP_RECENT
+        assert len(session.conversation_log) == DIGEST_KEEP_RECENT
         assert session.digest == "Digest of old messages."
 
     def test_maybe_compress_appends_existing_digest(self, monkeypatch):
@@ -513,12 +522,13 @@ class TestDigest:
 
         monkeypatch.setenv("NPC_CLAUDE_API_KEY", "test-key")
         session = NpcSession(
-            session_id="s3", character_id="hn", system_prompt="sys",
+            session_id="s3", character_id="hn", character_name="하니엘",
+            system_prompt="sys",
         )
         session.digest = "Old digest."
         for i in range(DIGEST_THRESHOLD + 5):
-            role = "user" if i % 2 == 0 else "assistant"
-            session.messages.append({"role": role, "content": f"msg-{i}"})
+            speaker = "User" if i % 2 == 0 else "하니엘"
+            session.conversation_log.append(f"{speaker}: msg-{i}")
 
         with patch(
             "seosoyoung.mcp.tools.npc_chat._build_digest",
@@ -528,42 +538,48 @@ class TestDigest:
 
         assert "Old digest." in session.digest
         assert "New digest." in session.digest
-        assert len(session.messages) == DIGEST_KEEP_RECENT
+        assert len(session.conversation_log) == DIGEST_KEEP_RECENT
 
 
-# ── API 메시지 빌드 테스트 ─────────────────────────────────
+# ── 대화 이력 빌드 테스트 ─────────────────────────────────
 
 
-class TestBuildApiMessages:
+class TestBuildConversationHistory:
     def test_without_digest(self):
-        from seosoyoung.mcp.tools.npc_chat import NpcSession, _build_api_messages
+        from seosoyoung.mcp.tools.npc_chat import NpcSession, _build_conversation_history
 
         session = NpcSession(
-            session_id="s1", character_id="hn", system_prompt="sys"
+            session_id="s1", character_id="hn", character_name="하니엘",
+            system_prompt="sys",
         )
-        session.messages = [
-            {"role": "user", "content": "hi"},
-            {"role": "assistant", "content": "hello"},
-        ]
-        msgs = _build_api_messages(session)
-        assert len(msgs) == 2
-        assert msgs[0]["content"] == "hi"
+        session.conversation_log = ["하니엘: 뭐야.", "User: 안녕!", "하니엘: 흠."]
+        history = _build_conversation_history(session)
+        assert "하니엘: 뭐야." in history
+        assert "User: 안녕!" in history
+
+    def test_empty_log(self):
+        from seosoyoung.mcp.tools.npc_chat import NpcSession, _build_conversation_history
+
+        session = NpcSession(
+            session_id="s1", character_id="hn", character_name="하니엘",
+            system_prompt="sys",
+        )
+        history = _build_conversation_history(session)
+        assert history == ""
 
     def test_with_digest(self):
-        from seosoyoung.mcp.tools.npc_chat import NpcSession, _build_api_messages
+        from seosoyoung.mcp.tools.npc_chat import NpcSession, _build_conversation_history
 
         session = NpcSession(
-            session_id="s1", character_id="hn", system_prompt="sys"
+            session_id="s1", character_id="hn", character_name="하니엘",
+            system_prompt="sys",
         )
         session.digest = "Previously, user asked about weather."
-        session.messages = [
-            {"role": "user", "content": "What about tomorrow?"},
-        ]
-        msgs = _build_api_messages(session)
-        # digest (user) + ack (assistant) + actual message = 3
-        assert len(msgs) == 3
-        assert "Previous conversation summary" in msgs[0]["content"]
-        assert msgs[1]["role"] == "assistant"
+        session.conversation_log = ["User: What about tomorrow?"]
+        history = _build_conversation_history(session)
+        assert "Summary of earlier conversation" in history
+        assert "Previously, user asked about weather." in history
+        assert "User: What about tomorrow?" in history
 
 
 # ── MCP 도구 함수 테스트 (Phase 2) ─────────────────────────
@@ -686,7 +702,10 @@ class TestNpcTalk:
         session_id = self._create_session(setup_npc_env)
         from seosoyoung.mcp.tools.npc_chat import npc_talk
 
+        loader, _ = setup_npc_env
         with patch(
+            "seosoyoung.mcp.tools.npc_chat._get_loader", return_value=loader
+        ), patch(
             "seosoyoung.mcp.tools.npc_chat._call_claude",
             return_value="뭐, 그래.",
         ):
@@ -694,7 +713,8 @@ class TestNpcTalk:
 
         assert result["success"] is True
         assert result["message"] == "뭐, 그래."
-        assert result["turn_count"] == 4  # opening(user,assistant) + talk(user,assistant)
+        # conversation_log: opening(1) + talk(user+npc=2) = 3
+        assert result["turn_count"] == 3
 
     def test_talk_invalid_session(self, setup_npc_env):
         from seosoyoung.mcp.tools.npc_chat import npc_talk
@@ -707,9 +727,12 @@ class TestNpcTalk:
         session_id = self._create_session(setup_npc_env)
         from seosoyoung.mcp.tools.npc_chat import npc_talk
 
+        loader, _ = setup_npc_env
         replies = ["Reply 1.", "Reply 2.", "Reply 3."]
         for i, expected_reply in enumerate(replies):
             with patch(
+                "seosoyoung.mcp.tools.npc_chat._get_loader", return_value=loader
+            ), patch(
                 "seosoyoung.mcp.tools.npc_chat._call_claude",
                 return_value=expected_reply,
             ):
@@ -748,9 +771,9 @@ class TestNpcSetSituation:
         assert result["success"] is True
         assert result["situation"] == "비가 내리기 시작함"
         assert result["message"] == "어, 갑자기 비가..."
-        # 시스템 프롬프트에 새 상황이 반영되었는지 확인
+        # 세션에 새 상황이 반영되었는지 확인
         session = _sessions[session_id]
-        assert "비가 내리기 시작함" in session.system_prompt
+        assert session.situation == "비가 내리기 시작함"
 
     def test_set_situation_invalid_session(self, setup_npc_env):
         from seosoyoung.mcp.tools.npc_chat import npc_set_situation
@@ -781,8 +804,9 @@ class TestNpcCloseSession:
         assert result["success"] is True
         assert result["session_id"] == session_id
         assert result["character_id"] == "hn"
-        assert result["turn_count"] == 2  # opening pair
-        assert len(result["history"]) == 2
+        assert result["turn_count"] == 1  # opening NPC reply only
+        assert len(result["history"]) == 1
+        assert "하니엘: Opening." in result["history"][0]
         # 세션이 삭제되었는지 확인
         assert session_id not in _sessions
 
@@ -821,18 +845,21 @@ class TestNpcGetHistory:
 
         result = npc_get_history(session_id)
         assert result["success"] is True
-        assert result["turn_count"] == 2
+        assert result["turn_count"] == 1  # opening NPC reply only
         assert result["has_digest"] is False
-        assert len(result["history"]) == 2
+        assert len(result["history"]) == 1
 
     def test_get_history_preserves_session(self, setup_npc_env):
         """get_history는 세션을 유지해야 함 (close와 다름)."""
         session_id = self._create_session(setup_npc_env)
         from seosoyoung.mcp.tools.npc_chat import npc_get_history, npc_talk
 
+        loader, _ = setup_npc_env
         npc_get_history(session_id)
         # 세션이 유지되어 추가 대화 가능
         with patch(
+            "seosoyoung.mcp.tools.npc_chat._get_loader", return_value=loader
+        ), patch(
             "seosoyoung.mcp.tools.npc_chat._call_claude",
             return_value="Still here.",
         ):
@@ -844,3 +871,121 @@ class TestNpcGetHistory:
 
         result = npc_get_history("nonexistent")
         assert result["success"] is False
+
+
+# ── npc_inject 테스트 ──────────────────────────────────────
+
+
+class TestNpcInject:
+    def _create_session(self, setup_npc_env):
+        from seosoyoung.mcp.tools.npc_chat import npc_open_session
+
+        loader, _ = setup_npc_env
+        with patch(
+            "seosoyoung.mcp.tools.npc_chat._get_loader", return_value=loader
+        ), patch(
+            "seosoyoung.mcp.tools.npc_chat._call_claude",
+            return_value="Opening.",
+        ):
+            result = npc_open_session("hn")
+        return result["session_id"]
+
+    def test_inject_success(self, setup_npc_env):
+        session_id = self._create_session(setup_npc_env)
+        from seosoyoung.mcp.tools.npc_chat import npc_inject, _sessions
+
+        result = npc_inject(session_id, "펜릭스", "이건 좀 위험하지 않아?")
+        assert result["success"] is True
+        assert result["injected"] == "펜릭스: 이건 좀 위험하지 않아?"
+        assert result["log_count"] == 2  # opening(1) + inject(1)
+
+        # conversation_log에 추가되었는지 확인
+        session = _sessions[session_id]
+        assert "펜릭스: 이건 좀 위험하지 않아?" in session.conversation_log
+
+    def test_inject_invalid_session(self, setup_npc_env):
+        from seosoyoung.mcp.tools.npc_chat import npc_inject
+
+        result = npc_inject("nonexistent", "펜릭스", "안녕")
+        assert result["success"] is False
+        assert "찾을 수 없습니다" in result["error"]
+
+    def test_inject_then_talk_includes_history(self, setup_npc_env):
+        """inject 후 npc_talk에서 대화 이력에 주입된 대사가 포함되는지 확인."""
+        session_id = self._create_session(setup_npc_env)
+        from seosoyoung.mcp.tools.npc_chat import npc_inject, npc_talk
+
+        # 다른 NPC 대사를 주입
+        npc_inject(session_id, "펜릭스", "하니엘, 좀 도와줘.")
+
+        loader, _ = setup_npc_env
+        with patch(
+            "seosoyoung.mcp.tools.npc_chat._get_loader", return_value=loader
+        ), patch(
+            "seosoyoung.mcp.tools.npc_chat._call_claude",
+            return_value="귀찮은데...",
+        ) as mock_call:
+            result = npc_talk(session_id, "하니엘, 뭐라고 할 거야?")
+
+        assert result["success"] is True
+        # _call_claude에 전달된 시스템 프롬프트에 주입된 대사가 포함되어야 함
+        call_args = mock_call.call_args
+        system_prompt = call_args[0][0]
+        assert "펜릭스: 하니엘, 좀 도와줘." in system_prompt
+
+
+# ── 멀티 NPC 핑퐁 통합 테스트 ──────────────────────────────
+
+
+class TestMultiNpcPingPong:
+    def test_two_npc_conversation(self, setup_npc_env):
+        """두 NPC가 서로 대화하는 멀티 NPC 핑퐁 시나리오."""
+        from seosoyoung.mcp.tools.npc_chat import (
+            npc_open_session, npc_talk, npc_inject, npc_get_history,
+        )
+
+        loader, _ = setup_npc_env
+
+        # 세션 1: 하니엘 (hn) 세션 열기
+        with patch(
+            "seosoyoung.mcp.tools.npc_chat._get_loader", return_value=loader
+        ), patch(
+            "seosoyoung.mcp.tools.npc_chat._call_claude",
+            return_value="...뭐야, 또 왔어?",
+        ):
+            hn_session = npc_open_session("hn")
+        hn_sid = hn_session["session_id"]
+
+        # 세션 2: 하니엘을 다른 캐릭터처럼 사용 (테스트용으로 같은 캐릭터)
+        with patch(
+            "seosoyoung.mcp.tools.npc_chat._get_loader", return_value=loader
+        ), patch(
+            "seosoyoung.mcp.tools.npc_chat._call_claude",
+            return_value="어, 하니엘 여기 있었네.",
+        ):
+            hn2_session = npc_open_session("hn")
+        hn2_sid = hn2_session["session_id"]
+
+        # 세션1의 대사를 세션2에 inject
+        inject_result = npc_inject(hn2_sid, "하니엘A", "...뭐야, 또 왔어?")
+        assert inject_result["success"] is True
+
+        # 세션2에서 talk → 주입된 대사를 포함한 컨텍스트로 응답
+        with patch(
+            "seosoyoung.mcp.tools.npc_chat._get_loader", return_value=loader
+        ), patch(
+            "seosoyoung.mcp.tools.npc_chat._call_claude",
+            return_value="그러게, 또 만났네.",
+        ) as mock_call:
+            talk_result = npc_talk(hn2_sid, "하니엘A가 뭐라고 하는데?")
+
+        assert talk_result["success"] is True
+        # 시스템 프롬프트에 inject된 대사가 포함되어야 함
+        system_prompt = mock_call.call_args[0][0]
+        assert "하니엘A: ...뭐야, 또 왔어?" in system_prompt
+
+        # 히스토리 확인
+        history = npc_get_history(hn2_sid)
+        assert history["success"] is True
+        # opening(1) + inject(1) + talk_user(1) + talk_npc(1) = 4
+        assert history["turn_count"] == 4

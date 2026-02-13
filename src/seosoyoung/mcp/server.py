@@ -13,6 +13,7 @@ from seosoyoung.mcp.tools.npc_chat import (
     npc_open_session as _npc_open_session,
     npc_talk as _npc_talk,
     npc_set_situation as _npc_set_situation,
+    npc_inject as _npc_inject,
     npc_close_session as _npc_close_session,
     npc_get_history as _npc_get_history,
 )
@@ -185,6 +186,21 @@ def npc_set_situation(session_id: str, situation: str) -> dict:
         situation: 새로운 상황 설명
     """
     return _npc_set_situation(session_id, situation)
+
+
+@mcp.tool()
+def npc_inject(session_id: str, speaker_name: str, message: str) -> dict:
+    """다른 NPC의 대사를 세션 대화 이력에 주입합니다.
+
+    멀티 NPC 대화에서, 다른 세션의 NPC 응답을 현재 세션의 대화 컨텍스트에 추가합니다.
+    주입된 대사는 다음 npc_talk 호출 시 대화 이력에 포함됩니다.
+
+    Args:
+        session_id: 대사를 주입할 세션 ID
+        speaker_name: 발화자 이름 (예: "펜릭스", "아리엘라")
+        message: 주입할 대사 텍스트
+    """
+    return _npc_inject(session_id, speaker_name, message)
 
 
 @mcp.tool()

@@ -9,7 +9,7 @@ seosoyoung MCP 서버 정의
 ## 함수
 
 ### `slack_attach_file(file_path, channel, thread_ts)`
-- 위치: 줄 25
+- 위치: 줄 26
 - 데코레이터: mcp.tool
 - 설명: 슬랙에 파일을 첨부합니다.
 
@@ -23,7 +23,7 @@ Args:
     thread_ts: 스레드 타임스탬프
 
 ### `slack_get_context()`
-- 위치: 줄 41
+- 위치: 줄 42
 - 데코레이터: mcp.tool
 - 설명: 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
 
@@ -31,7 +31,7 @@ Args:
 attach_file 호출 전에 컨텍스트를 조회할 때 사용합니다.
 
 ### `slack_post_message(channel, text, thread_ts, file_paths)`
-- 위치: 줄 51
+- 위치: 줄 52
 - 데코레이터: mcp.tool
 - 설명: 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
 
@@ -45,7 +45,7 @@ Args:
     file_paths: 파일 경로, 쉼표 구분 (선택)
 
 ### `async slack_generate_image(prompt, channel, thread_ts, reference_image_paths)`
-- 위치: 줄 72
+- 위치: 줄 73
 - 데코레이터: mcp.tool
 - 설명: 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
 
@@ -59,7 +59,7 @@ Args:
     reference_image_paths: 레퍼런스 이미지 절대 경로, 쉼표 구분 (선택)
 
 ### `async slack_download_thread_files(channel, thread_ts)`
-- 위치: 줄 95
+- 위치: 줄 96
 - 데코레이터: mcp.tool
 - 설명: 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
 
@@ -71,7 +71,7 @@ Args:
     thread_ts: 스레드 타임스탬프
 
 ### `slack_get_user_profile(user_id)`
-- 위치: 줄 109
+- 위치: 줄 110
 - 데코레이터: mcp.tool
 - 설명: Slack 사용자의 프로필 정보를 조회합니다.
 
@@ -81,7 +81,7 @@ Args:
     user_id: Slack User ID (예: U08HWT0C6K1)
 
 ### `async slack_download_user_avatar(user_id, size)`
-- 위치: 줄 121
+- 위치: 줄 122
 - 데코레이터: mcp.tool
 - 설명: Slack 사용자의 프로필 이미지를 다운로드합니다.
 
@@ -92,7 +92,7 @@ Args:
     size: 이미지 크기 (24, 32, 48, 72, 192, 512, 1024). 기본값 512.
 
 ### `npc_list_characters()`
-- 위치: 줄 136
+- 위치: 줄 137
 - 데코레이터: mcp.tool
 - 설명: 대화 가능한 NPC 캐릭터 목록을 반환합니다.
 
@@ -100,7 +100,7 @@ eb_lore 캐릭터 데이터에서 speech_guide와 example_lines가 있는 캐릭
 각 캐릭터의 id, name(kr/en), role(kr/en), tagline(있는 경우)을 반환합니다.
 
 ### `npc_open_session(character_id, situation, language)`
-- 위치: 줄 146
+- 위치: 줄 147
 - 데코레이터: mcp.tool
 - 설명: NPC 대화 세션을 열고 NPC의 첫 반응을 반환합니다.
 
@@ -113,7 +113,7 @@ Args:
     language: 언어 코드 - "kr" 또는 "en" (기본: "kr")
 
 ### `npc_talk(session_id, message)`
-- 위치: 줄 165
+- 위치: 줄 166
 - 데코레이터: mcp.tool
 - 설명: NPC에게 말을 걸고 응답을 받습니다.
 
@@ -124,7 +124,7 @@ Args:
     message: 사용자 메시지
 
 ### `npc_set_situation(session_id, situation)`
-- 위치: 줄 178
+- 위치: 줄 179
 - 데코레이터: mcp.tool
 - 설명: 대화 중 상황을 변경하고 NPC의 반응을 받습니다.
 
@@ -134,8 +134,21 @@ Args:
     session_id: 세션 ID
     situation: 새로운 상황 설명
 
+### `npc_inject(session_id, speaker_name, message)`
+- 위치: 줄 192
+- 데코레이터: mcp.tool
+- 설명: 다른 NPC의 대사를 세션 대화 이력에 주입합니다.
+
+멀티 NPC 대화에서, 다른 세션의 NPC 응답을 현재 세션의 대화 컨텍스트에 추가합니다.
+주입된 대사는 다음 npc_talk 호출 시 대화 이력에 포함됩니다.
+
+Args:
+    session_id: 대사를 주입할 세션 ID
+    speaker_name: 발화자 이름 (예: "펜릭스", "아리엘라")
+    message: 주입할 대사 텍스트
+
 ### `npc_close_session(session_id)`
-- 위치: 줄 191
+- 위치: 줄 207
 - 데코레이터: mcp.tool
 - 설명: 세션을 종료하고 전체 대화 이력을 반환합니다.
 
@@ -145,7 +158,7 @@ Args:
     session_id: 종료할 세션 ID
 
 ### `npc_get_history(session_id)`
-- 위치: 줄 203
+- 위치: 줄 219
 - 데코레이터: mcp.tool
 - 설명: 세션의 대화 이력을 조회합니다 (세션 유지).
 
@@ -161,6 +174,7 @@ Args:
 - `seosoyoung.mcp.tools.image_gen.generate_and_upload_image`
 - `seosoyoung.mcp.tools.npc_chat.npc_close_session`
 - `seosoyoung.mcp.tools.npc_chat.npc_get_history`
+- `seosoyoung.mcp.tools.npc_chat.npc_inject`
 - `seosoyoung.mcp.tools.npc_chat.npc_list_characters`
 - `seosoyoung.mcp.tools.npc_chat.npc_open_session`
 - `seosoyoung.mcp.tools.npc_chat.npc_set_situation`

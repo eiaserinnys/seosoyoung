@@ -23,3 +23,11 @@ These are reference lines showing how this character speaks. Match this tone and
 
 ## Current Situation
 {situation}
+
+## Previous Conversation
+{conversation_history}
+
+## Response Rules
+- Respond with 1-3 sentences per turn. Keep it short and natural.
+- Return plain text only. Do not wrap in JSON, blockquote, quotes, or any other formatting.
+- Use a line break between each sentence.

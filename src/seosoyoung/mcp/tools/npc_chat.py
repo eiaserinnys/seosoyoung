@@ -152,6 +152,7 @@ class PromptBuilder:
         character_id: str,
         lang: str = "kr",
         situation: str = "",
+        conversation_history: str = "",
     ) -> Optional[str]:
         """캐릭터 ID와 언어로 시스템 프롬프트를 생성. 캐릭터가 없으면 None."""
         fields = self._loader.extract_fields(character_id, lang=lang)
@@ -161,6 +162,7 @@ class PromptBuilder:
         return template.format(
             **fields,
             situation=situation,
+            conversation_history=conversation_history or "(No previous conversation)",
         )
 
 
@@ -200,9 +202,12 @@ class NpcSession:
 
     session_id: str
     character_id: str
+    character_name: str
     system_prompt: str
     language: str = "kr"
+    situation: str = ""
     messages: list[dict[str, str]] = field(default_factory=list)
+    conversation_log: list[str] = field(default_factory=list)
     digest: str = ""
     created_at: float = field(default_factory=time.time)
 
@@ -246,22 +251,17 @@ def _call_claude(
     return response.content[0].text
 
 
-def _build_digest(system_prompt: str, messages: list[dict[str, str]]) -> str:
-    """메시지 목록을 요약하여 다이제스트 텍스트를 생성한다."""
+def _build_digest(system_prompt: str, conversation_log: list[str]) -> str:
+    """대화 로그를 요약하여 다이제스트 텍스트를 생성한다."""
     digest_prompt = (
         "You are a conversation summarizer. "
-        "Summarize the following conversation between a user and an NPC character. "
+        "Summarize the following conversation between characters. "
         "Keep character-relevant details, emotional tone, and key topics. "
         "Write the summary in the same language as the conversation. "
         "Be concise (under 200 words)."
     )
-    # 요약 대상 메시지를 하나의 user 메시지로 변환
-    lines = []
-    for msg in messages:
-        role_label = "User" if msg["role"] == "user" else "NPC"
-        lines.append(f"{role_label}: {msg['content']}")
     summary_request = [
-        {"role": "user", "content": "\n".join(lines)},
+        {"role": "user", "content": "\n".join(conversation_log)},
     ]
     return _call_claude(digest_prompt, summary_request, max_tokens=512)
 
@@ -280,35 +280,29 @@ def _get_session(session_id: str) -> NpcSession:
 
 def _maybe_compress(session: NpcSession) -> None:
     """대화 이력이 임계치를 넘으면 다이제스트로 압축한다."""
-    turn_count = len(session.messages)
-    if turn_count <= DIGEST_THRESHOLD:
+    log_count = len(session.conversation_log)
+    if log_count <= DIGEST_THRESHOLD:
         return
-    # 오래된 메시지를 다이제스트로 변환
-    old_messages = session.messages[: turn_count - DIGEST_KEEP_RECENT]
-    new_digest = _build_digest(session.system_prompt, old_messages)
+    # 오래된 로그를 다이제스트로 변환
+    old_logs = session.conversation_log[: log_count - DIGEST_KEEP_RECENT]
+    new_digest = _build_digest(session.system_prompt, old_logs)
     # 기존 다이제스트가 있으면 합침
     if session.digest:
         session.digest = session.digest + "\n\n" + new_digest
     else:
         session.digest = new_digest
-    # 최근 메시지만 보존
-    session.messages = session.messages[turn_count - DIGEST_KEEP_RECENT :]
+    # 최근 로그만 보존
+    session.conversation_log = session.conversation_log[log_count - DIGEST_KEEP_RECENT :]
 
 
-def _build_api_messages(session: NpcSession) -> list[dict[str, str]]:
-    """세션의 다이제스트 + 메시지를 Claude API 호출용 메시지 리스트로 변환한다."""
-    msgs: list[dict[str, str]] = []
+def _build_conversation_history(session: NpcSession) -> str:
+    """세션의 다이제스트 + 대화 로그를 프롬프트용 텍스트로 변환한다."""
+    parts: list[str] = []
     if session.digest:
-        msgs.append({
-            "role": "user",
-            "content": f"[Previous conversation summary]\n{session.digest}",
-        })
-        msgs.append({
-            "role": "assistant",
-            "content": "(Understood. I'll continue the conversation based on this context.)",
-        })
-    msgs.extend(session.messages)
-    return msgs
+        parts.append(f"[Summary of earlier conversation]\n{session.digest}")
+    if session.conversation_log:
+        parts.append("\n".join(session.conversation_log))
+    return "\n\n".join(parts) if parts else ""
 
 
 # ── MCP 도구 함수 (Phase 2) ──────────────────────────────
@@ -322,6 +316,13 @@ def npc_open_session(
     """NPC 대화 세션을 열고 NPC의 첫 반응을 반환한다."""
     loader = _get_loader()
     builder = PromptBuilder(loader, prompt_override_dir=_DEFAULT_PROMPT_OVERRIDE_DIR)
+
+    # 캐릭터 이름 추출
+    fields = loader.extract_fields(character_id, lang=language)
+    if fields is None:
+        return {"success": False, "error": f"캐릭터를 찾을 수 없습니다: {character_id}"}
+    character_name = fields["name"]
+
     system_prompt = builder.build(character_id, lang=language, situation=situation)
     if system_prompt is None:
         return {"success": False, "error": f"캐릭터를 찾을 수 없습니다: {character_id}"}
@@ -330,8 +331,10 @@ def npc_open_session(
     session = NpcSession(
         session_id=session_id,
         character_id=character_id,
+        character_name=character_name,
         system_prompt=system_prompt,
         language=language,
+        situation=situation,
     )
 
     # 상황 설명이 있으면 초기 컨텍스트로 사용
@@ -341,10 +344,10 @@ def npc_open_session(
             f"The current situation is: {situation}\n"
             "React to this situation naturally, in character. Start the conversation."
         )
-    session.messages.append({"role": "user", "content": opening_prompt})
+    session.messages = [{"role": "user", "content": opening_prompt}]
 
     reply = _call_claude(system_prompt, session.messages)
-    session.messages.append({"role": "assistant", "content": reply})
+    session.conversation_log.append(f"{character_name}: {reply}")
 
     _sessions[session_id] = session
     return {
@@ -363,19 +366,33 @@ def npc_talk(session_id: str, message: str) -> dict[str, Any]:
     except KeyError as e:
         return {"success": False, "error": str(e)}
 
-    session.messages.append({"role": "user", "content": message})
+    # 대화 로그에 사용자 발화 추가
+    session.conversation_log.append(f"User: {message}")
 
-    # 압축 후 API 호출
+    # 압축 후 프롬프트 재빌드
     _maybe_compress(session)
-    api_messages = _build_api_messages(session)
-    reply = _call_claude(session.system_prompt, api_messages)
-    session.messages.append({"role": "assistant", "content": reply})
+    conversation_history = _build_conversation_history(session)
+
+    loader = _get_loader()
+    builder = PromptBuilder(loader, prompt_override_dir=_DEFAULT_PROMPT_OVERRIDE_DIR)
+    system_prompt = builder.build(
+        session.character_id,
+        lang=session.language,
+        situation=session.situation,
+        conversation_history=conversation_history,
+    ) or session.system_prompt
+
+    # 단일 턴 API 호출 (대화 이력은 프롬프트에 포함됨)
+    api_messages = [{"role": "user", "content": message}]
+    reply = _call_claude(system_prompt, api_messages)
+
+    session.conversation_log.append(f"{session.character_name}: {reply}")
 
     return {
         "success": True,
         "session_id": session_id,
         "message": reply,
-        "turn_count": len(session.messages),
+        "turn_count": len(session.conversation_log),
     }
 
 
@@ -386,30 +403,55 @@ def npc_set_situation(session_id: str, situation: str) -> dict[str, Any]:
     except KeyError as e:
         return {"success": False, "error": str(e)}
 
-    # 시스템 프롬프트 재빌드
+    session.situation = situation
+
+    # 상황 변경을 대화 로그에 기록
+    session.conversation_log.append(f"[Situation changed: {situation}]")
+
+    # 프롬프트 재빌드
+    _maybe_compress(session)
+    conversation_history = _build_conversation_history(session)
+
     loader = _get_loader()
     builder = PromptBuilder(loader, prompt_override_dir=_DEFAULT_PROMPT_OVERRIDE_DIR)
     new_prompt = builder.build(
-        session.character_id, lang=session.language, situation=situation
+        session.character_id,
+        lang=session.language,
+        situation=situation,
+        conversation_history=conversation_history,
     )
     if new_prompt is None:
         return {"success": False, "error": "캐릭터 프롬프트 재빌드 실패"}
-    session.system_prompt = new_prompt
 
-    # 상황 변경을 대화에 반영
+    # 단일 턴 API 호출
     situation_msg = f"[Situation changed: {situation}]\nReact to this new situation naturally, in character."
-    session.messages.append({"role": "user", "content": situation_msg})
+    api_messages = [{"role": "user", "content": situation_msg}]
+    reply = _call_claude(new_prompt, api_messages)
 
-    _maybe_compress(session)
-    api_messages = _build_api_messages(session)
-    reply = _call_claude(session.system_prompt, api_messages)
-    session.messages.append({"role": "assistant", "content": reply})
+    session.conversation_log.append(f"{session.character_name}: {reply}")
 
     return {
         "success": True,
         "session_id": session_id,
         "situation": situation,
         "message": reply,
+    }
+
+
+def npc_inject(session_id: str, speaker_name: str, message: str) -> dict[str, Any]:
+    """다른 NPC의 대사를 세션 대화 이력에 주입한다."""
+    try:
+        session = _get_session(session_id)
+    except KeyError as e:
+        return {"success": False, "error": str(e)}
+
+    session.conversation_log.append(f"{speaker_name}: {message}")
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "injected": f"{speaker_name}: {message}",
+        "log_count": len(session.conversation_log),
     }
 
 
@@ -420,16 +462,13 @@ def npc_close_session(session_id: str) -> dict[str, Any]:
     except KeyError as e:
         return {"success": False, "error": str(e)}
 
-    history = [
-        {"role": m["role"], "content": m["content"]} for m in session.messages
-    ]
     result = {
         "success": True,
         "session_id": session_id,
         "character_id": session.character_id,
         "language": session.language,
-        "turn_count": len(history),
-        "history": history,
+        "turn_count": len(session.conversation_log),
+        "history": session.conversation_log[:],
     }
     del _sessions[session_id]
     return result
@@ -442,14 +481,11 @@ def npc_get_history(session_id: str) -> dict[str, Any]:
     except KeyError as e:
         return {"success": False, "error": str(e)}
 
-    history = [
-        {"role": m["role"], "content": m["content"]} for m in session.messages
-    ]
     return {
         "success": True,
         "session_id": session_id,
         "character_id": session.character_id,
-        "turn_count": len(history),
+        "turn_count": len(session.conversation_log),
         "has_digest": bool(session.digest),
-        "history": history,
+        "history": session.conversation_log[:],
     }
