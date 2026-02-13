@@ -46,14 +46,14 @@ class TestGeminiImageGenerator:
 
     async def test_generate_image_success(self, tmp_path):
         """이미지 생성 성공"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
         response = self._make_mock_response()
         client = self._make_mock_client(response)
 
-        with patch("seosoyoung.image_gen.generator.genai.Client", return_value=client):
-            with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", "test-key"):
-                with patch("seosoyoung.image_gen.generator.IMAGE_GEN_DIR", tmp_path):
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("귀여운 강아지")
 
         assert result.path.exists()
@@ -63,29 +63,29 @@ class TestGeminiImageGenerator:
 
     async def test_generate_image_no_api_key(self):
         """API 키 없는 경우"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
-        with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", None):
+        with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", None):
             with pytest.raises(ValueError, match="GEMINI_API_KEY"):
                 await generate_image("test")
 
     async def test_generate_image_empty_response(self):
         """빈 응답 처리"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
         mock_response = MagicMock()
         mock_response.candidates = []
 
         client = self._make_mock_client(mock_response)
 
-        with patch("seosoyoung.image_gen.generator.genai.Client", return_value=client):
-            with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", "test-key"):
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", "test-key"):
                 with pytest.raises(RuntimeError, match="빈 응답"):
                     await generate_image("test")
 
     async def test_generate_image_text_only_response(self):
         """텍스트만 반환된 경우 (안전 필터 등)"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
         mock_part = MagicMock()
         mock_part.inline_data = None
@@ -102,14 +102,14 @@ class TestGeminiImageGenerator:
 
         client = self._make_mock_client(mock_response)
 
-        with patch("seosoyoung.image_gen.generator.genai.Client", return_value=client):
-            with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", "test-key"):
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", "test-key"):
                 with pytest.raises(RuntimeError, match="이미지를 생성하지 못했습니다"):
                     await generate_image("test")
 
     async def test_generate_image_jpg_format(self, tmp_path):
         """JPEG 형식 이미지 저장"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
         response = self._make_mock_response(
             mime_type="image/jpeg",
@@ -117,9 +117,9 @@ class TestGeminiImageGenerator:
         )
         client = self._make_mock_client(response)
 
-        with patch("seosoyoung.image_gen.generator.genai.Client", return_value=client):
-            with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", "test-key"):
-                with patch("seosoyoung.image_gen.generator.IMAGE_GEN_DIR", tmp_path):
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("sunset")
 
         assert result.path.suffix == ".jpg"
@@ -127,14 +127,14 @@ class TestGeminiImageGenerator:
 
     async def test_generate_image_custom_model(self, tmp_path):
         """커스텀 모델 지정"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
         response = self._make_mock_response()
         client = self._make_mock_client(response)
 
-        with patch("seosoyoung.image_gen.generator.genai.Client", return_value=client):
-            with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", "test-key"):
-                with patch("seosoyoung.image_gen.generator.IMAGE_GEN_DIR", tmp_path):
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     await generate_image("test", model="gemini-2.5-flash-image")
 
         call_kwargs = client.models.generate_content.call_args
@@ -142,7 +142,7 @@ class TestGeminiImageGenerator:
 
     async def test_generate_image_with_reference_images(self, tmp_path):
         """레퍼런스 이미지 포함 생성"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
         # 레퍼런스 이미지 파일 생성
         ref_img = tmp_path / "reference.png"
@@ -151,9 +151,9 @@ class TestGeminiImageGenerator:
         response = self._make_mock_response()
         client = self._make_mock_client(response)
 
-        with patch("seosoyoung.image_gen.generator.genai.Client", return_value=client):
-            with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", "test-key"):
-                with patch("seosoyoung.image_gen.generator.IMAGE_GEN_DIR", tmp_path):
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
                         "similar style dog",
                         reference_images=[str(ref_img)],
@@ -169,7 +169,7 @@ class TestGeminiImageGenerator:
 
     async def test_generate_image_with_multiple_reference_images(self, tmp_path):
         """복수 레퍼런스 이미지 포함 생성"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
         ref1 = tmp_path / "ref1.png"
         ref1.write_bytes(b"\x89PNG" + b"\x00" * 50)
@@ -179,9 +179,9 @@ class TestGeminiImageGenerator:
         response = self._make_mock_response()
         client = self._make_mock_client(response)
 
-        with patch("seosoyoung.image_gen.generator.genai.Client", return_value=client):
-            with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", "test-key"):
-                with patch("seosoyoung.image_gen.generator.IMAGE_GEN_DIR", tmp_path):
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
                         "blend these",
                         reference_images=[str(ref1), str(ref2)],
@@ -194,14 +194,14 @@ class TestGeminiImageGenerator:
 
     async def test_generate_image_reference_nonexistent_skipped(self, tmp_path):
         """존재하지 않는 레퍼런스 이미지는 무시"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
         response = self._make_mock_response()
         client = self._make_mock_client(response)
 
-        with patch("seosoyoung.image_gen.generator.genai.Client", return_value=client):
-            with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", "test-key"):
-                with patch("seosoyoung.image_gen.generator.IMAGE_GEN_DIR", tmp_path):
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
                         "test",
                         reference_images=[str(tmp_path / "nonexistent.png")],
@@ -214,14 +214,14 @@ class TestGeminiImageGenerator:
 
     async def test_generate_image_without_reference_images(self, tmp_path):
         """레퍼런스 이미지 없이 호출 (기존 동작 호환)"""
-        from seosoyoung.image_gen.generator import generate_image
+        from seosoyoung.mcp.tools.image_gen import generate_image
 
         response = self._make_mock_response()
         client = self._make_mock_client(response)
 
-        with patch("seosoyoung.image_gen.generator.genai.Client", return_value=client):
-            with patch("seosoyoung.image_gen.generator.Config.GEMINI_API_KEY", "test-key"):
-                with patch("seosoyoung.image_gen.generator.IMAGE_GEN_DIR", tmp_path):
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch("seosoyoung.mcp.tools.image_gen.Config.GEMINI_API_KEY", "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("simple prompt")
 
         call_kwargs = client.models.generate_content.call_args
@@ -235,7 +235,7 @@ class TestMcpGenerateAndUploadImage:
 
     async def test_success(self, tmp_path):
         """정상 생성 및 업로드"""
-        from seosoyoung.image_gen.generator import GeneratedImage
+        from seosoyoung.mcp.tools.image_gen import GeneratedImage
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 
         img_path = tmp_path / "generated.png"
@@ -283,7 +283,7 @@ class TestMcpGenerateAndUploadImage:
 
     async def test_upload_failure(self, tmp_path):
         """업로드 실패"""
-        from seosoyoung.image_gen.generator import GeneratedImage
+        from seosoyoung.mcp.tools.image_gen import GeneratedImage
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 
         img_path = tmp_path / "generated.png"
@@ -307,7 +307,7 @@ class TestMcpGenerateAndUploadImage:
 
     async def test_with_reference_image_paths(self, tmp_path):
         """레퍼런스 이미지 경로 전달"""
-        from seosoyoung.image_gen.generator import GeneratedImage
+        from seosoyoung.mcp.tools.image_gen import GeneratedImage
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 
         img_path = tmp_path / "generated.png"

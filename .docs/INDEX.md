@@ -17,7 +17,6 @@
 - [`handlers/mention.py`](modules/handlers_mention.md): @seosoyoung 멘션 핸들러
 - [`handlers/message.py`](modules/handlers_message.md): 스레드 메시지 핸들러
 - [`handlers/translate.py`](modules/handlers_translate.md): 번역 핸들러
-- [`image_gen/generator.py`](modules/image_gen_generator.md): Gemini API 이미지 생성 모듈
 - [`seosoyoung/logging_config.py`](modules/seosoyoung_logging_config.md): 로깅 설정 모듈
 - [`seosoyoung/main.py`](modules/seosoyoung_main.md): SeoSoyoung 슬랙 봇 메인
 - [`mcp/__main__.py`](modules/mcp___main__.md): MCP 서버 실행 진입점
@@ -80,7 +79,7 @@
 - `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
-- `GeneratedImage` (seosoyoung/image_gen/generator.py:29): 생성된 이미지 결과
+- `GeneratedImage` (seosoyoung/mcp/tools/image_gen.py:32): 생성된 이미지 결과
 - `CharacterLoader` (seosoyoung/mcp/tools/npc_chat.py:29): eb_lore 캐릭터 YAML 파일을 로드하고 필드를 추출한다.
 - `PromptBuilder` (seosoyoung/mcp/tools/npc_chat.py:125): 캐릭터 데이터를 프롬프트 템플릿에 채워 시스템 프롬프트를 생성한다.
 - `NpcSession` (seosoyoung/mcp/tools/npc_chat.py:190): NPC 대화 세션. 세션별 대화 이력과 설정을 보관한다.
@@ -169,7 +168,6 @@
 - `register_message_handlers()` (seosoyoung/handlers/message.py:110): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
-- `async generate_image()` (seosoyoung/image_gen/generator.py:54): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
 - `notify_startup()` (seosoyoung/main.py:151): 봇 시작 알림
 - `notify_shutdown()` (seosoyoung/main.py:162): 봇 종료 알림
@@ -191,7 +189,8 @@
 - `npc_get_history()` (seosoyoung/mcp/server.py:203): 세션의 대화 이력을 조회합니다 (세션 유지).
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
-- `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:15): 이미지를 생성하고 슬랙 스레드에 업로드
+- `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:57): Gemini API로 이미지를 생성하고 임시 파일로 저장
+- `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:132): 이미지를 생성하고 슬랙 스레드에 업로드
 - `npc_list_characters()` (seosoyoung/mcp/tools/npc_chat.py:175): 대화 가능한 NPC 캐릭터 목록을 반환한다.
 - `npc_open_session()` (seosoyoung/mcp/tools/npc_chat.py:309): NPC 대화 세션을 열고 NPC의 첫 반응을 반환한다.
 - `npc_talk()` (seosoyoung/mcp/tools/npc_chat.py:351): NPC에게 말하기. 사용자 메시지를 보내고 NPC 응답을 받는다.
