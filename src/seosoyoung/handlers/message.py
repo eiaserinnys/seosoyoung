@@ -95,7 +95,7 @@ def process_thread_message(
         f"text={clean_text[:50] if clean_text else '(파일 첨부)'}"
     )
 
-    run_claude_in_session(session, prompt, ts, channel, say, client, role=user_info["role"])
+    run_claude_in_session(session, prompt, ts, channel, say, client, role=user_info["role"], user_message=clean_text)
     return True
 
 

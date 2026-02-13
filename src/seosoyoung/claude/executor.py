@@ -71,6 +71,7 @@ class PendingPrompt:
     initial_msg_ts: Optional[str] = None
     dm_channel_id: Optional[str] = None
     dm_thread_ts: Optional[str] = None
+    user_message: Optional[str] = None
 
 
 class ClaudeExecutor:
@@ -127,6 +128,7 @@ class ClaudeExecutor:
         initial_msg_ts: str = None,
         dm_channel_id: str = None,
         dm_thread_ts: str = None,
+        user_message: str = None,
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -147,6 +149,7 @@ class ClaudeExecutor:
             initial_msg_ts: 이미 생성된 초기 메시지 ts (있으면 새로 생성하지 않음)
             dm_channel_id: 트렐로 모드에서 사고 과정을 출력할 DM 채널 ID
             dm_thread_ts: DM 스레드의 앵커 메시지 ts
+            user_message: 사용자 원본 메시지 (OM Observer용, 선택)
         """
         thread_ts = session.thread_ts
 
@@ -161,6 +164,7 @@ class ClaudeExecutor:
                 initial_msg_ts=initial_msg_ts,
                 dm_channel_id=dm_channel_id,
                 dm_thread_ts=dm_thread_ts,
+                user_message=user_message,
             )
             return
 
@@ -172,6 +176,7 @@ class ClaudeExecutor:
                 initial_msg_ts=initial_msg_ts,
                 dm_channel_id=dm_channel_id,
                 dm_thread_ts=dm_thread_ts,
+                user_message=user_message,
             )
         finally:
             lock.release()
@@ -190,6 +195,7 @@ class ClaudeExecutor:
         initial_msg_ts: str = None,
         dm_channel_id: str = None,
         dm_thread_ts: str = None,
+        user_message: str = None,
     ):
         """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
 
@@ -213,6 +219,7 @@ class ClaudeExecutor:
             initial_msg_ts=initial_msg_ts,
             dm_channel_id=dm_channel_id,
             dm_thread_ts=dm_thread_ts,
+            user_message=user_message,
         )
         with self._pending_lock:
             self._pending_prompts[thread_ts] = pending
@@ -248,6 +255,7 @@ class ClaudeExecutor:
         initial_msg_ts: str = None,
         dm_channel_id: str = None,
         dm_thread_ts: str = None,
+        user_message: str = None,
     ):
         """락을 보유한 상태에서 실행 (while 루프로 pending 처리)"""
         thread_ts = session.thread_ts
@@ -270,6 +278,7 @@ class ClaudeExecutor:
                 thread_ts_override=None,
                 dm_channel_id=dm_channel_id,
                 dm_thread_ts=dm_thread_ts,
+                user_message=user_message,
             )
 
             # pending 확인 → while 루프
@@ -300,6 +309,7 @@ class ClaudeExecutor:
                     thread_ts_override=thread_ts,  # 이전 실행의 thread_ts 사용
                     dm_channel_id=pending.dm_channel_id or dm_channel_id,
                     dm_thread_ts=pending.dm_thread_ts or dm_thread_ts,
+                    user_message=pending.user_message,
                 )
 
         finally:
@@ -321,6 +331,7 @@ class ClaudeExecutor:
         thread_ts_override: Optional[str] = None,
         dm_channel_id: Optional[str] = None,
         dm_thread_ts: Optional[str] = None,
+        user_message: Optional[str] = None,
     ) -> tuple[Optional[str], str]:
         """단일 Claude 실행
 
@@ -481,6 +492,7 @@ class ClaudeExecutor:
                 user_id=session.user_id,
                 thread_ts=thread_ts,
                 channel=channel,
+                user_message=user_message,
             ))
 
             # 세션 ID 업데이트

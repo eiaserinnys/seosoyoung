@@ -516,6 +516,7 @@ class ClaudeAgentRunner:
         user_id: Optional[str] = None,
         thread_ts: Optional[str] = None,
         channel: Optional[str] = None,
+        user_message: Optional[str] = None,
     ) -> ClaudeResult:
         """Claude Code 실행
 
@@ -527,13 +528,16 @@ class ClaudeAgentRunner:
             user_id: 사용자 ID (OM 관찰 로그 주입용, 선택)
             thread_ts: 스레드 타임스탬프 (OM 세션 단위 저장용, 선택)
             channel: 슬랙 채널 ID (MCP 서버 컨텍스트용, 선택)
+            user_message: 사용자 원본 메시지 (OM Observer용, 선택). 미지정 시 prompt 사용.
         """
         async with self._lock:
             result = await self._execute(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel=channel)
 
         # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
+        # user_message가 지정되면 사용자 원본 질문만 전달 (채널 히스토리 제외)
         if result.success and user_id and thread_ts and result.collected_messages:
-            self._trigger_observation(thread_ts, user_id, prompt, result.collected_messages, anchor_ts=result.anchor_ts)
+            observation_input = user_message if user_message is not None else prompt
+            self._trigger_observation(thread_ts, user_id, observation_input, result.collected_messages, anchor_ts=result.anchor_ts)
 
         return result
 

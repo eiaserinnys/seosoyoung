@@ -590,5 +590,6 @@ def register_mention_handlers(app, dependencies: dict):
         run_claude_in_session(
             session, prompt, ts, channel, say, client,
             is_existing_thread=is_existing_thread,
-            initial_msg_ts=initial_msg_ts
+            initial_msg_ts=initial_msg_ts,
+            user_message=clean_text,
         )

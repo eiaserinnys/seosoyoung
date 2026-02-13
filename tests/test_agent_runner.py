@@ -899,6 +899,63 @@ class TestClaudeResultAnchorTs:
         assert result.anchor_ts == "anc_123"
 
 
+@pytest.mark.asyncio
+class TestObserverUserMessage:
+    """Observer에 user_message가 올바르게 전달되는지 테스트"""
+
+    async def test_trigger_observation_uses_user_message(self):
+        """user_message가 지정되면 prompt 대신 user_message가 Observer에 전달"""
+        runner = ClaudeAgentRunner()
+
+        mock_client = _make_mock_client(
+            MockSystemMessage(session_id="obs-test"),
+            MockResultMessage(result="완료", session_id="obs-test"),
+        )
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch.object(runner, "_trigger_observation") as mock_trigger:
+                        result = await runner.run(
+                            prompt="채널 히스토리 20개 + 사용자 질문",
+                            user_id="U123",
+                            thread_ts="ts_1",
+                            user_message="사용자 원본 질문만",
+                        )
+
+        if mock_trigger.called:
+            call_args = mock_trigger.call_args
+            # positional: (thread_ts, user_id, prompt/user_message, collected_messages)
+            observation_input = call_args[0][2]
+            assert observation_input == "사용자 원본 질문만"
+            assert observation_input != "채널 히스토리 20개 + 사용자 질문"
+
+    async def test_trigger_observation_falls_back_to_prompt(self):
+        """user_message가 None이면 prompt가 Observer에 전달 (하위 호환)"""
+        runner = ClaudeAgentRunner()
+
+        mock_client = _make_mock_client(
+            MockSystemMessage(session_id="obs-test-2"),
+            MockResultMessage(result="완료", session_id="obs-test-2"),
+        )
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch.object(runner, "_trigger_observation") as mock_trigger:
+                        result = await runner.run(
+                            prompt="전체 프롬프트",
+                            user_id="U123",
+                            thread_ts="ts_2",
+                            # user_message 미지정
+                        )
+
+        if mock_trigger.called:
+            call_args = mock_trigger.call_args
+            observation_input = call_args[0][2]
+            assert observation_input == "전체 프롬프트"
+
+
 class TestServiceFactory:
     """서비스 팩토리 테스트"""
 
