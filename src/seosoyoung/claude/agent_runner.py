@@ -306,6 +306,10 @@ class ClaudeAgentRunner:
             env["SLACK_CHANNEL"] = channel
             env["SLACK_THREAD_TS"] = thread_ts
 
+        # 중첩 세션 방지: CLAUDECODE 환경변수를 제거하여 CLI가 독립 세션으로 실행되도록 함
+        # (SDK가 os.environ을 상속하므로, 빈 문자열로 오버라이드하여 CLI의 중첩 감지를 우회)
+        env["CLAUDECODE"] = ""
+
         # DEBUG: CLI stderr를 파일에 캡처
         import sys as _sys
         # logs 디렉토리: seosoyoung 패키지 기준으로 계산
