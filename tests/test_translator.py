@@ -9,6 +9,8 @@ from seosoyoung.translator.translator import (
     _build_prompt,
     _build_glossary_section,
     _calculate_cost,
+    _translate_openai,
+    _translate_anthropic,
 )
 from seosoyoung.translator.detector import Language
 from seosoyoung.translator.glossary import GlossaryMatchResult
@@ -148,6 +150,19 @@ class TestCalculateCost:
         cost = _calculate_cost(1000, 100, "unknown-model")
         assert abs(cost - 0.0045) < 0.0001
 
+    def test_calculate_cost_openai_gpt5_mini(self):
+        """OpenAI gpt-5-mini 비용 계산"""
+        # input: 1000 / 1M * $0.40 = $0.0004
+        # output: 100 / 1M * $1.60 = $0.00016
+        # total: $0.00056
+        cost = _calculate_cost(1000, 100, "gpt-5-mini")
+        assert abs(cost - 0.00056) < 0.00001
+
+    def test_calculate_cost_openai_gpt4_1_mini(self):
+        """OpenAI gpt-4.1-mini 비용 계산"""
+        cost = _calculate_cost(1000, 100, "gpt-4.1-mini")
+        assert abs(cost - 0.00056) < 0.00001
+
 
 class TestTranslate:
     """번역 함수 테스트"""
@@ -256,6 +271,113 @@ class TestTranslate:
 
         assert text == "Fenrix and Ariella"
         assert terms == [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
+
+
+class TestTranslateOpenAI:
+    """OpenAI 번역 테스트"""
+
+    @patch("seosoyoung.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_openai_korean_to_english(self, mock_config, mock_openai_class):
+        """OpenAI backend로 한국어 -> 영어 번역"""
+        mock_config.TRANSLATE_BACKEND = "openai"
+        mock_config.OPENAI_API_KEY = "test-openai-key"
+        mock_config.TRANSLATE_OPENAI_MODEL = "gpt-5-mini"
+
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Hello"))]
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 10
+        mock_client.chat.completions.create.return_value = mock_response
+
+        text, cost, terms, match_result = translate("안녕하세요", Language.KOREAN, backend="openai")
+
+        assert text == "Hello"
+        assert cost > 0
+        mock_client.chat.completions.create.assert_called_once()
+        call_args = mock_client.chat.completions.create.call_args
+        assert call_args.kwargs["model"] == "gpt-5-mini"
+
+    @patch("seosoyoung.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_openai_without_api_key(self, mock_config, mock_openai_class):
+        """OpenAI API 키 없이 호출 시 에러"""
+        mock_config.TRANSLATE_BACKEND = "openai"
+        mock_config.OPENAI_API_KEY = None
+
+        with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+            translate("Hello", Language.ENGLISH, backend="openai")
+
+    @patch("seosoyoung.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_openai_default_backend(self, mock_config, mock_openai_class):
+        """Config.TRANSLATE_BACKEND=openai일 때 자동으로 OpenAI 사용"""
+        mock_config.TRANSLATE_BACKEND = "openai"
+        mock_config.OPENAI_API_KEY = "test-openai-key"
+        mock_config.TRANSLATE_OPENAI_MODEL = "gpt-5-mini"
+
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Hello"))]
+        mock_response.usage.prompt_tokens = 50
+        mock_response.usage.completion_tokens = 5
+        mock_client.chat.completions.create.return_value = mock_response
+
+        text, cost, terms, match_result = translate("안녕하세요", Language.KOREAN)
+
+        assert text == "Hello"
+        mock_client.chat.completions.create.assert_called_once()
+
+    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_backend_switch_to_anthropic(self, mock_config, mock_anthropic_class):
+        """backend 파라미터로 anthropic 명시적 지정"""
+        mock_config.TRANSLATE_BACKEND = "openai"  # 기본은 openai지만
+        mock_config.TRANSLATE_API_KEY = "test-anthropic-key"
+        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-latest"
+
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="안녕하세요")]
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 10
+        mock_client.messages.create.return_value = mock_response
+
+        text, cost, terms, match_result = translate(
+            "Hello", Language.ENGLISH, backend="anthropic"
+        )
+
+        assert text == "안녕하세요"
+        mock_client.messages.create.assert_called_once()
+
+    @patch("seosoyoung.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.translator.translator.Config")
+    def test_translate_openai_custom_model(self, mock_config, mock_openai_class):
+        """OpenAI에서 커스텀 모델 사용"""
+        mock_config.TRANSLATE_BACKEND = "openai"
+        mock_config.OPENAI_API_KEY = "test-key"
+        mock_config.TRANSLATE_OPENAI_MODEL = "gpt-5-mini"
+
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Result"))]
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 10
+        mock_client.chat.completions.create.return_value = mock_response
+
+        translate("Test", Language.ENGLISH, model="gpt-4o", backend="openai")
+
+        call_args = mock_client.chat.completions.create.call_args
+        assert call_args.kwargs["model"] == "gpt-4o"
 
 
 class TestFormatResponse:

@@ -563,167 +563,6 @@ class TestActiveRunners:
         mock_runner.interrupt.assert_called_once_with("thread_abc")
 
 
-class TestIsLastMessage:
-    """_is_last_message 메서드 테스트"""
-
-    def test_last_message_in_thread(self):
-        """스레드에서 마지막 메시지인 경우 True 반환"""
-        executor = make_executor()
-        client = MagicMock()
-        # msg_ts 이후 자기 자신만 있음
-        client.conversations_replies.return_value = {
-            "messages": [{"ts": "msg_100"}]
-        }
-
-        result = executor._is_last_message(client, "C_TEST", "msg_100", thread_ts="thread_1")
-        assert result is True
-        client.conversations_replies.assert_called_once_with(
-            channel="C_TEST", ts="thread_1", oldest="msg_100", limit=2,
-        )
-
-    def test_not_last_message_in_thread(self):
-        """스레드에서 마지막이 아닌 경우 False 반환"""
-        executor = make_executor()
-        client = MagicMock()
-        # msg_ts 이후 다른 메시지가 있음
-        client.conversations_replies.return_value = {
-            "messages": [{"ts": "msg_100"}, {"ts": "msg_200"}]
-        }
-
-        result = executor._is_last_message(client, "C_TEST", "msg_100", thread_ts="thread_1")
-        assert result is False
-
-    def test_last_message_in_channel(self):
-        """채널 루트에서 마지막 메시지인 경우 True 반환"""
-        executor = make_executor()
-        client = MagicMock()
-        client.conversations_history.return_value = {
-            "messages": [{"ts": "msg_100"}]
-        }
-
-        result = executor._is_last_message(client, "C_TEST", "msg_100", thread_ts=None)
-        assert result is True
-        client.conversations_history.assert_called_once_with(
-            channel="C_TEST", oldest="msg_100", limit=2,
-        )
-
-    def test_not_last_message_in_channel(self):
-        """채널 루트에서 마지막이 아닌 경우 False 반환"""
-        executor = make_executor()
-        client = MagicMock()
-        client.conversations_history.return_value = {
-            "messages": [{"ts": "msg_100"}, {"ts": "msg_200"}]
-        }
-
-        result = executor._is_last_message(client, "C_TEST", "msg_100", thread_ts=None)
-        assert result is False
-
-    def test_api_error_returns_true(self):
-        """API 오류 시 안전하게 True 반환 (기존 동작 유지)"""
-        executor = make_executor()
-        client = MagicMock()
-        client.conversations_replies.side_effect = Exception("API error")
-
-        result = executor._is_last_message(client, "C_TEST", "msg_100", thread_ts="thread_1")
-        assert result is True
-
-
-class TestReplaceThinkingMessage:
-    """_replace_thinking_message 메서드 테스트"""
-
-    def test_last_message_uses_chat_update(self):
-        """마지막 메시지면 chat_update 사용"""
-        executor = make_executor()
-        client = MagicMock()
-
-        with patch.object(executor, "_is_last_message", return_value=True):
-            result_ts = executor._replace_thinking_message(
-                client, "C_TEST", "msg_100",
-                "최종 응답", [{"type": "section", "text": {"type": "mrkdwn", "text": "최종 응답"}}],
-                thread_ts="thread_1",
-            )
-
-        assert result_ts == "msg_100"
-        client.chat_update.assert_called_once()
-        client.chat_delete.assert_not_called()
-        client.chat_postMessage.assert_not_called()
-
-    def test_not_last_message_uses_delete_and_post(self):
-        """마지막이 아니면 chat_delete + chat_postMessage"""
-        executor = make_executor()
-        client = MagicMock()
-        client.chat_postMessage.return_value = {"ts": "msg_new"}
-
-        with patch.object(executor, "_is_last_message", return_value=False):
-            result_ts = executor._replace_thinking_message(
-                client, "C_TEST", "msg_100",
-                "최종 응답", [{"type": "section", "text": {"type": "mrkdwn", "text": "최종 응답"}}],
-                thread_ts="thread_1",
-            )
-
-        assert result_ts == "msg_new"
-        client.chat_delete.assert_called_once_with(channel="C_TEST", ts="msg_100")
-        client.chat_postMessage.assert_called_once()
-        # thread_ts가 전달되는지 확인
-        post_kwargs = client.chat_postMessage.call_args[1]
-        assert post_kwargs["thread_ts"] == "thread_1"
-
-    def test_not_last_message_channel_root_no_thread_ts(self):
-        """채널 루트 메시지인 경우 thread_ts 없이 post"""
-        executor = make_executor()
-        client = MagicMock()
-        client.chat_postMessage.return_value = {"ts": "msg_new"}
-
-        with patch.object(executor, "_is_last_message", return_value=False):
-            result_ts = executor._replace_thinking_message(
-                client, "C_TEST", "msg_100",
-                "최종 응답", [{"type": "section", "text": {"type": "mrkdwn", "text": "최종 응답"}}],
-                thread_ts=None,
-            )
-
-        assert result_ts == "msg_new"
-        post_kwargs = client.chat_postMessage.call_args[1]
-        assert "thread_ts" not in post_kwargs
-
-    def test_delete_failure_fallback(self):
-        """chat_delete 실패 시 fallback: (중단됨) 업데이트 + 새 메시지"""
-        executor = make_executor()
-        client = MagicMock()
-        client.chat_delete.side_effect = Exception("cannot_delete")
-        client.chat_postMessage.return_value = {"ts": "msg_new"}
-
-        with patch.object(executor, "_is_last_message", return_value=False):
-            result_ts = executor._replace_thinking_message(
-                client, "C_TEST", "msg_100",
-                "최종 응답", [{"type": "section", "text": {"type": "mrkdwn", "text": "최종 응답"}}],
-                thread_ts="thread_1",
-            )
-
-        assert result_ts == "msg_new"
-        # chat_update로 (중단됨) 업데이트
-        update_call = client.chat_update.call_args
-        assert "(중단됨)" in update_call[1]["text"]
-        # 새 메시지도 게시됨
-        client.chat_postMessage.assert_called_once()
-
-    def test_delete_and_update_both_fail_still_posts(self):
-        """chat_delete + fallback update 모두 실패해도 새 메시지는 게시"""
-        executor = make_executor()
-        client = MagicMock()
-        client.chat_delete.side_effect = Exception("cannot_delete")
-        client.chat_update.side_effect = Exception("cannot_update")
-        client.chat_postMessage.return_value = {"ts": "msg_new"}
-
-        with patch.object(executor, "_is_last_message", return_value=False):
-            result_ts = executor._replace_thinking_message(
-                client, "C_TEST", "msg_100",
-                "최종 응답", [{"type": "section", "text": {"type": "mrkdwn", "text": "최종 응답"}}],
-            )
-
-        assert result_ts == "msg_new"
-        client.chat_postMessage.assert_called_once()
-
-
 class TestNormalSuccessWithReplace:
     """_handle_normal_success에서 _replace_thinking_message 사용 확인"""
 
@@ -746,8 +585,8 @@ class TestNormalSuccessWithReplace:
         call_kwargs = mock_replace.call_args
         assert call_kwargs[1]["thread_ts"] == "thread_1"
 
-    def test_channel_root_success_passes_none_thread_ts(self):
-        """채널 루트 응답에서는 thread_ts=None으로 _replace_thinking_message 호출"""
+    def test_channel_root_success_passes_thread_ts(self):
+        """채널 루트 응답에서도 P가 스레드에 있으므로 thread_ts 전달"""
         executor = make_executor()
         result = make_claude_result(output="짧은 응답")
         client = MagicMock()
@@ -762,7 +601,7 @@ class TestNormalSuccessWithReplace:
 
         mock_replace.assert_called_once()
         call_kwargs = mock_replace.call_args
-        assert call_kwargs[1]["thread_ts"] is None
+        assert call_kwargs[1]["thread_ts"] == "thread_1"
 
 
 class TestTrelloSuccessWithReplace:

@@ -61,18 +61,19 @@ class TestClaudeAgentRunnerUnit:
     def test_build_options_basic(self):
         """기본 옵션 생성 테스트"""
         runner = ClaudeAgentRunner()
-        options, memory_prompt = runner._build_options()
+        options, memory_prompt, anchor_ts = runner._build_options()
 
         assert options.allowed_tools == DEFAULT_ALLOWED_TOOLS
         assert options.disallowed_tools == DEFAULT_DISALLOWED_TOOLS
         assert options.permission_mode == "bypassPermissions"
         assert options.resume is None
         assert memory_prompt is None
+        assert anchor_ts == ""
 
     def test_build_options_with_session(self):
         """세션 ID가 있을 때 resume 옵션 추가"""
         runner = ClaudeAgentRunner()
-        options, _ = runner._build_options(session_id="abc-123")
+        options, _, _ = runner._build_options(session_id="abc-123")
 
         assert options.resume == "abc-123"
 
@@ -82,7 +83,7 @@ class TestClaudeAgentRunnerUnit:
             allowed_tools=["Read", "Glob"],
             disallowed_tools=["Bash"]
         )
-        options, _ = runner._build_options()
+        options, _, _ = runner._build_options()
 
         assert options.allowed_tools == ["Read", "Glob"]
         assert options.disallowed_tools == ["Bash"]
@@ -95,19 +96,12 @@ class TestClaudeAgentRunnerUnit:
         assert runner.mcp_config_path == mcp_path
 
         # _build_options는 mcp_servers를 직접 설정하지 않음 (pm2 외부 관리)
-        options, _ = runner._build_options()
+        options, _, _ = runner._build_options()
         assert isinstance(options.mcp_servers, dict)
 
 
 class TestClaudeResultMarkers:
     """ClaudeResult 마커 추출 테스트"""
-
-    def test_extract_file_markers(self):
-        """FILE 마커 추출"""
-        import re
-        output = "파일을 생성했습니다.\n<!-- FILE: /path/to/file1.txt -->\n<!-- FILE: /path/to/file2.py -->"
-        files = re.findall(r"<!-- FILE: (.+?) -->", output)
-        assert files == ["/path/to/file1.txt", "/path/to/file2.py"]
 
     def test_detect_update_marker(self):
         """UPDATE 마커 감지"""
@@ -151,7 +145,7 @@ class TestClaudeAgentRunnerAsync:
 
         mock_client = _make_mock_client(
             MockResultMessage(
-                result="파일 생성함\n<!-- FILE: /test/file.py -->\n<!-- UPDATE -->",
+                result="코드를 수정했습니다.\n<!-- UPDATE -->",
                 session_id="marker-test"
             ),
         )
@@ -161,7 +155,6 @@ class TestClaudeAgentRunnerAsync:
                 result = await runner.run("테스트")
 
         assert result.success is True
-        assert "/test/file.py" in result.files
         assert result.update_requested is True
         assert result.restart_requested is False
 
@@ -317,7 +310,7 @@ class TestClaudeAgentRunnerCompact:
         """compact_events 전달 시 PreCompact 훅이 등록되는지 확인"""
         runner = ClaudeAgentRunner()
         compact_events = []
-        options, _ = runner._build_options(compact_events=compact_events)
+        options, _, _ = runner._build_options(compact_events=compact_events)
 
         assert options.hooks is not None
         assert "PreCompact" in options.hooks
@@ -327,7 +320,7 @@ class TestClaudeAgentRunnerCompact:
     async def test_build_options_without_compact_events(self):
         """compact_events 미전달 시 hooks가 None인지 확인"""
         runner = ClaudeAgentRunner()
-        options, _ = runner._build_options()
+        options, _, _ = runner._build_options()
 
         assert options.hooks is None
 
@@ -347,14 +340,14 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
-            options, memory_prompt = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None, prompt=None):
+            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: auto)",
                 })
-            return options, memory_prompt
+            return options, memory_prompt, anchor
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
@@ -385,8 +378,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
-            options, memory_prompt = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None, prompt=None):
+            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -396,7 +389,7 @@ class TestClaudeAgentRunnerCompact:
                     "trigger": "manual",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: manual)",
                 })
-            return options, memory_prompt
+            return options, memory_prompt, anchor
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -421,14 +414,14 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None):
-            options, memory_prompt = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None, prompt=None):
+            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컴팩트 실행됨",
                 })
-            return options, memory_prompt
+            return options, memory_prompt, anchor
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -584,7 +577,7 @@ class TestBuildOptionsChannelObservation:
                     channel_digest_tokens=50,
                     channel_buffer_tokens=0,
                 )
-                _, memory_prompt = runner._build_options(
+                _, memory_prompt, _ = runner._build_options(
                     thread_ts="ts_1", channel="C_OBS",
                 )
 
@@ -658,6 +651,252 @@ class TestBuildOptionsChannelObservation:
 
                 call_kwargs = mock_build.call_args.kwargs
                 assert call_kwargs.get("include_channel_observation") is False
+
+
+class TestBuildOptionsAnchorTs:
+    """_build_options에서 앵커 메시지 생성 테스트"""
+
+    def test_anchor_ts_empty_without_om(self):
+        """OM 미활성 시 anchor_ts가 빈 문자열"""
+        runner = ClaudeAgentRunner()
+        _, _, anchor_ts = runner._build_options()
+        assert anchor_ts == ""
+
+    def test_anchor_ts_created_for_new_session(self, tmp_path):
+        """새 세션 + OM 활성 시 앵커 메시지가 생성되어 anchor_ts 반환"""
+        config_patches = {
+            "OM_ENABLED": True,
+            "CHANNEL_OBSERVER_ENABLED": False,
+            "CHANNEL_OBSERVER_CHANNELS": [],
+            "OM_MAX_OBSERVATION_TOKENS": 30000,
+            "OM_DEBUG_CHANNEL": "C_DEBUG",
+        }
+
+        runner = ClaudeAgentRunner()
+
+        with patch("seosoyoung.config.Config") as MockConfig:
+            for k, v in config_patches.items():
+                setattr(MockConfig, k, v)
+            MockConfig.get_memory_path.return_value = str(tmp_path)
+
+            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+                mock_build.return_value = MagicMock(
+                    prompt=None,
+                    persistent_tokens=0,
+                    session_tokens=0,
+                    new_observation_tokens=0,
+                    new_observation_content="",
+                    persistent_content="",
+                    session_content="",
+                    channel_digest_tokens=0,
+                    channel_buffer_tokens=0,
+                )
+                with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anchor_ts_123") as mock_send:
+                    _, _, anchor_ts = runner._build_options(
+                        thread_ts="ts_1", prompt="테스트 프롬프트입니다",
+                    )
+
+        assert anchor_ts == "anchor_ts_123"
+        # 앵커 메시지 발송 호출 확인
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        assert "세션 시작 감지" in call_args[0][1]
+        assert "테스트 프롬프트입니다" in call_args[0][1]
+
+    def test_anchor_ts_not_created_for_resumed_session(self, tmp_path):
+        """기존 세션 재개 시 새 앵커 미생성, MemoryRecord에서 기존 anchor_ts 로드"""
+        from seosoyoung.memory.store import MemoryRecord, MemoryStore
+
+        # 사전 조건: MemoryRecord에 이전 세션의 anchor_ts가 저장되어 있음
+        pre_store = MemoryStore(base_dir=tmp_path)
+        pre_record = MemoryRecord(thread_ts="ts_1", anchor_ts="saved_anchor_123")
+        pre_store.save_record(pre_record)
+
+        config_patches = {
+            "OM_ENABLED": True,
+            "CHANNEL_OBSERVER_ENABLED": False,
+            "CHANNEL_OBSERVER_CHANNELS": [],
+            "OM_MAX_OBSERVATION_TOKENS": 30000,
+            "OM_DEBUG_CHANNEL": "C_DEBUG",
+        }
+
+        runner = ClaudeAgentRunner()
+
+        with patch("seosoyoung.config.Config") as MockConfig:
+            for k, v in config_patches.items():
+                setattr(MockConfig, k, v)
+            MockConfig.get_memory_path.return_value = str(tmp_path)
+
+            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+                mock_build.return_value = MagicMock(
+                    prompt=None,
+                    persistent_tokens=0,
+                    session_tokens=0,
+                    new_observation_tokens=0,
+                    new_observation_content="",
+                    persistent_content="",
+                    session_content="",
+                    channel_digest_tokens=0,
+                    channel_buffer_tokens=0,
+                )
+                with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+                    _, _, anchor_ts = runner._build_options(
+                        session_id="existing-session",
+                        thread_ts="ts_1", prompt="테스트",
+                    )
+
+        # 기존 세션이므로 새 앵커 메시지 미생성, 하지만 저장된 anchor_ts 로드
+        assert anchor_ts == "saved_anchor_123"
+        mock_send.assert_not_called()
+
+    def test_anchor_ts_empty_when_no_saved_record(self, tmp_path):
+        """기존 세션 재개 시 MemoryRecord가 없으면 anchor_ts 빈 문자열"""
+        config_patches = {
+            "OM_ENABLED": True,
+            "CHANNEL_OBSERVER_ENABLED": False,
+            "CHANNEL_OBSERVER_CHANNELS": [],
+            "OM_MAX_OBSERVATION_TOKENS": 30000,
+            "OM_DEBUG_CHANNEL": "C_DEBUG",
+        }
+
+        runner = ClaudeAgentRunner()
+
+        with patch("seosoyoung.config.Config") as MockConfig:
+            for k, v in config_patches.items():
+                setattr(MockConfig, k, v)
+            MockConfig.get_memory_path.return_value = str(tmp_path)
+
+            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+                mock_build.return_value = MagicMock(
+                    prompt=None,
+                    persistent_tokens=0,
+                    session_tokens=0,
+                    new_observation_tokens=0,
+                    new_observation_content="",
+                    persistent_content="",
+                    session_content="",
+                    channel_digest_tokens=0,
+                    channel_buffer_tokens=0,
+                )
+                _, _, anchor_ts = runner._build_options(
+                    session_id="existing-session",
+                    thread_ts="ts_no_record", prompt="테스트",
+                )
+
+        # MemoryRecord가 없으므로 anchor_ts 빈 문자열
+        assert anchor_ts == ""
+
+    def test_new_session_saves_anchor_ts_to_record(self, tmp_path):
+        """새 세션 시 생성된 anchor_ts가 MemoryRecord에 저장되는지 확인"""
+        from seosoyoung.memory.store import MemoryStore
+
+        config_patches = {
+            "OM_ENABLED": True,
+            "CHANNEL_OBSERVER_ENABLED": False,
+            "CHANNEL_OBSERVER_CHANNELS": [],
+            "OM_MAX_OBSERVATION_TOKENS": 30000,
+            "OM_DEBUG_CHANNEL": "C_DEBUG",
+        }
+
+        runner = ClaudeAgentRunner()
+
+        with patch("seosoyoung.config.Config") as MockConfig:
+            for k, v in config_patches.items():
+                setattr(MockConfig, k, v)
+            MockConfig.get_memory_path.return_value = str(tmp_path)
+
+            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+                mock_build.return_value = MagicMock(
+                    prompt=None,
+                    persistent_tokens=0,
+                    session_tokens=0,
+                    new_observation_tokens=0,
+                    new_observation_content="",
+                    persistent_content="",
+                    session_content="",
+                    channel_digest_tokens=0,
+                    channel_buffer_tokens=0,
+                )
+                with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="new_anchor_456"):
+                    _, _, anchor_ts = runner._build_options(
+                        thread_ts="ts_new", prompt="새 세션 테스트",
+                    )
+
+        assert anchor_ts == "new_anchor_456"
+
+        # MemoryRecord에 anchor_ts가 저장되었는지 확인
+        verify_store = MemoryStore(base_dir=tmp_path)
+        record = verify_store.get_record("ts_new")
+        assert record is not None
+        assert record.anchor_ts == "new_anchor_456"
+
+
+class TestInjectionDebugLogSkipsWithoutAnchor:
+    """anchor_ts가 빈 문자열일 때 _send_injection_debug_log가 디버그 로그를 스킵하는지 테스트"""
+
+    def test_skips_debug_log_when_anchor_ts_empty(self):
+        """anchor_ts가 빈 문자열이면 디버그 로그를 발송하지 않음 (채널 본문 오염 방지)"""
+        runner = ClaudeAgentRunner()
+        mock_result = MagicMock(
+            persistent_tokens=100,
+            session_tokens=50,
+            new_observation_tokens=30,
+            channel_digest_tokens=0,
+            channel_buffer_tokens=0,
+            persistent_content="장기 기억",
+            session_content="세션 관찰",
+            new_observation_content="새 관찰",
+        )
+
+        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+            runner._send_injection_debug_log(
+                thread_ts="ts_1234",
+                result=mock_result,
+                debug_channel="C_DEBUG",
+                anchor_ts="",  # 빈 문자열 — 앵커 생성 실패
+            )
+
+        # anchor_ts가 비었으므로 _send_debug_log가 호출되지 않아야 함
+        mock_send.assert_not_called()
+
+    def test_sends_debug_log_when_anchor_ts_present(self):
+        """anchor_ts가 있으면 정상적으로 디버그 로그를 발송"""
+        runner = ClaudeAgentRunner()
+        mock_result = MagicMock(
+            persistent_tokens=100,
+            session_tokens=0,
+            new_observation_tokens=0,
+            channel_digest_tokens=0,
+            channel_buffer_tokens=0,
+            persistent_content="장기 기억",
+        )
+
+        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+            with patch("seosoyoung.memory.observation_pipeline._format_tokens", return_value="100"):
+                with patch("seosoyoung.memory.observation_pipeline._blockquote", return_value=">장기 기억"):
+                    runner._send_injection_debug_log(
+                        thread_ts="ts_1234",
+                        result=mock_result,
+                        debug_channel="C_DEBUG",
+                        anchor_ts="anchor_valid",
+                    )
+
+        # anchor_ts가 있으므로 _send_debug_log가 호출되어야 함
+        mock_send.assert_called()
+
+
+class TestClaudeResultAnchorTs:
+    """ClaudeResult에 anchor_ts 필드 테스트"""
+
+    def test_anchor_ts_default_empty(self):
+        """기본값은 빈 문자열"""
+        result = ClaudeResult(success=True, output="test")
+        assert result.anchor_ts == ""
+
+    def test_anchor_ts_set(self):
+        """anchor_ts 설정 가능"""
+        result = ClaudeResult(success=True, output="test", anchor_ts="anc_123")
+        assert result.anchor_ts == "anc_123"
 
 
 class TestServiceFactory:

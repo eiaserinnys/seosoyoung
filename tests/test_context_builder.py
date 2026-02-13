@@ -447,7 +447,7 @@ class TestContextBuilderChannelObservation:
 
 
 class TestContextBuilderNewObservations:
-    """새 관찰(이전 세션 미전달 관찰) 주입 테스트"""
+    """새 관찰(현재 세션의 이전 턴 diff) 주입 테스트"""
 
     @pytest.fixture
     def store(self, tmp_path):
@@ -457,17 +457,12 @@ class TestContextBuilderNewObservations:
     def builder(self, store):
         return ContextBuilder(store)
 
-    def test_new_observations_injected(self, builder, store):
-        """이전 세션의 미전달 관찰이 새 세션에 주입됨"""
-        store.save_record(MemoryRecord(
-            thread_ts="ts_prev",
-            user_id="U123",
-            observations="## [2026-02-10] 이전 세션\n\n🔴 사용자가 한국어 커밋을 선호",
-            last_observed_at=datetime(2026, 2, 10, 15, 0, tzinfo=timezone.utc),
-        ))
+    def test_new_observations_injected_from_current_session(self, builder, store):
+        """현재 세션의 .new.md가 있으면 주입됨"""
+        store.save_new_observations("ts_session", "🔴 사용자가 한국어 커밋을 선호")
 
         result = builder.build_memory_prompt(
-            "ts_new",
+            "ts_session",
             include_persistent=False,
             include_session=False,
             include_new_observations=True,
@@ -475,21 +470,55 @@ class TestContextBuilderNewObservations:
 
         assert result.prompt is not None
         assert "<new-observations>" in result.prompt
-        assert "</new-observations>" in result.prompt
         assert "한국어 커밋" in result.prompt
         assert result.new_observation_tokens > 0
 
-    def test_new_observations_not_injected_when_disabled(self, builder, store):
-        """include_new_observations=False면 주입되지 않음"""
-        store.save_record(MemoryRecord(
-            thread_ts="ts_prev",
-            user_id="U123",
-            observations="## 관찰",
-            last_observed_at=datetime(2026, 2, 10, 15, 0, tzinfo=timezone.utc),
-        ))
+    def test_new_observations_cleared_after_injection(self, builder, store):
+        """주입 후 .new.md가 클리어되어 다음 턴에 재주입되지 않음"""
+        store.save_new_observations("ts_session", "🔴 한 번만 주입되어야 하는 관찰")
+
+        # 첫 번째 호출: 주입됨
+        result1 = builder.build_memory_prompt(
+            "ts_session", include_new_observations=True,
+        )
+        assert result1.new_observation_tokens > 0
+
+        # 두 번째 호출: .new.md가 클리어되었으므로 주입 없음
+        result2 = builder.build_memory_prompt(
+            "ts_session", include_new_observations=True,
+        )
+        assert result2.new_observation_tokens == 0
+
+    def test_no_new_md_no_injection(self, builder, store):
+        """현재 세션의 .new.md가 없으면 주입 없음"""
+        result = builder.build_memory_prompt(
+            "ts_session",
+            include_persistent=False,
+            include_session=False,
+            include_new_observations=True,
+        )
+
+        assert result.new_observation_tokens == 0
+        if result.prompt:
+            assert "<new-observations>" not in result.prompt
+
+    def test_other_session_new_md_not_injected(self, builder, store):
+        """다른 세션의 .new.md는 주입되지 않음"""
+        store.save_new_observations("ts_other", "🔴 다른 세션의 관찰")
 
         result = builder.build_memory_prompt(
-            "ts_new",
+            "ts_current",
+            include_new_observations=True,
+        )
+
+        assert result.new_observation_tokens == 0
+
+    def test_new_observations_not_injected_when_disabled(self, builder, store):
+        """include_new_observations=False면 주입되지 않음"""
+        store.save_new_observations("ts_session", "🔴 관찰")
+
+        result = builder.build_memory_prompt(
+            "ts_session",
             include_new_observations=False,
         )
 
@@ -497,44 +526,13 @@ class TestContextBuilderNewObservations:
         if result.prompt:
             assert "<new-observations>" not in result.prompt
 
-    def test_no_previous_observations(self, builder):
-        """이전 관찰이 없으면 주입 없음"""
-        result = builder.build_memory_prompt(
-            "ts_new",
-            include_new_observations=True,
-        )
-
-        assert result.new_observation_tokens == 0
-
-    def test_already_delivered_not_injected(self, builder, store):
-        """이미 전달된 관찰은 재주입되지 않음"""
-        store.save_record(MemoryRecord(
-            thread_ts="ts_prev",
-            user_id="U123",
-            observations="## 관찰",
-            last_observed_at=datetime(2026, 2, 10, 15, 0, tzinfo=timezone.utc),
-        ))
-
-        # 첫 번째 호출: 주입됨
-        result1 = builder.build_memory_prompt("ts_new", include_new_observations=True)
-        assert result1.new_observation_tokens > 0
-
-        # 두 번째 호출 (다른 새 세션): 이미 delivered이므로 미주입
-        result2 = builder.build_memory_prompt("ts_new2", include_new_observations=True)
-        assert result2.new_observation_tokens == 0
-
     def test_new_observations_combined_with_persistent(self, builder, store):
         """장기 기억 + 새 관찰이 함께 주입됨"""
         store.save_persistent(content="🔴 장기 기억", meta={})
-        store.save_record(MemoryRecord(
-            thread_ts="ts_prev",
-            user_id="U123",
-            observations="## 이전 관찰",
-            last_observed_at=datetime(2026, 2, 10, 15, 0, tzinfo=timezone.utc),
-        ))
+        store.save_new_observations("ts_session", "🟡 이번 턴 새 관찰")
 
         result = builder.build_memory_prompt(
-            "ts_new",
+            "ts_session",
             include_persistent=True,
             include_new_observations=True,
         )

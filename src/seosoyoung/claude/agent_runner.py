@@ -72,6 +72,8 @@ DEFAULT_ALLOWED_TOOLS = [
     "mcp__seosoyoung-attach__slack_attach_file",
     "mcp__seosoyoung-attach__slack_get_context",
     "mcp__seosoyoung-attach__slack_post_message",
+    "mcp__seosoyoung-attach__slack_download_thread_files",
+    "mcp__seosoyoung-attach__slack_generate_image",
 ]
 
 # Claude Code 기본 금지 도구
@@ -89,14 +91,13 @@ class ClaudeResult:
     output: str
     session_id: Optional[str] = None
     error: Optional[str] = None
-    files: list[str] = field(default_factory=list)
-    image_gen_prompts: list[str] = field(default_factory=list)
     update_requested: bool = False
     restart_requested: bool = False
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
     collected_messages: list[dict] = field(default_factory=list)  # OM용 대화 수집
     interrupted: bool = False  # interrupt로 중단된 경우 True
     usage: Optional[dict] = None  # ResultMessage.usage (input_tokens, output_tokens 등)
+    anchor_ts: str = ""  # OM 디버그 채널 세션 스레드 앵커 ts
 
 
 class ClaudeAgentRunner:
@@ -242,11 +243,14 @@ class ClaudeAgentRunner:
         user_id: Optional[str] = None,
         thread_ts: Optional[str] = None,
         channel: Optional[str] = None,
-    ) -> tuple[ClaudeCodeOptions, Optional[str]]:
-        """ClaudeCodeOptions와 OM 메모리 프롬프트를 함께 반환합니다.
+        prompt: Optional[str] = None,
+    ) -> tuple[ClaudeCodeOptions, Optional[str], str]:
+        """ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts를 함께 반환합니다.
 
         Returns:
-            (options, memory_prompt) - memory_prompt는 첫 번째 query에 프리픽스로 주입합니다.
+            (options, memory_prompt, anchor_ts)
+            - memory_prompt는 첫 번째 query에 프리픽스로 주입합니다.
+            - anchor_ts는 디버그 채널의 세션 스레드 앵커 메시지 ts입니다.
             append_system_prompt는 CLI 인자 크기 제한이 있어 장기 기억이 커지면 실패하므로,
             메모리는 첫 번째 사용자 메시지에 주입하는 방식을 사용합니다.
 
@@ -331,6 +335,9 @@ class ClaudeAgentRunner:
         if session_id:
             options.resume = session_id
 
+        # OM 디버그 채널 앵커 ts — 세션별 스레드 통합용
+        anchor_ts: str = ""
+
         # Observational Memory: 장기 기억은 새 세션 시작 시만, 세션 관찰은 컴팩션 후만 주입
         # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt가 아닌
         # 첫 번째 query 메시지에 프리픽스로 주입합니다.
@@ -367,7 +374,7 @@ class ClaudeAgentRunner:
                         include_session=should_inject_session,  # 세션 관찰: 컴팩션 후만 (inject 플래그)
                         include_channel_observation=include_channel_obs,
                         channel_id=channel,
-                        include_new_observations=is_new_session,    # 새 관찰: 새 세션만
+                        include_new_observations=True,               # 새 관찰: 매 턴 (현재 세션 diff)
                     )
 
                     if result.prompt:
@@ -380,26 +387,58 @@ class ClaudeAgentRunner:
                             f"채널={result.channel_digest_tokens}+{result.channel_buffer_tokens} tok)"
                         )
 
+                    # 앵커 ts: 새 세션이면 생성, 기존 세션이면 MemoryRecord에서 로드
+                    if is_new_session and Config.OM_DEBUG_CHANNEL:
+                        try:
+                            from seosoyoung.memory.observation_pipeline import _send_debug_log
+                            preview = (prompt or "")[:80]
+                            if len(prompt or "") > 80:
+                                preview += "…"
+                            anchor_ts = _send_debug_log(
+                                Config.OM_DEBUG_CHANNEL,
+                                f"{Config.EMOJI_TEXT_SESSION_START} *OM | 세션 시작 감지* `{thread_ts}`\n>{preview}",
+                            )
+                            # 새 세션 앵커 ts를 MemoryRecord에 저장 (후속 턴에서 재사용)
+                            if anchor_ts:
+                                record = store.get_record(thread_ts)
+                                if record is None:
+                                    from seosoyoung.memory.store import MemoryRecord
+                                    record = MemoryRecord(thread_ts=thread_ts)
+                                record.anchor_ts = anchor_ts
+                                store.save_record(record)
+                        except Exception as e:
+                            logger.warning(f"OM 앵커 메시지 생성 실패 (무시): {e}")
+                    elif not is_new_session and Config.OM_DEBUG_CHANNEL:
+                        # 기존 세션: MemoryRecord에서 저장된 anchor_ts 로드
+                        record = store.get_record(thread_ts)
+                        if record and record.anchor_ts:
+                            anchor_ts = record.anchor_ts
+
                     # 디버그 로그 이벤트 #7, #8: 주입 정보
                     self._send_injection_debug_log(
-                        thread_ts, result, Config.OM_DEBUG_CHANNEL
+                        thread_ts, result, Config.OM_DEBUG_CHANNEL, anchor_ts=anchor_ts,
                     )
             except Exception as e:
                 logger.warning(f"OM 주입 실패 (무시): {e}")
 
-        return options, memory_prompt
+        return options, memory_prompt, anchor_ts
 
     @staticmethod
     def _send_injection_debug_log(
         thread_ts: str,
         result: "InjectionResult",
         debug_channel: str,
+        anchor_ts: str = "",
     ) -> None:
         """디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
 
         LTM/세션 각각 별도 메시지로 발송하며, 주입 내용을 blockquote로 표시.
+        anchor_ts가 있으면 해당 스레드에 답글로 발송.
+        anchor_ts가 비었으면 채널 본문 오염 방지를 위해 스킵.
         """
         if not debug_channel:
+            return
+        if not anchor_ts:
             return
         has_any = (
             result.persistent_tokens
@@ -412,6 +451,7 @@ class ClaudeAgentRunner:
             return
 
         try:
+            from seosoyoung.config import Config
             from seosoyoung.memory.observation_pipeline import (
                 _blockquote,
                 _format_tokens,
@@ -425,9 +465,10 @@ class ClaudeAgentRunner:
                 ltm_quote = _blockquote(result.persistent_content)
                 _send_debug_log(
                     debug_channel,
-                    f":syringe: *OM 장기 기억 주입* `{sid}`\n"
+                    f"{Config.EMOJI_TEXT_LTM_INJECT} *OM 장기 기억 주입* `{sid}`\n"
                     f">`LTM {_format_tokens(result.persistent_tokens)} tok`\n"
                     f"{ltm_quote}",
+                    thread_ts=anchor_ts,
                 )
 
             # 새 관찰 주입
@@ -435,9 +476,10 @@ class ClaudeAgentRunner:
                 new_obs_quote = _blockquote(result.new_observation_content)
                 _send_debug_log(
                     debug_channel,
-                    f":sparkles: *OM 새 관찰 주입* `{sid}`\n"
+                    f"{Config.EMOJI_TEXT_NEW_OBS_INJECT} *OM 새 관찰 주입* `{sid}`\n"
                     f">`새관찰 {_format_tokens(result.new_observation_tokens)} tok`\n"
                     f"{new_obs_quote}",
+                    thread_ts=anchor_ts,
                 )
 
             # 세션 관찰 주입
@@ -445,9 +487,10 @@ class ClaudeAgentRunner:
                 session_quote = _blockquote(result.session_content)
                 _send_debug_log(
                     debug_channel,
-                    f":syringe: *OM 세션 관찰 주입* `{sid}`\n"
+                    f"{Config.EMOJI_TEXT_SESSION_OBS_INJECT} *OM 세션 관찰 주입* `{sid}`\n"
                     f">`세션 {_format_tokens(result.session_tokens)} tok`\n"
                     f"{session_quote}",
+                    thread_ts=anchor_ts,
                 )
 
             # 채널 관찰 주입
@@ -455,10 +498,11 @@ class ClaudeAgentRunner:
                 ch_total = result.channel_digest_tokens + result.channel_buffer_tokens
                 _send_debug_log(
                     debug_channel,
-                    f":eyes: *채널 관찰 주입* `{sid}`\n"
+                    f"{Config.EMOJI_TEXT_CHANNEL_OBS_INJECT} *채널 관찰 주입* `{sid}`\n"
                     f">`digest {_format_tokens(result.channel_digest_tokens)} tok + "
                     f"buffer {_format_tokens(result.channel_buffer_tokens)} tok = "
                     f"총 {_format_tokens(ch_total)} tok`",
+                    thread_ts=anchor_ts,
                 )
         except Exception as e:
             logger.warning(f"OM 주입 디버그 로그 실패 (무시): {e}")
@@ -489,7 +533,7 @@ class ClaudeAgentRunner:
 
         # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
         if result.success and user_id and thread_ts and result.collected_messages:
-            self._trigger_observation(thread_ts, user_id, prompt, result.collected_messages)
+            self._trigger_observation(thread_ts, user_id, prompt, result.collected_messages, anchor_ts=result.anchor_ts)
 
         return result
 
@@ -499,6 +543,7 @@ class ClaudeAgentRunner:
         user_id: str,
         prompt: str,
         collected_messages: list[dict],
+        anchor_ts: str = "",
     ) -> None:
         """관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
 
@@ -557,6 +602,7 @@ class ClaudeAgentRunner:
                         compaction_threshold=Config.OM_PERSISTENT_COMPACTION_THRESHOLD,
                         compaction_target=Config.OM_PERSISTENT_COMPACTION_TARGET,
                         debug_channel=debug_channel,
+                        anchor_ts=anchor_ts,
                     ))
                 except Exception as e:
                     logger.error(f"OM 관찰 파이프라인 비동기 실행 오류 (무시): {e}")
@@ -566,6 +612,7 @@ class ClaudeAgentRunner:
                             _send_debug_log(
                                 Config.OM_DEBUG_CHANNEL,
                                 f"❌ *OM 스레드 오류*\n• user: `{user_id}`\n• thread: `{thread_ts}`\n• error: `{e}`",
+                                thread_ts=anchor_ts,
                             )
                     except Exception:
                         pass
@@ -589,7 +636,7 @@ class ClaudeAgentRunner:
         """실제 실행 로직 (ClaudeSDKClient 기반)"""
         compact_events: list[dict] = []
         compact_notified_count = 0
-        options, memory_prompt = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel)
+        options, memory_prompt, anchor_ts = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel, prompt=prompt)
         # DEBUG: SDK에 전달되는 options 상세 로그
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
         logger.info(f"[DEBUG-OPTIONS] permission_mode={options.permission_mode}")
@@ -726,8 +773,6 @@ class ClaudeAgentRunner:
             output = result_text or current_text
 
             # 마커 추출
-            files = re.findall(r"<!-- FILE: (.+?) -->", output)
-            image_gen_prompts = re.findall(r"<!-- IMAGE_GEN: (.+?) -->", output)
             update_requested = "<!-- UPDATE -->" in output
             restart_requested = "<!-- RESTART -->" in output
 
@@ -735,8 +780,6 @@ class ClaudeAgentRunner:
             list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
             list_run = list_run_match.group(1).strip() if list_run_match else None
 
-            if image_gen_prompts:
-                logger.info(f"이미지 생성 요청: {image_gen_prompts}")
             if update_requested:
                 logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
             if restart_requested:
@@ -748,14 +791,13 @@ class ClaudeAgentRunner:
                 success=True,
                 output=output,
                 session_id=result_session_id,
-                files=files,
-                image_gen_prompts=image_gen_prompts,
                 update_requested=update_requested,
                 restart_requested=restart_requested,
                 list_run=list_run,
                 collected_messages=collected_messages,
                 interrupted=result_is_error,
                 usage=result_usage,
+                anchor_ts=anchor_ts,
             )
 
         except asyncio.TimeoutError:

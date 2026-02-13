@@ -6,7 +6,9 @@
 import pytest
 
 from seosoyoung.memory.prompt_loader import (
+    DEFAULT_PROMPT_DIR,
     PROMPT_DIR,
+    _resolve_prompt_path,
     load_prompt,
     load_prompt_cached,
 )
@@ -84,6 +86,115 @@ class TestAllPromptFilesExist:
         """각 프롬프트 파일이 존재하고 비어있지 않음"""
         content = load_prompt(filename)
         assert len(content) > 10, f"{filename}의 내용이 너무 짧습니다"
+
+
+class TestPromptDirOverride:
+    """환경변수로 프롬프트 디렉토리를 오버라이드하는 기능 테스트"""
+
+    def test_default_prompt_dir_unchanged(self):
+        """PROMPT_DIR 하위호환: 기본 경로가 유지됨"""
+        assert PROMPT_DIR == DEFAULT_PROMPT_DIR
+
+    def test_om_prompt_dir_override(self, tmp_path, monkeypatch):
+        """OM_PROMPT_DIR 환경변수로 om_* 파일을 오버라이드"""
+        custom = tmp_path / "custom_om"
+        custom.mkdir()
+        (custom / "om_observer_system.txt").write_text("custom om observer", encoding="utf-8")
+        monkeypatch.setenv("OM_PROMPT_DIR", str(custom))
+
+        path = _resolve_prompt_path("om_observer_system.txt")
+        assert path == custom / "om_observer_system.txt"
+
+        content = load_prompt("om_observer_system.txt")
+        assert content == "custom om observer"
+
+    def test_channel_prompt_dir_override(self, tmp_path, monkeypatch):
+        """CHANNEL_PROMPT_DIR 환경변수로 channel_*/digest_*/intervention_* 파일을 오버라이드"""
+        custom = tmp_path / "custom_channel"
+        custom.mkdir()
+        (custom / "channel_observer_system.txt").write_text("custom channel observer", encoding="utf-8")
+        (custom / "digest_compressor_system.txt").write_text("custom digest", encoding="utf-8")
+        (custom / "intervention_mode_system.txt").write_text("custom intervention", encoding="utf-8")
+        monkeypatch.setenv("CHANNEL_PROMPT_DIR", str(custom))
+
+        assert _resolve_prompt_path("channel_observer_system.txt") == custom / "channel_observer_system.txt"
+        assert _resolve_prompt_path("digest_compressor_system.txt") == custom / "digest_compressor_system.txt"
+        assert _resolve_prompt_path("intervention_mode_system.txt") == custom / "intervention_mode_system.txt"
+
+        assert load_prompt("channel_observer_system.txt") == "custom channel observer"
+
+    def test_common_prompt_files_dir_override(self, tmp_path, monkeypatch):
+        """PROMPT_FILES_DIR 환경변수로 모든 프롬프트 파일을 오버라이드"""
+        custom = tmp_path / "custom_all"
+        custom.mkdir()
+        (custom / "om_observer_system.txt").write_text("common override", encoding="utf-8")
+        monkeypatch.setenv("PROMPT_FILES_DIR", str(custom))
+
+        path = _resolve_prompt_path("om_observer_system.txt")
+        assert path == custom / "om_observer_system.txt"
+
+    def test_specific_dir_takes_priority_over_common(self, tmp_path, monkeypatch):
+        """개별 디렉토리 환경변수가 공통 PROMPT_FILES_DIR보다 우선"""
+        common_dir = tmp_path / "common"
+        common_dir.mkdir()
+        (common_dir / "om_observer_system.txt").write_text("from common", encoding="utf-8")
+
+        specific_dir = tmp_path / "specific"
+        specific_dir.mkdir()
+        (specific_dir / "om_observer_system.txt").write_text("from specific", encoding="utf-8")
+
+        monkeypatch.setenv("PROMPT_FILES_DIR", str(common_dir))
+        monkeypatch.setenv("OM_PROMPT_DIR", str(specific_dir))
+
+        content = load_prompt("om_observer_system.txt")
+        assert content == "from specific"
+
+    def test_fallback_to_default_when_env_empty(self, monkeypatch):
+        """환경변수가 비어있으면 배포본 기본 경로로 폴백"""
+        monkeypatch.setenv("OM_PROMPT_DIR", "")
+        monkeypatch.setenv("PROMPT_FILES_DIR", "")
+
+        path = _resolve_prompt_path("om_observer_system.txt")
+        assert path == DEFAULT_PROMPT_DIR / "om_observer_system.txt"
+
+    def test_fallback_to_default_when_file_missing_in_override(self, tmp_path, monkeypatch):
+        """오버라이드 디렉토리에 파일이 없으면 기본 경로로 폴백"""
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+        monkeypatch.setenv("OM_PROMPT_DIR", str(empty_dir))
+
+        path = _resolve_prompt_path("om_observer_system.txt")
+        assert path == DEFAULT_PROMPT_DIR / "om_observer_system.txt"
+
+    def test_fallback_to_common_when_specific_missing(self, tmp_path, monkeypatch):
+        """개별 디렉토리에 파일 없으면 공통 디렉토리로 폴백"""
+        empty_specific = tmp_path / "specific"
+        empty_specific.mkdir()
+
+        common_dir = tmp_path / "common"
+        common_dir.mkdir()
+        (common_dir / "om_observer_system.txt").write_text("from common fallback", encoding="utf-8")
+
+        monkeypatch.setenv("OM_PROMPT_DIR", str(empty_specific))
+        monkeypatch.setenv("PROMPT_FILES_DIR", str(common_dir))
+
+        content = load_prompt("om_observer_system.txt")
+        assert content == "from common fallback"
+
+    def test_unrecognized_prefix_uses_common_then_default(self, tmp_path, monkeypatch):
+        """접두사가 매핑에 없는 파일은 공통 → 기본 순서로 검색"""
+        custom = tmp_path / "common"
+        custom.mkdir()
+        (custom / "unknown_prefix_file.txt").write_text("from common", encoding="utf-8")
+        monkeypatch.setenv("PROMPT_FILES_DIR", str(custom))
+
+        path = _resolve_prompt_path("unknown_prefix_file.txt")
+        assert path == custom / "unknown_prefix_file.txt"
+
+    def test_env_not_set_uses_default(self):
+        """환경변수 미설정 시 기본 경로 사용"""
+        path = _resolve_prompt_path("om_observer_system.txt")
+        assert path == DEFAULT_PROMPT_DIR / "om_observer_system.txt"
 
 
 class TestChannelPromptsFromFiles:

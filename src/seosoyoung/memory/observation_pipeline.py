@@ -16,6 +16,7 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
+from seosoyoung.config import Config
 from seosoyoung.memory.observer import Observer
 from seosoyoung.memory.promoter import Compactor, Promoter
 from seosoyoung.memory.reflector import Reflector
@@ -25,14 +26,23 @@ from seosoyoung.memory.token_counter import TokenCounter
 logger = logging.getLogger(__name__)
 
 
-def _send_debug_log(channel: str, text: str) -> str:
-    """OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환."""
+def _send_debug_log(channel: str, text: str, thread_ts: str = "") -> str:
+    """OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환.
+
+    Args:
+        channel: 발송 채널
+        text: 메시지 텍스트
+        thread_ts: 스레드 앵커 ts (있으면 해당 스레드에 답글로 발송)
+    """
     try:
         from seosoyoung.config import Config
         from slack_sdk import WebClient
 
         client = WebClient(token=Config.SLACK_BOT_TOKEN)
-        resp = client.chat_postMessage(channel=channel, text=text)
+        kwargs: dict = {"channel": channel, "text": text}
+        if thread_ts:
+            kwargs["thread_ts"] = thread_ts
+        resp = client.chat_postMessage(**kwargs)
         return resp["ts"]
     except Exception as e:
         logger.warning(f"OM 디버그 로그 발송 실패: {e}")
@@ -67,6 +77,26 @@ def _blockquote(text: str, max_chars: int = 800) -> str:
         text = text[:max_chars] + "…"
     lines = text.split("\n")
     return "\n".join(f">{line}" for line in lines)
+
+
+def _extract_new_observations(
+    existing: str | None, updated: str
+) -> str:
+    """기존 관찰과 갱신된 관찰을 비교하여 새로 추가된 줄만 추출합니다.
+
+    Observer가 전체를 재작성하므로, 기존 줄 집합에 없는 줄만 반환합니다.
+    """
+    if not existing or not existing.strip():
+        return updated
+
+    existing_lines = set(line.strip() for line in existing.strip().splitlines() if line.strip())
+    new_lines = []
+    for line in updated.strip().splitlines():
+        stripped = line.strip()
+        if stripped and stripped not in existing_lines:
+            new_lines.append(line)
+
+    return "\n".join(new_lines) if new_lines else ""
 
 
 def parse_candidate_entries(candidates_text: str) -> list[dict]:
@@ -120,6 +150,7 @@ async def observe_conversation(
     compaction_threshold: int = 15000,
     compaction_target: int = 8000,
     debug_channel: str = "",
+    anchor_ts: str = "",
 ) -> bool:
     """매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 
@@ -146,6 +177,10 @@ async def observe_conversation(
     log_label = f"session={thread_ts}"
     debug_ts = ""
 
+    # anchor_ts가 비었으면 디버그 로그를 채널 본문에 게시하게 되므로 비활성화
+    if not anchor_ts:
+        debug_channel = ""
+
     try:
         token_counter = TokenCounter()
 
@@ -171,6 +206,7 @@ async def observe_conversation(
                     debug_channel,
                     f":fast_forward: *OM 스킵* `{sid}`\n"
                     f">`누적 {_format_tokens(turn_tokens)} tok < {_format_tokens(min_turn_tokens)} 최소`",
+                    thread_ts=anchor_ts,
                 )
             return False
 
@@ -183,6 +219,7 @@ async def observe_conversation(
             debug_ts = _send_debug_log(
                 debug_channel,
                 f":mag: *OM 관찰 시작* `{sid}`",
+                thread_ts=anchor_ts,
             )
 
         # 3. Observer 호출 (매턴)
@@ -258,9 +295,14 @@ async def observe_conversation(
                         f":recycle: *OM 세션 관찰 압축* `{sid}`\n"
                         f">`{_format_tokens(pre_tokens)} → {_format_tokens(reflection_result.token_count)} tok`\n"
                         f"{ref_quote}",
+                        thread_ts=anchor_ts,
                     )
 
-        # 7. 저장 + pending 버퍼 비우기
+        # 7. 새 관찰 diff 계산 및 저장 + pending 버퍼 비우기
+        new_obs = _extract_new_observations(
+            existing_observations, result.observations
+        )
+        store.save_new_observations(thread_ts, new_obs)
         store.save_record(record)
         store.clear_pending_messages(thread_ts)
 
@@ -277,13 +319,13 @@ async def observe_conversation(
                 candidate_part = f" | 후보 +{candidate_count} ({candidate_summary})"
             else:
                 candidate_part = " | 후보 없음"
-            obs_quote = _blockquote(result.observations)
+            new_obs_lines = len([l for l in new_obs.splitlines() if l.strip()]) if new_obs else 0
+            new_obs_part = f" | 새 관찰 {new_obs_lines}줄" if new_obs_lines else " | 새 관찰 없음"
             _update_debug_log(
                 debug_channel,
                 debug_ts,
-                f":white_check_mark: *OM 관찰 완료* `{sid}`\n"
-                f">`{_format_tokens(turn_tokens)} tok{candidate_part}`\n"
-                f"{obs_quote}",
+                f"{Config.EMOJI_TEXT_OBS_COMPLETE} *OM 관찰 완료* `{sid}`\n"
+                f">`{_format_tokens(turn_tokens)} tok{candidate_part}{new_obs_part}`",
             )
 
         # 8. Promoter: 후보 버퍼 토큰 합산 → 임계치 초과 시 승격
@@ -297,6 +339,7 @@ async def observe_conversation(
                 compaction_target=compaction_target,
                 debug_channel=debug_channel,
                 token_counter=token_counter,
+                anchor_ts=anchor_ts,
             )
 
         return True
@@ -322,6 +365,7 @@ async def _try_promote(
     compaction_target: int,
     debug_channel: str,
     token_counter: TokenCounter,
+    anchor_ts: str = "",
 ) -> None:
     """후보 버퍼 토큰이 임계치를 넘으면 Promoter를 호출하고, 필요 시 Compactor도 호출."""
     try:
@@ -344,6 +388,7 @@ async def _try_promote(
                 debug_channel,
                 f":brain: *LTM 승격 검토 시작*\n"
                 f">`후보 {_format_tokens(candidate_tokens)} tok ({len(all_candidates)}건)`",
+                thread_ts=anchor_ts,
             )
 
         logger.info(
@@ -386,7 +431,7 @@ async def _try_promote(
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f":white_check_mark: *LTM 승격 완료*\n"
+                    f"{Config.EMOJI_TEXT_OBS_COMPLETE} *LTM 승격 완료*\n"
                     f">`승격 {result.promoted_count}건 ({priority_str}) | "
                     f"기각 {result.rejected_count}건 | "
                     f"장기기억 {_format_tokens(persistent_tokens)} tok`\n"
@@ -401,6 +446,7 @@ async def _try_promote(
                     compaction_target=compaction_target,
                     persistent_tokens=persistent_tokens,
                     debug_channel=debug_channel,
+                    anchor_ts=anchor_ts,
                 )
         else:
             logger.info(
@@ -412,7 +458,7 @@ async def _try_promote(
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f":white_check_mark: *LTM 승격 완료*\n"
+                    f"{Config.EMOJI_TEXT_OBS_COMPLETE} *LTM 승격 완료*\n"
                     f">`승격 0건 | 기각 {result.rejected_count}건`",
                 )
 
@@ -429,6 +475,7 @@ async def _try_compact(
     compaction_target: int,
     persistent_tokens: int,
     debug_channel: str,
+    anchor_ts: str = "",
 ) -> None:
     """장기 기억 토큰이 임계치를 넘으면 archive 후 Compactor를 호출."""
     try:
@@ -471,6 +518,7 @@ async def _try_compact(
                 f">`{_format_tokens(persistent_tokens)} → {_format_tokens(result.token_count)} tok`"
                 f"{archive_info}\n"
                 f"{compact_quote}",
+                thread_ts=anchor_ts,
             )
 
     except Exception as e:

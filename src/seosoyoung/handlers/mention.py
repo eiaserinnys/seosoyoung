@@ -11,6 +11,7 @@ from seosoyoung.restart import RestartType
 from seosoyoung.translator import detect_language, translate
 from seosoyoung.slack import download_files_sync, build_file_context
 from seosoyoung.handlers.message import process_thread_message, build_slack_context
+from seosoyoung.claude.reaction_manager import MENTION_REACTIONS, add_reaction
 
 logger = logging.getLogger(__name__)
 
@@ -332,7 +333,7 @@ def register_mention_handlers(app, dependencies: dict):
 
                 # 완료 리액션
                 client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
-                client.reactions_add(channel=channel, timestamp=ts, name="white_check_mark")
+                client.reactions_add(channel=channel, timestamp=ts, name=Config.EMOJI_TRANSLATE_DONE)
 
             except Exception as e:
                 logger.exception(f"번역 테스트 실패: {e}")
@@ -511,6 +512,9 @@ def register_mention_handlers(app, dependencies: dict):
             logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")
             return
 
+        # 멘션 메시지(M)에 ssy-thinking 리액션 추가
+        add_reaction(client, channel, ts, MENTION_REACTIONS["thinking"])
+
         # 초기 메시지 표시 (리콜 시작 전) - blockquote 형태
         initial_text = "> 소영이 생각합니다..."
         if is_existing_thread:
@@ -526,9 +530,10 @@ def register_mention_handlers(app, dependencies: dict):
             )
             initial_msg_ts = initial_msg["ts"]
         else:
-            # 채널에서 최초 멘션: 채널 루트에 응답
+            # 채널에서 최초 멘션: M(멘션 메시지)의 스레드에 답글
             initial_msg = client.chat_postMessage(
                 channel=channel,
+                thread_ts=session_thread_ts,
                 text=initial_text,
                 blocks=[{
                     "type": "section",

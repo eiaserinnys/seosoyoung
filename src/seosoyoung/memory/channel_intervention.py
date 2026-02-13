@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from seosoyoung.config import Config
 from seosoyoung.memory.channel_observer import ChannelObserverResult
 
 logger = logging.getLogger(__name__)
@@ -413,7 +414,7 @@ def send_intervention_mode_debug_log(
         )
     elif event == "error":
         text = (
-            f":warning: *[개입 모드 오류]* `{source_channel}`\n"
+            f"{Config.EMOJI_TEXT_INTERVENTION_ERROR} *[개입 모드 오류]* `{source_channel}`\n"
             f">`{error}`"
         )
     else:

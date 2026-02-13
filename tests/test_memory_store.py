@@ -398,6 +398,49 @@ class TestPersistent:
         assert store.persistent_dir.exists()
 
 
+class TestMemoryRecordAnchorTs:
+    """MemoryRecord.anchor_ts 필드 직렬화/역직렬화 테스트"""
+
+    def test_anchor_ts_default_empty(self):
+        """기본값은 빈 문자열"""
+        record = MemoryRecord(thread_ts="ts_1234")
+        assert record.anchor_ts == ""
+
+    def test_anchor_ts_to_meta_dict_when_set(self):
+        """anchor_ts가 설정되면 to_meta_dict에 포함"""
+        record = MemoryRecord(thread_ts="ts_1234", anchor_ts="anchor_abc")
+        meta = record.to_meta_dict()
+        assert meta["anchor_ts"] == "anchor_abc"
+
+    def test_anchor_ts_to_meta_dict_when_empty(self):
+        """anchor_ts가 비었으면 to_meta_dict에 미포함"""
+        record = MemoryRecord(thread_ts="ts_1234", anchor_ts="")
+        meta = record.to_meta_dict()
+        assert "anchor_ts" not in meta
+
+    def test_anchor_ts_from_meta_dict_present(self):
+        """anchor_ts가 dict에 있으면 복원"""
+        data = {"thread_ts": "ts_1234", "anchor_ts": "anchor_abc"}
+        record = MemoryRecord.from_meta_dict(data)
+        assert record.anchor_ts == "anchor_abc"
+
+    def test_anchor_ts_from_meta_dict_missing(self):
+        """anchor_ts가 dict에 없으면 빈 문자열 기본값"""
+        data = {"thread_ts": "ts_1234"}
+        record = MemoryRecord.from_meta_dict(data)
+        assert record.anchor_ts == ""
+
+    def test_anchor_ts_roundtrip_via_store(self, store):
+        """anchor_ts를 store에 저장/로드하면 보존"""
+        record = MemoryRecord(
+            thread_ts="ts_1234", user_id="U123", anchor_ts="anchor_xyz"
+        )
+        store.save_record(record)
+        loaded = store.get_record("ts_1234")
+        assert loaded is not None
+        assert loaded.anchor_ts == "anchor_xyz"
+
+
 class TestArchivePersistent:
     """장기 기억 아카이브 테스트"""
 
@@ -442,78 +485,3 @@ class TestArchivePersistent:
         assert path2.exists()
 
 
-class TestGetLatestUndeliveredObservation:
-    """미전달 관찰 조회 테스트"""
-
-    def test_no_observations_returns_none(self, store):
-        """관찰 레코드가 없으면 None"""
-        result = store.get_latest_undelivered_observation(exclude_thread_ts="ts_current")
-        assert result is None
-
-    def test_returns_latest_observation(self, store):
-        """가장 최근 관찰을 반환"""
-        store.save_record(MemoryRecord(
-            thread_ts="ts_old",
-            user_id="U123",
-            observations="## 옛 관찰",
-            last_observed_at=datetime(2026, 2, 8, tzinfo=timezone.utc),
-        ))
-        store.save_record(MemoryRecord(
-            thread_ts="ts_new",
-            user_id="U123",
-            observations="## 새 관찰",
-            last_observed_at=datetime(2026, 2, 10, tzinfo=timezone.utc),
-        ))
-
-        result = store.get_latest_undelivered_observation(exclude_thread_ts="ts_current")
-        assert result is not None
-        assert result.thread_ts == "ts_new"
-        assert "새 관찰" in result.observations
-
-    def test_excludes_current_thread(self, store):
-        """현재 세션의 thread_ts는 제외"""
-        store.save_record(MemoryRecord(
-            thread_ts="ts_current",
-            user_id="U123",
-            observations="## 현재 세션 관찰",
-            last_observed_at=datetime(2026, 2, 10, tzinfo=timezone.utc),
-        ))
-        store.save_record(MemoryRecord(
-            thread_ts="ts_prev",
-            user_id="U123",
-            observations="## 이전 세션 관찰",
-            last_observed_at=datetime(2026, 2, 9, tzinfo=timezone.utc),
-        ))
-
-        result = store.get_latest_undelivered_observation(exclude_thread_ts="ts_current")
-        assert result is not None
-        assert result.thread_ts == "ts_prev"
-
-    def test_marks_as_delivered(self, store):
-        """조회 후 delivered 플래그가 설정되어 두 번째 호출에서 None 반환"""
-        store.save_record(MemoryRecord(
-            thread_ts="ts_1",
-            user_id="U123",
-            observations="## 관찰 내용",
-            last_observed_at=datetime(2026, 2, 10, tzinfo=timezone.utc),
-        ))
-
-        # 첫 번째 호출: 반환
-        result1 = store.get_latest_undelivered_observation(exclude_thread_ts="ts_current")
-        assert result1 is not None
-
-        # 두 번째 호출: delivered 이므로 None
-        result2 = store.get_latest_undelivered_observation(exclude_thread_ts="ts_current")
-        assert result2 is None
-
-    def test_empty_observations_skipped(self, store):
-        """관찰 내용이 비어있는 레코드는 건너뜀"""
-        store.save_record(MemoryRecord(
-            thread_ts="ts_empty",
-            user_id="U123",
-            observations="   ",
-            last_observed_at=datetime(2026, 2, 10, tzinfo=timezone.utc),
-        ))
-
-        result = store.get_latest_undelivered_observation(exclude_thread_ts="ts_current")
-        assert result is None

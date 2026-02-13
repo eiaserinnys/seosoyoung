@@ -91,6 +91,8 @@ class Config:
             "mcp__seosoyoung-attach__slack_attach_file",
             "mcp__seosoyoung-attach__slack_get_context",
             "mcp__seosoyoung-attach__slack_post_message",
+            "mcp__seosoyoung-attach__slack_download_thread_files",
+            "mcp__seosoyoung-attach__slack_generate_image",
         ],
         "viewer": ["Read", "Glob", "Grep"],
     }
@@ -124,6 +126,7 @@ class Config:
     TRELLO_IN_PROGRESS_LIST_ID = os.getenv("TRELLO_IN_PROGRESS_LIST_ID", "")
     TRELLO_REVIEW_LIST_ID = os.getenv("TRELLO_REVIEW_LIST_ID", "")
     TRELLO_DONE_LIST_ID = os.getenv("TRELLO_DONE_LIST_ID", "")
+    TRELLO_DM_TARGET_USER_ID = os.getenv("TRELLO_DM_TARGET_USER_ID", "")
 
     # ========================================
     # 번역 설정
@@ -131,7 +134,9 @@ class Config:
     TRANSLATE_CHANNELS = [
         ch.strip() for ch in os.getenv("TRANSLATE_CHANNELS", "").split(",") if ch.strip()
     ]
+    TRANSLATE_BACKEND = os.getenv("TRANSLATE_BACKEND", "anthropic")  # "anthropic" | "openai"
     TRANSLATE_MODEL = os.getenv("TRANSLATE_MODEL", "")
+    TRANSLATE_OPENAI_MODEL = os.getenv("TRANSLATE_OPENAI_MODEL", "gpt-5-mini")
     TRANSLATE_CONTEXT_COUNT = _parse_int(os.getenv("TRANSLATE_CONTEXT_COUNT"), 0)
     TRANSLATE_API_KEY = os.getenv("TRANSLATE_API_KEY")
 
@@ -217,6 +222,29 @@ class Config:
     # 실행 트리거 설정
     # ========================================
     EXECUTE_EMOJI = os.getenv("EXECUTE_EMOJI", "rocket")
+
+    # ========================================
+    # 이모지 설정 (리액션 및 디버그 텍스트)
+    # ========================================
+    # 리액션 이모지 (슬랙 리액션으로 사용, 콜론 없이)
+    EMOJI_PLANNING = os.getenv("EMOJI_PLANNING", "ssy-thinking")
+    EMOJI_EXECUTING = os.getenv("EMOJI_EXECUTING", "ssy-curious")
+    EMOJI_SUCCESS = os.getenv("EMOJI_SUCCESS", "ssy-happy")
+    EMOJI_ERROR = os.getenv("EMOJI_ERROR", "ssy-angry")
+    EMOJI_INTERVENTION_WAITING = os.getenv("EMOJI_INTERVENTION_WAITING", "incoming_envelope")
+    EMOJI_INTERVENTION_ACCEPTED = os.getenv("EMOJI_INTERVENTION_ACCEPTED", "heavy_check_mark")
+    EMOJI_TRANSLATE_PROGRESS = os.getenv("EMOJI_TRANSLATE_PROGRESS", "hourglass_flowing_sand")
+    EMOJI_TRANSLATE_DONE = os.getenv("EMOJI_TRANSLATE_DONE", "ssy-happy")
+
+    # 텍스트 이모지 (슬랙 메시지 텍스트용, 콜론 포함)
+    EMOJI_TEXT_SESSION_START = os.getenv("EMOJI_TEXT_SESSION_START", ":ssy-surprised:")
+    EMOJI_TEXT_LTM_INJECT = os.getenv("EMOJI_TEXT_LTM_INJECT", ":ssy-thinking:")
+    EMOJI_TEXT_NEW_OBS_INJECT = os.getenv("EMOJI_TEXT_NEW_OBS_INJECT", ":ssy-curious:")
+    EMOJI_TEXT_SESSION_OBS_INJECT = os.getenv("EMOJI_TEXT_SESSION_OBS_INJECT", ":ssy-thinking:")
+    EMOJI_TEXT_CHANNEL_OBS_INJECT = os.getenv("EMOJI_TEXT_CHANNEL_OBS_INJECT", ":ssy-curious:")
+    EMOJI_TEXT_RESTART_TROUBLE = os.getenv("EMOJI_TEXT_RESTART_TROUBLE", ":ssy-troubled:")
+    EMOJI_TEXT_OBS_COMPLETE = os.getenv("EMOJI_TEXT_OBS_COMPLETE", ":ssy-happy:")
+    EMOJI_TEXT_INTERVENTION_ERROR = os.getenv("EMOJI_TEXT_INTERVENTION_ERROR", ":ssy-troubled:")
 
     # ========================================
     # 경로 설정 (런타임에 cwd 기준 계산)

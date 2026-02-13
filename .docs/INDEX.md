@@ -25,7 +25,9 @@
 - [`mcp/config.py`](modules/mcp_config.md): MCP 서버 설정
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
+- [`tools/image_gen.py`](modules/tools_image_gen.md): 이미지 생성 및 슬랙 업로드 MCP 도구
 - [`tools/slack_messaging.py`](modules/tools_slack_messaging.md): 슬랙 메시지 전송 MCP 도구
+- [`tools/thread_files.py`](modules/tools_thread_files.md): 스레드 내 파일 다운로드 MCP 도구
 - [`memory/channel_intervention.py`](modules/memory_channel_intervention.md): 채널 개입(intervention) 모듈
 - [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
 - [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화 파이프라인
@@ -66,10 +68,10 @@
 
 ### 주요 클래스
 
-- `ClaudeResult` (seosoyoung/claude/agent_runner.py:86): Claude Code 실행 결과
-- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:102): Claude Code SDK 기반 실행기
-- `PendingPrompt` (seosoyoung/claude/executor.py:61): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:74): Claude Code 실행기
+- `ClaudeResult` (seosoyoung/claude/agent_runner.py:88): Claude Code 실행 결과
+- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:103): Claude Code SDK 기반 실행기
+- `PendingPrompt` (seosoyoung/claude/executor.py:62): 인터벤션 대기 중인 프롬프트 정보
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:77): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
@@ -77,9 +79,9 @@
 - `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
-- `GeneratedImage` (seosoyoung/image_gen/generator.py:24): 생성된 이미지 결과
-- `InterventionAction` (seosoyoung/memory/channel_intervention.py:26): 개입 액션
-- `CooldownManager` (seosoyoung/memory/channel_intervention.py:127): 개입 쿨다운 및 개입 모드 상태 관리
+- `GeneratedImage` (seosoyoung/image_gen/generator.py:29): 생성된 이미지 결과
+- `InterventionAction` (seosoyoung/memory/channel_intervention.py:27): 개입 액션
+- `CooldownManager` (seosoyoung/memory/channel_intervention.py:128): 개입 쿨다운 및 개입 모드 상태 관리
 - `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:26): 채널 관찰 결과
 - `DigestCompressorResult` (seosoyoung/memory/channel_observer.py:37): digest 압축 결과
 - `ChannelObserver` (seosoyoung/memory/channel_observer.py:97): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
@@ -97,7 +99,7 @@
 - `ReflectorResult` (seosoyoung/memory/reflector.py:23): Reflector 출력 결과
 - `Reflector` (seosoyoung/memory/reflector.py:38): 관찰 로그를 압축하고 재구조화
 - `MemoryRecord` (seosoyoung/memory/store.py:36): 세션별 관찰 로그 레코드
-- `MemoryStore` (seosoyoung/memory/store.py:91): 파일 기반 관찰 로그 저장소
+- `MemoryStore` (seosoyoung/memory/store.py:96): 파일 기반 관찰 로그 저장소
 - `TokenCounter` (seosoyoung/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
 - `ProfileInfo` (seosoyoung/profile/manager.py:23): 프로필 정보
 - `ProfileManager` (seosoyoung/profile/manager.py:33): Claude Code 인증 프로필 관리자 (CLAUDE_CONFIG_DIR + Junction)
@@ -131,8 +133,8 @@
 - `ListRunSession` (seosoyoung/trello/list_runner.py:78): 리스트 정주행 세션 정보
 - `ListRunner` (seosoyoung/trello/list_runner.py:123): 리스트 정주행 관리자
 - `TrackedCard` (seosoyoung/trello/watcher.py:19): 추적 중인 카드 정보 (To Go 리스트 감시용)
-- `ThreadCardInfo` (seosoyoung/trello/watcher.py:34): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
-- `TrelloWatcher` (seosoyoung/trello/watcher.py:50): Trello 리스트 감시자
+- `ThreadCardInfo` (seosoyoung/trello/watcher.py:35): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
+- `TrelloWatcher` (seosoyoung/trello/watcher.py:51): Trello 리스트 감시자
 - `WebCache` (seosoyoung/web/cache.py:10): URL 기반 웹 콘텐츠 캐시 관리자
 - `ContentExtractor` (seosoyoung/web/extractor.py:30): HTML에서 본문과 메타데이터를 추출하는 클래스
 - `HtmlFetcher` (seosoyoung/web/fetcher.py:14): Selenium을 사용한 동적 웹 페이지 HTML 페처
@@ -142,46 +144,50 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:828): 
-- `get_runner_for_role()` (seosoyoung/claude/executor.py:45): 역할에 맞는 ClaudeAgentRunner 반환
+- `async main()` (seosoyoung/claude/agent_runner.py:870): 
+- `get_runner_for_role()` (seosoyoung/claude/executor.py:46): 역할에 맞는 ClaudeAgentRunner 반환
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:15): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:50): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:69): 응답에서 요약과 상세 내용을 파싱
 - `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:103): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:127): 트렐로 카드용 슬랙 메시지 헤더 생성
-- `add_reaction()` (seosoyoung/claude/reaction_manager.py:24): 슬랙 메시지에 이모지 리액션 추가
-- `remove_reaction()` (seosoyoung/claude/reaction_manager.py:44): 슬랙 메시지에서 이모지 리액션 제거
+- `add_reaction()` (seosoyoung/claude/reaction_manager.py:33): 슬랙 메시지에 이모지 리액션 추가
+- `remove_reaction()` (seosoyoung/claude/reaction_manager.py:53): 슬랙 메시지에서 이모지 리액션 제거
 - `register_all_handlers()` (seosoyoung/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록
-- `extract_command()` (seosoyoung/handlers/mention.py:81): 멘션에서 명령어 추출
-- `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:107): Recall 결과를 포함한 프롬프트 구성.
-- `get_channel_history()` (seosoyoung/handlers/mention.py:150): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-- `register_mention_handlers()` (seosoyoung/handlers/mention.py:171): 멘션 핸들러 등록
+- `extract_command()` (seosoyoung/handlers/mention.py:82): 멘션에서 명령어 추출
+- `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:108): Recall 결과를 포함한 프롬프트 구성.
+- `get_channel_history()` (seosoyoung/handlers/mention.py:151): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
+- `register_mention_handlers()` (seosoyoung/handlers/mention.py:172): 멘션 핸들러 등록
 - `build_slack_context()` (seosoyoung/handlers/message.py:19): 슬랙 컨텍스트 블록 문자열을 생성합니다.
 - `process_thread_message()` (seosoyoung/handlers/message.py:45): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 - `register_message_handlers()` (seosoyoung/handlers/message.py:110): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
-- `async generate_image()` (seosoyoung/image_gen/generator.py:31): Gemini API로 이미지를 생성하고 임시 파일로 저장
+- `async generate_image()` (seosoyoung/image_gen/generator.py:54): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
 - `notify_startup()` (seosoyoung/main.py:152): 봇 시작 알림
 - `notify_shutdown()` (seosoyoung/main.py:163): 봇 종료 알림
 - `start_trello_watcher()` (seosoyoung/main.py:174): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:194): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:204): 봇 사용자 ID 초기화
-- `slack_attach_file()` (seosoyoung/mcp/server.py:14): 슬랙에 파일을 첨부합니다.
-- `slack_get_context()` (seosoyoung/mcp/server.py:30): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
-- `slack_post_message()` (seosoyoung/mcp/server.py:40): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `slack_attach_file()` (seosoyoung/mcp/server.py:16): 슬랙에 파일을 첨부합니다.
+- `slack_get_context()` (seosoyoung/mcp/server.py:32): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:42): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `async slack_generate_image()` (seosoyoung/mcp/server.py:63): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
+- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:86): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
+- `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:15): 이미지를 생성하고 슬랙 스레드에 업로드
 - `post_message()` (seosoyoung/mcp/tools/slack_messaging.py:51): 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부
-- `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:34): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
-- `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:75): InterventionAction 리스트를 슬랙 API로 발송합니다.
-- `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:249): 디버그 채널에 관찰 결과 로그를 전송합니다.
-- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:289): 메시지 수집 시 디버그 채널에 로그를 전송합니다.
-- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:335): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
-- `send_intervention_mode_debug_log()` (seosoyoung/memory/channel_intervention.py:357): 개입 모드 이벤트를 디버그 채널에 기록합니다.
+- `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
+- `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:35): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
+- `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:76): InterventionAction 리스트를 슬랙 API로 발송합니다.
+- `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:250): 디버그 채널에 관찰 결과 로그를 전송합니다.
+- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:290): 메시지 수집 시 디버그 채널에 로그를 전송합니다.
+- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:336): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
+- `send_intervention_mode_debug_log()` (seosoyoung/memory/channel_intervention.py:358): 개입 모드 이벤트를 디버그 채널에 기록합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:44): Observer 응답에서 XML 태그를 파싱합니다.
 - `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:45): 채널 버퍼를 소화하여 digest를 갱신합니다.
 - `async run_digest_and_intervene()` (seosoyoung/memory/channel_pipeline.py:155): 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
@@ -196,13 +202,13 @@
 - `build_channel_intervene_user_prompt()` (seosoyoung/memory/channel_prompts.py:106): 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:45): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:88): 관찰 로그를 컨텍스트 주입에 최적화합니다.
-- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:72): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
-- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:108): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
+- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:102): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
+- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:138): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 - `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_promoter_output()` (seosoyoung/memory/promoter.py:83): Promoter 응답에서 <promoted>와 <rejected> 태그를 파싱합니다.
 - `parse_compactor_output()` (seosoyoung/memory/promoter.py:97): Compactor 응답에서 <compacted> 태그를 파싱합니다.
-- `load_prompt()` (seosoyoung/memory/prompt_loader.py:16): 프롬프트 파일을 로드합니다.
-- `load_prompt_cached()` (seosoyoung/memory/prompt_loader.py:35): 프롬프트 파일을 캐시하여 로드합니다.
+- `load_prompt()` (seosoyoung/memory/prompt_loader.py:71): 프롬프트 파일을 로드합니다.
+- `load_prompt_cached()` (seosoyoung/memory/prompt_loader.py:90): 프롬프트 파일을 캐시하여 로드합니다.
 - `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:18): Observer 시스템 프롬프트를 반환합니다.
 - `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:23): Observer 사용자 프롬프트를 구성합니다.
 - `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:66): Reflector 시스템 프롬프트를 반환합니다.
@@ -236,6 +242,6 @@
 - `find_relevant_terms_v2()` (seosoyoung/translator/glossary.py:287): 텍스트에서 관련 용어 추출 (개선된 버전, 디버그 정보 포함)
 - `get_term_mappings()` (seosoyoung/translator/glossary.py:403): 용어 매핑 딕셔너리 생성 (하위 호환성 유지)
 - `clear_cache()` (seosoyoung/translator/glossary.py:433): 캐시 초기화 (테스트 또는 용어집 갱신 시 사용)
-- `translate()` (seosoyoung/translator/translator.py:125): 텍스트를 번역
+- `translate()` (seosoyoung/translator/translator.py:169): 텍스트를 번역
 - `async get_article()` (seosoyoung/web/__init__.py:22): URL에서 아티클 추출
 - `format_article_for_prompt()` (seosoyoung/web/__init__.py:97): 아티클 데이터를 프롬프트용 문자열로 포맷
