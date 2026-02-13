@@ -228,15 +228,9 @@ class Config:
     EXECUTE_EMOJI = os.getenv("EXECUTE_EMOJI", "rocket")
 
     # ========================================
-    # 이모지 설정 (리액션 및 디버그 텍스트)
+    # 이모지 설정
     # ========================================
-    # 리액션 이모지 (슬랙 리액션으로 사용, 콜론 없이)
-    EMOJI_PLANNING = os.getenv("EMOJI_PLANNING", "ssy-thinking")
-    EMOJI_EXECUTING = os.getenv("EMOJI_EXECUTING", "ssy-curious")
-    EMOJI_SUCCESS = os.getenv("EMOJI_SUCCESS", "ssy-happy")
-    EMOJI_ERROR = os.getenv("EMOJI_ERROR", "ssy-angry")
-    EMOJI_INTERVENTION_WAITING = os.getenv("EMOJI_INTERVENTION_WAITING", "incoming_envelope")
-    EMOJI_INTERVENTION_ACCEPTED = os.getenv("EMOJI_INTERVENTION_ACCEPTED", "heavy_check_mark")
+    # 번역 리액션 이모지 (슬랙 리액션으로 사용, 콜론 없이)
     EMOJI_TRANSLATE_PROGRESS = os.getenv("EMOJI_TRANSLATE_PROGRESS", "hourglass_flowing_sand")
     EMOJI_TRANSLATE_DONE = os.getenv("EMOJI_TRANSLATE_DONE", "ssy-happy")
 

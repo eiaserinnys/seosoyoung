@@ -142,7 +142,7 @@ class TestOnProgressDmThread:
         # on_progress를 캡처하기 위해 runner를 모킹
         captured_on_progress = None
 
-        def mock_run(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel):
+        def mock_run(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel, **kwargs):
             nonlocal captured_on_progress
             captured_on_progress = on_progress
             result = MagicMock()
@@ -254,7 +254,7 @@ class TestOnProgressDmThread:
 
         captured_on_progress = None
 
-        def mock_run(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel):
+        def mock_run(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel, **kwargs):
             nonlocal captured_on_progress
             captured_on_progress = on_progress
             result = MagicMock()

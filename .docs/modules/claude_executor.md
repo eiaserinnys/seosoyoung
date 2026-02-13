@@ -13,11 +13,11 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 ## 클래스
 
 ### `PendingPrompt`
-- 위치: 줄 61
+- 위치: 줄 54
 - 설명: 인터벤션 대기 중인 프롬프트 정보
 
 ### `ClaudeExecutor`
-- 위치: 줄 77
+- 위치: 줄 70
 - 설명: Claude Code 실행기
 
 세션 내에서 Claude Code를 실행하고 결과를 처리합니다.
@@ -25,30 +25,30 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 
 #### 메서드
 
-- `__init__(self, session_manager, get_session_lock, mark_session_running, mark_session_stopped, get_running_session_count, restart_manager, upload_file_to_slack, send_long_message, send_restart_confirmation, trello_watcher_ref, list_runner_ref)` (줄 84): 
-- `run(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts, dm_channel_id, dm_thread_ts, user_message)` (줄 117): 세션 내에서 Claude Code 실행 (공통 로직)
-- `_handle_intervention(self, thread_ts, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts, dm_channel_id, dm_thread_ts, user_message)` (줄 184): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
-- `_pop_pending(self, thread_ts)` (줄 239): pending 프롬프트를 꺼내고 제거
-- `_run_with_lock(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts, dm_channel_id, dm_thread_ts, user_message)` (줄 244): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
-- `_execute_once(self, session, prompt, msg_ts, channel, say, client, effective_role, trello_card, is_existing_thread, initial_msg_ts, is_trello_mode, thread_ts_override, dm_channel_id, dm_thread_ts, user_message)` (줄 318): 단일 Claude 실행
-- `_replace_thinking_message(self, client, channel, old_msg_ts, new_text, new_blocks, thread_ts)` (줄 536): 사고 과정 메시지를 최종 응답으로 교체 (chat_update)
-- `_handle_interrupted(self, last_msg_ts, main_msg_ts, is_trello_mode, trello_card, session, channel, client, dm_channel_id, dm_last_reply_ts)` (줄 561): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
-- `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply, dm_channel_id, dm_thread_ts, dm_last_reply_ts)` (줄 607): 성공 결과 처리
-- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client, is_list_run, usage_bar, dm_channel_id, dm_thread_ts, dm_last_reply_ts)` (줄 671): 트렐로 모드 성공 처리
-- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply, is_list_run, usage_bar)` (줄 784): 일반 모드(멘션) 성공 처리
-- `_handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 885): 재기동 마커 처리
-- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 908): LIST_RUN 마커 처리 - 정주행 시작
-- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply, dm_channel_id, dm_last_reply_ts)` (줄 977): 오류 결과 처리
-- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, msg_ts, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply, dm_channel_id, dm_last_reply_ts)` (줄 1033): 예외 처리
+- `__init__(self, session_manager, get_session_lock, mark_session_running, mark_session_stopped, get_running_session_count, restart_manager, upload_file_to_slack, send_long_message, send_restart_confirmation, trello_watcher_ref, list_runner_ref)` (줄 77): 
+- `run(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts, dm_channel_id, dm_thread_ts, user_message)` (줄 110): 세션 내에서 Claude Code 실행 (공통 로직)
+- `_handle_intervention(self, thread_ts, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts, dm_channel_id, dm_thread_ts, user_message)` (줄 177): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
+- `_pop_pending(self, thread_ts)` (줄 229): pending 프롬프트를 꺼내고 제거
+- `_run_with_lock(self, session, prompt, msg_ts, channel, say, client, role, trello_card, is_existing_thread, initial_msg_ts, dm_channel_id, dm_thread_ts, user_message)` (줄 234): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
+- `_execute_once(self, session, prompt, msg_ts, channel, say, client, effective_role, trello_card, is_existing_thread, initial_msg_ts, is_trello_mode, thread_ts_override, dm_channel_id, dm_thread_ts, user_message)` (줄 304): 단일 Claude 실행
+- `_replace_thinking_message(self, client, channel, old_msg_ts, new_text, new_blocks, thread_ts)` (줄 515): 사고 과정 메시지를 최종 응답으로 교체 (chat_update)
+- `_handle_interrupted(self, last_msg_ts, main_msg_ts, is_trello_mode, trello_card, session, channel, client, dm_channel_id, dm_last_reply_ts)` (줄 540): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
+- `_handle_success(self, result, session, effective_role, is_trello_mode, trello_card, channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply, dm_channel_id, dm_thread_ts, dm_last_reply_ts)` (줄 586): 성공 결과 처리
+- `_handle_trello_success(self, result, response, session, trello_card, channel, thread_ts, main_msg_ts, say, client, is_list_run, usage_bar, dm_channel_id, dm_thread_ts, dm_last_reply_ts)` (줄 650): 트렐로 모드 성공 처리
+- `_handle_normal_success(self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client, is_thread_reply, is_list_run, usage_bar)` (줄 758): 일반 모드(멘션) 성공 처리
+- `_handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 859): 재기동 마커 처리
+- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 882): LIST_RUN 마커 처리 - 정주행 시작
+- `_handle_error(self, error, is_trello_mode, trello_card, session, channel, msg_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply, dm_channel_id, dm_last_reply_ts)` (줄 951): 오류 결과 처리
+- `_handle_exception(self, e, is_trello_mode, trello_card, session, channel, msg_ts, thread_ts, last_msg_ts, main_msg_ts, say, client, is_thread_reply, dm_channel_id, dm_last_reply_ts)` (줄 1002): 예외 처리
 
 ## 함수
 
 ### `_get_mcp_config_path()`
-- 위치: 줄 39
+- 위치: 줄 32
 - 설명: MCP 설정 파일 경로 반환 (없으면 None)
 
 ### `get_runner_for_role(role)`
-- 위치: 줄 45
+- 위치: 줄 38
 - 설명: 역할에 맞는 ClaudeAgentRunner 반환
 
 ## 내부 의존성
@@ -59,11 +59,6 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 - `seosoyoung.claude.message_formatter.escape_backticks`
 - `seosoyoung.claude.message_formatter.parse_summary_details`
 - `seosoyoung.claude.message_formatter.strip_summary_details_markers`
-- `seosoyoung.claude.reaction_manager.INTERVENTION_ACCEPTED_EMOJI`
-- `seosoyoung.claude.reaction_manager.INTERVENTION_EMOJI`
-- `seosoyoung.claude.reaction_manager.TRELLO_REACTIONS`
-- `seosoyoung.claude.reaction_manager.add_reaction`
-- `seosoyoung.claude.reaction_manager.remove_reaction`
 - `seosoyoung.claude.session.Session`
 - `seosoyoung.claude.session.SessionManager`
 - `seosoyoung.config.Config`

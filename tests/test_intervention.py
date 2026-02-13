@@ -1,10 +1,9 @@
 """인터벤션(intervention) 기능 테스트
 
 실행 중 새 메시지 도착 시:
-1. ⚡ 리액션 추가 (텍스트 메시지 없음)
-2. interrupt fire → 현재 실행 중단 → pending 실행
-3. 연속 인터벤션 정상 처리
-4. 중단된 실행의 사고 과정 메시지 정리
+1. interrupt fire → 현재 실행 중단 → pending 실행
+2. 연속 인터벤션 정상 처리
+3. 중단된 실행의 사고 과정 메시지 정리
 """
 
 import threading
@@ -16,7 +15,6 @@ from unittest.mock import MagicMock, patch, call
 import pytest
 
 from seosoyoung.claude.executor import ClaudeExecutor, PendingPrompt
-from seosoyoung.claude.reaction_manager import INTERVENTION_EMOJI
 from seosoyoung.claude.agent_runner import ClaudeResult
 
 
@@ -102,11 +100,10 @@ class TestPendingPrompts:
 
 
 class TestInterventionHandling:
-    """인터벤션 시 ⚡ 리액션 + pending 저장 + interrupt"""
+    """인터벤션 시 pending 저장 + interrupt"""
 
-    @patch("seosoyoung.claude.executor.add_reaction")
-    def test_intervention_adds_reaction_no_message(self, mock_add_reaction):
-        """락 실패 시 ⚡ 리액션만 추가하고 텍스트 메시지 없음"""
+    def test_intervention_no_message(self):
+        """락 실패 시 텍스트 메시지 없음"""
         executor = make_executor()
         client = MagicMock()
         say = MagicMock()
@@ -120,16 +117,10 @@ class TestInterventionHandling:
             client=client,
         )
 
-        # ⚡ 리액션 추가됨
-        mock_add_reaction.assert_called_once_with(
-            client, "C_TEST", "msg_456", INTERVENTION_EMOJI
-        )
-
         # say (텍스트 메시지)는 호출되지 않음
         say.assert_not_called()
 
-    @patch("seosoyoung.claude.executor.add_reaction")
-    def test_intervention_saves_pending(self, mock_add_reaction):
+    def test_intervention_saves_pending(self):
         """인터벤션 시 pending에 프롬프트 저장"""
         executor = make_executor()
 
@@ -147,8 +138,7 @@ class TestInterventionHandling:
         assert pending.prompt == "새 질문"
         assert pending.msg_ts == "msg_456"
 
-    @patch("seosoyoung.claude.executor.add_reaction")
-    def test_intervention_fires_interrupt_with_active_runner(self, mock_add_reaction):
+    def test_intervention_fires_interrupt_with_active_runner(self):
         """인터벤션 시 _active_runners에 runner가 있으면 interrupt 호출"""
         executor = make_executor()
 
@@ -170,8 +160,7 @@ class TestInterventionHandling:
         mock_runner.interrupt.assert_called_once_with("thread_123")
         mock_runner.run_sync.assert_called_once()
 
-    @patch("seosoyoung.claude.executor.add_reaction")
-    def test_intervention_no_runner_no_interrupt(self, mock_add_reaction):
+    def test_intervention_no_runner_no_interrupt(self):
         """_active_runners에 runner가 없으면 interrupt 호출 안 함"""
         executor = make_executor()
 
@@ -191,8 +180,7 @@ class TestInterventionHandling:
 class TestInterventionViaRun:
     """executor.run을 통한 인터벤션 흐름"""
 
-    @patch("seosoyoung.claude.executor.add_reaction")
-    def test_run_lock_failure_triggers_intervention(self, mock_add_reaction):
+    def test_run_lock_failure_triggers_intervention(self):
         """run에서 락 획득 실패 시 인터벤션 발동"""
         # 락 획득 실패 설정
         mock_lock = MagicMock()
@@ -214,13 +202,8 @@ class TestInterventionViaRun:
             client=client,
         )
 
-        # say는 호출되지 않아야 함 (이전: "이전 요청을 처리 중이에요")
+        # say는 호출되지 않아야 함
         say.assert_not_called()
-
-        # ⚡ 리액션 추가됨
-        mock_add_reaction.assert_called_once_with(
-            client, "C_TEST", "msg_456", INTERVENTION_EMOJI
-        )
 
         # pending에 저장됨
         assert "thread_123" in executor._pending_prompts
@@ -490,8 +473,7 @@ class TestRunWithLockPendingLoop:
 class TestConsecutiveInterventions:
     """연속 인터벤션 (A→B→C) 처리"""
 
-    @patch("seosoyoung.claude.executor.add_reaction")
-    def test_multiple_interventions_keep_latest(self, mock_add_reaction):
+    def test_multiple_interventions_keep_latest(self):
         """연속 인터벤션 시 pending은 마지막 것만 유지"""
         executor = make_executor()
 
@@ -516,9 +498,6 @@ class TestConsecutiveInterventions:
         assert pending is not None
         assert pending.prompt == "C"
 
-        # ⚡ 리액션은 3번 호출됨
-        assert mock_add_reaction.call_count == 3
-
         # interrupt도 3번 호출됨
         assert mock_runner.interrupt.call_count == 3
 
@@ -542,8 +521,7 @@ class TestActiveRunners:
         executor = make_executor()
         assert executor._active_runners == {}
 
-    @patch("seosoyoung.claude.executor.add_reaction")
-    def test_intervention_uses_active_runner_for_interrupt(self, mock_add_reaction):
+    def test_intervention_uses_active_runner_for_interrupt(self):
         """인터벤션 시 _active_runners에서 runner를 찾아 interrupt 전송"""
         executor = make_executor()
 
@@ -607,10 +585,8 @@ class TestNormalSuccessWithReplace:
 class TestTrelloSuccessWithReplace:
     """_handle_trello_success에서 _replace_thinking_message 사용 확인"""
 
-    @patch("seosoyoung.claude.executor.add_reaction")
-    @patch("seosoyoung.claude.executor.remove_reaction")
     @patch("seosoyoung.claude.executor.build_trello_header", return_value="[Header]")
-    def test_trello_success_calls_replace_thinking(self, mock_header, mock_remove, mock_add):
+    def test_trello_success_calls_replace_thinking(self, mock_header):
         """트렐로 성공 처리에서 _replace_thinking_message가 호출됨"""
         executor = make_executor()
         result = make_claude_result(output="트렐로 응답")
@@ -640,10 +616,8 @@ class TestListRunTrelloSuccessNoDelete:
     chat_delete 대신 chat_update만 사용해야 합니다.
     """
 
-    @patch("seosoyoung.claude.executor.add_reaction")
-    @patch("seosoyoung.claude.executor.remove_reaction")
     @patch("seosoyoung.claude.executor.build_trello_header", return_value="[Header]")
-    def test_list_run_card_uses_chat_update_not_delete(self, mock_header, mock_remove, mock_add):
+    def test_list_run_card_uses_chat_update_not_delete(self, mock_header):
         """정주행 카드(list_key='list_run')는 _replace_thinking_message를 호출하지 않음"""
         executor = make_executor()
         # result.list_run은 None (정주행 개별 카드에는 LIST_RUN 마커 없음)

@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 from dotenv import load_dotenv
+import pytest
 
 # .env 로드 (RECALL_API_KEY 등)
 load_dotenv()
@@ -25,3 +26,13 @@ sys.modules["slack_bolt.adapter.socket_mode"] = MagicMock()
 
 # src 경로 추가
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+
+def pytest_collection_modifyitems(config, items):
+    """integration 마커가 붙은 테스트는 -m integration 옵션 없이 실행 시 자동 스킵"""
+    if config.getoption("-m", default="") == "integration":
+        return
+    skip_integration = pytest.mark.skip(reason="통합 테스트: pytest -m integration 으로 실행")
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip_integration)

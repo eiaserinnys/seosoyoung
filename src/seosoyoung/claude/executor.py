@@ -23,13 +23,6 @@ from seosoyoung.claude.message_formatter import (
     build_trello_header,
     build_context_usage_bar,
 )
-from seosoyoung.claude.reaction_manager import (
-    TRELLO_REACTIONS,
-    INTERVENTION_EMOJI,
-    INTERVENTION_ACCEPTED_EMOJI,
-    add_reaction,
-    remove_reaction
-)
 from seosoyoung.trello.watcher import TrackedCard
 from seosoyoung.restart import RestartType
 
@@ -203,9 +196,6 @@ class ClaudeExecutor:
         """
         logger.info(f"인터벤션 발생: thread={thread_ts}")
 
-        # ⚡ 리액션 추가 (메시지 없음)
-        add_reaction(client, channel, msg_ts, INTERVENTION_EMOJI)
-
         # pending에 저장 (최신 것으로 덮어씀)
         pending = PendingPrompt(
             prompt=prompt,
@@ -289,10 +279,6 @@ class ClaudeExecutor:
 
                 logger.info(f"인터벤션 이어가기: thread={original_thread_ts}")
 
-                # 📩 → ✅ 리액션 교체
-                remove_reaction(pending.client, pending.channel, pending.msg_ts, INTERVENTION_EMOJI)
-                add_reaction(pending.client, pending.channel, pending.msg_ts, INTERVENTION_ACCEPTED_EMOJI)
-
                 # pending의 정보로 다음 실행
                 p_role = pending.role or session.role
                 p_trello = pending.trello_card
@@ -344,8 +330,6 @@ class ClaudeExecutor:
         last_msg_ts = None
         main_msg_ts = msg_ts if is_trello_mode else None
 
-        # 트렐로 모드에서 첫 번째 on_progress 호출 시 리액션 추가 여부 추적
-        trello_reaction_added = False
 
         # DM 스레드 사고 과정: 마지막 답글 ts 추적 (트렐로 DM 모드용)
         dm_last_reply_ts: Optional[str] = None
@@ -385,7 +369,7 @@ class ClaudeExecutor:
 
         # 스트리밍 콜백
         async def on_progress(current_text: str):
-            nonlocal last_msg_ts, trello_reaction_added, dm_last_reply_ts
+            nonlocal last_msg_ts, dm_last_reply_ts
             try:
                 display_text = current_text.lstrip("\n")
                 if not display_text:
@@ -394,11 +378,6 @@ class ClaudeExecutor:
                     display_text = "...\n" + display_text[-3800:]
 
                 if is_trello_mode:
-                    if not trello_reaction_added:
-                        reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
-                        add_reaction(client, channel, main_msg_ts, reaction)
-                        trello_reaction_added = True
-
                     # DM 스레드가 있으면 DM에 blockquote 답글 추가
                     # current_text는 턴 단위 텍스트이므로 전체를 새 메시지로 전송
                     if dm_channel_id and dm_thread_ts:
@@ -694,11 +673,6 @@ class ClaudeExecutor:
                 )
             except Exception as e:
                 logger.warning(f"DM 스레드 최종 메시지 업데이트 실패: {e}")
-
-        # 이전 상태 리액션 제거 후 완료 리액션 추가
-        prev_reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
-        remove_reaction(client, channel, main_msg_ts, prev_reaction)
-        add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["success"])
 
         final_session_id = result.session_id or session.session_id or ""
         header = build_trello_header(trello_card, final_session_id)
@@ -996,11 +970,6 @@ class ClaudeExecutor:
                 logger.warning(f"DM 에러 메시지 업데이트 실패: {e}")
 
         if is_trello_mode:
-            # 이전 상태 리액션 제거 후 에러 리액션 추가
-            prev_reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
-            remove_reaction(client, channel, main_msg_ts, prev_reaction)
-            add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["error"])
-
             header = build_trello_header(trello_card, session.session_id or "")
             continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
             error_text = f"{header}\n\n❌ {error_msg}\n\n{continuation_hint}"
@@ -1053,11 +1022,6 @@ class ClaudeExecutor:
 
         if is_trello_mode:
             try:
-                # 이전 상태 리액션 제거 후 에러 리액션 추가
-                prev_reaction = TRELLO_REACTIONS["executing"] if trello_card.has_execute else TRELLO_REACTIONS["planning"]
-                remove_reaction(client, channel, main_msg_ts, prev_reaction)
-                add_reaction(client, channel, main_msg_ts, TRELLO_REACTIONS["error"])
-
                 header = build_trello_header(trello_card, session.session_id or "")
                 continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
                 client.chat_update(
