@@ -8,6 +8,14 @@ from seosoyoung.mcp.tools.attach import attach_file, get_slack_context
 from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 from seosoyoung.mcp.tools.slack_messaging import post_message
 from seosoyoung.mcp.tools.thread_files import download_thread_files
+from seosoyoung.mcp.tools.npc_chat import (
+    npc_list_characters as _npc_list_characters,
+    npc_open_session as _npc_open_session,
+    npc_talk as _npc_talk,
+    npc_set_situation as _npc_set_situation,
+    npc_close_session as _npc_close_session,
+    npc_get_history as _npc_get_history,
+)
 from seosoyoung.mcp.tools.user_profile import download_user_avatar, get_user_profile
 
 mcp = FastMCP("seosoyoung-attach")
@@ -122,3 +130,82 @@ async def slack_download_user_avatar(
         size: 이미지 크기 (24, 32, 48, 72, 192, 512, 1024). 기본값 512.
     """
     return await download_user_avatar(user_id, size)
+
+
+@mcp.tool()
+def npc_list_characters() -> dict:
+    """대화 가능한 NPC 캐릭터 목록을 반환합니다.
+
+    eb_lore 캐릭터 데이터에서 speech_guide와 example_lines가 있는 캐릭터만 포함합니다.
+    각 캐릭터의 id, name(kr/en), role(kr/en), tagline(있는 경우)을 반환합니다.
+    """
+    return _npc_list_characters()
+
+
+@mcp.tool()
+def npc_open_session(
+    character_id: str,
+    situation: str = "",
+    language: str = "kr",
+) -> dict:
+    """NPC 대화 세션을 열고 NPC의 첫 반응을 반환합니다.
+
+    캐릭터 ID로 세션을 시작하며, 선택적으로 상황 설명과 언어를 지정할 수 있습니다.
+    반환값에 session_id가 포함되며, 이후 대화에 사용합니다.
+
+    Args:
+        character_id: 캐릭터 ID (npc_list_characters로 조회)
+        situation: 초기 상황 설명 (선택)
+        language: 언어 코드 - "kr" 또는 "en" (기본: "kr")
+    """
+    return _npc_open_session(character_id, situation, language)
+
+
+@mcp.tool()
+def npc_talk(session_id: str, message: str) -> dict:
+    """NPC에게 말을 걸고 응답을 받습니다.
+
+    세션 내 대화 이력이 누적되며, 임계치를 넘으면 자동으로 다이제스트 압축됩니다.
+
+    Args:
+        session_id: npc_open_session에서 받은 세션 ID
+        message: 사용자 메시지
+    """
+    return _npc_talk(session_id, message)
+
+
+@mcp.tool()
+def npc_set_situation(session_id: str, situation: str) -> dict:
+    """대화 중 상황을 변경하고 NPC의 반응을 받습니다.
+
+    시스템 프롬프트가 새 상황으로 갱신되며, NPC가 변경된 상황에 자연스럽게 반응합니다.
+
+    Args:
+        session_id: 세션 ID
+        situation: 새로운 상황 설명
+    """
+    return _npc_set_situation(session_id, situation)
+
+
+@mcp.tool()
+def npc_close_session(session_id: str) -> dict:
+    """세션을 종료하고 전체 대화 이력을 반환합니다.
+
+    세션이 메모리에서 삭제됩니다. 이후 같은 session_id로 대화할 수 없습니다.
+
+    Args:
+        session_id: 종료할 세션 ID
+    """
+    return _npc_close_session(session_id)
+
+
+@mcp.tool()
+def npc_get_history(session_id: str) -> dict:
+    """세션의 대화 이력을 조회합니다 (세션 유지).
+
+    세션을 종료하지 않고 현재까지의 대화 이력을 확인합니다.
+
+    Args:
+        session_id: 세션 ID
+    """
+    return _npc_get_history(session_id)

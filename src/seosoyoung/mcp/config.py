@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
+NPC_CLAUDE_API_KEY = os.getenv("NPC_CLAUDE_API_KEY", "")
 
 WORKSPACE_ROOT = str(Path(__file__).resolve().parents[4])
 

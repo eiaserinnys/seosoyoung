@@ -74,6 +74,12 @@ DEFAULT_ALLOWED_TOOLS = [
     "mcp__seosoyoung-attach__slack_post_message",
     "mcp__seosoyoung-attach__slack_download_thread_files",
     "mcp__seosoyoung-attach__slack_generate_image",
+    "mcp__seosoyoung-attach__npc_list_characters",
+    "mcp__seosoyoung-attach__npc_open_session",
+    "mcp__seosoyoung-attach__npc_talk",
+    "mcp__seosoyoung-attach__npc_set_situation",
+    "mcp__seosoyoung-attach__npc_close_session",
+    "mcp__seosoyoung-attach__npc_get_history",
 ]
 
 # Claude Code 기본 금지 도구
