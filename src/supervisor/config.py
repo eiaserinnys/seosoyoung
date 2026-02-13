@@ -84,6 +84,8 @@ def build_process_configs() -> list[ProcessConfig]:
         log_dir=str(paths["logs"]),
     )
 
+    # .env에서 로드되는 추가 환경변수: SLACK_BOT_TOKEN, GEMINI_API_KEY,
+    # NPC_CLAUDE_API_KEY 등은 process_manager가 os.environ을 병합하여 전달
     mcp_seosoyoung = ProcessConfig(
         name="mcp-seosoyoung",
         command=str(paths["mcp_venv_python"]),
