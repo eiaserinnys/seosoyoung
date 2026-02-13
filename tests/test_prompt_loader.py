@@ -69,9 +69,6 @@ class TestAllPromptFilesExist:
         "channel_intervene_user.txt",
         "digest_compressor_system.txt",
         "digest_compressor_retry.txt",
-        "intervention_mode_system.txt",
-        "intervention_mode_user.txt",
-        "intervention_mode_last_turn.txt",
         # OM 프롬프트
         "om_observer_system.txt",
         "om_observer_user.txt",
@@ -209,14 +206,6 @@ class TestChannelPromptsFromFiles:
         assert "eyes" in prompt
         assert "laughing" in prompt
         assert "fire" in prompt
-
-    def test_intervention_mode_system_prompt(self):
-        """개입 모드 시스템 프롬프트가 정상 로드"""
-        from seosoyoung.memory.channel_prompts import get_intervention_mode_system_prompt
-
-        prompt = get_intervention_mode_system_prompt()
-        assert "서소영" in prompt
-        assert "intervention" in prompt.lower() or "개입" in prompt or "CHARACTER VOICE" in prompt
 
     def test_channel_intervene_system_prompt(self):
         """채널 개입 응답 시스템 프롬프트가 정상 로드"""

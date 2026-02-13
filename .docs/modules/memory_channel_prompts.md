@@ -33,44 +33,36 @@
 - 위치: 줄 63
 - 설명: digest 압축 재시도 프롬프트를 반환합니다.
 
-### `get_intervention_mode_system_prompt()`
-- 위치: 줄 72
-- 설명: 개입 모드 시스템 프롬프트를 반환합니다.
-
-### `build_intervention_mode_prompt(remaining_turns, channel_id, new_messages, digest)`
-- 위치: 줄 77
-- 설명: 개입 모드 사용자 프롬프트를 구성합니다.
-
 ### `get_channel_intervene_system_prompt()`
-- 위치: 줄 101
+- 위치: 줄 72
 - 설명: 채널 개입 응답 생성 시스템 프롬프트를 반환합니다.
 
 ### `build_channel_intervene_user_prompt(digest, recent_messages, trigger_message, target, observer_reason)`
-- 위치: 줄 106
+- 위치: 줄 77
 - 설명: 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
 
 ### `build_digest_only_system_prompt()`
-- 위치: 줄 137
+- 위치: 줄 108
 - 설명: 소화 전용 시스템 프롬프트를 반환합니다.
 
 ### `build_digest_only_user_prompt(channel_id, existing_digest, judged_messages, current_time)`
-- 위치: 줄 142
+- 위치: 줄 113
 - 설명: 소화 전용 사용자 프롬프트를 구성합니다.
 
 ### `build_judge_system_prompt()`
-- 위치: 줄 173
+- 위치: 줄 144
 - 설명: 리액션 판단 전용 시스템 프롬프트를 반환합니다.
 
 ### `build_judge_user_prompt(channel_id, digest, judged_messages, pending_messages, thread_buffers)`
-- 위치: 줄 178
+- 위치: 줄 149
 - 설명: 리액션 판단 전용 사용자 프롬프트를 구성합니다.
 
 ### `_format_channel_messages(messages)`
-- 위치: 줄 201
+- 위치: 줄 172
 - 설명: 채널 루트 메시지를 텍스트로 변환
 
 ### `_format_thread_messages(thread_buffers)`
-- 위치: 줄 214
+- 위치: 줄 185
 - 설명: 스레드 메시지를 텍스트로 변환
 
 ## 내부 의존성

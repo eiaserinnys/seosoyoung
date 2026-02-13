@@ -6,20 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seosoyoung.memory.channel_intervention import CooldownManager
+from seosoyoung.memory.channel_intervention import InterventionHistory
 from seosoyoung.memory.channel_observer import (
     DigestCompressorResult,
     DigestResult,
     JudgeResult,
 )
-from seosoyoung.memory.channel_pipeline import (
-    run_channel_pipeline,
-    respond_in_intervention_mode,
-)
-from seosoyoung.memory.channel_prompts import (
-    build_intervention_mode_prompt,
-    get_intervention_mode_system_prompt,
-)
+from seosoyoung.memory.channel_pipeline import run_channel_pipeline
 from seosoyoung.memory.channel_store import ChannelStore
 
 
@@ -113,14 +106,14 @@ class TestRunChannelPipeline:
         })
         observer = FakeObserver()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=99999,
         )
 
@@ -135,14 +128,14 @@ class TestRunChannelPipeline:
         _fill_pending(store, channel_id)
         observer = FakeObserver()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             threshold_b=999999,
         )
@@ -157,14 +150,14 @@ class TestRunChannelPipeline:
         _fill_pending(store, channel_id, n=5)
         observer = FakeObserver()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             threshold_b=999999,
         )
@@ -180,14 +173,14 @@ class TestRunChannelPipeline:
         _fill_pending(store, channel_id, n=10)
         observer = FakeObserver()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             threshold_b=1,  # 매우 낮은 임계치
         )
@@ -206,14 +199,14 @@ class TestRunChannelPipeline:
         _fill_pending(store, channel_id, n=5)
         observer = FakeObserver()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             threshold_b=1,
         )
@@ -235,14 +228,14 @@ class TestRunChannelPipeline:
         observer = FakeObserver(digest_result=long_digest)
         compressor = FakeCompressor()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             threshold_b=1,
             compressor=compressor,
@@ -262,14 +255,14 @@ class TestRunChannelPipeline:
         observer = FakeObserver()
         compressor = FakeCompressor()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             threshold_b=1,
             compressor=compressor,
@@ -286,14 +279,14 @@ class TestRunChannelPipeline:
         observer = FakeObserver()
         observer.judge_result = None
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
         )
 
@@ -311,14 +304,14 @@ class TestRunChannelPipeline:
             reaction_content="laughing",
         ))
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
         )
 
@@ -341,7 +334,7 @@ class TestRunChannelPipeline:
         ))
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+        history = InterventionHistory(base_dir=store.base_dir)
         mock_llm = AsyncMock(return_value="흥미로운 이야기로군요.")
 
         await run_channel_pipeline(
@@ -349,8 +342,9 @@ class TestRunChannelPipeline:
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
+            intervention_threshold=0.0,  # 항상 통과
             llm_call=mock_llm,
         )
 
@@ -370,15 +364,16 @@ class TestRunChannelPipeline:
         ))
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
+            intervention_threshold=0.0,
             llm_call=None,
         )
 
@@ -391,14 +386,14 @@ class TestRunChannelPipeline:
         observer = FakeObserver()
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             debug_channel="C_DEBUG",
         )
@@ -417,14 +412,14 @@ class TestRunChannelPipeline:
         })
         observer = FakeObserver()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             threshold_b=999999,
         )
@@ -444,14 +439,14 @@ class TestRunChannelPipeline:
         })
         observer = FakeObserver()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
             threshold_b=999999,
         )
@@ -469,321 +464,115 @@ class TestRunChannelPipeline:
         _fill_pending(store, channel_id)
         observer = FakeObserver()
         client = MagicMock()
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+        history = InterventionHistory(base_dir=store.base_dir)
 
         await run_channel_pipeline(
             store=store,
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
         )
 
         assert observer.judge_call_count == 1
 
 
-# ── 개입 모드 프롬프트 테스트 ──────────────────────────
+# ── 확률 기반 개입 판단 테스트 ────────────────────────────
 
-class TestInterventionModePrompt:
-    """개입 모드 프롬프트 빌더 테스트"""
-
-    def test_system_prompt_exists(self):
-        """개입 모드 시스템 프롬프트가 존재"""
-        prompt = get_intervention_mode_system_prompt()
-        assert prompt
-        assert "서소영" in prompt
-
-    def test_build_prompt_includes_remaining_turns(self):
-        """남은 턴이 프롬프트에 포함"""
-        prompt = build_intervention_mode_prompt(
-            remaining_turns=5,
-            channel_id="C123",
-            new_messages=[{"ts": "1.1", "user": "U1", "text": "안녕"}],
-            digest="채널 다이제스트",
-        )
-        assert "5" in prompt
-
-    def test_build_prompt_includes_digest(self):
-        """다이제스트가 프롬프트에 포함"""
-        prompt = build_intervention_mode_prompt(
-            remaining_turns=3,
-            channel_id="C123",
-            new_messages=[{"ts": "1.1", "user": "U1", "text": "안녕"}],
-            digest="테스트 다이제스트 내용",
-        )
-        assert "테스트 다이제스트 내용" in prompt
-
-    def test_build_prompt_includes_messages(self):
-        """새 메시지가 프롬프트에 포함"""
-        prompt = build_intervention_mode_prompt(
-            remaining_turns=3,
-            channel_id="C123",
-            new_messages=[
-                {"ts": "1.1", "user": "U1", "text": "첫 번째 메시지"},
-                {"ts": "1.2", "user": "U2", "text": "두 번째 메시지"},
-            ],
-            digest="다이제스트",
-        )
-        assert "첫 번째 메시지" in prompt
-        assert "두 번째 메시지" in prompt
-
-    def test_last_turn_includes_farewell_instruction(self):
-        """마지막 턴에는 마무리 지시가 포함"""
-        prompt = build_intervention_mode_prompt(
-            remaining_turns=1,
-            channel_id="C123",
-            new_messages=[{"ts": "1.1", "user": "U1", "text": "안녕"}],
-            digest="다이제스트",
-        )
-        assert "마지막" in prompt or "마무리" in prompt
-
-    def test_not_last_turn_no_farewell(self):
-        """마지막 턴이 아니면 마무리 지시 없음"""
-        prompt = build_intervention_mode_prompt(
-            remaining_turns=5,
-            channel_id="C123",
-            new_messages=[{"ts": "1.1", "user": "U1", "text": "안녕"}],
-            digest="다이제스트",
-        )
-        assert "마지막" not in prompt
-
-
-# ── respond_in_intervention_mode 테스트 ────────────────
-
-class TestRespondInInterventionMode:
-    """개입 모드 반응 함수 테스트"""
+class TestProbabilityBasedIntervention:
+    """확률 기반 개입 통과/차단 테스트"""
 
     @pytest.mark.asyncio
-    async def test_responds_and_consumes_turn(self, tmp_path):
-        """개입 모드 반응: LLM 호출 + 슬랙 발송 + 턴 소모"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=3)
-
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "테스트 메시지",
-        })
-
+    async def test_threshold_zero_always_passes(self, store, channel_id):
+        """임계치 0이면 항상 개입 통과"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=1,  # 아주 낮은 중요도
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="개입",
+        ))
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
-        mock_llm = AsyncMock(return_value="아이고, 재미있는 이야기로군요.")
-
-        await respond_in_intervention_mode(
-            store=store,
-            channel_id="C123",
-            slack_client=client,
-            cooldown=cooldown,
-            llm_call=mock_llm,
-        )
-
-        # 슬랙에 메시지 발송됨
-        client.chat_postMessage.assert_called_once()
-        call_kwargs = client.chat_postMessage.call_args[1]
-        assert call_kwargs["channel"] == "C123"
-        assert "재미있는" in call_kwargs["text"]
-
-        # 턴이 소모됨
-        assert cooldown.get_remaining_turns("C123") == 2
-
-    @pytest.mark.asyncio
-    async def test_last_turn_transitions_to_idle(self, tmp_path):
-        """마지막 턴이면 idle로 전환"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=1)
-
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "메시지",
-        })
-
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        mock_llm = AsyncMock(return_value="이만 물러가겠소.")
-
-        await respond_in_intervention_mode(
-            store=store,
-            channel_id="C123",
-            slack_client=client,
-            cooldown=cooldown,
-            llm_call=mock_llm,
-        )
-
-        assert cooldown.is_active("C123") is False
-        assert cooldown.can_intervene("C123") is False  # 쿨다운 진입
-
-    @pytest.mark.asyncio
-    async def test_llm_receives_correct_prompt(self, tmp_path):
-        """LLM에 올바른 프롬프트가 전달되는지 확인"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=5)
-
-        store.save_digest("C123", "기존 다이제스트", {"token_count": 100})
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "새 메시지",
-        })
-
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
         mock_llm = AsyncMock(return_value="응답")
 
-        await respond_in_intervention_mode(
+        await run_channel_pipeline(
             store=store,
-            channel_id="C123",
+            observer=observer,
+            channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
             llm_call=mock_llm,
         )
 
         mock_llm.assert_called_once()
-        call_args = mock_llm.call_args
-        system_prompt = call_args[1].get("system_prompt") or call_args[0][0]
-        user_prompt = call_args[1].get("user_prompt") or call_args[0][1]
-
-        assert "서소영" in system_prompt
-        assert "기존 다이제스트" in user_prompt
-        assert "새 메시지" in user_prompt
 
     @pytest.mark.asyncio
-    async def test_empty_buffer_skips(self, tmp_path):
-        """pending 버퍼가 비어있으면 반응 스킵"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=5)
-
+    async def test_threshold_one_blocks_most(self, store, channel_id):
+        """임계치 1.0이면 대부분 차단 (importance/10 * prob ≈ 0.9 최대)"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="개입",
+        ))
         client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
         mock_llm = AsyncMock(return_value="응답")
 
-        await respond_in_intervention_mode(
+        await run_channel_pipeline(
             store=store,
-            channel_id="C123",
+            observer=observer,
+            channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=1.0,
             llm_call=mock_llm,
         )
 
+        # 임계치 1.0은 (importance/10) * prob < 1.0이므로 차단
         mock_llm.assert_not_called()
-        client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_clears_buffer_after_response(self, tmp_path):
-        """반응 후 pending 버퍼를 비움"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=5)
-
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "메시지",
-        })
-
+    async def test_probability_debug_log_sent(self, store, channel_id):
+        """개입 시도 시 확률 디버그 로그가 전송됨"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="개입",
+        ))
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
-        mock_llm = AsyncMock(return_value="응답")
+        history = InterventionHistory(base_dir=store.base_dir)
 
-        await respond_in_intervention_mode(
+        await run_channel_pipeline(
             store=store,
-            channel_id="C123",
+            observer=observer,
+            channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
-            llm_call=mock_llm,
-        )
-
-        assert len(store.load_pending("C123")) == 0
-
-    @pytest.mark.asyncio
-    async def test_debug_log_sent_on_respond(self, tmp_path):
-        """개입 반응 시 디버그 채널에 로그 전송"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=3)
-
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "트리거 메시지",
-        })
-
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        mock_llm = AsyncMock(return_value="응답입니다.")
-
-        await respond_in_intervention_mode(
-            store=store,
-            channel_id="C123",
-            slack_client=client,
-            cooldown=cooldown,
-            llm_call=mock_llm,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
             debug_channel="C_DEBUG",
         )
 
-        calls = client.chat_postMessage.call_args_list
-        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
-        assert len(debug_calls) >= 1
-        debug_text = debug_calls[0][1]["text"]
-        assert "개입 모드 반응" in debug_text
-        assert "응답입니다" in debug_text
-        assert "트리거 메시지" in debug_text
-
-    @pytest.mark.asyncio
-    async def test_debug_log_exit_on_last_turn(self, tmp_path):
-        """마지막 턴에 종료 디버그 로그 전송"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=1)
-
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "메시지",
-        })
-
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        mock_llm = AsyncMock(return_value="이만 물러가겠소.")
-
-        await respond_in_intervention_mode(
-            store=store,
-            channel_id="C123",
-            slack_client=client,
-            cooldown=cooldown,
-            llm_call=mock_llm,
-            debug_channel="C_DEBUG",
-        )
-
+        # 디버그 채널에 확률 판단 로그가 전송됨
         calls = client.chat_postMessage.call_args_list
         debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
         debug_texts = [c[1]["text"] for c in debug_calls]
-        assert any("개입 모드 종료" in t for t in debug_texts)
-
-    @pytest.mark.asyncio
-    async def test_debug_log_on_llm_error(self, tmp_path):
-        """LLM 실패 시 에러 디버그 로그 전송"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=3)
-
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "메시지",
-        })
-
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        mock_llm = AsyncMock(side_effect=Exception("API timeout"))
-
-        await respond_in_intervention_mode(
-            store=store,
-            channel_id="C123",
-            slack_client=client,
-            cooldown=cooldown,
-            llm_call=mock_llm,
-            debug_channel="C_DEBUG",
-        )
-
-        calls = client.chat_postMessage.call_args_list
-        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
-        assert len(debug_calls) >= 1
-        assert "오류" in debug_calls[0][1]["text"]
-        assert "API timeout" in debug_calls[0][1]["text"]
+        assert any("개입 확률 판단" in t for t in debug_texts)
 
 
-# ── ClaudeAgentRunner Mock ────────────────────────────
+# ── Claude Runner 경로 테스트 ────────────────────────────
 
 @dataclass
 class FakeClaudeResult:
@@ -814,8 +603,6 @@ class FakeClaudeRunner:
         )
 
 
-# ── Claude Runner 경로 테스트 ────────────────────────────
-
 class TestIntervenWithClaudeRunner:
     """Claude Code SDK (claude_runner) 경로 테스트"""
 
@@ -831,7 +618,7 @@ class TestIntervenWithClaudeRunner:
         ))
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+        history = InterventionHistory(base_dir=store.base_dir)
         runner = FakeClaudeRunner(output="Claude SDK 응답입니다.")
 
         await run_channel_pipeline(
@@ -839,8 +626,9 @@ class TestIntervenWithClaudeRunner:
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
+            intervention_threshold=0.0,
             claude_runner=runner,
         )
 
@@ -865,7 +653,7 @@ class TestIntervenWithClaudeRunner:
         ))
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+        history = InterventionHistory(base_dir=store.base_dir)
         runner = FakeClaudeRunner(output="Claude 응답")
         mock_llm = AsyncMock(return_value="LLM 응답")
 
@@ -874,8 +662,9 @@ class TestIntervenWithClaudeRunner:
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
+            intervention_threshold=0.0,
             llm_call=mock_llm,
             claude_runner=runner,
         )
@@ -897,7 +686,7 @@ class TestIntervenWithClaudeRunner:
         ))
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
-        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=0)
+        history = InterventionHistory(base_dir=store.base_dir)
         runner = FakeClaudeRunner(success=False, error="타임아웃")
 
         await run_channel_pipeline(
@@ -905,8 +694,9 @@ class TestIntervenWithClaudeRunner:
             observer=observer,
             channel_id=channel_id,
             slack_client=client,
-            cooldown=cooldown,
+            cooldown=history,
             threshold_a=1,
+            intervention_threshold=0.0,
             claude_runner=runner,
         )
 
@@ -914,99 +704,3 @@ class TestIntervenWithClaudeRunner:
         calls = [c for c in client.chat_postMessage.call_args_list
                  if c[1].get("channel") == channel_id]
         assert len(calls) == 0
-
-
-class TestRespondInInterventionModeWithClaudeRunner:
-    """개입 모드 Claude Code SDK 경로 테스트"""
-
-    @pytest.mark.asyncio
-    async def test_responds_with_claude_runner(self, tmp_path):
-        """claude_runner로 개입 모드 반응 생성"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=3)
-
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "테스트 메시지",
-        })
-
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        runner = FakeClaudeRunner(output="Claude 개입 모드 응답")
-
-        await respond_in_intervention_mode(
-            store=store,
-            channel_id="C123",
-            slack_client=client,
-            cooldown=cooldown,
-            claude_runner=runner,
-        )
-
-        # Claude runner가 호출됨
-        assert runner.run_call_count == 1
-        # 슬랙에 메시지 발송됨
-        client.chat_postMessage.assert_called_once()
-        call_kwargs = client.chat_postMessage.call_args[1]
-        assert "Claude 개입 모드 응답" in call_kwargs["text"]
-        # 턴이 소모됨
-        assert cooldown.get_remaining_turns("C123") == 2
-
-    @pytest.mark.asyncio
-    async def test_claude_runner_prompt_includes_context(self, tmp_path):
-        """claude_runner 프롬프트에 system+user가 모두 포함"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=5)
-
-        store.save_digest("C123", "채널 다이제스트 내용", {"token_count": 100})
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "새 메시지",
-        })
-
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        runner = FakeClaudeRunner(output="응답")
-
-        await respond_in_intervention_mode(
-            store=store,
-            channel_id="C123",
-            slack_client=client,
-            cooldown=cooldown,
-            claude_runner=runner,
-        )
-
-        assert runner.run_call_count == 1
-        # 프롬프트에 system prompt (서소영) + user prompt (다이제스트, 메시지) 모두 포함
-        prompt = runner.last_prompt
-        assert "서소영" in prompt
-        assert "채널 다이제스트 내용" in prompt
-        assert "새 메시지" in prompt
-
-    @pytest.mark.asyncio
-    async def test_claude_runner_failure_sends_debug_log(self, tmp_path):
-        """Claude runner 실패 시 디버그 로그 전송"""
-        store = ChannelStore(base_dir=tmp_path)
-        cooldown = CooldownManager(base_dir=tmp_path, cooldown_sec=300)
-        cooldown.enter_intervention_mode("C123", max_turns=3)
-
-        store.append_pending("C123", {
-            "ts": "1.1", "user": "U1", "text": "메시지",
-        })
-
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        runner = FakeClaudeRunner(success=False, error="CLI 프로세스 오류")
-
-        await respond_in_intervention_mode(
-            store=store,
-            channel_id="C123",
-            slack_client=client,
-            cooldown=cooldown,
-            claude_runner=runner,
-            debug_channel="C_DEBUG",
-        )
-
-        calls = client.chat_postMessage.call_args_list
-        debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
-        assert len(debug_calls) >= 1
-        assert "오류" in debug_calls[0][1]["text"]

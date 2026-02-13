@@ -1,17 +1,19 @@
 """채널 개입(intervention) 모듈
 
-Phase 3: ChannelObserverResult를 InterventionAction으로 변환하고
-슬랙 API로 발송하며 쿨다운을 관리합니다.
+ChannelObserverResult를 InterventionAction으로 변환하고
+슬랙 API로 발송하며 개입 이력을 관리합니다.
 
 흐름:
 1. parse_intervention_markup: 관찰 결과 → 액션 리스트
-2. CooldownManager.filter_actions: 쿨다운 필터링
+2. InterventionHistory.filter_actions: 리액션 필터링
 3. execute_interventions: 슬랙 API 발송
 4. send_debug_log: 디버그 채널에 로그 전송
 """
 
 import json
 import logging
+import math
+import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -125,24 +127,46 @@ async def execute_interventions(
     return results
 
 
-class CooldownManager:
-    """개입 쿨다운 및 개입 모드 상태 관리
+def intervention_probability(
+    minutes_since_last: float, recent_count: int
+) -> float:
+    """시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.
 
-    상태 머신: idle ↔ active
-    - idle: 일반 상태. 소화 시 intervene 결정 → active 전환
-    - active: 개입 모드. 메시지마다 반응하고 턴 소모. 턴 0 → idle + 쿨다운
+    Args:
+        minutes_since_last: 마지막 개입으로부터 경과 시간(분)
+        recent_count: 최근 2시간 내 개입 횟수
+
+    Returns:
+        0.0~1.0 사이의 확률 값
+    """
+    # 시간 감쇠: 0분→0.0, 30분→~0.5, 60분→~0.8, 120분→~1.0
+    time_factor = 1 - math.exp(-minutes_since_last / 40)
+    # 빈도 감쇠: 최근 2시간 내 개입 횟수가 많을수록 억제
+    freq_factor = 1 / (1 + recent_count * 0.3)
+    base = time_factor * freq_factor
+    # ±20% 랜덤 흔들림
+    jitter = random.uniform(0.8, 1.2)
+    return min(base * jitter, 1.0)
+
+
+class InterventionHistory:
+    """개입 이력 관리
+
+    상태 머신 없이, 개입 이력(history 배열)만으로 확률 기반 개입을 지원합니다.
 
     intervention.meta.json 구조:
     {
-        "last_intervention_at": float,
-        "mode": "idle" | "active",
-        "remaining_turns": int,
+        "history": [
+            {"at": 1770974000, "type": "message"},
+            {"at": 1770970000, "type": "message"}
+        ]
     }
     """
 
-    def __init__(self, base_dir: str | Path, cooldown_sec: int = 1800):
+    HISTORY_WINDOW_MINUTES = 120  # 2시간
+
+    def __init__(self, base_dir: str | Path):
         self.base_dir = Path(base_dir)
-        self.cooldown_sec = cooldown_sec
 
     def _meta_path(self, channel_id: str) -> Path:
         return self.base_dir / "channel" / channel_id / "intervention.meta.json"
@@ -150,8 +174,12 @@ class CooldownManager:
     def _read_meta(self, channel_id: str) -> dict:
         path = self._meta_path(channel_id)
         if not path.exists():
-            return {}
-        return json.loads(path.read_text(encoding="utf-8"))
+            return {"history": []}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        # 이전 형식과의 호환: history 키가 없으면 초기화
+        if "history" not in data:
+            return {"history": []}
+        return data
 
     def _write_meta(self, channel_id: str, meta: dict) -> None:
         path = self._meta_path(channel_id)
@@ -161,90 +189,68 @@ class CooldownManager:
             encoding="utf-8",
         )
 
-    def can_intervene(self, channel_id: str) -> bool:
-        """대화 개입이 가능한지 확인 (쿨다운 체크)"""
+    def _prune_history(self, history: list[dict]) -> list[dict]:
+        """2시간 초과 항목을 제거합니다."""
+        cutoff = time.time() - self.HISTORY_WINDOW_MINUTES * 60
+        return [entry for entry in history if entry.get("at", 0) >= cutoff]
+
+    def record(self, channel_id: str, entry_type: str = "message") -> None:
+        """개입 이력을 기록합니다.
+
+        Args:
+            channel_id: 채널 ID
+            entry_type: 기록 유형 ("message" 등)
+        """
         meta = self._read_meta(channel_id)
-        last_at = meta.get("last_intervention_at")
-        if last_at is None:
-            return True
-        return (time.time() - last_at) >= self.cooldown_sec
+        meta["history"] = self._prune_history(meta["history"])
+        meta["history"].append({"at": time.time(), "type": entry_type})
+        self._write_meta(channel_id, meta)
+
+    def minutes_since_last(self, channel_id: str) -> float:
+        """마지막 개입으로부터 경과 시간(분)을 반환합니다.
+
+        이력이 없으면 무한대를 반환합니다.
+        """
+        meta = self._read_meta(channel_id)
+        history = meta.get("history", [])
+        if not history:
+            return float("inf")
+        last_at = max(entry.get("at", 0) for entry in history)
+        if last_at == 0:
+            return float("inf")
+        return (time.time() - last_at) / 60.0
+
+    def recent_count(
+        self, channel_id: str, window_minutes: int = 120
+    ) -> int:
+        """최근 window_minutes 내 개입 횟수를 반환합니다."""
+        meta = self._read_meta(channel_id)
+        cutoff = time.time() - window_minutes * 60
+        return sum(
+            1 for entry in meta.get("history", [])
+            if entry.get("at", 0) >= cutoff
+        )
 
     def can_react(self, channel_id: str) -> bool:
         """이모지 리액션은 항상 허용"""
         return True
 
-    def record_intervention(self, channel_id: str) -> None:
-        """개입 시각을 기록"""
-        meta = self._read_meta(channel_id)
-        meta["last_intervention_at"] = time.time()
-        self._write_meta(channel_id, meta)
-
-    # ── 개입 모드 상태 머신 ──────────────────────────────
-
-    def is_active(self, channel_id: str) -> bool:
-        """개입 모드 중인지 확인"""
-        meta = self._read_meta(channel_id)
-        return meta.get("mode") == "active"
-
-    def get_remaining_turns(self, channel_id: str) -> int:
-        """남은 개입 턴 수 반환"""
-        meta = self._read_meta(channel_id)
-        if meta.get("mode") != "active":
-            return 0
-        return meta.get("remaining_turns", 0)
-
-    def enter_intervention_mode(self, channel_id: str, max_turns: int) -> None:
-        """개입 모드 진입 (idle → active)"""
-        meta = self._read_meta(channel_id)
-        meta["mode"] = "active"
-        meta["remaining_turns"] = max_turns
-        self._write_meta(channel_id, meta)
-
-    def consume_turn(self, channel_id: str) -> int:
-        """턴 1 소모, 남은 턴 반환. 0이면 idle 전환 + 쿨다운 기록"""
-        meta = self._read_meta(channel_id)
-        if meta.get("mode") != "active":
-            return 0
-
-        remaining = meta.get("remaining_turns", 0) - 1
-        if remaining <= 0:
-            remaining = 0
-            meta["mode"] = "idle"
-            meta["remaining_turns"] = 0
-            meta["last_intervention_at"] = time.time()
-        else:
-            meta["remaining_turns"] = remaining
-
-        self._write_meta(channel_id, meta)
-        return remaining
-
-    # ── 필터링 ───────────────────────────────────────────
-
     def filter_actions(
         self, channel_id: str, actions: list[InterventionAction]
     ) -> list[InterventionAction]:
-        """쿨다운에 따라 액션을 필터링합니다.
+        """액션을 필터링합니다.
 
-        - active 모드: message 타입도 통과
-        - idle 모드: message 타입은 쿨다운 체크
         - react 타입: 항상 통과
+        - message 타입: 항상 통과 (확률 판단은 pipeline에서 처리)
 
         Returns:
-            쿨다운을 통과한 액션 리스트
+            필터링된 액션 리스트
         """
-        is_active = self.is_active(channel_id)
-        result = []
-        for action in actions:
-            if action.type == "react":
-                result.append(action)
-            elif action.type == "message":
-                if is_active or self.can_intervene(channel_id):
-                    result.append(action)
-                else:
-                    logger.info(
-                        f"쿨다운으로 개입 스킵 ({channel_id}): {action.content[:30]}..."
-                    )
-        return result
+        return [a for a in actions if a.type in ("react", "message")]
+
+
+# 하위호환 별칭
+CooldownManager = InterventionHistory
 
 
 async def send_debug_log(
@@ -355,72 +361,47 @@ def send_digest_skip_debug_log(
         logger.error(f"소화 스킵 디버그 로그 전송 실패: {e}")
 
 
-def send_intervention_mode_debug_log(
+def send_intervention_probability_debug_log(
     client,
     debug_channel: str,
     source_channel: str,
-    event: str,
-    remaining_turns: int = 0,
-    max_turns: int = 0,
-    response_text: str = "",
-    new_messages: list[dict] | None = None,
-    error: str = "",
+    importance: int,
+    time_factor: float,
+    freq_factor: float,
+    probability: float,
+    final_score: float,
+    threshold: float,
+    passed: bool,
 ) -> None:
-    """개입 모드 이벤트를 디버그 채널에 기록합니다.
+    """확률 기반 개입 판단 결과를 디버그 채널에 기록합니다.
 
     Args:
         client: Slack WebClient
         debug_channel: 디버그 로그 채널 ID
         source_channel: 관찰 대상 채널 ID
-        event: 이벤트 종류 ("enter", "respond", "exit", "error")
-        remaining_turns: 남은 턴 수
-        max_turns: 최대 턴 수 (enter 시)
-        response_text: 서소영의 응답 텍스트 (respond 시)
-        new_messages: 트리거한 새 메시지 목록 (respond 시)
-        error: 에러 메시지 (error 시)
+        importance: judge 중요도 (0-10)
+        time_factor: 시간 감쇠 요소
+        freq_factor: 빈도 감쇠 요소
+        probability: intervention_probability 결과
+        final_score: 최종 점수 (importance/10 × probability)
+        threshold: 개입 임계치
+        passed: 임계치 통과 여부
     """
     if not debug_channel:
         return
 
-    if event == "enter":
-        text = (
-            f":loudspeaker: *[개입 모드 진입]* `{source_channel}`\n"
-            f">`최대 {max_turns}턴 동안 채널 대화에 참여합니다`"
-        )
-    elif event == "respond":
-        msg_summary = ""
-        if new_messages:
-            for msg in new_messages[:3]:
-                user = msg.get("user", "?")
-                t = msg.get("text", "")[:80]
-                msg_summary += f"\n>  <{user}>: {t}"
-            if len(new_messages) > 3:
-                msg_summary += f"\n>  ... 외 {len(new_messages) - 3}건"
-
-        resp_preview = response_text[:200]
-        if len(response_text) > 200:
-            resp_preview += "..."
-
-        text = (
-            f":speech_balloon: *[개입 모드 반응]* `{source_channel}` "
-            f"(남은 턴: {remaining_turns})\n"
-            f">*트리거 메시지:*{msg_summary}\n"
-            f">*서소영 응답:*\n>{resp_preview}"
-        )
-    elif event == "exit":
-        text = (
-            f":zzz: *[개입 모드 종료]* `{source_channel}`\n"
-            f">`턴 소진 → 쿨다운 진입`"
-        )
-    elif event == "error":
-        text = (
-            f"{Config.EMOJI_TEXT_INTERVENTION_ERROR} *[개입 모드 오류]* `{source_channel}`\n"
-            f">`{error}`"
-        )
-    else:
-        return
+    emoji = ":white_check_mark:" if passed else ":no_entry_sign:"
+    text = (
+        f"{emoji} *[개입 확률 판단]* `{source_channel}`\n"
+        f">`중요도: {importance}/10 | "
+        f"시간감쇠: {time_factor:.2f} | "
+        f"빈도감쇠: {freq_factor:.2f} | "
+        f"확률: {probability:.3f}`\n"
+        f">`최종: {final_score:.3f} {'≥' if passed else '<'} "
+        f"임계치 {threshold:.2f}`"
+    )
 
     try:
         client.chat_postMessage(channel=debug_channel, text=text)
     except Exception as e:
-        logger.error(f"개입 모드 디버그 로그 전송 실패: {e}")
+        logger.error(f"개입 확률 디버그 로그 전송 실패: {e}")

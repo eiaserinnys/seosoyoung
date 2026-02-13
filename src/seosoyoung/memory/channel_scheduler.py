@@ -8,7 +8,7 @@ import asyncio
 import logging
 import threading
 
-from seosoyoung.memory.channel_intervention import CooldownManager
+from seosoyoung.memory.channel_intervention import InterventionHistory
 from seosoyoung.memory.channel_observer import ChannelObserver, DigestCompressor
 from seosoyoung.memory.channel_store import ChannelStore
 
@@ -29,7 +29,7 @@ class ChannelDigestScheduler:
         store: ChannelStore,
         observer: ChannelObserver,
         compressor: DigestCompressor | None,
-        cooldown: CooldownManager,
+        cooldown: InterventionHistory,
         slack_client,
         channels: list[str],
         interval_sec: int = 300,
@@ -37,7 +37,8 @@ class ChannelDigestScheduler:
         digest_max_tokens: int = 10000,
         digest_target_tokens: int = 5000,
         debug_channel: str = "",
-        max_intervention_turns: int = 0,
+        intervention_threshold: float = 0.3,
+        **kwargs,
     ):
         self.store = store
         self.observer = observer
@@ -50,7 +51,7 @@ class ChannelDigestScheduler:
         self.digest_max_tokens = digest_max_tokens
         self.digest_target_tokens = digest_target_tokens
         self.debug_channel = debug_channel
-        self.max_intervention_turns = max_intervention_turns
+        self.intervention_threshold = intervention_threshold
 
         self._timer: threading.Timer | None = None
         self._running = False
@@ -95,10 +96,6 @@ class ChannelDigestScheduler:
         """모든 관찰 채널의 pending 버퍼를 체크하여 파이프라인을 트리거합니다."""
         for channel_id in self.channels:
             try:
-                # 개입 모드 중이면 스킵 (개입 모드는 메시지 이벤트에서 처리)
-                if self.cooldown.is_active(channel_id):
-                    continue
-
                 pending_tokens = self.store.count_pending_tokens(channel_id)
                 if pending_tokens <= 0:
                     continue
@@ -138,7 +135,7 @@ class ChannelDigestScheduler:
                     digest_max_tokens=self.digest_max_tokens,
                     digest_target_tokens=self.digest_target_tokens,
                     debug_channel=self.debug_channel,
-                    max_intervention_turns=self.max_intervention_turns,
+                    intervention_threshold=self.intervention_threshold,
                     claude_runner=runner,
                 )
             )

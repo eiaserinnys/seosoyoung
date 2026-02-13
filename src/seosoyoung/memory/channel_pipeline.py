@@ -4,20 +4,22 @@ pending 버퍼에 쌓인 메시지를 기반으로:
 1. pending 토큰 확인 → threshold_A 미만이면 스킵
 2. judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 digest에 편입)
 3. judge() 호출 (digest + judged + pending → 리액션 판단)
-4. 리액션 처리 (슬랙 발송)
+4. 리액션 처리 (확률 기반 개입 판단 + 슬랙 발송)
 5. pending을 judged로 이동
 """
 
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Callable, Optional, TYPE_CHECKING
 
 from seosoyoung.memory.channel_intervention import (
-    CooldownManager,
     InterventionAction,
+    InterventionHistory,
     execute_interventions,
+    intervention_probability,
     send_debug_log,
-    send_intervention_mode_debug_log,
+    send_intervention_probability_debug_log,
 )
 from seosoyoung.memory.channel_observer import (
     ChannelObserver,
@@ -27,9 +29,7 @@ from seosoyoung.memory.channel_observer import (
 )
 from seosoyoung.memory.channel_prompts import (
     build_channel_intervene_user_prompt,
-    build_intervention_mode_prompt,
     get_channel_intervene_system_prompt,
-    get_intervention_mode_system_prompt,
 )
 from seosoyoung.memory.channel_store import ChannelStore
 from seosoyoung.memory.token_counter import TokenCounter
@@ -80,16 +80,17 @@ async def run_channel_pipeline(
     observer: ChannelObserver,
     channel_id: str,
     slack_client,
-    cooldown: CooldownManager,
+    cooldown: InterventionHistory,
     threshold_a: int = 150,
     threshold_b: int = 5000,
     compressor: Optional[DigestCompressor] = None,
     digest_max_tokens: int = 10_000,
     digest_target_tokens: int = 5_000,
     debug_channel: str = "",
-    max_intervention_turns: int = 0,
+    intervention_threshold: float = 0.3,
     llm_call: Optional[Callable] = None,
     claude_runner: Optional["ClaudeAgentRunner"] = None,
+    **kwargs,
 ) -> None:
     """소화/판단 분리 파이프라인을 실행합니다.
 
@@ -97,7 +98,7 @@ async def run_channel_pipeline(
     a) pending 토큰 확인 → threshold_A 미만이면 스킵
     b) judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 편입)
     c) judge() 호출 (digest + judged + pending)
-    d) 리액션 처리 (기존 intervention 로직 재활용)
+    d) 리액션 처리 (확률 기반 개입 판단 + 슬랙 발송)
     e) pending을 judged로 이동
 
     Args:
@@ -105,14 +106,14 @@ async def run_channel_pipeline(
         observer: ChannelObserver 인스턴스
         channel_id: 대상 채널
         slack_client: Slack WebClient
-        cooldown: CooldownManager 인스턴스
+        cooldown: InterventionHistory 인스턴스
         threshold_a: pending 판단 트리거 토큰 임계치
         threshold_b: digest 편입 트리거 토큰 임계치
         compressor: DigestCompressor (None이면 압축 건너뜀)
         digest_max_tokens: digest 압축 트리거 토큰 임계치
         digest_target_tokens: digest 압축 목표 토큰
         debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
-        max_intervention_turns: 개입 모드 최대 턴 (0이면 개입 모드 비활성)
+        intervention_threshold: 확률 기반 개입 임계치 (기본 0.3)
         llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
         claude_runner: Claude Code SDK 기반 실행기 (우선 사용, 없으면 llm_call 폴백)
     """
@@ -235,46 +236,54 @@ async def run_channel_pipeline(
         if react_actions:
             await execute_interventions(slack_client, channel_id, react_actions)
 
-        filtered_messages = cooldown.filter_actions(channel_id, message_actions)
-        if filtered_messages and (claude_runner or llm_call):
-            for action in filtered_messages:
-                await _execute_intervene(
-                    store=store,
-                    channel_id=channel_id,
-                    slack_client=slack_client,
-                    action=action,
-                    pending_messages=pending_messages,
-                    observer_reason=judge_result.reaction_content,
-                    claude_runner=claude_runner,
-                    llm_call=llm_call,
-                )
+        # 확률 기반 개입 판단
+        executed_messages: list[InterventionAction] = []
+        if message_actions:
+            mins_since = cooldown.minutes_since_last(channel_id)
+            recent = cooldown.recent_count(channel_id)
+            prob = intervention_probability(mins_since, recent)
 
-            if max_intervention_turns > 0:
-                cooldown.enter_intervention_mode(channel_id, max_intervention_turns)
-                send_intervention_mode_debug_log(
-                    client=slack_client,
-                    debug_channel=debug_channel,
-                    source_channel=channel_id,
-                    event="enter",
-                    max_turns=max_intervention_turns,
-                )
-            else:
-                cooldown.record_intervention(channel_id)
-        elif filtered_messages:
-            await execute_interventions(slack_client, channel_id, filtered_messages)
-            if max_intervention_turns > 0:
-                cooldown.enter_intervention_mode(channel_id, max_intervention_turns)
-                send_intervention_mode_debug_log(
-                    client=slack_client,
-                    debug_channel=debug_channel,
-                    source_channel=channel_id,
-                    event="enter",
-                    max_turns=max_intervention_turns,
-                )
-            else:
-                cooldown.record_intervention(channel_id)
+            # 시간/빈도 감쇠 요소를 디버그용으로 재계산
+            time_factor = 1 - math.exp(-mins_since / 40) if mins_since != float("inf") else 1.0
+            freq_factor = 1 / (1 + recent * 0.3)
 
-        filtered = react_actions + filtered_messages
+            final_score = (judge_result.importance / 10.0) * prob
+            passed = final_score >= intervention_threshold
+
+            send_intervention_probability_debug_log(
+                client=slack_client,
+                debug_channel=debug_channel,
+                source_channel=channel_id,
+                importance=judge_result.importance,
+                time_factor=time_factor,
+                freq_factor=freq_factor,
+                probability=prob,
+                final_score=final_score,
+                threshold=intervention_threshold,
+                passed=passed,
+            )
+
+            if passed:
+                if claude_runner or llm_call:
+                    for action in message_actions:
+                        await _execute_intervene(
+                            store=store,
+                            channel_id=channel_id,
+                            slack_client=slack_client,
+                            action=action,
+                            pending_messages=pending_messages,
+                            observer_reason=judge_result.reaction_content,
+                            claude_runner=claude_runner,
+                            llm_call=llm_call,
+                        )
+                else:
+                    await execute_interventions(
+                        slack_client, channel_id, message_actions
+                    )
+                cooldown.record(channel_id)
+                executed_messages = message_actions
+
+        filtered = react_actions + executed_messages
 
         await send_debug_log(
             client=slack_client,
@@ -386,119 +395,3 @@ async def _execute_intervene(
         logger.error(f"intervene 슬랙 발송 실패 ({channel_id}): {e}")
 
 
-async def respond_in_intervention_mode(
-    store: ChannelStore,
-    channel_id: str,
-    slack_client,
-    cooldown: CooldownManager,
-    llm_call: Optional[Callable] = None,
-    debug_channel: str = "",
-    claude_runner: Optional["ClaudeAgentRunner"] = None,
-) -> None:
-    """개입 모드 중 새 메시지에 반응합니다.
-
-    버퍼에 쌓인 메시지를 읽고, Claude Code SDK(또는 LLM 폴백)으로
-    서소영의 응답을 생성하여 슬랙에 발송하고, 턴을 소모합니다.
-
-    Args:
-        store: 채널 데이터 저장소
-        channel_id: 대상 채널
-        slack_client: Slack WebClient
-        cooldown: CooldownManager 인스턴스
-        llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
-        debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
-        claude_runner: Claude Code SDK 기반 실행기 (우선 사용, 없으면 llm_call 폴백)
-    """
-    # 1. pending 버퍼 로드
-    messages = store.load_pending(channel_id)
-    if not messages:
-        return
-
-    # 2. 다이제스트 로드
-    digest_data = store.get_digest(channel_id)
-    digest = digest_data["content"] if digest_data else None
-
-    # 3. 프롬프트 구성
-    remaining = cooldown.get_remaining_turns(channel_id)
-    system_prompt = get_intervention_mode_system_prompt()
-    user_prompt = build_intervention_mode_prompt(
-        remaining_turns=remaining,
-        channel_id=channel_id,
-        new_messages=messages,
-        digest=digest,
-    )
-
-    # 4. 응답 생성 (Claude Code SDK 우선, llm_call 폴백)
-    try:
-        if claude_runner:
-            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
-            result = await claude_runner.run(prompt=combined_prompt)
-            response_text = result.output if result.success else None
-            if not result.success:
-                logger.error(f"개입 모드 Claude SDK 실패 ({channel_id}): {result.error}")
-                send_intervention_mode_debug_log(
-                    client=slack_client, debug_channel=debug_channel,
-                    source_channel=channel_id, event="error",
-                    error=f"Claude SDK 실패: {result.error}",
-                )
-                return
-        elif llm_call:
-            response_text = await llm_call(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-            )
-        else:
-            logger.warning(f"개입 모드: claude_runner와 llm_call 모두 없음 ({channel_id})")
-            return
-    except Exception as e:
-        logger.error(f"개입 모드 응답 생성 실패 ({channel_id}): {e}")
-        send_intervention_mode_debug_log(
-            client=slack_client, debug_channel=debug_channel,
-            source_channel=channel_id, event="error",
-            error=f"응답 생성 실패: {e}",
-        )
-        return
-
-    if not response_text or not response_text.strip():
-        logger.warning(f"개입 모드 빈 응답 ({channel_id})")
-        send_intervention_mode_debug_log(
-            client=slack_client, debug_channel=debug_channel,
-            source_channel=channel_id, event="error",
-            error="빈 응답",
-        )
-        return
-
-    # 5. 슬랙 발송
-    try:
-        slack_client.chat_postMessage(
-            channel=channel_id,
-            text=response_text.strip(),
-        )
-    except Exception as e:
-        logger.error(f"개입 모드 슬랙 발송 실패 ({channel_id}): {e}")
-        send_intervention_mode_debug_log(
-            client=slack_client, debug_channel=debug_channel,
-            source_channel=channel_id, event="error",
-            error=f"슬랙 발송 실패: {e}",
-        )
-        return
-
-    # 6. 버퍼 비우기 + 턴 소모
-    store.clear_buffers(channel_id)
-    new_remaining = cooldown.consume_turn(channel_id)
-
-    # 7. 디버그 로그
-    send_intervention_mode_debug_log(
-        client=slack_client, debug_channel=debug_channel,
-        source_channel=channel_id, event="respond",
-        remaining_turns=new_remaining,
-        response_text=response_text.strip(),
-        new_messages=messages,
-    )
-
-    # 턴 소진 시 종료 로그
-    if new_remaining == 0:
-        send_intervention_mode_debug_log(
-            client=slack_client, debug_channel=debug_channel,
-            source_channel=channel_id, event="exit",
-        )

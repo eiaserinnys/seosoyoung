@@ -10,7 +10,7 @@ pending 버퍼에 쌓인 메시지를 기반으로:
 1. pending 토큰 확인 → threshold_A 미만이면 스킵
 2. judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 digest에 편입)
 3. judge() 호출 (digest + judged + pending → 리액션 판단)
-4. 리액션 처리 (슬랙 발송)
+4. 리액션 처리 (확률 기반 개입 판단 + 슬랙 발송)
 5. pending을 judged로 이동
 
 ## 함수
@@ -23,7 +23,7 @@ pending 버퍼에 쌓인 메시지를 기반으로:
 - 위치: 줄 56
 - 설명: JudgeResult에서 InterventionAction 리스트를 생성합니다.
 
-### `async run_channel_pipeline(store, observer, channel_id, slack_client, cooldown, threshold_a, threshold_b, compressor, digest_max_tokens, digest_target_tokens, debug_channel, max_intervention_turns, llm_call, claude_runner)`
+### `async run_channel_pipeline(store, observer, channel_id, slack_client, cooldown, threshold_a, threshold_b, compressor, digest_max_tokens, digest_target_tokens, debug_channel, intervention_threshold, llm_call, claude_runner)`
 - 위치: 줄 78
 - 설명: 소화/판단 분리 파이프라인을 실행합니다.
 
@@ -31,7 +31,7 @@ pending 버퍼에 쌓인 메시지를 기반으로:
 a) pending 토큰 확인 → threshold_A 미만이면 스킵
 b) judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 편입)
 c) judge() 호출 (digest + judged + pending)
-d) 리액션 처리 (기존 intervention 로직 재활용)
+d) 리액션 처리 (확률 기반 개입 판단 + 슬랙 발송)
 e) pending을 judged로 이동
 
 Args:
@@ -39,19 +39,19 @@ Args:
     observer: ChannelObserver 인스턴스
     channel_id: 대상 채널
     slack_client: Slack WebClient
-    cooldown: CooldownManager 인스턴스
+    cooldown: InterventionHistory 인스턴스
     threshold_a: pending 판단 트리거 토큰 임계치
     threshold_b: digest 편입 트리거 토큰 임계치
     compressor: DigestCompressor (None이면 압축 건너뜀)
     digest_max_tokens: digest 압축 트리거 토큰 임계치
     digest_target_tokens: digest 압축 목표 토큰
     debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
-    max_intervention_turns: 개입 모드 최대 턴 (0이면 개입 모드 비활성)
+    intervention_threshold: 확률 기반 개입 임계치 (기본 0.3)
     llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
     claude_runner: Claude Code SDK 기반 실행기 (우선 사용, 없으면 llm_call 폴백)
 
 ### `async _execute_intervene(store, channel_id, slack_client, action, pending_messages, observer_reason, claude_runner, llm_call)`
-- 위치: 줄 292
+- 위치: 줄 301
 - 설명: 서소영의 개입 응답을 생성하고 발송합니다.
 
 claude_runner가 있으면 Claude Code SDK로, 없으면 llm_call 폴백으로 응답을 생성합니다.
@@ -66,36 +66,19 @@ Args:
     claude_runner: Claude Code SDK 기반 실행기 (우선 사용)
     llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
 
-### `async respond_in_intervention_mode(store, channel_id, slack_client, cooldown, llm_call, debug_channel, claude_runner)`
-- 위치: 줄 389
-- 설명: 개입 모드 중 새 메시지에 반응합니다.
-
-버퍼에 쌓인 메시지를 읽고, Claude Code SDK(또는 LLM 폴백)으로
-서소영의 응답을 생성하여 슬랙에 발송하고, 턴을 소모합니다.
-
-Args:
-    store: 채널 데이터 저장소
-    channel_id: 대상 채널
-    slack_client: Slack WebClient
-    cooldown: CooldownManager 인스턴스
-    llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
-    debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
-    claude_runner: Claude Code SDK 기반 실행기 (우선 사용, 없으면 llm_call 폴백)
-
 ## 내부 의존성
 
-- `seosoyoung.memory.channel_intervention.CooldownManager`
 - `seosoyoung.memory.channel_intervention.InterventionAction`
+- `seosoyoung.memory.channel_intervention.InterventionHistory`
 - `seosoyoung.memory.channel_intervention.execute_interventions`
+- `seosoyoung.memory.channel_intervention.intervention_probability`
 - `seosoyoung.memory.channel_intervention.send_debug_log`
-- `seosoyoung.memory.channel_intervention.send_intervention_mode_debug_log`
+- `seosoyoung.memory.channel_intervention.send_intervention_probability_debug_log`
 - `seosoyoung.memory.channel_observer.ChannelObserver`
 - `seosoyoung.memory.channel_observer.ChannelObserverResult`
 - `seosoyoung.memory.channel_observer.DigestCompressor`
 - `seosoyoung.memory.channel_observer.JudgeResult`
 - `seosoyoung.memory.channel_prompts.build_channel_intervene_user_prompt`
-- `seosoyoung.memory.channel_prompts.build_intervention_mode_prompt`
 - `seosoyoung.memory.channel_prompts.get_channel_intervene_system_prompt`
-- `seosoyoung.memory.channel_prompts.get_intervention_mode_system_prompt`
 - `seosoyoung.memory.channel_store.ChannelStore`
 - `seosoyoung.memory.token_counter.TokenCounter`

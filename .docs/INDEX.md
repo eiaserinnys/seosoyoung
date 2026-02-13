@@ -80,8 +80,8 @@
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `GeneratedImage` (seosoyoung/image_gen/generator.py:29): 생성된 이미지 결과
-- `InterventionAction` (seosoyoung/memory/channel_intervention.py:27): 개입 액션
-- `CooldownManager` (seosoyoung/memory/channel_intervention.py:128): 개입 쿨다운 및 개입 모드 상태 관리
+- `InterventionAction` (seosoyoung/memory/channel_intervention.py:29): 개입 액션
+- `InterventionHistory` (seosoyoung/memory/channel_intervention.py:152): 개입 이력 관리
 - `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:30): 채널 관찰 결과 (하위호환 유지)
 - `DigestResult` (seosoyoung/memory/channel_observer.py:41): 소화 전용 결과
 - `JudgeResult` (seosoyoung/memory/channel_observer.py:49): 리액션 판단 결과
@@ -169,11 +169,11 @@
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `async generate_image()` (seosoyoung/image_gen/generator.py:54): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/main.py:152): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/main.py:163): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/main.py:174): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/main.py:194): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/main.py:204): 봇 사용자 ID 초기화
+- `notify_startup()` (seosoyoung/main.py:151): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/main.py:162): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/main.py:173): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/main.py:193): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/main.py:203): 봇 사용자 ID 초기화
 - `slack_attach_file()` (seosoyoung/mcp/server.py:16): 슬랙에 파일을 첨부합니다.
 - `slack_get_context()` (seosoyoung/mcp/server.py:32): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
 - `slack_post_message()` (seosoyoung/mcp/server.py:42): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
@@ -184,28 +184,26 @@
 - `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:15): 이미지를 생성하고 슬랙 스레드에 업로드
 - `post_message()` (seosoyoung/mcp/tools/slack_messaging.py:51): 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부
 - `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
-- `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:35): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
-- `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:76): InterventionAction 리스트를 슬랙 API로 발송합니다.
-- `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:250): 디버그 채널에 관찰 결과 로그를 전송합니다.
-- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:290): 메시지 수집 시 디버그 채널에 로그를 전송합니다.
-- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:336): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
-- `send_intervention_mode_debug_log()` (seosoyoung/memory/channel_intervention.py:358): 개입 모드 이벤트를 디버그 채널에 기록합니다.
+- `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:37): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
+- `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:78): InterventionAction 리스트를 슬랙 API로 발송합니다.
+- `intervention_probability()` (seosoyoung/memory/channel_intervention.py:130): 시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.
+- `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:256): 디버그 채널에 관찰 결과 로그를 전송합니다.
+- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:296): 메시지 수집 시 디버그 채널에 로그를 전송합니다.
+- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:342): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
+- `send_intervention_probability_debug_log()` (seosoyoung/memory/channel_intervention.py:364): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:66): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_judge_output()` (seosoyoung/memory/channel_observer.py:92): Judge 응답에서 XML 태그를 파싱합니다.
 - `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:78): 소화/판단 분리 파이프라인을 실행합니다.
-- `async respond_in_intervention_mode()` (seosoyoung/memory/channel_pipeline.py:389): 개입 모드 중 새 메시지에 반응합니다.
 - `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:19): 채널 관찰 시스템 프롬프트를 반환합니다.
 - `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:24): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:58): digest 압축 시스템 프롬프트를 반환합니다.
 - `build_digest_compressor_retry_prompt()` (seosoyoung/memory/channel_prompts.py:63): digest 압축 재시도 프롬프트를 반환합니다.
-- `get_intervention_mode_system_prompt()` (seosoyoung/memory/channel_prompts.py:72): 개입 모드 시스템 프롬프트를 반환합니다.
-- `build_intervention_mode_prompt()` (seosoyoung/memory/channel_prompts.py:77): 개입 모드 사용자 프롬프트를 구성합니다.
-- `get_channel_intervene_system_prompt()` (seosoyoung/memory/channel_prompts.py:101): 채널 개입 응답 생성 시스템 프롬프트를 반환합니다.
-- `build_channel_intervene_user_prompt()` (seosoyoung/memory/channel_prompts.py:106): 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
-- `build_digest_only_system_prompt()` (seosoyoung/memory/channel_prompts.py:137): 소화 전용 시스템 프롬프트를 반환합니다.
-- `build_digest_only_user_prompt()` (seosoyoung/memory/channel_prompts.py:142): 소화 전용 사용자 프롬프트를 구성합니다.
-- `build_judge_system_prompt()` (seosoyoung/memory/channel_prompts.py:173): 리액션 판단 전용 시스템 프롬프트를 반환합니다.
-- `build_judge_user_prompt()` (seosoyoung/memory/channel_prompts.py:178): 리액션 판단 전용 사용자 프롬프트를 구성합니다.
+- `get_channel_intervene_system_prompt()` (seosoyoung/memory/channel_prompts.py:72): 채널 개입 응답 생성 시스템 프롬프트를 반환합니다.
+- `build_channel_intervene_user_prompt()` (seosoyoung/memory/channel_prompts.py:77): 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
+- `build_digest_only_system_prompt()` (seosoyoung/memory/channel_prompts.py:108): 소화 전용 시스템 프롬프트를 반환합니다.
+- `build_digest_only_user_prompt()` (seosoyoung/memory/channel_prompts.py:113): 소화 전용 사용자 프롬프트를 구성합니다.
+- `build_judge_system_prompt()` (seosoyoung/memory/channel_prompts.py:144): 리액션 판단 전용 시스템 프롬프트를 반환합니다.
+- `build_judge_user_prompt()` (seosoyoung/memory/channel_prompts.py:149): 리액션 판단 전용 사용자 프롬프트를 구성합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:45): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:88): 관찰 로그를 컨텍스트 주입에 최적화합니다.
 - `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:102): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
