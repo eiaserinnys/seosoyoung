@@ -359,6 +359,30 @@ class TestTranslateOpenAI:
 
     @patch("seosoyoung.translator.translator.openai.OpenAI")
     @patch("seosoyoung.translator.translator.Config")
+    def test_translate_openai_uses_max_completion_tokens(self, mock_config, mock_openai_class):
+        """OpenAI API 호출 시 max_completion_tokens 사용 (max_tokens 아님)"""
+        mock_config.TRANSLATE_BACKEND = "openai"
+        mock_config.OPENAI_API_KEY = "test-key"
+        mock_config.TRANSLATE_OPENAI_MODEL = "gpt-5-mini"
+
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content="Hello"))]
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 10
+        mock_client.chat.completions.create.return_value = mock_response
+
+        translate("안녕하세요", Language.KOREAN, backend="openai")
+
+        call_args = mock_client.chat.completions.create.call_args
+        assert "max_completion_tokens" in call_args.kwargs
+        assert "max_tokens" not in call_args.kwargs
+        assert call_args.kwargs["max_completion_tokens"] == 2048
+
+    @patch("seosoyoung.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.translator.translator.Config")
     def test_translate_openai_custom_model(self, mock_config, mock_openai_class):
         """OpenAI에서 커스텀 모델 사용"""
         mock_config.TRANSLATE_BACKEND = "openai"

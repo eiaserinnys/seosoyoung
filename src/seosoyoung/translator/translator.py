@@ -158,7 +158,7 @@ def _translate_openai(prompt: str, model: str, api_key: str) -> tuple[str, int, 
     response = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=2048,
+        max_completion_tokens=2048,
     )
     translated = response.choices[0].message.content.strip()
     input_tokens = response.usage.prompt_tokens
