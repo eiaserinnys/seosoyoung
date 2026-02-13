@@ -8,6 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from . import job_object
 from .models import (
     ExitAction,
     EXIT_CODE_ACTIONS,
@@ -137,6 +138,10 @@ class ProcessManager:
             state.status = ProcessStatus.DEAD
             logger.exception("%s: 시작 실패", name)
             raise
+
+        # Job Object에 등록 (supervisor 종료 시 자식도 함께 종료)
+        if job_object.assign_process(proc):
+            logger.debug("%s: Job Object에 등록됨 (pid=%d)", name, proc.pid)
 
         self._procs[name] = proc
         state.pid = proc.pid

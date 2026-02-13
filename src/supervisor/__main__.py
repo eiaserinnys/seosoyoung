@@ -10,6 +10,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import job_object
 from .config import build_process_configs, _resolve_paths
 from .dashboard import create_app
 from .deployer import Deployer, SupervisorRestartRequired
@@ -90,6 +91,9 @@ def main() -> None:
     logger.info("=" * 40)
     logger.info("supervisor 시작")
     logger.info("=" * 40)
+
+    # Job Object 생성: supervisor 종료 시 모든 자식 프로세스 자동 정리
+    job_object.create_job_object()
 
     pm = ProcessManager()
     configs = build_process_configs()
@@ -203,7 +207,17 @@ def main() -> None:
     except SupervisorRestartRequired:
         logger.info("supervisor 자체 코드 변경 감지 → exit %d", EXIT_CODE_SUPERVISOR_RESTART)
         pm.stop_all()
+        job_object.close_job_object()
         sys.exit(EXIT_CODE_SUPERVISOR_RESTART)
+    finally:
+        # 비정상 종료(unhandled exception) 시에도 자식 프로세스 정리 시도.
+        # Job Object의 KILL_ON_JOB_CLOSE가 최종 안전장치 역할을 하지만,
+        # 가능하면 graceful shutdown을 시도한다.
+        if not shutting_down:
+            logger.warning("예기치 않은 종료, 자식 프로세스 정리 중")
+            pm.stop_all()
+        # Job Object는 항상 닫는다 (멱등 함수이므로 중복 호출 안전)
+        job_object.close_job_object()
 
 
 if __name__ == "__main__":
