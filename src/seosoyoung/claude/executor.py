@@ -25,7 +25,6 @@ from seosoyoung.claude.message_formatter import (
 )
 from seosoyoung.claude.reaction_manager import (
     TRELLO_REACTIONS,
-    MENTION_REACTIONS,
     INTERVENTION_EMOJI,
     INTERVENTION_ACCEPTED_EMOJI,
     add_reaction,
@@ -787,10 +786,6 @@ class ClaudeExecutor:
         usage_bar: str = None,
     ):
         """일반 모드(멘션) 성공 처리"""
-        # 멘션 이모지: ssy-thinking 제거 + ssy-happy 추가
-        remove_reaction(client, channel, msg_ts, MENTION_REACTIONS["thinking"])
-        add_reaction(client, channel, msg_ts, MENTION_REACTIONS["success"])
-
         continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
         if usage_bar:
             continuation_hint = f"{usage_bar}\n{continuation_hint}"
@@ -1017,10 +1012,6 @@ class ClaudeExecutor:
                 }]
             )
         else:
-            # 멘션 이모지: ssy-thinking 제거 + ssy-angry 추가
-            remove_reaction(client, channel, msg_ts, MENTION_REACTIONS["thinking"])
-            add_reaction(client, channel, msg_ts, MENTION_REACTIONS["error"])
-
             # 스레드 내 후속 대화에는 continuation hint 불필요
             if is_thread_reply:
                 error_text = f"❌ {error_msg}"
@@ -1075,10 +1066,6 @@ class ClaudeExecutor:
             except Exception:
                 say(text=f"❌ {error_msg}", thread_ts=thread_ts)
         else:
-            # 멘션 이모지: ssy-thinking 제거 + ssy-angry 추가
-            remove_reaction(client, channel, msg_ts, MENTION_REACTIONS["thinking"])
-            add_reaction(client, channel, msg_ts, MENTION_REACTIONS["error"])
-
             try:
                 # 스레드 내 후속 대화에는 continuation hint 불필요
                 if is_thread_reply:

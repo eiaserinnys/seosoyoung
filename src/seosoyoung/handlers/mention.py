@@ -11,7 +11,6 @@ from seosoyoung.restart import RestartType
 from seosoyoung.translator import detect_language, translate
 from seosoyoung.slack import download_files_sync, build_file_context
 from seosoyoung.handlers.message import process_thread_message, build_slack_context
-from seosoyoung.claude.reaction_manager import MENTION_REACTIONS, add_reaction
 
 logger = logging.getLogger(__name__)
 
@@ -511,9 +510,6 @@ def register_mention_handlers(app, dependencies: dict):
         if not clean_text and not file_context:
             logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")
             return
-
-        # 멘션 메시지(M)에 ssy-thinking 리액션 추가
-        add_reaction(client, channel, ts, MENTION_REACTIONS["thinking"])
 
         # 초기 메시지 표시 (리콜 시작 전) - blockquote 형태
         initial_text = "> 소영이 생각합니다..."
