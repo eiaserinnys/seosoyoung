@@ -559,8 +559,15 @@ class ClaudeAgentRunner:
             if not Config.OM_ENABLED:
                 return
 
-            # 사용자 메시지를 collected_messages 앞에 추가
-            messages = [{"role": "user", "content": prompt}] + collected_messages
+            # tool_use/tool_result 메시지를 필터링하여 순수 user/assistant 텍스트만 전달
+            # tool 메시지가 포함되면 턴 토큰이 항상 min_turn_tokens를 초과하여
+            # Observer 스킵 로직이 작동하지 않는 문제를 방지
+            text_messages = [
+                m for m in collected_messages
+                if m.get("role") != "tool"
+                and not (m.get("content", "").startswith("[tool_use:"))
+            ]
+            messages = [{"role": "user", "content": prompt}] + text_messages
 
             def _run_in_thread():
                 try:

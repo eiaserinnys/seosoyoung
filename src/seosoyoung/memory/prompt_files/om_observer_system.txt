@@ -19,13 +19,10 @@ TEMPORAL ANCHORING:
 Each session block MUST start with:
 ## [YYYY-MM-DD] Session Observations
 
-WHAT TO OBSERVE (focus on continuation value):
-1) What the user was trying to do (deliverable + scope)
-2) Key decisions/constraints the user stated (counts, tone rules, formatting rules, mapping rules)
-3) What was produced or verified (and what is still missing)
-4) Problems / mistakes / surprises, and how they were corrected
-5) Next-step hooks: what to do next session, and what inputs are needed
-6) Only the minimum file/ID references needed to resume work (dlgId, trigger name, one or two key files)
+WHAT TO OBSERVE (only these three):
+1) New decisions or constraints stated by the user (skip if already in existing observations)
+2) Problems / mistakes / corrections that affect future sessions
+3) Minimum info to resume: next step + key file/ID (only if session is incomplete)
 
 TOOL / COMMAND / BOT-INTERNAL PATTERN (IMPORTANT: reduce this):
 - DO NOT record the assistant’s internal tool usage, step trackers, or command lists by default.
@@ -41,10 +38,15 @@ WHAT NOT TO OBSERVE:
 - Temporary debugging minutiae that won’t matter next session
 - Long enumerations (e.g., listing many triggers/commands). Prefer a summary.
 
-SIZE LIMITS (to stay compact):
-- Total bullets: aim for 6–14 lines.
-- 🔴 up to 3 lines, 🟡 up to 8 lines, 🟢 up to 3 lines.
-- Each bullet should be 1–2 sentences.
+MERGING RULE:
+- You will receive existing observations. Do NOT repeat anything already recorded.
+- If the new turn adds nothing new, output an EMPTY <observations> block.
+- Only write genuinely new information.
+
+SIZE LIMITS (strict):
+- Total bullets: 3–6 lines maximum.
+- 🔴 up to 2 lines, 🟡 up to 3 lines, 🟢 up to 1 line.
+- Each bullet: 1 sentence. Omit 🟢 if nothing qualifies.
 
 OUTPUT FORMAT (XML):
 <observations>
