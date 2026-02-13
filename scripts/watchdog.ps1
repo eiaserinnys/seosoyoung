@@ -12,6 +12,8 @@ $runtimeDir = Split-Path -Parent $scriptDir  # seosoyoung_runtime
 $pythonw = Join-Path $runtimeDir "venv\Scripts\pythonw.exe"
 
 Set-Location $runtimeDir
+$env:PYTHONPATH = Join-Path $runtimeDir "src"
+$env:PYTHONUTF8 = "1"
 
 while ($true) {
     & $pythonw -m supervisor
