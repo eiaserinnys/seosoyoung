@@ -384,27 +384,27 @@ def _maybe_trigger_digest(
     channel_id, client, store, observer, compressor, cooldown,
     *, force=False,
 ):
-    """버퍼 토큰 임계치를 초과하면 별도 스레드에서 소화 파이프라인을 실행합니다.
+    """pending 토큰이 threshold_A 이상이면 별도 스레드에서 파이프라인을 실행합니다.
 
-    force=True이면 임계치와 무관하게 즉시 소화를 트리거합니다.
+    force=True이면 임계치와 무관하게 즉시 트리거합니다.
     """
     if not all([store, observer, cooldown]):
         return
 
-    buffer_tokens = store.count_buffer_tokens(channel_id)
-    if not force and buffer_tokens < Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD:
+    pending_tokens = store.count_pending_tokens(channel_id)
+    if not force and pending_tokens < Config.CHANNEL_OBSERVER_THRESHOLD_A:
         return
 
     # 이미 실행 중이면 스킵
     if _digest_running.get(channel_id):
         return
 
-    threshold = 1 if force else Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD
+    threshold_a = 1 if force else Config.CHANNEL_OBSERVER_THRESHOLD_A
 
     def run():
         _digest_running[channel_id] = True
         try:
-            from seosoyoung.memory.channel_pipeline import run_digest_and_intervene
+            from seosoyoung.memory.channel_pipeline import run_channel_pipeline
 
             async def llm_call(system_prompt, user_prompt):
                 response = await observer.client.chat.completions.create(
@@ -418,13 +418,14 @@ def _maybe_trigger_digest(
                 return response.choices[0].message.content or ""
 
             asyncio.run(
-                run_digest_and_intervene(
+                run_channel_pipeline(
                     store=store,
                     observer=observer,
                     channel_id=channel_id,
                     slack_client=client,
                     cooldown=cooldown,
-                    buffer_threshold=threshold,
+                    threshold_a=threshold_a,
+                    threshold_b=Config.CHANNEL_OBSERVER_THRESHOLD_B,
                     compressor=compressor,
                     digest_max_tokens=Config.CHANNEL_OBSERVER_DIGEST_MAX_TOKENS,
                     digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
@@ -434,7 +435,7 @@ def _maybe_trigger_digest(
                 )
             )
         except Exception as e:
-            logger.error(f"채널 소화 파이프라인 실행 실패 ({channel_id}): {e}")
+            logger.error(f"채널 파이프라인 실행 실패 ({channel_id}): {e}")
         finally:
             _digest_running[channel_id] = False
 
@@ -506,13 +507,13 @@ def _send_collect_log(client, channel_id, store, event):
         else:
             source = event
 
-        buffer_tokens = store.count_buffer_tokens(channel_id) if store else 0
+        buffer_tokens = store.count_pending_tokens(channel_id) if store else 0
         send_collect_debug_log(
             client=client,
             debug_channel=debug_channel,
             source_channel=channel_id,
             buffer_tokens=buffer_tokens,
-            threshold=Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD,
+            threshold=Config.CHANNEL_OBSERVER_THRESHOLD_A,
             message_text=source.get("text", ""),
             user=source.get("user", ""),
             is_thread=bool(source.get("thread_ts") or event.get("thread_ts")),

@@ -1,0 +1,10 @@
+Current time: {current_time}
+Channel: {channel_id}
+
+{existing_digest_section}
+
+## MESSAGES TO INCORPORATE INTO DIGEST
+
+{judged_messages}
+
+Merge these messages into the digest. Do NOT decide reactions — only update the digest.

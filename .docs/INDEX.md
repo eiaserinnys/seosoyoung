@@ -30,7 +30,7 @@
 - [`tools/thread_files.py`](modules/tools_thread_files.md): 스레드 내 파일 다운로드 MCP 도구
 - [`memory/channel_intervention.py`](modules/memory_channel_intervention.md): 채널 개입(intervention) 모듈
 - [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
-- [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화 파이프라인
+- [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화/판단 파이프라인
 - [`memory/channel_prompts.py`](modules/memory_channel_prompts.md): 채널 관찰 프롬프트
 - [`memory/channel_scheduler.py`](modules/memory_channel_scheduler.md): 채널 소화 주기적 스케줄러
 - [`memory/channel_store.py`](modules/memory_channel_store.md): 채널 관찰 데이터 저장소
@@ -82,12 +82,14 @@
 - `GeneratedImage` (seosoyoung/image_gen/generator.py:29): 생성된 이미지 결과
 - `InterventionAction` (seosoyoung/memory/channel_intervention.py:27): 개입 액션
 - `CooldownManager` (seosoyoung/memory/channel_intervention.py:128): 개입 쿨다운 및 개입 모드 상태 관리
-- `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:26): 채널 관찰 결과
-- `DigestCompressorResult` (seosoyoung/memory/channel_observer.py:37): digest 압축 결과
-- `ChannelObserver` (seosoyoung/memory/channel_observer.py:97): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
-- `DigestCompressor` (seosoyoung/memory/channel_observer.py:148): digest가 임계치를 초과할 때 압축
+- `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:30): 채널 관찰 결과 (하위호환 유지)
+- `DigestResult` (seosoyoung/memory/channel_observer.py:41): 소화 전용 결과
+- `JudgeResult` (seosoyoung/memory/channel_observer.py:49): 리액션 판단 결과
+- `DigestCompressorResult` (seosoyoung/memory/channel_observer.py:59): digest 압축 결과
+- `ChannelObserver` (seosoyoung/memory/channel_observer.py:145): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
+- `DigestCompressor` (seosoyoung/memory/channel_observer.py:286): digest가 임계치를 초과할 때 압축
 - `ChannelDigestScheduler` (seosoyoung/memory/channel_scheduler.py:18): 주기적으로 채널 버퍼를 체크하여 소화를 트리거하는 스케줄러
-- `ChannelStore` (seosoyoung/memory/channel_store.py:23): 파일 기반 채널 관찰 데이터 저장소
+- `ChannelStore` (seosoyoung/memory/channel_store.py:24): 파일 기반 채널 관찰 데이터 저장소
 - `InjectionResult` (seosoyoung/memory/context_builder.py:31): 주입 결과 — 디버그 로그용 정보를 포함
 - `ContextBuilder` (seosoyoung/memory/context_builder.py:130): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
 - `ObserverResult` (seosoyoung/memory/observer.py:22): Observer 출력 결과
@@ -188,10 +190,10 @@
 - `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:290): 메시지 수집 시 디버그 채널에 로그를 전송합니다.
 - `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:336): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다.
 - `send_intervention_mode_debug_log()` (seosoyoung/memory/channel_intervention.py:358): 개입 모드 이벤트를 디버그 채널에 기록합니다.
-- `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:44): Observer 응답에서 XML 태그를 파싱합니다.
-- `async digest_channel()` (seosoyoung/memory/channel_pipeline.py:45): 채널 버퍼를 소화하여 digest를 갱신합니다.
-- `async run_digest_and_intervene()` (seosoyoung/memory/channel_pipeline.py:155): 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
-- `async respond_in_intervention_mode()` (seosoyoung/memory/channel_pipeline.py:363): 개입 모드 중 새 메시지에 반응합니다.
+- `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:66): Observer 응답에서 XML 태그를 파싱합니다.
+- `parse_judge_output()` (seosoyoung/memory/channel_observer.py:92): Judge 응답에서 XML 태그를 파싱합니다.
+- `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:75): 소화/판단 분리 파이프라인을 실행합니다.
+- `async respond_in_intervention_mode()` (seosoyoung/memory/channel_pipeline.py:365): 개입 모드 중 새 메시지에 반응합니다.
 - `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:19): 채널 관찰 시스템 프롬프트를 반환합니다.
 - `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:24): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:58): digest 압축 시스템 프롬프트를 반환합니다.
@@ -200,6 +202,10 @@
 - `build_intervention_mode_prompt()` (seosoyoung/memory/channel_prompts.py:77): 개입 모드 사용자 프롬프트를 구성합니다.
 - `get_channel_intervene_system_prompt()` (seosoyoung/memory/channel_prompts.py:101): 채널 개입 응답 생성 시스템 프롬프트를 반환합니다.
 - `build_channel_intervene_user_prompt()` (seosoyoung/memory/channel_prompts.py:106): 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
+- `build_digest_only_system_prompt()` (seosoyoung/memory/channel_prompts.py:137): 소화 전용 시스템 프롬프트를 반환합니다.
+- `build_digest_only_user_prompt()` (seosoyoung/memory/channel_prompts.py:142): 소화 전용 사용자 프롬프트를 구성합니다.
+- `build_judge_system_prompt()` (seosoyoung/memory/channel_prompts.py:173): 리액션 판단 전용 시스템 프롬프트를 반환합니다.
+- `build_judge_user_prompt()` (seosoyoung/memory/channel_prompts.py:178): 리액션 판단 전용 사용자 프롬프트를 구성합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:45): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:88): 관찰 로그를 컨텍스트 주입에 최적화합니다.
 - `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:102): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.

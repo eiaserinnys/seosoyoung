@@ -134,6 +134,67 @@ def build_channel_intervene_user_prompt(
     )
 
 
+def build_digest_only_system_prompt() -> str:
+    """소화 전용 시스템 프롬프트를 반환합니다."""
+    return _load("digest_only_system.txt")
+
+
+def build_digest_only_user_prompt(
+    channel_id: str,
+    existing_digest: str | None,
+    judged_messages: list[dict],
+    current_time: datetime | None = None,
+) -> str:
+    """소화 전용 사용자 프롬프트를 구성합니다."""
+    if current_time is None:
+        current_time = datetime.now(timezone.utc)
+
+    if existing_digest and existing_digest.strip():
+        existing_section = (
+            "## EXISTING DIGEST (update and merge)\n"
+            f"{existing_digest}"
+        )
+    else:
+        existing_section = (
+            "## EXISTING DIGEST: None (first observation for this channel)"
+        )
+
+    judged_text = _format_channel_messages(judged_messages) or "(none)"
+
+    template = _load("digest_only_user.txt")
+    return template.format(
+        current_time=current_time.strftime("%Y-%m-%d %H:%M UTC"),
+        channel_id=channel_id,
+        existing_digest_section=existing_section,
+        judged_messages=judged_text,
+    )
+
+
+def build_judge_system_prompt() -> str:
+    """리액션 판단 전용 시스템 프롬프트를 반환합니다."""
+    return _load("judge_system.txt")
+
+
+def build_judge_user_prompt(
+    channel_id: str,
+    digest: str | None,
+    judged_messages: list[dict],
+    pending_messages: list[dict],
+) -> str:
+    """리액션 판단 전용 사용자 프롬프트를 구성합니다."""
+    digest_text = digest or "(없음)"
+    judged_text = _format_channel_messages(judged_messages) or "(없음)"
+    pending_text = _format_channel_messages(pending_messages) or "(없음)"
+
+    template = _load("judge_user.txt")
+    return template.format(
+        channel_id=channel_id,
+        digest=digest_text,
+        judged_messages=judged_text,
+        pending_messages=pending_text,
+    )
+
+
 def _format_channel_messages(messages: list[dict]) -> str:
     """채널 루트 메시지를 텍스트로 변환"""
     if not messages:

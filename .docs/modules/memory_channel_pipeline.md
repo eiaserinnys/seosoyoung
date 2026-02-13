@@ -4,43 +4,35 @@
 
 ## 개요
 
-채널 소화 파이프라인
+채널 소화/판단 파이프라인
 
-버퍼에 쌓인 채널 메시지를 ChannelObserver로 소화하여 digest를 갱신하고,
-필요 시 DigestCompressor로 압축합니다.
-소화 결과에 개입 액션이 있으면 쿨다운 필터 후 슬랙으로 발송합니다.
-
-흐름:
-1. count_buffer_tokens() 체크 → 임계치 미만이면 스킵
-2. 기존 digest + 버퍼 로드
-3. ChannelObserver.observe() 호출
-4. 새 digest 저장 + 버퍼 비우기
-5. digest 토큰이 max_tokens 초과 시 DigestCompressor 호출
-6. 반응 마크업 → InterventionAction 변환 → 쿨다운 필터 → 슬랙 발송
+pending 버퍼에 쌓인 메시지를 기반으로:
+1. pending 토큰 확인 → threshold_A 미만이면 스킵
+2. judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 digest에 편입)
+3. judge() 호출 (digest + judged + pending → 리액션 판단)
+4. 리액션 처리 (슬랙 발송)
+5. pending을 judged로 이동
 
 ## 함수
 
-### `async digest_channel(store, observer, channel_id, buffer_threshold, compressor, digest_max_tokens, digest_target_tokens)`
-- 위치: 줄 45
-- 설명: 채널 버퍼를 소화하여 digest를 갱신합니다.
+### `_judge_result_to_observer_result(judge, digest)`
+- 위치: 줄 40
+- 설명: JudgeResult를 ChannelObserverResult로 변환 (하위호환 인터페이스용)
 
-Args:
-    store: 채널 데이터 저장소
-    observer: ChannelObserver 인스턴스
-    channel_id: 소화할 채널 ID
-    buffer_threshold: 소화 트리거 토큰 임계치
-    compressor: DigestCompressor (None이면 압축 건너뜀)
-    digest_max_tokens: digest 압축 트리거 토큰 임계치
-    digest_target_tokens: digest 압축 목표 토큰
+### `_parse_judge_actions(judge_result)`
+- 위치: 줄 53
+- 설명: JudgeResult에서 InterventionAction 리스트를 생성합니다.
 
-Returns:
-    ChannelObserverResult (반응 정보 포함) 또는 None (스킵/실패)
+### `async run_channel_pipeline(store, observer, channel_id, slack_client, cooldown, threshold_a, threshold_b, compressor, digest_max_tokens, digest_target_tokens, debug_channel, max_intervention_turns, llm_call)`
+- 위치: 줄 75
+- 설명: 소화/판단 분리 파이프라인을 실행합니다.
 
-### `async run_digest_and_intervene(store, observer, channel_id, slack_client, cooldown, buffer_threshold, compressor, digest_max_tokens, digest_target_tokens, debug_channel, max_intervention_turns, llm_call)`
-- 위치: 줄 155
-- 설명: 소화 파이프라인 + 개입 실행을 일괄 수행합니다.
-
-message handler에서 별도 스레드로 호출합니다.
+흐름:
+a) pending 토큰 확인 → threshold_A 미만이면 스킵
+b) judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 편입)
+c) judge() 호출 (digest + judged + pending)
+d) 리액션 처리 (기존 intervention 로직 재활용)
+e) pending을 judged로 이동
 
 Args:
     store: 채널 데이터 저장소
@@ -48,17 +40,17 @@ Args:
     channel_id: 대상 채널
     slack_client: Slack WebClient
     cooldown: CooldownManager 인스턴스
-    buffer_threshold: 소화 트리거 토큰 임계치
+    threshold_a: pending 판단 트리거 토큰 임계치
+    threshold_b: digest 편입 트리거 토큰 임계치
     compressor: DigestCompressor (None이면 압축 건너뜀)
     digest_max_tokens: digest 압축 트리거 토큰 임계치
     digest_target_tokens: digest 압축 목표 토큰
     debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
     max_intervention_turns: 개입 모드 최대 턴 (0이면 개입 모드 비활성)
     llm_call: async callable(system_prompt, user_prompt) -> str
-              intervene 시 서소영 응답 생성에 사용
 
-### `async _execute_intervene_with_llm(store, channel_id, slack_client, llm_call, action, pre_digest_messages, observer_reason)`
-- 위치: 줄 278
+### `async _execute_intervene_with_llm(store, channel_id, slack_client, llm_call, action, pending_messages, observer_reason)`
+- 위치: 줄 283
 - 설명: LLM을 호출하여 서소영의 개입 응답을 생성하고 발송합니다.
 
 Args:
@@ -67,11 +59,11 @@ Args:
     slack_client: Slack WebClient
     llm_call: async callable(system_prompt, user_prompt) -> str
     action: 실행할 InterventionAction (type="message")
-    pre_digest_messages: 소화 전 버퍼 메시지 (트리거/컨텍스트 분리용)
-    observer_reason: Observer의 reaction_content (판단 근거/초안)
+    pending_messages: pending 메시지 (트리거/컨텍스트 분리용)
+    observer_reason: judge의 reaction_content (판단 근거/초안)
 
 ### `async respond_in_intervention_mode(store, channel_id, slack_client, cooldown, llm_call, debug_channel)`
-- 위치: 줄 363
+- 위치: 줄 365
 - 설명: 개입 모드 중 새 메시지에 반응합니다.
 
 버퍼에 쌓인 메시지를 읽고, LLM으로 서소영의 응답을 생성하여
@@ -90,12 +82,12 @@ Args:
 - `seosoyoung.memory.channel_intervention.CooldownManager`
 - `seosoyoung.memory.channel_intervention.InterventionAction`
 - `seosoyoung.memory.channel_intervention.execute_interventions`
-- `seosoyoung.memory.channel_intervention.parse_intervention_markup`
 - `seosoyoung.memory.channel_intervention.send_debug_log`
 - `seosoyoung.memory.channel_intervention.send_intervention_mode_debug_log`
 - `seosoyoung.memory.channel_observer.ChannelObserver`
 - `seosoyoung.memory.channel_observer.ChannelObserverResult`
 - `seosoyoung.memory.channel_observer.DigestCompressor`
+- `seosoyoung.memory.channel_observer.JudgeResult`
 - `seosoyoung.memory.channel_prompts.build_channel_intervene_user_prompt`
 - `seosoyoung.memory.channel_prompts.build_intervention_mode_prompt`
 - `seosoyoung.memory.channel_prompts.get_channel_intervene_system_prompt`

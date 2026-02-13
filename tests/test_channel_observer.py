@@ -7,7 +7,10 @@ from seosoyoung.memory.channel_observer import (
     ChannelObserverResult,
     DigestCompressor,
     DigestCompressorResult,
+    DigestResult,
+    JudgeResult,
     parse_channel_observer_output,
+    parse_judge_output,
 )
 
 
@@ -248,6 +251,167 @@ class TestDigestCompressor:
         assert result is None
 
 
+# ── parse_judge_output ────────────────────────────────────
+
+class TestParseJudgeOutput:
+    """Judge 응답 파싱 테스트"""
+
+    def test_parse_none_reaction(self):
+        text = (
+            '<importance>2</importance>\n'
+            '<reaction type="none" />'
+        )
+        result = parse_judge_output(text)
+        assert isinstance(result, JudgeResult)
+        assert result.importance == 2
+        assert result.reaction_type == "none"
+        assert result.reaction_target is None
+
+    def test_parse_react(self):
+        text = (
+            '<importance>5</importance>\n'
+            '<reaction type="react">\n'
+            '<react target="111.222" emoji="laughing" />\n'
+            '</reaction>'
+        )
+        result = parse_judge_output(text)
+        assert result.importance == 5
+        assert result.reaction_type == "react"
+        assert result.reaction_target == "111.222"
+        assert result.reaction_content == "laughing"
+
+    def test_parse_intervene(self):
+        text = (
+            '<importance>8</importance>\n'
+            '<reaction type="intervene">\n'
+            '<intervene target="channel">한마디 하겠소.</intervene>\n'
+            '</reaction>'
+        )
+        result = parse_judge_output(text)
+        assert result.importance == 8
+        assert result.reaction_type == "intervene"
+        assert result.reaction_target == "channel"
+        assert result.reaction_content == "한마디 하겠소."
+
+    def test_parse_fallback(self):
+        result = parse_judge_output("뭔가 이상한 응답")
+        assert result.importance == 0
+        assert result.reaction_type == "none"
+
+
+# ── ChannelObserver.digest() ─────────────────────────────
+
+class TestChannelObserverDigest:
+    """ChannelObserver.digest() 단위 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_digest_success(self):
+        mock_text = "<digest>소화된 요약 내용</digest>"
+        observer = ChannelObserver(api_key="fake-key")
+        observer.client = _make_mock_client(mock_text)
+
+        result = await observer.digest(
+            channel_id="C123",
+            existing_digest=None,
+            judged_messages=[{"ts": "1.1", "user": "U1", "text": "hello"}],
+        )
+
+        assert result is not None
+        assert isinstance(result, DigestResult)
+        assert result.digest == "소화된 요약 내용"
+        assert result.token_count > 0
+
+    @pytest.mark.asyncio
+    async def test_digest_with_existing(self):
+        mock_text = "<digest>기존 + 새 내용</digest>"
+        observer = ChannelObserver(api_key="fake-key")
+        observer.client = _make_mock_client(mock_text)
+
+        result = await observer.digest(
+            channel_id="C123",
+            existing_digest="기존 요약",
+            judged_messages=[{"ts": "2.2", "user": "U1", "text": "new msg"}],
+        )
+
+        assert result is not None
+        assert "기존 + 새 내용" in result.digest
+
+    @pytest.mark.asyncio
+    async def test_digest_api_error(self):
+        observer = ChannelObserver(api_key="fake-key")
+        observer.client = _make_error_client(Exception("API error"))
+
+        result = await observer.digest(
+            channel_id="C123",
+            existing_digest=None,
+            judged_messages=[{"ts": "1.1", "user": "U1", "text": "msg"}],
+        )
+        assert result is None
+
+
+# ── ChannelObserver.judge() ──────────────────────────────
+
+class TestChannelObserverJudge:
+    """ChannelObserver.judge() 단위 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_judge_success(self):
+        mock_text = (
+            '<importance>6</importance>\n'
+            '<reaction type="react">\n'
+            '<react target="111.222" emoji="eyes" />\n'
+            '</reaction>'
+        )
+        observer = ChannelObserver(api_key="fake-key")
+        observer.client = _make_mock_client(mock_text)
+
+        result = await observer.judge(
+            channel_id="C123",
+            digest="채널 요약",
+            judged_messages=[{"ts": "0.1", "user": "U1", "text": "old"}],
+            pending_messages=[{"ts": "111.222", "user": "U2", "text": "new msg"}],
+        )
+
+        assert result is not None
+        assert isinstance(result, JudgeResult)
+        assert result.importance == 6
+        assert result.reaction_type == "react"
+        assert result.reaction_target == "111.222"
+        assert result.reaction_content == "eyes"
+
+    @pytest.mark.asyncio
+    async def test_judge_none(self):
+        mock_text = (
+            '<importance>1</importance>\n'
+            '<reaction type="none" />'
+        )
+        observer = ChannelObserver(api_key="fake-key")
+        observer.client = _make_mock_client(mock_text)
+
+        result = await observer.judge(
+            channel_id="C123",
+            digest=None,
+            judged_messages=[],
+            pending_messages=[{"ts": "1.1", "user": "U1", "text": "hi"}],
+        )
+
+        assert result is not None
+        assert result.reaction_type == "none"
+
+    @pytest.mark.asyncio
+    async def test_judge_api_error(self):
+        observer = ChannelObserver(api_key="fake-key")
+        observer.client = _make_error_client(Exception("API error"))
+
+        result = await observer.judge(
+            channel_id="C123",
+            digest=None,
+            judged_messages=[],
+            pending_messages=[{"ts": "1.1", "user": "U1", "text": "msg"}],
+        )
+        assert result is None
+
+
 # ── 프롬프트 빌더 테스트 ──────────────────────────────────
 
 class TestChannelPrompts:
@@ -295,6 +459,47 @@ class TestChannelPrompts:
         retry = build_digest_compressor_retry_prompt(8000, 5000)
         assert "8000" in retry
         assert "5000" in retry
+
+    def test_build_digest_only_prompts(self):
+        from seosoyoung.memory.channel_prompts import (
+            build_digest_only_system_prompt,
+            build_digest_only_user_prompt,
+        )
+        from datetime import datetime, timezone
+
+        sys_prompt = build_digest_only_system_prompt()
+        assert "digest" in sys_prompt.lower()
+        assert "reaction" not in sys_prompt.lower() or "NOT" in sys_prompt
+
+        user_prompt = build_digest_only_user_prompt(
+            channel_id="C123",
+            existing_digest="기존 요약",
+            judged_messages=[{"ts": "1.1", "user": "U1", "text": "hello"}],
+            current_time=datetime(2025, 6, 1, 12, 0, tzinfo=timezone.utc),
+        )
+        assert "C123" in user_prompt
+        assert "기존 요약" in user_prompt
+        assert "[1.1] <U1>: hello" in user_prompt
+
+    def test_build_judge_prompts(self):
+        from seosoyoung.memory.channel_prompts import (
+            build_judge_system_prompt,
+            build_judge_user_prompt,
+        )
+
+        sys_prompt = build_judge_system_prompt()
+        assert "reaction" in sys_prompt.lower() or "judge" in sys_prompt.lower()
+
+        user_prompt = build_judge_user_prompt(
+            channel_id="C456",
+            digest="채널 요약 내용",
+            judged_messages=[{"ts": "0.1", "user": "U1", "text": "old msg"}],
+            pending_messages=[{"ts": "1.1", "user": "U2", "text": "new msg"}],
+        )
+        assert "C456" in user_prompt
+        assert "채널 요약 내용" in user_prompt
+        assert "[0.1] <U1>: old msg" in user_prompt
+        assert "[1.1] <U2>: new msg" in user_prompt
 
 
 # ── 헬퍼 ─────────────────────────────────────────────────

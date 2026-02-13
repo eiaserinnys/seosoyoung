@@ -92,34 +92,34 @@ class ChannelDigestScheduler:
             self._schedule_next()
 
     def _check_and_digest(self) -> None:
-        """모든 관찰 채널의 버퍼를 체크하여 소화를 트리거합니다."""
+        """모든 관찰 채널의 pending 버퍼를 체크하여 파이프라인을 트리거합니다."""
         for channel_id in self.channels:
             try:
                 # 개입 모드 중이면 스킵 (개입 모드는 메시지 이벤트에서 처리)
                 if self.cooldown.is_active(channel_id):
                     continue
 
-                buffer_tokens = self.store.count_buffer_tokens(channel_id)
-                if buffer_tokens <= 0:
+                pending_tokens = self.store.count_pending_tokens(channel_id)
+                if pending_tokens <= 0:
                     continue
 
                 # 이미 임계치를 초과한 경우 → 메시지 이벤트에서 트리거될 것이므로 스킵
-                if buffer_tokens >= self.buffer_threshold:
+                if pending_tokens >= self.buffer_threshold:
                     continue
 
                 logger.info(
-                    f"주기적 소화 트리거 ({channel_id}): "
-                    f"버퍼 {buffer_tokens} tok (임계치 미만)"
+                    f"주기적 파이프라인 트리거 ({channel_id}): "
+                    f"pending {pending_tokens} tok (임계치 미만)"
                 )
 
-                self._run_digest(channel_id)
+                self._run_pipeline(channel_id)
 
             except Exception as e:
-                logger.error(f"주기적 소화 체크 실패 ({channel_id}): {e}")
+                logger.error(f"주기적 파이프라인 체크 실패 ({channel_id}): {e}")
 
-    def _run_digest(self, channel_id: str) -> None:
-        """소화 파이프라인을 실행합니다."""
-        from seosoyoung.memory.channel_pipeline import run_digest_and_intervene
+    def _run_pipeline(self, channel_id: str) -> None:
+        """소화/판단 파이프라인을 실행합니다."""
+        from seosoyoung.memory.channel_pipeline import run_channel_pipeline
 
         async def llm_call(system_prompt, user_prompt):
             response = await self.observer.client.chat.completions.create(
@@ -134,13 +134,14 @@ class ChannelDigestScheduler:
 
         try:
             asyncio.run(
-                run_digest_and_intervene(
+                run_channel_pipeline(
                     store=self.store,
                     observer=self.observer,
                     channel_id=channel_id,
                     slack_client=self.slack_client,
                     cooldown=self.cooldown,
-                    buffer_threshold=1,
+                    threshold_a=1,  # 주기적 트리거는 pending이 있으면 무조건 실행
+                    threshold_b=self.buffer_threshold,
                     compressor=self.compressor,
                     digest_max_tokens=self.digest_max_tokens,
                     digest_target_tokens=self.digest_target_tokens,
@@ -150,4 +151,4 @@ class ChannelDigestScheduler:
                 )
             )
         except Exception as e:
-            logger.error(f"주기적 소화 파이프라인 실행 실패 ({channel_id}): {e}")
+            logger.error(f"주기적 파이프라인 실행 실패 ({channel_id}): {e}")

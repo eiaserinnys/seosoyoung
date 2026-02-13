@@ -1,16 +1,11 @@
-"""채널 소화 파이프라인
+"""채널 소화/판단 파이프라인
 
-버퍼에 쌓인 채널 메시지를 ChannelObserver로 소화하여 digest를 갱신하고,
-필요 시 DigestCompressor로 압축합니다.
-소화 결과에 개입 액션이 있으면 쿨다운 필터 후 슬랙으로 발송합니다.
-
-흐름:
-1. count_buffer_tokens() 체크 → 임계치 미만이면 스킵
-2. 기존 digest + 버퍼 로드
-3. ChannelObserver.observe() 호출
-4. 새 digest 저장 + 버퍼 비우기
-5. digest 토큰이 max_tokens 초과 시 DigestCompressor 호출
-6. 반응 마크업 → InterventionAction 변환 → 쿨다운 필터 → 슬랙 발송
+pending 버퍼에 쌓인 메시지를 기반으로:
+1. pending 토큰 확인 → threshold_A 미만이면 스킵
+2. judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 digest에 편입)
+3. judge() 호출 (digest + judged + pending → 리액션 판단)
+4. 리액션 처리 (슬랙 발송)
+5. pending을 judged로 이동
 """
 
 import logging
@@ -21,7 +16,6 @@ from seosoyoung.memory.channel_intervention import (
     CooldownManager,
     InterventionAction,
     execute_interventions,
-    parse_intervention_markup,
     send_debug_log,
     send_intervention_mode_debug_log,
 )
@@ -29,6 +23,7 @@ from seosoyoung.memory.channel_observer import (
     ChannelObserver,
     ChannelObserverResult,
     DigestCompressor,
+    JudgeResult,
 )
 from seosoyoung.memory.channel_prompts import (
     build_channel_intervene_user_prompt,
@@ -42,123 +37,49 @@ from seosoyoung.memory.token_counter import TokenCounter
 logger = logging.getLogger(__name__)
 
 
-async def digest_channel(
-    store: ChannelStore,
-    observer: ChannelObserver,
-    channel_id: str,
-    buffer_threshold: int = 500,
-    compressor: Optional[DigestCompressor] = None,
-    digest_max_tokens: int = 10_000,
-    digest_target_tokens: int = 5_000,
-) -> ChannelObserverResult | None:
-    """채널 버퍼를 소화하여 digest를 갱신합니다.
-
-    Args:
-        store: 채널 데이터 저장소
-        observer: ChannelObserver 인스턴스
-        channel_id: 소화할 채널 ID
-        buffer_threshold: 소화 트리거 토큰 임계치
-        compressor: DigestCompressor (None이면 압축 건너뜀)
-        digest_max_tokens: digest 압축 트리거 토큰 임계치
-        digest_target_tokens: digest 압축 목표 토큰
-
-    Returns:
-        ChannelObserverResult (반응 정보 포함) 또는 None (스킵/실패)
-    """
-    token_counter = TokenCounter()
-
-    # 1. 버퍼 토큰 체크
-    buffer_tokens = store.count_buffer_tokens(channel_id)
-    if buffer_tokens < buffer_threshold:
-        logger.debug(
-            f"채널 소화 스킵 ({channel_id}): "
-            f"{buffer_tokens} tok < {buffer_threshold} 임계치"
-        )
-        return None
-
-    # 2. 기존 digest + 버퍼 로드
-    digest_data = store.get_digest(channel_id)
-    existing_digest = digest_data["content"] if digest_data else None
-
-    channel_messages = store.load_channel_buffer(channel_id)
-    thread_buffers = store.load_all_thread_buffers(channel_id)
-
-    logger.info(
-        f"채널 소화 시작 ({channel_id}): "
-        f"버퍼 {buffer_tokens} tok, "
-        f"채널 메시지 {len(channel_messages)}건, "
-        f"스레드 {len(thread_buffers)}건"
+def _judge_result_to_observer_result(
+    judge: JudgeResult, digest: str = "",
+) -> ChannelObserverResult:
+    """JudgeResult를 ChannelObserverResult로 변환 (하위호환 인터페이스용)"""
+    return ChannelObserverResult(
+        digest=digest,
+        importance=judge.importance,
+        reaction_type=judge.reaction_type,
+        reaction_target=judge.reaction_target,
+        reaction_content=judge.reaction_content,
     )
 
-    # 3. Observer 호출
-    result = await observer.observe(
-        channel_id=channel_id,
-        existing_digest=existing_digest,
-        channel_messages=channel_messages,
-        thread_buffers=thread_buffers,
-    )
 
-    if result is None:
-        logger.warning(f"ChannelObserver가 None 반환 ({channel_id})")
-        return None
+def _parse_judge_actions(judge_result: JudgeResult) -> list[InterventionAction]:
+    """JudgeResult에서 InterventionAction 리스트를 생성합니다."""
+    if judge_result.reaction_type == "none":
+        return []
 
-    # 4. digest 저장 + 버퍼 비우기
-    digest_tokens = token_counter.count_string(result.digest)
+    if judge_result.reaction_type == "react":
+        return [InterventionAction(
+            type="react",
+            target=judge_result.reaction_target,
+            content=judge_result.reaction_content,
+        )]
 
-    store.save_digest(
-        channel_id,
-        content=result.digest,
-        meta={
-            "token_count": digest_tokens,
-            "last_importance": result.importance,
-            "last_digested_at": datetime.now(timezone.utc).isoformat(),
-        },
-    )
-    store.clear_buffers(channel_id)
+    if judge_result.reaction_type == "intervene":
+        return [InterventionAction(
+            type="message",
+            target=judge_result.reaction_target,
+            content=judge_result.reaction_content,
+        )]
 
-    logger.info(
-        f"채널 소화 완료 ({channel_id}): "
-        f"digest {digest_tokens} tok, "
-        f"중요도 {result.importance}, "
-        f"반응 {result.reaction_type}"
-    )
-
-    # 5. digest 압축 트리거
-    if compressor and digest_tokens > digest_max_tokens:
-        logger.info(
-            f"DigestCompressor 트리거 ({channel_id}): "
-            f"{digest_tokens} > {digest_max_tokens} tok"
-        )
-        compress_result = await compressor.compress(
-            digest=result.digest,
-            target_tokens=digest_target_tokens,
-        )
-        if compress_result:
-            store.save_digest(
-                channel_id,
-                content=compress_result.digest,
-                meta={
-                    "token_count": compress_result.token_count,
-                    "last_importance": result.importance,
-                    "last_digested_at": datetime.now(timezone.utc).isoformat(),
-                    "last_compressed_at": datetime.now(timezone.utc).isoformat(),
-                },
-            )
-            logger.info(
-                f"DigestCompressor 완료 ({channel_id}): "
-                f"{digest_tokens} → {compress_result.token_count} tok"
-            )
-
-    return result
+    return []
 
 
-async def run_digest_and_intervene(
+async def run_channel_pipeline(
     store: ChannelStore,
     observer: ChannelObserver,
     channel_id: str,
     slack_client,
     cooldown: CooldownManager,
-    buffer_threshold: int = 500,
+    threshold_a: int = 150,
+    threshold_b: int = 5000,
     compressor: Optional[DigestCompressor] = None,
     digest_max_tokens: int = 10_000,
     digest_target_tokens: int = 5_000,
@@ -166,9 +87,14 @@ async def run_digest_and_intervene(
     max_intervention_turns: int = 0,
     llm_call: Optional[Callable] = None,
 ) -> None:
-    """소화 파이프라인 + 개입 실행을 일괄 수행합니다.
+    """소화/판단 분리 파이프라인을 실행합니다.
 
-    message handler에서 별도 스레드로 호출합니다.
+    흐름:
+    a) pending 토큰 확인 → threshold_A 미만이면 스킵
+    b) judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 편입)
+    c) judge() 호출 (digest + judged + pending)
+    d) 리액션 처리 (기존 intervention 로직 재활용)
+    e) pending을 judged로 이동
 
     Args:
         store: 채널 데이터 저장소
@@ -176,103 +102,182 @@ async def run_digest_and_intervene(
         channel_id: 대상 채널
         slack_client: Slack WebClient
         cooldown: CooldownManager 인스턴스
-        buffer_threshold: 소화 트리거 토큰 임계치
+        threshold_a: pending 판단 트리거 토큰 임계치
+        threshold_b: digest 편입 트리거 토큰 임계치
         compressor: DigestCompressor (None이면 압축 건너뜀)
         digest_max_tokens: digest 압축 트리거 토큰 임계치
         digest_target_tokens: digest 압축 목표 토큰
         debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
         max_intervention_turns: 개입 모드 최대 턴 (0이면 개입 모드 비활성)
         llm_call: async callable(system_prompt, user_prompt) -> str
-                  intervene 시 서소영 응답 생성에 사용
     """
-    # 0. 소화 전에 버퍼 메시지를 미리 보존 (소화 후 버퍼가 비워지므로)
-    pre_digest_messages = store.load_channel_buffer(channel_id)
+    token_counter = TokenCounter()
 
-    # 1. 소화 파이프라인
-    result = await digest_channel(
-        store=store,
-        observer=observer,
-        channel_id=channel_id,
-        buffer_threshold=buffer_threshold,
-        compressor=compressor,
-        digest_max_tokens=digest_max_tokens,
-        digest_target_tokens=digest_target_tokens,
-    )
-
-    if result is None:
+    # a) pending 토큰 확인
+    pending_tokens = store.count_pending_tokens(channel_id)
+    if pending_tokens < threshold_a:
+        logger.debug(
+            f"파이프라인 스킵 ({channel_id}): "
+            f"pending {pending_tokens} tok < threshold_A {threshold_a}"
+        )
         return
 
-    # 2. 개입 액션 파싱
-    actions = parse_intervention_markup(result)
+    # b) judged + pending 합산 > threshold_B이면 → digest 편입
+    judged_plus_pending = store.count_judged_plus_pending_tokens(channel_id)
+    if judged_plus_pending > threshold_b:
+        judged_messages = store.load_judged(channel_id)
+        if judged_messages:
+            digest_data = store.get_digest(channel_id)
+            existing_digest = digest_data["content"] if digest_data else None
+
+            logger.info(
+                f"digest 편입 시작 ({channel_id}): "
+                f"judged+pending {judged_plus_pending} tok > threshold_B {threshold_b}"
+            )
+
+            digest_result = await observer.digest(
+                channel_id=channel_id,
+                existing_digest=existing_digest,
+                judged_messages=judged_messages,
+            )
+
+            if digest_result:
+                store.save_digest(
+                    channel_id,
+                    content=digest_result.digest,
+                    meta={
+                        "token_count": digest_result.token_count,
+                        "last_digested_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                store.clear_judged(channel_id)
+
+                logger.info(
+                    f"digest 편입 완료 ({channel_id}): "
+                    f"digest {digest_result.token_count} tok"
+                )
+
+                # digest 압축 트리거
+                if compressor and digest_result.token_count > digest_max_tokens:
+                    compress_result = await compressor.compress(
+                        digest=digest_result.digest,
+                        target_tokens=digest_target_tokens,
+                    )
+                    if compress_result:
+                        store.save_digest(
+                            channel_id,
+                            content=compress_result.digest,
+                            meta={
+                                "token_count": compress_result.token_count,
+                                "last_digested_at": datetime.now(timezone.utc).isoformat(),
+                                "last_compressed_at": datetime.now(timezone.utc).isoformat(),
+                            },
+                        )
+            else:
+                logger.warning(f"digest 편입 실패 ({channel_id})")
+
+    # c) judge() 호출
+    digest_data = store.get_digest(channel_id)
+    current_digest = digest_data["content"] if digest_data else None
+    judged_messages = store.load_judged(channel_id)
+    pending_messages = store.load_pending(channel_id)
+
+    logger.info(
+        f"리액션 판단 시작 ({channel_id}): "
+        f"pending {len(pending_messages)}건, "
+        f"judged {len(judged_messages)}건"
+    )
+
+    judge_result = await observer.judge(
+        channel_id=channel_id,
+        digest=current_digest,
+        judged_messages=judged_messages,
+        pending_messages=pending_messages,
+    )
+
+    if judge_result is None:
+        logger.warning(f"judge가 None 반환 ({channel_id})")
+        return
+
+    logger.info(
+        f"리액션 판단 완료 ({channel_id}): "
+        f"중요도 {judge_result.importance}, "
+        f"반응 {judge_result.reaction_type}"
+    )
+
+    # d) 리액션 처리
+    observer_result = _judge_result_to_observer_result(
+        judge_result, digest=current_digest or ""
+    )
+
+    actions = _parse_judge_actions(judge_result)
     if not actions:
         await send_debug_log(
             client=slack_client,
             debug_channel=debug_channel,
             source_channel=channel_id,
-            observer_result=result,
+            observer_result=observer_result,
             actions=[],
             actions_filtered=[],
         )
-        return
+    else:
+        react_actions = [a for a in actions if a.type == "react"]
+        message_actions = [a for a in actions if a.type == "message"]
 
-    # 3. react 액션은 쿨다운 무관하게 즉시 실행
-    react_actions = [a for a in actions if a.type == "react"]
-    message_actions = [a for a in actions if a.type == "message"]
+        if react_actions:
+            await execute_interventions(slack_client, channel_id, react_actions)
 
-    if react_actions:
-        await execute_interventions(slack_client, channel_id, react_actions)
+        filtered_messages = cooldown.filter_actions(channel_id, message_actions)
+        if filtered_messages and llm_call:
+            for action in filtered_messages:
+                await _execute_intervene_with_llm(
+                    store=store,
+                    channel_id=channel_id,
+                    slack_client=slack_client,
+                    llm_call=llm_call,
+                    action=action,
+                    pending_messages=pending_messages,
+                    observer_reason=judge_result.reaction_content,
+                )
 
-    # 4. intervene(message) 액션: 쿨다운 필터 → LLM 호출 → 발송
-    filtered_messages = cooldown.filter_actions(channel_id, message_actions)
-    if filtered_messages and llm_call:
-        for action in filtered_messages:
-            await _execute_intervene_with_llm(
-                store=store,
-                channel_id=channel_id,
-                slack_client=slack_client,
-                llm_call=llm_call,
-                action=action,
-                pre_digest_messages=pre_digest_messages,
-                observer_reason=result.reaction_content,
-            )
+            if max_intervention_turns > 0:
+                cooldown.enter_intervention_mode(channel_id, max_intervention_turns)
+                send_intervention_mode_debug_log(
+                    client=slack_client,
+                    debug_channel=debug_channel,
+                    source_channel=channel_id,
+                    event="enter",
+                    max_turns=max_intervention_turns,
+                )
+            else:
+                cooldown.record_intervention(channel_id)
+        elif filtered_messages:
+            await execute_interventions(slack_client, channel_id, filtered_messages)
+            if max_intervention_turns > 0:
+                cooldown.enter_intervention_mode(channel_id, max_intervention_turns)
+                send_intervention_mode_debug_log(
+                    client=slack_client,
+                    debug_channel=debug_channel,
+                    source_channel=channel_id,
+                    event="enter",
+                    max_turns=max_intervention_turns,
+                )
+            else:
+                cooldown.record_intervention(channel_id)
 
-        if max_intervention_turns > 0:
-            cooldown.enter_intervention_mode(channel_id, max_intervention_turns)
-            send_intervention_mode_debug_log(
-                client=slack_client,
-                debug_channel=debug_channel,
-                source_channel=channel_id,
-                event="enter",
-                max_turns=max_intervention_turns,
-            )
-        else:
-            cooldown.record_intervention(channel_id)
-    elif filtered_messages:
-        # llm_call이 없으면 Observer 텍스트로 직접 발송 (폴백)
-        await execute_interventions(slack_client, channel_id, filtered_messages)
-        if max_intervention_turns > 0:
-            cooldown.enter_intervention_mode(channel_id, max_intervention_turns)
-            send_intervention_mode_debug_log(
-                client=slack_client,
-                debug_channel=debug_channel,
-                source_channel=channel_id,
-                event="enter",
-                max_turns=max_intervention_turns,
-            )
-        else:
-            cooldown.record_intervention(channel_id)
+        filtered = react_actions + filtered_messages
 
-    filtered = react_actions + filtered_messages
+        await send_debug_log(
+            client=slack_client,
+            debug_channel=debug_channel,
+            source_channel=channel_id,
+            observer_result=observer_result,
+            actions=actions,
+            actions_filtered=filtered,
+        )
 
-    # 5. 디버그 로그
-    await send_debug_log(
-        client=slack_client,
-        debug_channel=debug_channel,
-        source_channel=channel_id,
-        observer_result=result,
-        actions=actions,
-        actions_filtered=filtered,
-    )
+    # e) pending을 judged로 이동
+    store.move_pending_to_judged(channel_id)
 
 
 async def _execute_intervene_with_llm(
@@ -281,7 +286,7 @@ async def _execute_intervene_with_llm(
     slack_client,
     llm_call: Callable,
     action: InterventionAction,
-    pre_digest_messages: list[dict],
+    pending_messages: list[dict],
     observer_reason: str | None = None,
 ) -> None:
     """LLM을 호출하여 서소영의 개입 응답을 생성하고 발송합니다.
@@ -292,8 +297,8 @@ async def _execute_intervene_with_llm(
         slack_client: Slack WebClient
         llm_call: async callable(system_prompt, user_prompt) -> str
         action: 실행할 InterventionAction (type="message")
-        pre_digest_messages: 소화 전 버퍼 메시지 (트리거/컨텍스트 분리용)
-        observer_reason: Observer의 reaction_content (판단 근거/초안)
+        pending_messages: pending 메시지 (트리거/컨텍스트 분리용)
+        observer_reason: judge의 reaction_content (판단 근거/초안)
     """
     # 1. 갱신된 digest 로드
     digest_data = store.get_digest(channel_id)
@@ -305,19 +310,16 @@ async def _execute_intervene_with_llm(
     recent_messages = []
 
     if target_ts and target_ts != "channel":
-        # ts 기준으로 트리거 메시지 찾기
-        for i, msg in enumerate(pre_digest_messages):
+        for i, msg in enumerate(pending_messages):
             if msg.get("ts") == target_ts:
                 trigger_message = msg
-                # 트리거 이전 최대 5개
                 start = max(0, i - 5)
-                recent_messages = pre_digest_messages[start:i]
+                recent_messages = pending_messages[start:i]
                 break
 
-    # ts 매칭 실패 시 폴백: 마지막 메시지를 트리거로
-    if trigger_message is None and pre_digest_messages:
-        trigger_message = pre_digest_messages[-1]
-        recent_messages = pre_digest_messages[-6:-1]
+    if trigger_message is None and pending_messages:
+        trigger_message = pending_messages[-1]
+        recent_messages = pending_messages[-6:-1]
 
     # 3. 프롬프트 구성
     system_prompt = get_channel_intervene_system_prompt()
@@ -381,8 +383,8 @@ async def respond_in_intervention_mode(
         llm_call: async callable(system_prompt, user_prompt) -> str
         debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
     """
-    # 1. 버퍼 로드
-    messages = store.load_channel_buffer(channel_id)
+    # 1. pending 버퍼 로드
+    messages = store.load_pending(channel_id)
     if not messages:
         return
 

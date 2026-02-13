@@ -60,7 +60,7 @@ class TestMaybeTriggerDigestForce:
     """_maybe_trigger_digest의 force 파라미터 테스트"""
 
     def test_force_bypasses_threshold(self):
-        """force=True이면 임계치 미만이어도 소화 트리거"""
+        """force=True이면 임계치 미만이어도 파이프라인 트리거"""
         from seosoyoung.handlers.message import _maybe_trigger_digest
 
         store = MagicMock()
@@ -69,12 +69,13 @@ class TestMaybeTriggerDigestForce:
         compressor = MagicMock()
         client = MagicMock()
 
-        store.count_buffer_tokens.return_value = 10  # 임계치(30000)보다 훨씬 작음
+        store.count_pending_tokens.return_value = 10  # threshold_A(150)보다 작음
 
         with patch("seosoyoung.handlers.message.Config") as mock_config, \
              patch("seosoyoung.handlers.message._digest_running", {}), \
              patch("seosoyoung.handlers.message.threading") as mock_threading:
-            mock_config.CHANNEL_OBSERVER_BUFFER_THRESHOLD = 30000
+            mock_config.CHANNEL_OBSERVER_THRESHOLD_A = 150
+            mock_config.CHANNEL_OBSERVER_THRESHOLD_B = 5000
             mock_config.CHANNEL_OBSERVER_DIGEST_MAX_TOKENS = 10000
             mock_config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS = 5000
             mock_config.CHANNEL_OBSERVER_DEBUG_CHANNEL = ""
@@ -90,7 +91,7 @@ class TestMaybeTriggerDigestForce:
             mock_threading.Thread.return_value.start.assert_called_once()
 
     def test_no_force_respects_threshold(self):
-        """force=False이면 임계치 미만일 때 소화하지 않음"""
+        """force=False이면 threshold_A 미만일 때 파이프라인 실행 안 함"""
         from seosoyoung.handlers.message import _maybe_trigger_digest
 
         store = MagicMock()
@@ -99,12 +100,12 @@ class TestMaybeTriggerDigestForce:
         compressor = MagicMock()
         client = MagicMock()
 
-        store.count_buffer_tokens.return_value = 10
+        store.count_pending_tokens.return_value = 10
 
         with patch("seosoyoung.handlers.message.Config") as mock_config, \
              patch("seosoyoung.handlers.message._digest_running", {}), \
              patch("seosoyoung.handlers.message.threading") as mock_threading:
-            mock_config.CHANNEL_OBSERVER_BUFFER_THRESHOLD = 30000
+            mock_config.CHANNEL_OBSERVER_THRESHOLD_A = 150
 
             _maybe_trigger_digest(
                 "C001", client, store, observer, compressor, cooldown,
