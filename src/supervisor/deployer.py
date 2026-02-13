@@ -8,6 +8,12 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .notifier import (
+    notify_deploy_start,
+    notify_deploy_success,
+    notify_deploy_failure,
+)
+
 if TYPE_CHECKING:
     from .process_manager import ProcessManager
     from .session_monitor import SessionMonitor
@@ -43,6 +49,7 @@ class Deployer:
         self._session_monitor = session_monitor
         self._paths = paths
         self._state = DeployState.IDLE
+        self._webhook_config = paths["runtime"] / "data" / "watchdog_config.json"
 
     @property
     def state(self) -> DeployState:
@@ -107,6 +114,12 @@ class Deployer:
             self._pm.stop_all()
             raise SupervisorRestartRequired()
 
+        # 배포 시작 알림 (실패해도 배포는 계속)
+        try:
+            notify_deploy_start(self._paths, self._webhook_config)
+        except Exception:
+            logger.exception("배포 시작 알림 전송 실패 (배포는 계속)")
+
         try:
             logger.info("배포 시작: 프로세스 중지")
             self._pm.stop_all()
@@ -119,8 +132,21 @@ class Deployer:
                 self._pm.start(name)
 
             logger.info("배포 완료")
-        except Exception:
+
+            # 배포 성공 알림
+            try:
+                notify_deploy_success(self._webhook_config)
+            except Exception:
+                logger.exception("배포 성공 알림 전송 실패")
+        except Exception as exc:
             logger.exception("배포 실패, 프로세스 재시작 시도")
+
+            # 배포 실패 알림
+            try:
+                notify_deploy_failure(self._webhook_config, error=str(exc))
+            except Exception:
+                logger.exception("배포 실패 알림 전송 실패")
+
             for name in self._pm.registered_names:
                 try:
                     self._pm.start(name)

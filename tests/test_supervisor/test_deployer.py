@@ -198,6 +198,85 @@ class TestSupervisorChangeDetection:
         assert mock_pm.start.call_count == 2
 
 
+class TestDeployWebhookNotifications:
+    """배포 시 Slack 웹훅 알림 테스트"""
+
+    def test_success_sends_start_and_success(self, deployer, mock_pm):
+        """성공 배포 시 시작/완료 알림 전송"""
+        deployer._state = DeployState.PENDING
+        deployer._session_monitor.is_safe_to_deploy.return_value = True
+
+        with patch.object(
+            deployer, "_get_changed_files", return_value=["src/seosoyoung/bot.py"]
+        ), patch.object(deployer, "_do_update"), \
+             patch("supervisor.deployer.notify_deploy_start") as mock_start, \
+             patch("supervisor.deployer.notify_deploy_success") as mock_success, \
+             patch("supervisor.deployer.notify_deploy_failure") as mock_failure:
+            deployer.tick()
+
+        mock_start.assert_called_once_with(deployer._paths, deployer._webhook_config)
+        mock_success.assert_called_once_with(deployer._webhook_config)
+        mock_failure.assert_not_called()
+
+    def test_failure_sends_start_and_failure(self, deployer, mock_pm):
+        """실패 배포 시 시작/실패 알림 전송"""
+        deployer._state = DeployState.PENDING
+        deployer._session_monitor.is_safe_to_deploy.return_value = True
+
+        with patch.object(
+            deployer, "_get_changed_files", return_value=["src/seosoyoung/bot.py"]
+        ), patch.object(
+            deployer, "_do_update", side_effect=Exception("pull failed")
+        ), patch("supervisor.deployer.notify_deploy_start") as mock_start, \
+             patch("supervisor.deployer.notify_deploy_success") as mock_success, \
+             patch("supervisor.deployer.notify_deploy_failure") as mock_failure:
+            deployer.tick()
+
+        mock_start.assert_called_once()
+        mock_success.assert_not_called()
+        mock_failure.assert_called_once()
+        # 에러 메시지가 키워드 인수로 전달되어야 함
+        assert mock_failure.call_args[1]["error"] == "pull failed"
+
+    def test_supervisor_change_no_webhook(self, deployer, mock_pm):
+        """supervisor 코드 변경 시에는 웹훅 보내지 않음 (watchdog이 처리)"""
+        from supervisor.deployer import SupervisorRestartRequired
+
+        deployer._state = DeployState.PENDING
+        deployer._session_monitor.is_safe_to_deploy.return_value = True
+
+        with patch.object(
+            deployer, "_get_changed_files",
+            return_value=["src/supervisor/deployer.py"],
+        ), patch("supervisor.deployer.notify_deploy_start") as mock_start, \
+             patch("supervisor.deployer.notify_deploy_success") as mock_success:
+            with pytest.raises(SupervisorRestartRequired):
+                deployer.tick()
+
+        mock_start.assert_not_called()
+        mock_success.assert_not_called()
+
+    def test_webhook_failure_does_not_block_deploy(self, deployer, mock_pm):
+        """웹훅 전송 실패가 배포를 중단하지 않음"""
+        deployer._state = DeployState.PENDING
+        deployer._session_monitor.is_safe_to_deploy.return_value = True
+
+        with patch.object(
+            deployer, "_get_changed_files", return_value=["src/seosoyoung/bot.py"]
+        ), patch.object(deployer, "_do_update"), \
+             patch(
+                 "supervisor.deployer.notify_deploy_start",
+                 side_effect=Exception("webhook error"),
+             ), \
+             patch("supervisor.deployer.notify_deploy_success"):
+            deployer.tick()
+
+        # 배포는 성공해야 함
+        assert deployer.state == DeployState.IDLE
+        mock_pm.stop_all.assert_called_once()
+        assert mock_pm.start.call_count == 2
+
+
 class TestStatus:
     def test_status_returns_current_state(self, deployer):
         info = deployer.status()
