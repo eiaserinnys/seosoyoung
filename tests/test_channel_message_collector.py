@@ -132,3 +132,121 @@ class TestChannelMessageCollector:
         assert len(messages) == 3
         assert messages[0]["text"] == "메시지 0"
         assert messages[2]["text"] == "메시지 2"
+
+
+class TestSubtypeHandling:
+    """subtype 이벤트 처리 테스트"""
+
+    def test_message_changed_extracts_from_inner_message(self, collector, store):
+        """message_changed subtype은 event['message']에서 text/user 추출"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "subtype": "message_changed",
+            "message": {
+                "text": "URL이 포함된 메시지 https://example.com",
+                "user": "U001",
+                "ts": "1234.5678",
+            },
+            "text": "",
+            "user": "",
+        }
+        result = collector.collect(event)
+        assert result is True
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 1
+        assert messages[0]["text"] == "URL이 포함된 메시지 https://example.com"
+        assert messages[0]["user"] == "U001"
+
+    def test_message_deleted_is_skipped(self, collector, store):
+        """message_deleted subtype은 수집하지 않음"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "subtype": "message_deleted",
+            "deleted_ts": "1234.0000",
+        }
+        result = collector.collect(event)
+        assert result is False
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert messages == []
+
+    def test_channel_join_is_skipped(self, collector, store):
+        """channel_join subtype은 수집하지 않음"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "subtype": "channel_join",
+            "user": "U001",
+            "text": "<@U001> has joined the channel",
+        }
+        result = collector.collect(event)
+        assert result is False
+
+    def test_empty_text_and_user_is_skipped(self, collector, store):
+        """text와 user 모두 비어있으면 수집하지 않음"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "text": "",
+            "user": "",
+        }
+        result = collector.collect(event)
+        assert result is False
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert messages == []
+
+    def test_bot_message_subtype_collected(self, collector, store):
+        """bot_message subtype은 수집 (봇이 blocks/text로 보낸 메시지)"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "subtype": "bot_message",
+            "text": "봇이 보낸 알림",
+            "bot_id": "B001",
+            "username": "알림봇",
+        }
+        result = collector.collect(event)
+        assert result is True
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 1
+        assert messages[0]["text"] == "봇이 보낸 알림"
+
+    def test_message_changed_with_empty_inner_message_skipped(self, collector, store):
+        """message_changed인데 inner message도 비어있으면 스킵"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "subtype": "message_changed",
+            "message": {
+                "text": "",
+                "user": "",
+                "ts": "1234.5678",
+            },
+        }
+        result = collector.collect(event)
+        assert result is False
+
+    def test_message_changed_thread_message(self, collector, store):
+        """message_changed subtype의 스레드 메시지도 올바르게 수집"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.9999",
+            "subtype": "message_changed",
+            "message": {
+                "text": "스레드에서 unfurl된 메시지",
+                "user": "U002",
+                "ts": "1234.9999",
+                "thread_ts": "1234.0000",
+            },
+        }
+        result = collector.collect(event)
+        assert result is True
+
+        messages = store.load_thread_buffer("C_OBSERVE", "1234.0000")
+        assert len(messages) == 1
+        assert messages[0]["text"] == "스레드에서 unfurl된 메시지"

@@ -500,6 +500,12 @@ def _send_collect_log(client, channel_id, store, event):
     try:
         from seosoyoung.memory.channel_intervention import send_collect_debug_log
 
+        # message_changed subtype: 실제 내용은 event["message"] 안에 있음
+        if event.get("subtype") == "message_changed":
+            source = event.get("message", {})
+        else:
+            source = event
+
         buffer_tokens = store.count_buffer_tokens(channel_id) if store else 0
         send_collect_debug_log(
             client=client,
@@ -507,9 +513,9 @@ def _send_collect_log(client, channel_id, store, event):
             source_channel=channel_id,
             buffer_tokens=buffer_tokens,
             threshold=Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD,
-            message_text=event.get("text", ""),
-            user=event.get("user", ""),
-            is_thread=bool(event.get("thread_ts")),
+            message_text=source.get("text", ""),
+            user=source.get("user", ""),
+            is_thread=bool(source.get("thread_ts") or event.get("thread_ts")),
         )
     except Exception as e:
         logger.error(f"수집 디버그 로그 전송 실패: {e}")

@@ -16,8 +16,8 @@
 
 #### 메서드
 
-- `__init__(self, store, target_channels)` (줄 16): 
-- `collect(self, event)` (줄 20): 이벤트에서 메시지를 추출하여 버퍼에 저장.
+- `__init__(self, store, target_channels)` (줄 27): 
+- `collect(self, event)` (줄 31): 이벤트에서 메시지를 추출하여 버퍼에 저장.
 
 ## 내부 의존성
 
