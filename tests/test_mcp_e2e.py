@@ -29,8 +29,8 @@ class TestMCPServerStandalone:
 
         assert mcp.name == "seosoyoung-attach"
 
-    def test_server_has_five_tools(self):
-        """서버에 5개 도구가 등록됨"""
+    def test_server_has_all_tools(self):
+        """서버에 모든 도구가 등록됨"""
         from seosoyoung.mcp.server import mcp
 
         tools = list(mcp._tool_manager._tools.keys())
@@ -39,7 +39,13 @@ class TestMCPServerStandalone:
         assert "slack_post_message" in tools
         assert "slack_generate_image" in tools
         assert "slack_download_thread_files" in tools
-        assert len(tools) == 8
+        assert "npc_list_characters" in tools
+        assert "npc_open_session" in tools
+        assert "npc_talk" in tools
+        assert "npc_set_situation" in tools
+        assert "npc_close_session" in tools
+        assert "npc_get_history" in tools
+        assert len(tools) == 13
 
     def test_get_context_reads_env(self):
         """slack_get_context가 환경변수에서 값을 읽음"""
