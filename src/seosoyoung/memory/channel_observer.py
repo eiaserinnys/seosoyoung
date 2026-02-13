@@ -245,6 +245,7 @@ class ChannelObserver:
         digest: str | None,
         judged_messages: list[dict],
         pending_messages: list[dict],
+        thread_buffers: dict[str, list[dict]] | None = None,
     ) -> JudgeResult | None:
         """pending 메시지에 대해 리액션을 판단합니다 (판단 전용).
 
@@ -253,6 +254,7 @@ class ChannelObserver:
             digest: 현재 digest (컨텍스트)
             judged_messages: 이미 판단을 거친 최근 대화
             pending_messages: 아직 판단하지 않은 새 대화
+            thread_buffers: {thread_ts: [messages]} 스레드 버퍼
 
         Returns:
             JudgeResult 또는 None (API 오류 시)
@@ -263,6 +265,7 @@ class ChannelObserver:
             digest=digest,
             judged_messages=judged_messages,
             pending_messages=pending_messages,
+            thread_buffers=thread_buffers or {},
         )
 
         try:

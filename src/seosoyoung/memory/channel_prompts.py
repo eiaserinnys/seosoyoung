@@ -180,11 +180,13 @@ def build_judge_user_prompt(
     digest: str | None,
     judged_messages: list[dict],
     pending_messages: list[dict],
+    thread_buffers: dict[str, list[dict]] | None = None,
 ) -> str:
     """리액션 판단 전용 사용자 프롬프트를 구성합니다."""
     digest_text = digest or "(없음)"
     judged_text = _format_channel_messages(judged_messages) or "(없음)"
     pending_text = _format_channel_messages(pending_messages) or "(없음)"
+    thread_text = _format_thread_messages(thread_buffers or {}) or "(없음)"
 
     template = _load("judge_user.txt")
     return template.format(
@@ -192,6 +194,7 @@ def build_judge_user_prompt(
         digest=digest_text,
         judged_messages=judged_text,
         pending_messages=pending_text,
+        thread_messages=thread_text,
     )
 
 

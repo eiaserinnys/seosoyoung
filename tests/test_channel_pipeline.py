@@ -71,6 +71,7 @@ class FakeObserver:
         )
         self.digest_call_count = 0
         self.judge_call_count = 0
+        self.judge_kwargs = {}
 
     async def digest(self, **kwargs) -> DigestResult | None:
         self.digest_call_count += 1
@@ -78,6 +79,7 @@ class FakeObserver:
 
     async def judge(self, **kwargs) -> JudgeResult | None:
         self.judge_call_count += 1
+        self.judge_kwargs = kwargs
         return self.judge_result
 
 
@@ -403,6 +405,60 @@ class TestRunChannelPipeline:
         calls = client.chat_postMessage.call_args_list
         debug_calls = [c for c in calls if c[1].get("channel") == "C_DEBUG"]
         assert len(debug_calls) >= 1
+
+    @pytest.mark.asyncio
+    async def test_thread_buffers_passed_to_judge(self, store, channel_id):
+        """스레드 버퍼가 judge에 전달되는지 확인"""
+        _fill_pending(store, channel_id)
+        store.append_thread_message(channel_id, "ts_a", {
+            "ts": "9001.000", "user": "U99", "text": "스레드 대화 내용",
+        })
+        observer = FakeObserver()
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            threshold_b=999999,
+        )
+
+        assert observer.judge_call_count == 1
+        assert "thread_buffers" in observer.judge_kwargs
+        thread_buffers = observer.judge_kwargs["thread_buffers"]
+        assert "ts_a" in thread_buffers
+        assert thread_buffers["ts_a"][0]["text"] == "스레드 대화 내용"
+
+    @pytest.mark.asyncio
+    async def test_thread_buffers_cleared_after_pipeline(self, store, channel_id):
+        """파이프라인 실행 후 스레드 버퍼도 judged로 이동되고 비워짐"""
+        _fill_pending(store, channel_id, n=5)
+        store.append_thread_message(channel_id, "ts_a", {
+            "ts": "9001.000", "user": "U99", "text": "스레드 메시지",
+        })
+        observer = FakeObserver()
+        client = MagicMock()
+        cooldown = CooldownManager(base_dir=store.base_dir, cooldown_sec=300)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=cooldown,
+            threshold_a=1,
+            threshold_b=999999,
+        )
+
+        # 스레드 버퍼는 비어야 함
+        assert store.load_all_thread_buffers(channel_id) == {}
+        # pending + 스레드가 모두 judged로 이동
+        judged = store.load_judged(channel_id)
+        assert len(judged) == 6  # 5 pending + 1 thread
 
     @pytest.mark.asyncio
     async def test_existing_digest_passed_to_judge(self, store, channel_id):
