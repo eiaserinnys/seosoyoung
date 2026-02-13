@@ -377,10 +377,20 @@ while ($true) {
 
         git -C $runtimeDir pull origin main
         if ($LASTEXITCODE -ne 0) {
-            Write-Log "runtime git pull 실패, 이전 상태로 재시작"
-            Send-SlackNotification ":warning: runtime git pull 실패. 수동 확인 필요."
-            Start-Sleep -Seconds $BASE_DELAY
-            continue
+            Write-Log "runtime git pull 실패, stash 후 재시도"
+            git -C $runtimeDir stash
+            git -C $runtimeDir pull origin main
+            if ($LASTEXITCODE -ne 0) {
+                Write-Log "runtime git pull stash 재시도도 실패"
+                Send-SlackNotification ":warning: runtime git pull 실패. 수동 확인 필요."
+                git -C $runtimeDir stash pop 2>$null
+                Start-Sleep -Seconds $BASE_DELAY
+                continue
+            }
+            git -C $runtimeDir stash pop 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Log "stash pop 충돌 (로컬 변경 손실 가능, 계속 진행)"
+            }
         }
 
         $pipLog = Join-Path $logsDir "pip_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
