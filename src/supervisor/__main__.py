@@ -62,9 +62,27 @@ def _start_dashboard(
     logger.info("대시보드 시작: http://%s:%d", DASHBOARD_HOST, DASHBOARD_PORT)
 
 
+def _load_env() -> None:
+    """runtime의 .env 파일을 로드하여 환경변수에 반영."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        logger.warning("python-dotenv가 설치되지 않아 .env 로딩을 건너뜁니다")
+        return
+
+    paths = _resolve_paths()
+    env_file = paths["runtime"] / ".env"
+    if env_file.exists():
+        load_dotenv(env_file, override=False)
+        logger.info(".env 로드 완료: %s", env_file)
+    else:
+        logger.debug(".env 파일을 찾을 수 없습니다: %s", env_file)
+
+
 def main() -> None:
     """메인 루프"""
     _setup_logging()
+    _load_env()
 
     paths = _resolve_paths()
     paths["logs"].mkdir(parents=True, exist_ok=True)
