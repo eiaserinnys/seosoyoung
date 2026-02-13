@@ -50,7 +50,7 @@ Args:
     llm_call: async callable(system_prompt, user_prompt) -> str
 
 ### `async _execute_intervene_with_llm(store, channel_id, slack_client, llm_call, action, pending_messages, observer_reason)`
-- 위치: 줄 283
+- 위치: 줄 286
 - 설명: LLM을 호출하여 서소영의 개입 응답을 생성하고 발송합니다.
 
 Args:
@@ -63,7 +63,7 @@ Args:
     observer_reason: judge의 reaction_content (판단 근거/초안)
 
 ### `async respond_in_intervention_mode(store, channel_id, slack_client, cooldown, llm_call, debug_channel)`
-- 위치: 줄 365
+- 위치: 줄 368
 - 설명: 개입 모드 중 새 메시지에 반응합니다.
 
 버퍼에 쌓인 메시지를 읽고, LLM으로 서소영의 응답을 생성하여

@@ -150,6 +150,37 @@ class TestMovePendingToJudged:
         assert store.load_judged("C001") == []
         assert store.load_pending("C001") == []
 
+    def test_move_includes_thread_buffers(self, store):
+        """스레드 버퍼도 judged로 이동되고 비워짐"""
+        store.append_pending("C001", {"ts": "1", "user": "U001", "text": "채널 msg"})
+        store.append_thread_message("C001", "ts_a", {"ts": "2", "user": "U002", "text": "스레드 msg A"})
+        store.append_thread_message("C001", "ts_b", {"ts": "3", "user": "U003", "text": "스레드 msg B"})
+
+        store.move_pending_to_judged("C001")
+
+        # pending과 스레드 버퍼 모두 비어야 함
+        assert store.load_pending("C001") == []
+        assert store.load_all_thread_buffers("C001") == {}
+
+        # judged에 채널 + 스레드 메시지가 모두 있어야 함
+        judged = store.load_judged("C001")
+        assert len(judged) == 3
+        texts = [m["text"] for m in judged]
+        assert "채널 msg" in texts
+        assert "스레드 msg A" in texts
+        assert "스레드 msg B" in texts
+
+    def test_move_thread_only(self, store):
+        """채널 pending 없이 스레드만 있어도 정상 동작"""
+        store.append_thread_message("C001", "ts_a", {"ts": "1", "user": "U001", "text": "스레드만"})
+
+        store.move_pending_to_judged("C001")
+
+        assert store.load_all_thread_buffers("C001") == {}
+        judged = store.load_judged("C001")
+        assert len(judged) == 1
+        assert judged[0]["text"] == "스레드만"
+
 
 class TestThreadBuffer:
     """스레드 메시지 버퍼 테스트"""

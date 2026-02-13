@@ -181,11 +181,13 @@ async def run_channel_pipeline(
     current_digest = digest_data["content"] if digest_data else None
     judged_messages = store.load_judged(channel_id)
     pending_messages = store.load_pending(channel_id)
+    thread_buffers = store.load_all_thread_buffers(channel_id)
 
     logger.info(
         f"리액션 판단 시작 ({channel_id}): "
         f"pending {len(pending_messages)}건, "
-        f"judged {len(judged_messages)}건"
+        f"judged {len(judged_messages)}건, "
+        f"threads {len(thread_buffers)}건"
     )
 
     judge_result = await observer.judge(
@@ -193,6 +195,7 @@ async def run_channel_pipeline(
         digest=current_digest,
         judged_messages=judged_messages,
         pending_messages=pending_messages,
+        thread_buffers=thread_buffers,
     )
 
     if judge_result is None:

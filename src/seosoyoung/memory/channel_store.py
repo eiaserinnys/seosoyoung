@@ -124,11 +124,19 @@ class ChannelStore:
     # ── pending → judged 이동 ──────────────────────────────
 
     def move_pending_to_judged(self, channel_id: str) -> None:
-        """pending 내용을 judged에 append 후 pending 클리어"""
+        """pending + 스레드 버퍼를 judged에 append 후 클리어"""
+        # 채널 pending → judged
         pending = self.load_pending(channel_id)
         if pending:
             self.append_judged(channel_id, pending)
         self.clear_pending(channel_id)
+
+        # 스레드 버퍼 → judged 후 비우기
+        thread_buffers = self.load_all_thread_buffers(channel_id)
+        for thread_msgs in thread_buffers.values():
+            if thread_msgs:
+                self.append_judged(channel_id, thread_msgs)
+        self._clear_thread_buffers(channel_id)
 
     # ── 스레드 메시지 버퍼 ───────────────────────────────
 
@@ -203,21 +211,20 @@ class ChannelStore:
 
     # ── 버퍼 비우기 ──────────────────────────────────────
 
-    def clear_buffers(self, channel_id: str) -> None:
-        """pending + judged + 스레드 버퍼를 모두 비운다."""
-        # pending 버퍼
-        self.clear_pending(channel_id)
-
-        # judged 버퍼
-        self.clear_judged(channel_id)
-
-        # 스레드 버퍼 디렉토리
+    def _clear_thread_buffers(self, channel_id: str) -> None:
+        """스레드 버퍼 전체를 비운다."""
         threads_dir = self._threads_dir(channel_id)
         if threads_dir.exists():
             for path in threads_dir.glob("*.jsonl"):
                 path.unlink()
             for path in threads_dir.glob("*.lock"):
                 path.unlink()
+
+    def clear_buffers(self, channel_id: str) -> None:
+        """pending + judged + 스레드 버퍼를 모두 비운다."""
+        self.clear_pending(channel_id)
+        self.clear_judged(channel_id)
+        self._clear_thread_buffers(channel_id)
 
     # ── digest (관찰 요약) ───────────────────────────────
 

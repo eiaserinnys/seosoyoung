@@ -12,5 +12,9 @@ Channel: {channel_id}
 
 {pending_messages}
 
-Based on the pending messages above (with digest and judged messages as context), decide on a reaction.
+## THREAD CONVERSATIONS (ongoing threads, for context)
+
+{thread_messages}
+
+Based on the pending messages and thread conversations above (with digest and judged messages as context), decide on a reaction.
 Do NOT react to messages marked [ALREADY REACTED].
