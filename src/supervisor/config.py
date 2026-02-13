@@ -126,16 +126,26 @@ def build_process_configs() -> list[ProcessConfig]:
 
     # --- 선택적: mcp-outline ---
     try:
+        mcp_outline_exe = _find_mcp_outline_exe()
+        # mcp-outline.exe가 사용자 Python에 설치된 경우,
+        # SYSTEM 계정에서 실행하면 site-packages를 찾지 못함.
+        # exe 위치에서 site-packages 경로를 추론하여 PYTHONPATH에 추가.
+        mcp_outline_env: dict[str, str] = {
+            "MCP_TRANSPORT": "sse",
+            "MCP_HOST": "127.0.0.1",
+            "MCP_PORT": "3103",
+        }
+        _mcp_outline_scripts = Path(mcp_outline_exe).parent
+        _mcp_outline_site_packages = _mcp_outline_scripts.parent / "site-packages"
+        if _mcp_outline_site_packages.exists():
+            mcp_outline_env["PYTHONPATH"] = str(_mcp_outline_site_packages)
+
         configs.append(ProcessConfig(
             name="mcp-outline",
-            command=_find_mcp_outline_exe(),
+            command=mcp_outline_exe,
             args=[],
             cwd=mcp_servers_dir,
-            env={
-                "MCP_TRANSPORT": "sse",
-                "MCP_HOST": "127.0.0.1",
-                "MCP_PORT": "3103",
-            },
+            env=mcp_outline_env,
             restart_policy=RestartPolicy(
                 use_exit_codes=False,
                 auto_restart=True,
