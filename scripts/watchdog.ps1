@@ -26,6 +26,10 @@ Set-Location $runtimeDir
 $env:PYTHONPATH = Join-Path $runtimeDir "src"
 $env:PYTHONUTF8 = "1"
 
+# Claude Code 세션에서 watchdog이 시작된 경우, CLAUDECODE 환경변수를 제거하여
+# 봇이 생성하는 CLI 세션이 중첩 세션으로 거부되는 것을 방지
+Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
+
 # ============================================================
 # 상수
 # ============================================================
@@ -126,6 +130,59 @@ function Test-ValidCommit($repoDir, $hash) {
     if (-not $hash) { return $false }
     $type = (git -C $repoDir cat-file -t $hash 2>$null)
     return ($type -eq "commit")
+}
+
+# ============================================================
+# 업데이트 변경 이력
+# ============================================================
+
+function Get-UpdateChangeLog($beforeCommits, $afterCommits) {
+    $lines = @(":rocket: *서소영 업데이트*")
+
+    # seosoyoung (devClone) 이력
+    if ($beforeCommits.devClone -and $afterCommits.devClone -and ($beforeCommits.devClone -ne $afterCommits.devClone)) {
+        $log = (git -C $devCloneDir log --oneline --no-decorate "$($beforeCommits.devClone)..$($afterCommits.devClone)" 2>$null)
+        if ($log) {
+            $lines += ""
+            $lines += "*seosoyoung*"
+            foreach ($entry in ($log -split "`n" | Select-Object -First 10)) {
+                $entry = $entry.Trim()
+                if ($entry) {
+                        $hash = $entry.Substring(0, [Math]::Min(7, $entry.Length))
+                        $msg = if ($entry.Length -gt 8) { $entry.Substring(8) } else { "" }
+                        $lines += "``$hash`` $msg"
+                    }
+            }
+            $total = ($log -split "`n").Count
+            if ($total -gt 10) { $lines += "... 외 $($total - 10)건" }
+        }
+    }
+
+    # runtime 이력
+    if ($beforeCommits.runtime -and $afterCommits.runtime -and ($beforeCommits.runtime -ne $afterCommits.runtime)) {
+        $log = (git -C $runtimeDir log --oneline --no-decorate "$($beforeCommits.runtime)..$($afterCommits.runtime)" 2>$null)
+        if ($log) {
+            $lines += ""
+            $lines += "*runtime*"
+            foreach ($entry in ($log -split "`n" | Select-Object -First 10)) {
+                $entry = $entry.Trim()
+                if ($entry) {
+                        $hash = $entry.Substring(0, [Math]::Min(7, $entry.Length))
+                        $msg = if ($entry.Length -gt 8) { $entry.Substring(8) } else { "" }
+                        $lines += "``$hash`` $msg"
+                    }
+            }
+            $total = ($log -split "`n").Count
+            if ($total -gt 10) { $lines += "... 외 $($total - 10)건" }
+        }
+    }
+
+    # 변경 내역이 없으면 null 반환
+    if ($lines.Count -le 1) { return $null }
+
+    $lines += ""
+    $lines += ":white_check_mark: 재시작 중..."
+    return ($lines -join "`n")
 }
 
 # ============================================================
@@ -315,6 +372,7 @@ while ($true) {
     # --- Exit 42: 코드 변경 → git pull + pip install → 즉시 재시작 ---
     if ($exitCode -eq 42) {
         Write-Log "코드 변경 감지, 업데이트 중..."
+        $beforeCommits = Get-CurrentCommits
 
         git -C $runtimeDir pull origin main
         if ($LASTEXITCODE -ne 0) {
@@ -337,6 +395,13 @@ while ($true) {
         $state.consecutiveFailures = 0
         $state.rolledBack = $false
         Save-WatchdogState $state
+
+        # 업데이트 내역을 Slack 웹훅으로 전송
+        $changeLog = Get-UpdateChangeLog $beforeCommits $state.lastUpdateCommit
+        if ($changeLog) {
+            Send-SlackNotification $changeLog
+        }
+
         Write-Log "업데이트 완료, 즉시 재시작"
         continue
     }

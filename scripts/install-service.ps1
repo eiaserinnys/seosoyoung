@@ -1,24 +1,25 @@
-﻿# install-service.ps1 - Task Scheduler에 supervisor watchdog 서비스 등록
-# 관리자 권한 필요. register-startup.ps1을 대체.
+﻿# install-service.ps1 - NSSM으로 watchdog을 Windows 서비스로 등록
+# 관리자 권한 PowerShell에서 실행해야 합니다.
 
-# UTF-8 인코딩 설정
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 | Out-Null
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
-# 작업 이름
-$TaskName = "seosoyoung-supervisor"
-
-# 경로 설정
+$serviceName = "SeoSoyoungWatchdog"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$runtimeDir = Split-Path -Parent $scriptDir  # seosoyoung_runtime
+$runtimeDir = Split-Path -Parent $scriptDir
+$logsDir = Join-Path $runtimeDir "logs"
 $watchdogScript = Join-Path $scriptDir "watchdog.ps1"
 
-# watchdog.ps1 존재 확인
-if (-not (Test-Path $watchdogScript)) {
-    Write-Host "[ERROR] watchdog.ps1을 찾을 수 없습니다: $watchdogScript" -ForegroundColor Red
+# NSSM 찾기
+$nssm = Get-Command nssm -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+if (-not $nssm) {
+    $nssm = "C:\Users\LG\AppData\Local\Microsoft\WinGet\Packages\NSSM.NSSM_Microsoft.Winget.Source_8wekyb3d8bbwe\nssm-2.24-101-g897c7ad\win64\nssm.exe"
+}
+if (-not (Test-Path $nssm)) {
+    Write-Host "[ERROR] NSSM을 찾을 수 없습니다. winget install nssm 으로 설치해주세요." -ForegroundColor Red
     exit 1
 }
 
@@ -29,56 +30,82 @@ if (-not $isAdmin) {
     exit 1
 }
 
-# 기존 작업 정리 (이전 register-startup.ps1의 작업 포함)
-$oldTaskNames = @("seosoyoung-bot", $TaskName)
+# watchdog.ps1 존재 확인
+if (-not (Test-Path $watchdogScript)) {
+    Write-Host "[ERROR] watchdog.ps1을 찾을 수 없습니다: $watchdogScript" -ForegroundColor Red
+    exit 1
+}
+
+# 기존 서비스 정리
+$existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+if ($existing) {
+    Write-Host "[INFO] 기존 서비스 '$serviceName' 제거 중..." -ForegroundColor Yellow
+    $ErrorActionPreference = "SilentlyContinue"
+    & $nssm stop $serviceName *>&1 | Out-Null
+    & $nssm remove $serviceName confirm *>&1 | Out-Null
+    $ErrorActionPreference = "Continue"
+    Start-Sleep -Seconds 2
+}
+
+# 기존 Task Scheduler 작업 정리
+$oldTaskNames = @("seosoyoung-bot", "seosoyoung-supervisor")
 foreach ($name in $oldTaskNames) {
-    $existing = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-    if ($existing) {
-        Write-Host "[INFO] 기존 작업 '$name' 삭제" -ForegroundColor Yellow
+    $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+    if ($task) {
+        Write-Host "[INFO] 기존 예약 작업 '$name' 삭제" -ForegroundColor Yellow
         Unregister-ScheduledTask -TaskName $name -Confirm:$false
     }
 }
 
-# 트리거: 시스템 시작 시, 1분 지연 (네트워크 연결 대기)
-$Trigger = New-ScheduledTaskTrigger -AtStartup
-$Trigger.Delay = "PT1M"
+Write-Host ""
+Write-Host "서비스 등록 중..." -ForegroundColor Cyan
 
-# 동작: PowerShell -WindowStyle Hidden으로 watchdog.ps1 실행
-$Action = New-ScheduledTaskAction `
-    -Execute "powershell.exe" `
-    -Argument "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"$watchdogScript`"" `
-    -WorkingDirectory $runtimeDir
+# 서비스 등록
+& $nssm install $serviceName "C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe" `
+    "-NoProfile -ExecutionPolicy Bypass -File `"$watchdogScript`""
 
-# 설정: 무기한 실행, 배터리에서도 실행
-$Settings = New-ScheduledTaskSettingsSet `
-    -AllowStartIfOnBatteries `
-    -DontStopIfGoingOnBatteries `
-    -StartWhenAvailable `
-    -ExecutionTimeLimit (New-TimeSpan -Days 0)
+# 서비스 설정
+& $nssm set $serviceName AppDirectory $runtimeDir
+& $nssm set $serviceName DisplayName "SeoSoyoung Watchdog"
+& $nssm set $serviceName Description "seosoyoung 슬랙봇 supervisor 감시 서비스 (Session 0, 환경변수 격리)"
+& $nssm set $serviceName Start SERVICE_AUTO_START
 
-# 현재 사용자로 실행 (로그인 필요)
-$Principal = New-ScheduledTaskPrincipal `
-    -UserId $env:USERNAME `
-    -LogonType Interactive `
-    -RunLevel Highest
+# 로그 설정
+& $nssm set $serviceName AppStdout "$logsDir\service_stdout.log"
+& $nssm set $serviceName AppStderr "$logsDir\service_stderr.log"
+& $nssm set $serviceName AppRotateFiles 1
+& $nssm set $serviceName AppRotateBytes 10485760
 
-# 작업 등록
-$Task = New-ScheduledTask -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal
-Register-ScheduledTask -TaskName $TaskName -InputObject $Task | Out-Null
+# 종료/재시작 동작 — watchdog 자체가 크래시하면 NSSM이 재시작
+& $nssm set $serviceName AppExit Default Restart
+& $nssm set $serviceName AppRestartDelay 5000
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host " 서비스 등록 완료!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "[작업 이름] $TaskName" -ForegroundColor White
-Write-Host "[트리거] 시스템 시작 시 (1분 지연)" -ForegroundColor White
-Write-Host "[실행 대상] watchdog.ps1 (WindowStyle Hidden)" -ForegroundColor White
-Write-Host "[실행 계정] $env:USERNAME (로그인 필요)" -ForegroundColor White
+Write-Host "[서비스 이름] $serviceName" -ForegroundColor White
+Write-Host "[실행 방식] NSSM -> PowerShell -> watchdog.ps1" -ForegroundColor White
+Write-Host "[실행 환경] Session 0 (LocalSystem, 환경변수 격리)" -ForegroundColor White
+Write-Host "[자동 시작] 부팅 시 자동 시작" -ForegroundColor White
 Write-Host ""
-Write-Host "[수동 테스트]" -ForegroundColor Yellow
-Write-Host "  schtasks /run /tn `"$TaskName`"" -ForegroundColor Gray
+Write-Host "[관리 명령]" -ForegroundColor Yellow
+Write-Host "  시작:   nssm start $serviceName" -ForegroundColor Gray
+Write-Host "  중지:   nssm stop $serviceName" -ForegroundColor Gray
+Write-Host "  재시작: nssm restart $serviceName" -ForegroundColor Gray
+Write-Host "  상태:   nssm status $serviceName" -ForegroundColor Gray
+Write-Host "  제거:   nssm remove $serviceName confirm" -ForegroundColor Gray
 Write-Host ""
-Write-Host "[등록 해제]" -ForegroundColor Yellow
-Write-Host "  schtasks /delete /tn `"$TaskName`" /f" -ForegroundColor Gray
-Write-Host ""
+
+$answer = Read-Host "지금 서비스를 시작하시겠습니까? (y/n)"
+if ($answer -eq "y") {
+    & $nssm start $serviceName
+    Start-Sleep -Seconds 5
+    $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -eq "Running") {
+        Write-Host "서비스 시작 완료! (상태: $($svc.Status))" -ForegroundColor Green
+    } else {
+        Write-Host "서비스 상태: $($svc.Status) — 로그를 확인해주세요: $logsDir" -ForegroundColor Yellow
+    }
+}
