@@ -53,6 +53,7 @@ class JudgeResult:
     reaction_type: str = "none"  # "none" | "react" | "intervene"
     reaction_target: Optional[str] = None
     reaction_content: Optional[str] = None
+    reasoning: Optional[str] = None
 
 
 @dataclass
@@ -91,6 +92,8 @@ def parse_channel_observer_output(text: str) -> ChannelObserverResult:
 
 def parse_judge_output(text: str) -> JudgeResult:
     """Judge 응답에서 XML 태그를 파싱합니다."""
+    reasoning = _extract_tag(text, "reasoning") or None
+
     importance_str = _extract_tag(text, "importance")
     try:
         importance = int(importance_str)
@@ -105,6 +108,7 @@ def parse_judge_output(text: str) -> JudgeResult:
         reaction_type=reaction_type,
         reaction_target=reaction_target,
         reaction_content=reaction_content,
+        reasoning=reasoning,
     )
 
 
