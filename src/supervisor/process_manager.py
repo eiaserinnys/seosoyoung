@@ -85,8 +85,7 @@ class ProcessManager:
                 stdout=stdout_fh or subprocess.DEVNULL,
                 stderr=stderr_fh or subprocess.DEVNULL,
                 creationflags=(
-                    subprocess.CREATE_NEW_PROCESS_GROUP
-                    | subprocess.CREATE_NO_WINDOW
+                    subprocess.CREATE_NO_WINDOW
                 ) if os.name == "nt" else 0,
             )
         except Exception:
