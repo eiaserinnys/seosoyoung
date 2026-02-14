@@ -88,10 +88,10 @@
 - `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:30): 채널 관찰 결과 (하위호환 유지)
 - `DigestResult` (seosoyoung/memory/channel_observer.py:41): 소화 전용 결과
 - `JudgeItem` (seosoyoung/memory/channel_observer.py:49): 개별 메시지에 대한 리액션 판단 결과
-- `JudgeResult` (seosoyoung/memory/channel_observer.py:69): 복수 메시지에 대한 리액션 판단 결과
-- `DigestCompressorResult` (seosoyoung/memory/channel_observer.py:95): digest 압축 결과
-- `ChannelObserver` (seosoyoung/memory/channel_observer.py:265): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
-- `DigestCompressor` (seosoyoung/memory/channel_observer.py:415): digest가 임계치를 초과할 때 압축
+- `JudgeResult` (seosoyoung/memory/channel_observer.py:71): 복수 메시지에 대한 리액션 판단 결과
+- `DigestCompressorResult` (seosoyoung/memory/channel_observer.py:97): digest 압축 결과
+- `ChannelObserver` (seosoyoung/memory/channel_observer.py:277): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
+- `DigestCompressor` (seosoyoung/memory/channel_observer.py:427): digest가 임계치를 초과할 때 압축
 - `DisplayNameResolver` (seosoyoung/memory/channel_prompts.py:18): Slack user ID → 디스플레이네임 캐시 기반 변환기.
 - `ChannelDigestScheduler` (seosoyoung/memory/channel_scheduler.py:18): 주기적으로 채널 버퍼를 체크하여 소화를 트리거하는 스케줄러
 - `ChannelStore` (seosoyoung/memory/channel_store.py:24): 파일 기반 채널 관찰 데이터 저장소
@@ -213,9 +213,9 @@
 - `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:376): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
 - `send_intervention_probability_debug_log()` (seosoyoung/memory/channel_intervention.py:407): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
 - `send_multi_judge_debug_log()` (seosoyoung/memory/channel_intervention.py:452): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
-- `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:102): Observer 응답에서 XML 태그를 파싱합니다.
-- `parse_judge_output()` (seosoyoung/memory/channel_observer.py:128): Judge 응답에서 XML 태그를 파싱합니다.
-- `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:155): 소화/판단 분리 파이프라인을 실행합니다.
+- `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:104): Observer 응답에서 XML 태그를 파싱합니다.
+- `parse_judge_output()` (seosoyoung/memory/channel_observer.py:130): Judge 응답에서 XML 태그를 파싱합니다.
+- `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:186): 소화/판단 분리 파이프라인을 실행합니다.
 - `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:65): 채널 관찰 시스템 프롬프트를 반환합니다.
 - `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:70): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:104): digest 압축 시스템 프롬프트를 반환합니다.

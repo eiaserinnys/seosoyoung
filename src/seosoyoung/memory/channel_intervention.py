@@ -546,6 +546,16 @@ def send_multi_judge_debug_log(
             label = "TRUE" if flag else "FALSE"
             return f"{label} | {reason}" if reason else label
 
+        # 연결 대화 (있는 경우에만 별도 섹션)
+        if item.linked_message_ts:
+            linked_text = f"`{item.linked_message_ts}`"
+            if item.link_reason:
+                linked_text += f" | {item.link_reason}"
+            blocks.append({"type": "section", "fields": [
+                {"type": "mrkdwn", "text": "*연결 대화*"},
+                {"type": "mrkdwn", "text": linked_text},
+            ]})
+
         table2_fields = [
             {"type": "mrkdwn", "text": "*메시지의 의미*"},
             {"type": "mrkdwn", "text": item.context_meaning or "(없음)"},

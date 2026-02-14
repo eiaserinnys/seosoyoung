@@ -589,6 +589,70 @@ class TestParseJudgeOutputMulti:
         assert item.related_to_me is False
         assert item.related_to_me_reason is None
 
+    def test_parse_multi_with_linked_conversation(self):
+        """linked_message_ts, link_reason 필드가 포함된 복수 판단 파싱"""
+        text = (
+            '<judgments>\n'
+            '<judgment ts="111.222">\n'
+            '<linked_conversation>\n'
+            '<linked_message_ts>100.000</linked_message_ts>\n'
+            '<link_reason>이전 메시지에 대한 답변</link_reason>\n'
+            '</linked_conversation>\n'
+            '<context_meaning>이전 논의를 이어가는 대화</context_meaning>\n'
+            '<addressed_to_me>no</addressed_to_me>\n'
+            '<addressed_to_me_reason>일반 대화</addressed_to_me_reason>\n'
+            '<related_to_me>no</related_to_me>\n'
+            '<related_to_me_reason>무관</related_to_me_reason>\n'
+            '<is_instruction>no</is_instruction>\n'
+            '<is_instruction_reason>대화일 뿐</is_instruction_reason>\n'
+            '<emotion>평온하다</emotion>\n'
+            '<importance>3</importance>\n'
+            '<reaction type="none" />\n'
+            '<reasoning>이어지는 대화이나 반응 불필요</reasoning>\n'
+            '</judgment>\n'
+            '<judgment ts="222.333">\n'
+            '<context_meaning>독립적인 새 화제</context_meaning>\n'
+            '<addressed_to_me>no</addressed_to_me>\n'
+            '<addressed_to_me_reason>일반 대화</addressed_to_me_reason>\n'
+            '<related_to_me>no</related_to_me>\n'
+            '<related_to_me_reason>무관</related_to_me_reason>\n'
+            '<is_instruction>no</is_instruction>\n'
+            '<is_instruction_reason>대화일 뿐</is_instruction_reason>\n'
+            '<emotion>평온하다</emotion>\n'
+            '<importance>1</importance>\n'
+            '<reaction type="none" />\n'
+            '<reasoning>별다른 반응 불필요</reasoning>\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        result = parse_judge_output(text)
+        assert len(result.items) == 2
+
+        item0 = result.items[0]
+        assert item0.linked_message_ts == "100.000"
+        assert item0.link_reason == "이전 메시지에 대한 답변"
+
+        item1 = result.items[1]
+        assert item1.linked_message_ts is None
+        assert item1.link_reason is None
+
+    def test_backward_compat_no_linked_conversation(self):
+        """linked_conversation 없는 기존 형식도 정상 파싱"""
+        text = (
+            '<judgments>\n'
+            '<judgment ts="500.000">\n'
+            '<reasoning>별 일 없음</reasoning>\n'
+            '<emotion>평온</emotion>\n'
+            '<importance>3</importance>\n'
+            '<reaction type="none" />\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        result = parse_judge_output(text)
+        item = result.items[0]
+        assert item.linked_message_ts is None
+        assert item.link_reason is None
+
     def test_backward_compat_single_with_context_meaning_related(self):
         """단일 파싱에서도 context_meaning, related_to_me 파싱"""
         text = (
