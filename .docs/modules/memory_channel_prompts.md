@@ -50,43 +50,43 @@
 - 위치: 줄 118
 - 설명: 채널 개입 응답 생성 시스템 프롬프트를 반환합니다.
 
-### `build_channel_intervene_user_prompt(digest, recent_messages, trigger_message, target, observer_reason, slack_client)`
+### `build_channel_intervene_user_prompt(digest, recent_messages, trigger_message, target, observer_reason, slack_client, thread_buffers)`
 - 위치: 줄 123
 - 설명: 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
 
 ### `build_digest_only_system_prompt()`
-- 위치: 줄 158
+- 위치: 줄 161
 - 설명: 소화 전용 시스템 프롬프트를 반환합니다.
 
 ### `build_digest_only_user_prompt(channel_id, existing_digest, judged_messages, current_time)`
-- 위치: 줄 163
+- 위치: 줄 166
 - 설명: 소화 전용 사용자 프롬프트를 구성합니다.
 
 ### `build_judge_system_prompt()`
-- 위치: 줄 194
+- 위치: 줄 197
 - 설명: 리액션 판단 전용 시스템 프롬프트를 반환합니다.
 
 ### `build_judge_user_prompt(channel_id, digest, judged_messages, pending_messages, thread_buffers, bot_user_id, slack_client)`
-- 위치: 줄 199
+- 위치: 줄 202
 - 설명: 리액션 판단 전용 사용자 프롬프트를 구성합니다.
 
 ### `_format_reactions(reactions)`
-- 위치: 줄 228
+- 위치: 줄 231
 - 설명: reactions 리스트를 `:emoji:×count` 형식의 문자열로 변환
 
 ### `_format_pending_messages(messages, bot_user_id, resolver)`
-- 위치: 줄 236
+- 위치: 줄 239
 - 설명: pending 메시지를 텍스트로 변환.
 
 사람이 보낸 봇 멘션 메시지는 멘션 핸들러가 처리하므로 [ALREADY REACTED] 표기.
 봇이 보낸 멘션은 채널 모니터가 처리해야 하므로 태그하지 않음.
 
 ### `_format_channel_messages(messages, resolver)`
-- 위치: 줄 264
+- 위치: 줄 267
 - 설명: 채널 루트 메시지를 텍스트로 변환
 
 ### `_format_thread_messages(thread_buffers, resolver)`
-- 위치: 줄 282
+- 위치: 줄 285
 - 설명: 스레드 메시지를 텍스트로 변환
 
 ## 내부 의존성

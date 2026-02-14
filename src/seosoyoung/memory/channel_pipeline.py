@@ -325,6 +325,8 @@ async def run_channel_pipeline(
             llm_call=llm_call,
             claude_runner=claude_runner,
             bot_user_id=bot_user_id,
+            session_manager=kwargs.get("session_manager"),
+            thread_buffers=thread_buffers,
         )
     else:
         # 하위호환: 단일 판단 경로
@@ -341,6 +343,8 @@ async def run_channel_pipeline(
             llm_call=llm_call,
             claude_runner=claude_runner,
             bot_user_id=bot_user_id,
+            session_manager=kwargs.get("session_manager"),
+            thread_buffers=thread_buffers,
         )
 
     # e) pending을 judged로 이동
@@ -360,6 +364,8 @@ async def _handle_multi_judge(
     llm_call: Optional[Callable],
     claude_runner: Optional["ClaudeAgentRunner"],
     bot_user_id: str | None = None,
+    session_manager=None,
+    thread_buffers: dict[str, list[dict]] | None = None,
 ) -> None:
     """복수 JudgeItem 처리: 이모지 일괄 + 개입 확률 판단"""
     actions = _parse_judge_actions(judge_result)
@@ -423,6 +429,8 @@ async def _handle_multi_judge(
                             claude_runner=claude_runner,
                             llm_call=llm_call,
                             bot_user_id=bot_user_id,
+                            session_manager=session_manager,
+                            thread_buffers=thread_buffers,
                         )
                     else:
                         await execute_interventions(
@@ -458,6 +466,8 @@ async def _handle_single_judge(
     llm_call: Optional[Callable],
     claude_runner: Optional["ClaudeAgentRunner"],
     bot_user_id: str | None = None,
+    session_manager=None,
+    thread_buffers: dict[str, list[dict]] | None = None,
 ) -> None:
     """하위호환: 단일 JudgeResult 처리"""
     logger.info(
@@ -537,6 +547,8 @@ async def _handle_single_judge(
                             claude_runner=claude_runner,
                             llm_call=llm_call,
                             bot_user_id=bot_user_id,
+                            session_manager=session_manager,
+                            thread_buffers=thread_buffers,
                         )
                 else:
                     await execute_interventions(
@@ -571,6 +583,8 @@ async def _execute_intervene(
     claude_runner: Optional["ClaudeAgentRunner"] = None,
     llm_call: Optional[Callable] = None,
     bot_user_id: str | None = None,
+    session_manager=None,
+    thread_buffers: dict[str, list[dict]] | None = None,
 ) -> None:
     """서소영의 개입 응답을 생성하고 발송합니다."""
     # 1. 갱신된 digest 로드
@@ -603,6 +617,7 @@ async def _execute_intervene(
         target=action.target or "channel",
         observer_reason=observer_reason,
         slack_client=slack_client,
+        thread_buffers=thread_buffers,
     )
 
     # 4. 응답 생성 (Claude Code SDK 우선, llm_call 폴백)
@@ -659,6 +674,18 @@ async def _execute_intervene(
             }
             store.append_judged(channel_id, [bot_msg])
             logger.info(f"봇 응답 judged 기록 ({channel_id}): ts={resp_ts}")
+
+            # 스레드 대상 개입이면 세션 생성 (후속 멘션 대화 대비)
+            if session_manager and action.target != "channel":
+                try:
+                    session_manager.create(
+                        thread_ts=resp_ts,
+                        channel_id=channel_id,
+                        source_type="hybrid",
+                    )
+                    logger.info(f"개입 세션 생성 ({channel_id}): ts={resp_ts}")
+                except Exception as e:
+                    logger.error(f"개입 세션 생성 실패 ({channel_id}): {e}")
 
     except Exception as e:
         logger.error(f"intervene 슬랙 발송 실패 ({channel_id}): {e}")

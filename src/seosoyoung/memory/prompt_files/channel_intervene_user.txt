@@ -9,5 +9,8 @@ Reply target: {target}
 ## TRIGGER MESSAGE (respond to this)
 {trigger_message}
 
+## THREAD CONTEXT (related thread discussions)
+{thread_messages}
+
 ## OBSERVER'S DRAFT (reference only — write your own response)
 {observer_reason}

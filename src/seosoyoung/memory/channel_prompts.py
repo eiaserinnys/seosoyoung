@@ -127,12 +127,14 @@ def build_channel_intervene_user_prompt(
     target: str,
     observer_reason: str | None = None,
     slack_client=None,
+    thread_buffers: dict[str, list[dict]] | None = None,
 ) -> str:
     """채널 개입 응답 생성 사용자 프롬프트를 구성합니다."""
     resolver = DisplayNameResolver(slack_client) if slack_client else None
 
     digest_text = digest or "(없음)"
     recent_text = _format_channel_messages(recent_messages, resolver=resolver) or "(없음)"
+    thread_text = _format_thread_messages(thread_buffers or {}, resolver=resolver) or "(없음)"
 
     if trigger_message:
         ts = trigger_message.get("ts", "")
@@ -152,6 +154,7 @@ def build_channel_intervene_user_prompt(
         recent_messages=recent_text,
         trigger_message=trigger_text,
         observer_reason=observer_text,
+        thread_messages=thread_text,
     )
 
 

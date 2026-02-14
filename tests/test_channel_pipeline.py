@@ -1,11 +1,14 @@
 """채널 소화/판단 파이프라인 통합 테스트"""
 
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from seosoyoung.claude.session import SessionManager
 from seosoyoung.memory.channel_intervention import InterventionHistory
 from seosoyoung.memory.channel_observer import (
     DigestCompressorResult,
@@ -1080,3 +1083,122 @@ class TestBotResponseRecordedInJudged:
         assert len(bot_msgs) == 1
         assert bot_msgs[0]["ts"] == "9999.000"
         assert bot_msgs[0]["text"] == "개입 메시지입니다."
+
+
+class TestInterventionSessionCreation:
+    """개입 후 세션이 생성되는지 테스트 (Phase 3-1)"""
+
+    @pytest.mark.asyncio
+    async def test_session_created_after_intervene(self, store, channel_id):
+        """개입 응답 후 응답 ts로 세션이 생성되어야 함"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="1005.000",
+            reaction_content="개입해야 함",
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={
+            "ok": True,
+            "ts": "9999.000",
+        })
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="개입 메시지입니다.")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_mgr = SessionManager(session_dir=Path(tmpdir))
+
+            await run_channel_pipeline(
+                store=store,
+                observer=observer,
+                channel_id=channel_id,
+                slack_client=client,
+                cooldown=history,
+                threshold_a=1,
+                intervention_threshold=0.0,
+                llm_call=mock_llm,
+                bot_user_id="BOT_U123",
+                session_manager=session_mgr,
+            )
+
+            # 봇 응답 ts로 세션이 생성되어야 함
+            session = session_mgr.get("9999.000")
+            assert session is not None
+            assert session.thread_ts == "9999.000"
+            assert session.channel_id == channel_id
+            assert session.source_type == "hybrid"
+            assert session.user_id == ""  # 아직 지시자 없음
+
+    @pytest.mark.asyncio
+    async def test_session_not_created_without_session_manager(self, store, channel_id):
+        """session_manager가 없으면 세션 생성을 건너뜀 (호환성)"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="1005.000",
+            reaction_content="개입해야 함",
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={
+            "ok": True,
+            "ts": "9999.000",
+        })
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="개입 메시지입니다.")
+
+        # session_manager 전달 안 함 → 에러 없이 정상 동작
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
+            llm_call=mock_llm,
+            bot_user_id="BOT_U123",
+        )
+
+        # judged에는 기록됨 (기존 동작)
+        judged = store.load_judged(channel_id)
+        bot_msgs = [m for m in judged if m.get("user") == "BOT_U123"]
+        assert len(bot_msgs) == 1
+
+    @pytest.mark.asyncio
+    async def test_channel_target_session_has_no_thread(self, store, channel_id):
+        """target이 'channel'이면 세션 생성하지 않음 (스레드 대화 불가)"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="채널 전체에 개입",
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={
+            "ok": True,
+            "ts": "9999.000",
+        })
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="채널 개입 메시지.")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_mgr = SessionManager(session_dir=Path(tmpdir))
+
+            await run_channel_pipeline(
+                store=store,
+                observer=observer,
+                channel_id=channel_id,
+                slack_client=client,
+                cooldown=history,
+                threshold_a=1,
+                intervention_threshold=0.0,
+                llm_call=mock_llm,
+                bot_user_id="BOT_U123",
+                session_manager=session_mgr,
+            )
+
+            # channel 대상 개입은 세션 생성 안 함
+            assert session_mgr.get("9999.000") is None

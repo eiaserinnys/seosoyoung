@@ -257,6 +257,15 @@ def register_mention_handlers(app, dependencies: dict):
                 # (message.py는 봇 멘션이 포함된 메시지를 무시하므로 여기서 처리)
                 logger.debug("스레드에서 멘션됨 (세션 있음) - 직접 처리")
 
+                # 개입 세션 승격: user_id가 비어있으면 멘션한 사용자를 소유자로 설정
+                if not session.user_id and user_id:
+                    role = get_user_role(user_id)
+                    session_manager.update_user(
+                        thread_ts, user_id=user_id, username=user_id, role=role,
+                    )
+                    session = session_manager.get(thread_ts)
+                    logger.info(f"개입 세션 승격: thread_ts={thread_ts}, user={user_id}, role={role}")
+
                 if restart_manager.is_pending:
                     say(
                         text="재시작을 대기하는 중입니다.\n재시작이 완료되면 다시 대화를 요청해주세요.",
