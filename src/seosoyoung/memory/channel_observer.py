@@ -58,8 +58,11 @@ class JudgeItem:
     emotion: Optional[str] = None
     addressed_to_me: bool = False
     addressed_to_me_reason: Optional[str] = None
+    related_to_me: bool = False
+    related_to_me_reason: Optional[str] = None
     is_instruction: bool = False
     is_instruction_reason: Optional[str] = None
+    context_meaning: Optional[str] = None
 
 
 @dataclass
@@ -81,8 +84,11 @@ class JudgeResult:
     emotion: Optional[str] = None
     addressed_to_me: bool = False
     addressed_to_me_reason: Optional[str] = None
+    related_to_me: bool = False
+    related_to_me_reason: Optional[str] = None
     is_instruction: bool = False
     is_instruction_reason: Optional[str] = None
+    context_meaning: Optional[str] = None
 
 
 @dataclass
@@ -141,9 +147,12 @@ def parse_judge_output(text: str) -> JudgeResult:
     # 하위호환: 단일 결과 파싱
     reasoning = _extract_tag(text, "reasoning") or None
     emotion = _extract_tag(text, "emotion") or None
+    context_meaning = _extract_tag(text, "context_meaning") or None
 
     addressed_to_me = _parse_yes_no(text, "addressed_to_me")
     addressed_to_me_reason = _extract_tag(text, "addressed_to_me_reason") or None
+    related_to_me = _parse_yes_no(text, "related_to_me")
+    related_to_me_reason = _extract_tag(text, "related_to_me_reason") or None
     is_instruction = _parse_yes_no(text, "is_instruction")
     is_instruction_reason = _extract_tag(text, "is_instruction_reason") or None
 
@@ -165,8 +174,11 @@ def parse_judge_output(text: str) -> JudgeResult:
         emotion=emotion,
         addressed_to_me=addressed_to_me,
         addressed_to_me_reason=addressed_to_me_reason,
+        related_to_me=related_to_me,
+        related_to_me_reason=related_to_me_reason,
         is_instruction=is_instruction,
         is_instruction_reason=is_instruction_reason,
+        context_meaning=context_meaning,
     )
 
 
@@ -180,9 +192,12 @@ def _parse_judge_item(ts: str, block: str) -> JudgeItem:
     """개별 <judgment> 블록을 JudgeItem으로 파싱합니다."""
     reasoning = _extract_tag(block, "reasoning") or None
     emotion = _extract_tag(block, "emotion") or None
+    context_meaning = _extract_tag(block, "context_meaning") or None
 
     addressed_to_me = _parse_yes_no(block, "addressed_to_me")
     addressed_to_me_reason = _extract_tag(block, "addressed_to_me_reason") or None
+    related_to_me = _parse_yes_no(block, "related_to_me")
+    related_to_me_reason = _extract_tag(block, "related_to_me_reason") or None
     is_instruction = _parse_yes_no(block, "is_instruction")
     is_instruction_reason = _extract_tag(block, "is_instruction_reason") or None
 
@@ -205,8 +220,11 @@ def _parse_judge_item(ts: str, block: str) -> JudgeItem:
         emotion=emotion,
         addressed_to_me=addressed_to_me,
         addressed_to_me_reason=addressed_to_me_reason,
+        related_to_me=related_to_me,
+        related_to_me_reason=related_to_me_reason,
         is_instruction=is_instruction,
         is_instruction_reason=is_instruction_reason,
+        context_meaning=context_meaning,
     )
 
 
@@ -349,6 +367,7 @@ class ChannelObserver:
         pending_messages: list[dict],
         thread_buffers: dict[str, list[dict]] | None = None,
         bot_user_id: str | None = None,
+        slack_client=None,
     ) -> JudgeResult | None:
         """pending 메시지에 대해 리액션을 판단합니다 (판단 전용).
 
@@ -359,6 +378,7 @@ class ChannelObserver:
             pending_messages: 아직 판단하지 않은 새 대화
             thread_buffers: {thread_ts: [messages]} 스레드 버퍼
             bot_user_id: 봇 사용자 ID (멘션 포함 메시지 마킹용)
+            slack_client: Slack WebClient (디스플레이네임 조회용)
 
         Returns:
             JudgeResult 또는 None (API 오류 시)
@@ -371,6 +391,7 @@ class ChannelObserver:
             pending_messages=pending_messages,
             thread_buffers=thread_buffers or {},
             bot_user_id=bot_user_id,
+            slack_client=slack_client,
         )
 
         try:

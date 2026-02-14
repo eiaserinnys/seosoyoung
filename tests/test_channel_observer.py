@@ -521,6 +521,89 @@ class TestParseJudgeOutputMulti:
         assert result.is_instruction is False
         assert result.is_instruction_reason == "질문일 뿐"
 
+    def test_parse_multi_with_context_meaning_and_related(self):
+        """context_meaning, related_to_me 필드가 포함된 복수 판단 파싱"""
+        text = (
+            '<judgments>\n'
+            '<judgment ts="111.222">\n'
+            '<context_meaning>EB 프로젝트의 아리엘라 캐릭터에 대한 논의 중</context_meaning>\n'
+            '<addressed_to_me>no</addressed_to_me>\n'
+            '<addressed_to_me_reason>일반 대화임</addressed_to_me_reason>\n'
+            '<related_to_me>yes</related_to_me>\n'
+            '<related_to_me_reason>서소영의 이전 발언이 언급됨</related_to_me_reason>\n'
+            '<is_instruction>no</is_instruction>\n'
+            '<is_instruction_reason>정보 공유임</is_instruction_reason>\n'
+            '<emotion>관심이 간다</emotion>\n'
+            '<importance>5</importance>\n'
+            '<reaction type="react">\n'
+            '<react target="111.222" emoji="eyes" />\n'
+            '</reaction>\n'
+            '<reasoning>EB 프로젝트 관련 흥미로운 논의</reasoning>\n'
+            '</judgment>\n'
+            '<judgment ts="333.444">\n'
+            '<context_meaning>팀원이 점심 메뉴를 물어보는 일상 대화</context_meaning>\n'
+            '<addressed_to_me>no</addressed_to_me>\n'
+            '<addressed_to_me_reason>일반 질문임</addressed_to_me_reason>\n'
+            '<related_to_me>no</related_to_me>\n'
+            '<related_to_me_reason>서소영과 무관한 대화</related_to_me_reason>\n'
+            '<is_instruction>no</is_instruction>\n'
+            '<is_instruction_reason>정보 요청일 뿐</is_instruction_reason>\n'
+            '<emotion>평온하다</emotion>\n'
+            '<importance>1</importance>\n'
+            '<reaction type="none" />\n'
+            '<reasoning>별다른 반응 불필요</reasoning>\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        result = parse_judge_output(text)
+        assert len(result.items) == 2
+
+        item0 = result.items[0]
+        assert item0.context_meaning == "EB 프로젝트의 아리엘라 캐릭터에 대한 논의 중"
+        assert item0.related_to_me is True
+        assert item0.related_to_me_reason == "서소영의 이전 발언이 언급됨"
+        assert item0.addressed_to_me is False
+        assert item0.importance == 5
+
+        item1 = result.items[1]
+        assert item1.context_meaning == "팀원이 점심 메뉴를 물어보는 일상 대화"
+        assert item1.related_to_me is False
+        assert item1.related_to_me_reason == "서소영과 무관한 대화"
+        assert item1.importance == 1
+
+    def test_backward_compat_no_context_meaning_related(self):
+        """context_meaning, related_to_me 없는 기존 형식도 정상 파싱"""
+        text = (
+            '<judgments>\n'
+            '<judgment ts="500.000">\n'
+            '<reasoning>별 일 없음</reasoning>\n'
+            '<emotion>평온</emotion>\n'
+            '<importance>3</importance>\n'
+            '<reaction type="none" />\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        result = parse_judge_output(text)
+        item = result.items[0]
+        assert item.context_meaning is None
+        assert item.related_to_me is False
+        assert item.related_to_me_reason is None
+
+    def test_backward_compat_single_with_context_meaning_related(self):
+        """단일 파싱에서도 context_meaning, related_to_me 파싱"""
+        text = (
+            '<context_meaning>팀 회의 중 서소영 관련 언급</context_meaning>\n'
+            '<related_to_me>yes</related_to_me>\n'
+            '<related_to_me_reason>서소영의 작업이 언급됨</related_to_me_reason>\n'
+            '<importance>5</importance>\n'
+            '<reaction type="none" />'
+        )
+        result = parse_judge_output(text)
+        assert result.items == []
+        assert result.context_meaning == "팀 회의 중 서소영 관련 언급"
+        assert result.related_to_me is True
+        assert result.related_to_me_reason == "서소영의 작업이 언급됨"
+
 
 # ── ChannelObserver.judge() 복수 판단 ─────────────────────
 
@@ -697,7 +780,7 @@ class TestChannelPrompts:
 
         assert "C123" in prompt
         assert "first observation" in prompt
-        assert "[1.1] <U1>: hello" in prompt
+        assert "[1.1] U1: hello" in prompt
 
     def test_build_user_prompt_with_existing(self):
         from seosoyoung.memory.channel_prompts import build_channel_observer_user_prompt
@@ -711,7 +794,7 @@ class TestChannelPrompts:
 
         assert "기존 digest 내용" in prompt
         assert "thread:999.000" in prompt
-        assert "[999.001] <U2>: reply" in prompt
+        assert "[999.001] U2: reply" in prompt
 
     def test_build_compressor_prompts(self):
         from seosoyoung.memory.channel_prompts import (
@@ -745,7 +828,7 @@ class TestChannelPrompts:
         )
         assert "C123" in user_prompt
         assert "기존 요약" in user_prompt
-        assert "[1.1] <U1>: hello" in user_prompt
+        assert "[1.1] U1: hello" in user_prompt
 
     def test_build_judge_prompts(self):
         from seosoyoung.memory.channel_prompts import (
@@ -764,8 +847,8 @@ class TestChannelPrompts:
         )
         assert "C456" in user_prompt
         assert "채널 요약 내용" in user_prompt
-        assert "[0.1] <U1>: old msg" in user_prompt
-        assert "[1.1] <U2>: new msg" in user_prompt
+        assert "[0.1] U1: old msg" in user_prompt
+        assert "[1.1] U2: new msg" in user_prompt
 
 
 # ── 헬퍼 ─────────────────────────────────────────────────

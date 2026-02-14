@@ -22,6 +22,7 @@ from typing import Optional
 
 from seosoyoung.config import Config
 from seosoyoung.memory.channel_observer import ChannelObserverResult, JudgeItem
+from seosoyoung.memory.channel_prompts import DisplayNameResolver
 
 logger = logging.getLogger(__name__)
 
@@ -457,10 +458,13 @@ def send_multi_judge_debug_log(
     message_actions_executed: list[InterventionAction],
     pending_count: int = 0,
     pending_messages: list[dict] | None = None,
+    slack_client=None,
 ) -> None:
     """복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다."""
     if not debug_channel:
         return
+
+    resolver = DisplayNameResolver(slack_client) if slack_client else None
 
     # pending_messages를 ts 기준으로 인덱싱
     msg_by_ts: dict[str, dict] = {}
@@ -504,9 +508,8 @@ def send_multi_judge_debug_log(
 
         # 테이블 1: 메시지 정보
         orig_msg = msg_by_ts.get(item.ts, {})
-        sender = orig_msg.get("user", "")
-        if sender:
-            sender = f"<@{sender}>"
+        user_id = orig_msg.get("user", "")
+        sender = resolver.resolve(user_id) if resolver and user_id else user_id
         bot_id = orig_msg.get("bot_id", "")
         if bot_id:
             sender += f" (bot: `{bot_id}`)" if sender else f"bot: `{bot_id}`"
@@ -538,25 +541,23 @@ def send_multi_judge_debug_log(
         ]
         blocks.append({"type": "section", "fields": table1_fields})
 
-        # 테이블 2: 판단
-        addressed_text = "yes" if item.addressed_to_me else "no"
-        if item.addressed_to_me_reason:
-            addressed_text += f" — {item.addressed_to_me_reason}"
-        instruction_text = "yes" if item.is_instruction else "no"
-        if item.is_instruction_reason:
-            instruction_text += f" — {item.is_instruction_reason}"
+        # 테이블 2: 판단 (재구성)
+        def _bool_reason(flag: bool, reason: str | None) -> str:
+            label = "TRUE" if flag else "FALSE"
+            return f"{label} | {reason}" if reason else label
 
         table2_fields = [
+            {"type": "mrkdwn", "text": "*메시지의 의미*"},
+            {"type": "mrkdwn", "text": item.context_meaning or "(없음)"},
             {"type": "mrkdwn", "text": "*서소영 대상?*"},
-            {"type": "mrkdwn", "text": addressed_text},
+            {"type": "mrkdwn", "text": _bool_reason(item.addressed_to_me, item.addressed_to_me_reason)},
+            {"type": "mrkdwn", "text": "*서소영 관련?*"},
+            {"type": "mrkdwn", "text": _bool_reason(item.related_to_me, item.related_to_me_reason)},
             {"type": "mrkdwn", "text": "*지시?*"},
-            {"type": "mrkdwn", "text": instruction_text},
+            {"type": "mrkdwn", "text": _bool_reason(item.is_instruction, item.is_instruction_reason)},
+            {"type": "mrkdwn", "text": "*서소영의 감정*"},
+            {"type": "mrkdwn", "text": item.emotion or "(없음)"},
         ]
-        if item.emotion:
-            table2_fields.extend([
-                {"type": "mrkdwn", "text": "*감정*"},
-                {"type": "mrkdwn", "text": item.emotion},
-            ])
         blocks.append({"type": "section", "fields": table2_fields})
 
         # 테이블 3: 리액션

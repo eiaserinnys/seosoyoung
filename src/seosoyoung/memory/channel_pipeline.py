@@ -112,6 +112,39 @@ def _parse_judge_actions(judge_result: JudgeResult) -> list[InterventionAction]:
     return []
 
 
+def _apply_importance_modifiers(
+    judge_result: JudgeResult,
+    pending_messages: list[dict],
+) -> None:
+    """related_to_me 가중치와 addressed_to_me 강제 반응을 적용합니다.
+
+    - related_to_me == True → importance × 2 (상한 10)
+    - addressed_to_me == True && 발신자가 사람 → importance 최소 7, intervene 전환
+    """
+    msg_by_ts: dict[str, dict] = {}
+    for msg in pending_messages:
+        ts = msg.get("ts", "")
+        if ts:
+            msg_by_ts[ts] = msg
+
+    for item in judge_result.items:
+        # related_to_me 가중치
+        if item.related_to_me:
+            item.importance = min(item.importance * 2, 10)
+
+        # addressed_to_me 강제 반응: 발신자가 사람(bot_id 없음)일 때
+        if item.addressed_to_me:
+            orig_msg = msg_by_ts.get(item.ts, {})
+            is_bot = bool(orig_msg.get("bot_id"))
+            if not is_bot:
+                item.importance = max(item.importance, 7)
+                if item.reaction_type != "intervene":
+                    item.reaction_type = "intervene"
+                    item.reaction_target = item.reaction_target or item.ts
+                    if not item.reaction_content:
+                        item.reaction_content = "(addressed)"
+
+
 def _get_max_importance_item(judge_result: JudgeResult) -> JudgeItem | None:
     """JudgeResult에서 가장 높은 중요도의 JudgeItem을 반환합니다."""
     if not judge_result.items:
@@ -232,11 +265,15 @@ async def run_channel_pipeline(
         pending_messages=pending_messages,
         thread_buffers=thread_buffers,
         bot_user_id=bot_user_id,
+        slack_client=slack_client,
     )
 
     if judge_result is None:
         logger.warning(f"judge가 None 반환 ({channel_id})")
         return
+
+    # d-0) 가중치 적용: related_to_me, addressed_to_me 강제 반응
+    _apply_importance_modifiers(judge_result, pending_messages)
 
     # d) 리액션 처리
     if judge_result.items:
@@ -366,6 +403,7 @@ async def _handle_multi_judge(
         message_actions_executed=executed_messages,
         pending_count=len(pending_messages),
         pending_messages=pending_messages,
+        slack_client=slack_client,
     )
 
 
@@ -523,6 +561,7 @@ async def _execute_intervene(
         trigger_message=trigger_message,
         target=action.target or "channel",
         observer_reason=observer_reason,
+        slack_client=slack_client,
     )
 
     # 4. 응답 생성 (Claude Code SDK 우선, llm_call 폴백)
