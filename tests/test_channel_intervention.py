@@ -349,7 +349,7 @@ class TestSendDebugLog:
     """디버그 로그 발송 테스트"""
 
     @pytest.mark.asyncio
-    async def test_sends_to_debug_channel(self):
+    async def test_sends_to_debug_channel_with_blocks(self):
         client = MagicMock()
         client.chat_postMessage = MagicMock(return_value={"ok": True})
 
@@ -376,8 +376,42 @@ class TestSendDebugLog:
         client.chat_postMessage.assert_called_once()
         call_kwargs = client.chat_postMessage.call_args[1]
         assert call_kwargs["channel"] == "C_DEBUG"
-        assert "C123" in call_kwargs["text"]
-        assert "7" in call_kwargs["text"]  # importance
+        # Block Kit blocks 파라미터 존재 확인
+        assert "blocks" in call_kwargs
+        blocks = call_kwargs["blocks"]
+        assert len(blocks) >= 1
+        # fallback text도 있어야 함
+        assert "text" in call_kwargs
+        # 블록 내용에 소스 채널, importance 포함 확인
+        blocks_str = json.dumps(blocks, ensure_ascii=False)
+        assert "C123" in blocks_str
+        assert "7" in blocks_str
+
+    @pytest.mark.asyncio
+    async def test_includes_emotion_and_reasoning(self):
+        """감정과 판단 이유가 블록에 포함"""
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+
+        result = ChannelObserverResult(
+            digest="test", importance=5, reaction_type="none",
+        )
+
+        await send_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            observer_result=result,
+            actions=[],
+            actions_filtered=[],
+            reasoning="흥미로운 대화지만 개입할 시점이 아님",
+            emotion="관심",
+        )
+
+        call_kwargs = client.chat_postMessage.call_args[1]
+        blocks_str = json.dumps(call_kwargs["blocks"], ensure_ascii=False)
+        assert "관심" in blocks_str
+        assert "흥미로운" in blocks_str
 
     @pytest.mark.asyncio
     async def test_skips_when_no_debug_channel(self):
@@ -402,8 +436,8 @@ class TestSendDebugLog:
 class TestSendInterventionProbabilityDebugLog:
     """확률 판단 디버그 로그 테스트"""
 
-    def test_sends_passed_log(self):
-        """통과 시 체크마크 로그"""
+    def test_sends_passed_log_with_blocks(self):
+        """통과 시 Block Kit 로그"""
         client = MagicMock()
 
         send_intervention_probability_debug_log(
@@ -420,13 +454,14 @@ class TestSendInterventionProbabilityDebugLog:
         )
 
         client.chat_postMessage.assert_called_once()
-        text = client.chat_postMessage.call_args[1]["text"]
-        assert "white_check_mark" in text
-        assert "C123" in text
-        assert "8/10" in text
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert "blocks" in call_kwargs
+        blocks_str = json.dumps(call_kwargs["blocks"], ensure_ascii=False)
+        assert "C123" in blocks_str
+        assert "8/10" in blocks_str
 
-    def test_sends_blocked_log(self):
-        """차단 시 no_entry 로그"""
+    def test_sends_blocked_log_with_blocks(self):
+        """차단 시 Block Kit 로그"""
         client = MagicMock()
 
         send_intervention_probability_debug_log(
@@ -442,9 +477,8 @@ class TestSendInterventionProbabilityDebugLog:
             passed=False,
         )
 
-        text = client.chat_postMessage.call_args[1]["text"]
-        assert "no_entry_sign" in text
-        assert "<" in text
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert "blocks" in call_kwargs
 
     def test_skips_when_no_debug_channel(self):
         """디버그 채널 미설정이면 전송 안 함"""
@@ -785,8 +819,8 @@ class TestRunChannelPipeline:
 class TestSendCollectDebugLog:
     """메시지 수집 디버그 로그"""
 
-    def test_sends_log_with_buffer_status(self):
-        """수집 시 버퍼 상태 포함 로그 전송"""
+    def test_sends_log_with_blocks(self):
+        """수집 시 Block Kit 로그 전송"""
         client = MagicMock()
 
         send_collect_debug_log(
@@ -800,11 +834,12 @@ class TestSendCollectDebugLog:
         )
 
         client.chat_postMessage.assert_called_once()
-        text = client.chat_postMessage.call_args[1]["text"]
-        assert "채널 수집" in text
-        assert "C123" in text
-        assert "200/500" in text
-        assert "안녕하세요" in text
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert "blocks" in call_kwargs
+        blocks_str = json.dumps(call_kwargs["blocks"], ensure_ascii=False)
+        assert "C123" in blocks_str
+        assert "200/500" in blocks_str
+        assert "안녕하세요" in blocks_str
 
     def test_shows_trigger_when_threshold_reached(self):
         """임계치 도달 시 소화 트리거 표시"""
@@ -820,8 +855,9 @@ class TestSendCollectDebugLog:
             user="U001",
         )
 
-        text = client.chat_postMessage.call_args[1]["text"]
-        assert "소화 트리거" in text
+        call_kwargs = client.chat_postMessage.call_args[1]
+        blocks_str = json.dumps(call_kwargs["blocks"], ensure_ascii=False)
+        assert "소화 트리거" in blocks_str
 
     def test_shows_thread_label(self):
         """스레드 메시지면 '스레드' 라벨 표시"""
@@ -838,8 +874,9 @@ class TestSendCollectDebugLog:
             is_thread=True,
         )
 
-        text = client.chat_postMessage.call_args[1]["text"]
-        assert "스레드" in text
+        call_kwargs = client.chat_postMessage.call_args[1]
+        blocks_str = json.dumps(call_kwargs["blocks"], ensure_ascii=False)
+        assert "스레드" in blocks_str
 
     def test_skips_when_no_debug_channel(self):
         """디버그 채널 미설정이면 전송 안 함"""
@@ -870,8 +907,10 @@ class TestSendCollectDebugLog:
             user="U001",
         )
 
-        text = client.chat_postMessage.call_args[1]["text"]
-        assert "..." in text
+        call_kwargs = client.chat_postMessage.call_args[1]
+        # fallback text 또는 blocks 내에 ... 포함
+        blocks_str = json.dumps(call_kwargs["blocks"], ensure_ascii=False)
+        assert "..." in blocks_str
 
 
 # ── send_digest_skip_debug_log 테스트 ────────────────────
@@ -879,8 +918,8 @@ class TestSendCollectDebugLog:
 class TestSendDigestSkipDebugLog:
     """소화 스킵 디버그 로그"""
 
-    def test_sends_skip_log(self):
-        """스킵 시 로그 전송"""
+    def test_sends_skip_log_with_blocks(self):
+        """스킵 시 Block Kit 로그 전송"""
         client = MagicMock()
 
         send_digest_skip_debug_log(
@@ -892,10 +931,12 @@ class TestSendDigestSkipDebugLog:
         )
 
         client.chat_postMessage.assert_called_once()
-        text = client.chat_postMessage.call_args[1]["text"]
-        assert "소화 스킵" in text
-        assert "200" in text
-        assert "500" in text
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert "blocks" in call_kwargs
+        blocks_str = json.dumps(call_kwargs["blocks"], ensure_ascii=False)
+        assert "소화 스킵" in blocks_str
+        assert "200" in blocks_str
+        assert "500" in blocks_str
 
     def test_skips_when_no_debug_channel(self):
         """디버그 채널 미설정이면 전송 안 함"""

@@ -253,6 +253,14 @@ class InterventionHistory:
 CooldownManager = InterventionHistory
 
 
+def _build_fields_block(fields: list[tuple[str, str]]) -> dict:
+    """(label, value) 쌍 리스트를 section.fields Block Kit 블록으로 변환합니다."""
+    block_fields = []
+    for label, value in fields:
+        block_fields.append({"type": "mrkdwn", "text": f"*{label}*\n{value}"})
+    return {"type": "section", "fields": block_fields}
+
+
 async def send_debug_log(
     client,
     debug_channel: str,
@@ -262,19 +270,10 @@ async def send_debug_log(
     actions_filtered: list[InterventionAction],
     reasoning: Optional[str] = None,
     emotion: Optional[str] = None,
+    pending_count: int = 0,
+    reaction_detail: Optional[str] = None,
 ) -> None:
-    """디버그 채널에 관찰 결과 로그를 전송합니다.
-
-    Args:
-        client: Slack WebClient
-        debug_channel: 디버그 로그 채널 ID
-        source_channel: 관찰한 원본 채널 ID
-        observer_result: 관찰 결과
-        actions: 파싱된 전체 액션 리스트
-        actions_filtered: 쿨다운 필터 후 실제 실행된 액션 리스트
-        reasoning: Judge의 판단 이유
-        emotion: 서소영의 현재 감정
-    """
+    """디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식)."""
     if not debug_channel:
         return
 
@@ -283,20 +282,36 @@ async def send_debug_log(
         f"{a.type}→{a.target}" for a in actions_filtered
     ) or "(없음)"
 
-    text = (
-        f"*[Channel Observer]* `{source_channel}`\n"
-        f"• 중요도: {observer_result.importance}/10\n"
-        f"• 반응: {observer_result.reaction_type}\n"
-        f"• 실행 액션: {action_summary}\n"
-        f"• 쿨다운 스킵: {skipped}건"
-    )
+    fields = [
+        ("채널", f"`{source_channel}`"),
+        ("중요도", f"{observer_result.importance}/10"),
+        ("반응", observer_result.reaction_type),
+        ("실행 액션", action_summary),
+        ("쿨다운 스킵", f"{skipped}건"),
+    ]
+    if pending_count > 0:
+        fields.append(("pending", f"{pending_count}건"))
+    if reaction_detail:
+        fields.append(("리액션 상세", reaction_detail))
     if emotion:
-        text += f"\n• 감정: {emotion}"
+        fields.append(("감정", emotion))
     if reasoning:
-        text += f"\n• 판단 이유: {reasoning}"
+        fields.append(("판단 이유", reasoning))
+
+    # section.fields는 최대 10개까지만 지원
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": "Channel Observer"}},
+        _build_fields_block(fields[:10]),
+    ]
+
+    fallback = (
+        f"[Channel Observer] {source_channel} | "
+        f"중요도: {observer_result.importance}/10 | "
+        f"반응: {observer_result.reaction_type}"
+    )
 
     try:
-        client.chat_postMessage(channel=debug_channel, text=text)
+        client.chat_postMessage(channel=debug_channel, blocks=blocks, text=fallback)
     except Exception as e:
         logger.error(f"디버그 로그 전송 실패: {e}")
 
@@ -311,18 +326,7 @@ def send_collect_debug_log(
     user: str = "",
     is_thread: bool = False,
 ) -> None:
-    """메시지 수집 시 디버그 채널에 로그를 전송합니다.
-
-    Args:
-        client: Slack WebClient
-        debug_channel: 디버그 로그 채널 ID
-        source_channel: 관찰 대상 채널 ID
-        buffer_tokens: 현재 버퍼 토큰 수
-        threshold: 소화 트리거 임계치
-        message_text: 수집된 메시지 텍스트
-        user: 메시지 작성자
-        is_thread: 스레드 메시지 여부
-    """
+    """메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식)."""
     if not debug_channel:
         return
 
@@ -332,17 +336,27 @@ def send_collect_debug_log(
         preview += "..."
     ratio = f"{buffer_tokens}/{threshold}"
 
-    text = (
-        f":memo: *[채널 수집]* `{source_channel}`\n"
-        f">*{location}* | <{user}> {preview}\n"
-        f">`버퍼: {ratio} tok`"
-    )
-
+    trigger_text = ""
     if buffer_tokens >= threshold:
-        text += " → :arrow_forward: 소화 트리거"
+        trigger_text = " → 소화 트리거"
+
+    fields = [
+        ("채널", f"`{source_channel}`"),
+        ("위치", location),
+        ("작성자", f"<{user}>"),
+        ("메시지", preview or "(없음)"),
+        ("버퍼", f"`{ratio} tok`{trigger_text}"),
+    ]
+
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": ":memo: 채널 수집"}},
+        _build_fields_block(fields),
+    ]
+
+    fallback = f"[채널 수집] {source_channel} | {location} | {ratio} tok"
 
     try:
-        client.chat_postMessage(channel=debug_channel, text=text)
+        client.chat_postMessage(channel=debug_channel, blocks=blocks, text=fallback)
     except Exception as e:
         logger.error(f"수집 디버그 로그 전송 실패: {e}")
 
@@ -354,17 +368,26 @@ def send_digest_skip_debug_log(
     buffer_tokens: int,
     threshold: int,
 ) -> None:
-    """소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다."""
+    """소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식)."""
     if not debug_channel:
         return
 
-    text = (
-        f":pause_button: *[소화 스킵]* `{source_channel}`\n"
-        f">`버퍼 {buffer_tokens} tok < 임계치 {threshold} tok`"
-    )
+    fields = [
+        ("채널", f"`{source_channel}`"),
+        ("상태", "소화 스킵"),
+        ("버퍼", f"{buffer_tokens} tok"),
+        ("임계치", f"{threshold} tok"),
+    ]
+
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": ":pause_button: 소화 스킵"}},
+        _build_fields_block(fields),
+    ]
+
+    fallback = f"[소화 스킵] {source_channel} | 버퍼 {buffer_tokens} tok < 임계치 {threshold} tok"
 
     try:
-        client.chat_postMessage(channel=debug_channel, text=text)
+        client.chat_postMessage(channel=debug_channel, blocks=blocks, text=fallback)
     except Exception as e:
         logger.error(f"소화 스킵 디버그 로그 전송 실패: {e}")
 
@@ -381,35 +404,34 @@ def send_intervention_probability_debug_log(
     threshold: float,
     passed: bool,
 ) -> None:
-    """확률 기반 개입 판단 결과를 디버그 채널에 기록합니다.
-
-    Args:
-        client: Slack WebClient
-        debug_channel: 디버그 로그 채널 ID
-        source_channel: 관찰 대상 채널 ID
-        importance: judge 중요도 (0-10)
-        time_factor: 시간 감쇠 요소
-        freq_factor: 빈도 감쇠 요소
-        probability: intervention_probability 결과
-        final_score: 최종 점수 (importance/10 × probability)
-        threshold: 개입 임계치
-        passed: 임계치 통과 여부
-    """
+    """확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식)."""
     if not debug_channel:
         return
 
     emoji = ":white_check_mark:" if passed else ":no_entry_sign:"
-    text = (
-        f"{emoji} *[개입 확률 판단]* `{source_channel}`\n"
-        f">`중요도: {importance}/10 | "
-        f"시간감쇠: {time_factor:.2f} | "
-        f"빈도감쇠: {freq_factor:.2f} | "
-        f"확률: {probability:.3f}`\n"
-        f">`최종: {final_score:.3f} {'≥' if passed else '<'} "
-        f"임계치 {threshold:.2f}`"
+    result_symbol = "≥" if passed else "<"
+
+    fields = [
+        ("채널", f"`{source_channel}`"),
+        ("중요도", f"{importance}/10"),
+        ("시간감쇠", f"{time_factor:.2f}"),
+        ("빈도감쇠", f"{freq_factor:.2f}"),
+        ("확률", f"{probability:.3f}"),
+        ("최종", f"{final_score:.3f} {result_symbol} {threshold:.2f}"),
+    ]
+
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": f"{emoji} 개입 확률 판단"}},
+        _build_fields_block(fields),
+    ]
+
+    fallback = (
+        f"[개입 확률 판단] {source_channel} | "
+        f"중요도: {importance}/10 | "
+        f"최종: {final_score:.3f} {result_symbol} {threshold:.2f}"
     )
 
     try:
-        client.chat_postMessage(channel=debug_channel, text=text)
+        client.chat_postMessage(channel=debug_channel, blocks=blocks, text=fallback)
     except Exception as e:
         logger.error(f"개입 확률 디버그 로그 전송 실패: {e}")

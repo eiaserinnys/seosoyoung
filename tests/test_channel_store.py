@@ -285,6 +285,109 @@ class TestClearBuffers:
         store.clear_buffers("NONEXISTENT")
 
 
+class TestUpdateReactions:
+    """reactions 갱신 테스트"""
+
+    def test_add_reaction_to_pending(self, store):
+        """pending 메시지에 리액션 추가"""
+        store.append_pending("C001", {"ts": "1.1", "user": "U001", "text": "hello"})
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U002", action="added")
+
+        msgs = store.load_pending("C001")
+        assert len(msgs) == 1
+        reactions = msgs[0].get("reactions", [])
+        assert len(reactions) == 1
+        assert reactions[0]["name"] == "thumbsup"
+        assert reactions[0]["users"] == ["U002"]
+        assert reactions[0]["count"] == 1
+
+    def test_add_reaction_accumulates_users(self, store):
+        """같은 이모지에 다른 유저가 추가"""
+        store.append_pending("C001", {"ts": "1.1", "user": "U001", "text": "hello"})
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U002", action="added")
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U003", action="added")
+
+        msgs = store.load_pending("C001")
+        reactions = msgs[0]["reactions"]
+        assert len(reactions) == 1
+        assert reactions[0]["count"] == 2
+        assert set(reactions[0]["users"]) == {"U002", "U003"}
+
+    def test_add_different_emojis(self, store):
+        """다른 이모지들이 각각 추가"""
+        store.append_pending("C001", {"ts": "1.1", "user": "U001", "text": "hello"})
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U002", action="added")
+        store.update_reactions("C001", ts="1.1", emoji="heart", user="U003", action="added")
+
+        msgs = store.load_pending("C001")
+        reactions = msgs[0]["reactions"]
+        assert len(reactions) == 2
+        names = {r["name"] for r in reactions}
+        assert names == {"thumbsup", "heart"}
+
+    def test_remove_reaction(self, store):
+        """리액션 제거 시 users에서 삭제되고 count 감소"""
+        store.append_pending("C001", {"ts": "1.1", "user": "U001", "text": "hello"})
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U002", action="added")
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U003", action="added")
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U002", action="removed")
+
+        msgs = store.load_pending("C001")
+        reactions = msgs[0]["reactions"]
+        assert len(reactions) == 1
+        assert reactions[0]["count"] == 1
+        assert reactions[0]["users"] == ["U003"]
+
+    def test_remove_last_user_deletes_reaction(self, store):
+        """마지막 유저가 제거되면 reaction 항목 자체가 삭제"""
+        store.append_pending("C001", {"ts": "1.1", "user": "U001", "text": "hello"})
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U002", action="added")
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U002", action="removed")
+
+        msgs = store.load_pending("C001")
+        reactions = msgs[0].get("reactions", [])
+        assert len(reactions) == 0
+
+    def test_update_reactions_in_judged(self, store):
+        """judged 메시지에도 리액션 갱신"""
+        store.append_judged("C001", [{"ts": "2.1", "user": "U001", "text": "judged msg"}])
+        store.update_reactions("C001", ts="2.1", emoji="fire", user="U002", action="added")
+
+        msgs = store.load_judged("C001")
+        reactions = msgs[0].get("reactions", [])
+        assert len(reactions) == 1
+        assert reactions[0]["name"] == "fire"
+
+    def test_update_reactions_in_thread(self, store):
+        """스레드 메시지에도 리액션 갱신"""
+        store.append_thread_message("C001", "parent.ts", {"ts": "3.1", "user": "U001", "text": "thread msg"})
+        store.update_reactions("C001", ts="3.1", emoji="eyes", user="U002", action="added")
+
+        msgs = store.load_thread_buffer("C001", "parent.ts")
+        reactions = msgs[0].get("reactions", [])
+        assert len(reactions) == 1
+        assert reactions[0]["name"] == "eyes"
+
+    def test_nonexistent_ts_is_noop(self, store):
+        """존재하지 않는 ts에 대한 리액션 갱신은 무시 (에러 없음)"""
+        store.append_pending("C001", {"ts": "1.1", "user": "U001", "text": "hello"})
+        store.update_reactions("C001", ts="9.9", emoji="thumbsup", user="U002", action="added")
+
+        msgs = store.load_pending("C001")
+        assert msgs[0].get("reactions") is None
+
+    def test_duplicate_add_is_idempotent(self, store):
+        """같은 유저가 같은 이모지를 두 번 추가해도 중복 없음"""
+        store.append_pending("C001", {"ts": "1.1", "user": "U001", "text": "hello"})
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U002", action="added")
+        store.update_reactions("C001", ts="1.1", emoji="thumbsup", user="U002", action="added")
+
+        msgs = store.load_pending("C001")
+        reactions = msgs[0]["reactions"]
+        assert reactions[0]["count"] == 1
+        assert reactions[0]["users"] == ["U002"]
+
+
 class TestDigest:
     """digest.md CRUD 테스트"""
 

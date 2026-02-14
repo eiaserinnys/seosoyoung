@@ -221,6 +221,15 @@ async def run_channel_pipeline(
         judge_result, digest=current_digest or ""
     )
 
+    # 리액션 상세 정보 구성
+    reaction_detail = None
+    if judge_result.reaction_type != "none" and judge_result.reaction_target:
+        reaction_detail = (
+            f"{judge_result.reaction_type}: "
+            f"`{judge_result.reaction_target}` → "
+            f"{judge_result.reaction_content or '(없음)'}"
+        )
+
     actions = _parse_judge_actions(judge_result)
     if not actions:
         await send_debug_log(
@@ -232,6 +241,8 @@ async def run_channel_pipeline(
             actions_filtered=[],
             reasoning=judge_result.reasoning,
             emotion=judge_result.emotion,
+            pending_count=len(pending_messages),
+            reaction_detail=reaction_detail,
         )
     else:
         react_actions = [a for a in actions if a.type == "react"]
@@ -298,6 +309,8 @@ async def run_channel_pipeline(
             actions_filtered=filtered,
             reasoning=judge_result.reasoning,
             emotion=judge_result.emotion,
+            pending_count=len(pending_messages),
+            reaction_detail=reaction_detail,
         )
 
     # e) pending을 judged로 이동

@@ -267,6 +267,99 @@ class ChannelStore:
                 encoding="utf-8",
             )
 
+    # ── reactions 갱신 ───────────────────────────────────
+
+    def update_reactions(
+        self, channel_id: str, *, ts: str, emoji: str, user: str, action: str,
+    ) -> None:
+        """pending/judged/thread 버퍼에서 ts가 일치하는 메시지의 reactions를 갱신합니다.
+
+        Args:
+            channel_id: 채널 ID
+            ts: 대상 메시지 타임스탬프
+            emoji: 이모지 이름 (콜론 없이)
+            user: 리액션을 추가/제거한 유저 ID
+            action: "added" | "removed"
+        """
+        updated = self._update_reactions_in_jsonl(
+            self._pending_path(channel_id),
+            self._pending_lock(channel_id),
+            ts, emoji, user, action,
+        )
+        if updated:
+            return
+
+        updated = self._update_reactions_in_jsonl(
+            self._judged_path(channel_id),
+            self._judged_lock(channel_id),
+            ts, emoji, user, action,
+        )
+        if updated:
+            return
+
+        # 스레드 버퍼 순회
+        threads_dir = self._threads_dir(channel_id)
+        if threads_dir.exists():
+            for path in threads_dir.glob("*.jsonl"):
+                thread_ts = path.stem
+                lock_path = self._thread_buffer_lock(channel_id, thread_ts)
+                updated = self._update_reactions_in_jsonl(
+                    path, lock_path, ts, emoji, user, action,
+                )
+                if updated:
+                    return
+
+    def _update_reactions_in_jsonl(
+        self, path: Path, lock_path: Path,
+        ts: str, emoji: str, user: str, action: str,
+    ) -> bool:
+        """JSONL 파일 내에서 ts가 일치하는 메시지의 reactions를 갱신합니다.
+
+        Returns:
+            True if a matching message was found and updated, False otherwise.
+        """
+        if not path.exists():
+            return False
+
+        lock = FileLock(str(lock_path), timeout=5)
+        with lock:
+            messages = self._read_jsonl(path)
+            found = False
+            for msg in messages:
+                if msg.get("ts") != ts:
+                    continue
+                found = True
+                reactions = msg.setdefault("reactions", [])
+                # 해당 이모지 항목 찾기
+                entry = None
+                for r in reactions:
+                    if r["name"] == emoji:
+                        entry = r
+                        break
+
+                if action == "added":
+                    if entry is None:
+                        reactions.append({"name": emoji, "users": [user], "count": 1})
+                    else:
+                        if user not in entry["users"]:
+                            entry["users"].append(user)
+                            entry["count"] = len(entry["users"])
+                elif action == "removed":
+                    if entry is not None and user in entry["users"]:
+                        entry["users"].remove(user)
+                        entry["count"] = len(entry["users"])
+                        if entry["count"] == 0:
+                            reactions.remove(entry)
+
+                break  # ts는 유니크하므로 첫 매칭만 처리
+
+            if found:
+                with open(path, "w", encoding="utf-8") as f:
+                    for msg in messages:
+                        f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
+            return found
+
     # ── 유틸리티 ─────────────────────────────────────────
 
     @staticmethod

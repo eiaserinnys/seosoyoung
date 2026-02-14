@@ -172,6 +172,14 @@ def build_judge_user_prompt(
     )
 
 
+def _format_reactions(reactions: list[dict]) -> str:
+    """reactions 리스트를 `:emoji:×count` 형식의 문자열로 변환"""
+    if not reactions:
+        return ""
+    parts = [f":{r['name']}:×{r['count']}" for r in reactions]
+    return " [" + " ".join(parts) + "]"
+
+
 def _format_pending_messages(
     messages: list[dict], bot_user_id: str | None = None,
 ) -> str:
@@ -192,7 +200,8 @@ def _format_pending_messages(
         tag = ""
         if mention_pattern and mention_pattern in text and not is_bot:
             tag = " [ALREADY REACTED]"
-        lines.append(f"[{ts}] <{user}>: {text}{tag}")
+        reactions_str = _format_reactions(msg.get("reactions", []))
+        lines.append(f"[{ts}] <{user}>: {text}{tag}{reactions_str}")
     return "\n".join(lines)
 
 
@@ -205,7 +214,8 @@ def _format_channel_messages(messages: list[dict]) -> str:
         ts = msg.get("ts", "")
         user = msg.get("user", "unknown")
         text = msg.get("text", "")
-        lines.append(f"[{ts}] <{user}>: {text}")
+        reactions_str = _format_reactions(msg.get("reactions", []))
+        lines.append(f"[{ts}] <{user}>: {text}{reactions_str}")
     return "\n".join(lines)
 
 
@@ -220,6 +230,7 @@ def _format_thread_messages(thread_buffers: dict[str, list[dict]]) -> str:
             ts = msg.get("ts", "")
             user = msg.get("user", "unknown")
             text = msg.get("text", "")
-            lines.append(f"  [{ts}] <{user}>: {text}")
+            reactions_str = _format_reactions(msg.get("reactions", []))
+            lines.append(f"  [{ts}] <{user}>: {text}{reactions_str}")
         sections.append("\n".join(lines))
     return "\n\n".join(sections)

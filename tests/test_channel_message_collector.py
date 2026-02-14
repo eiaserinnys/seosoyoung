@@ -134,6 +134,87 @@ class TestChannelMessageCollector:
         assert messages[2]["text"] == "메시지 2"
 
 
+class TestReactionCollection:
+    """리액션 이벤트 수집 테스트"""
+
+    def test_collect_reaction_added(self, collector, store):
+        """reaction_added 이벤트 수집"""
+        # 먼저 메시지를 pending에 넣어놓음
+        store.append_pending("C_OBSERVE", {"ts": "1234.5678", "user": "U001", "text": "hello"})
+
+        event = {
+            "type": "reaction_added",
+            "reaction": "thumbsup",
+            "user": "U002",
+            "item": {
+                "type": "message",
+                "channel": "C_OBSERVE",
+                "ts": "1234.5678",
+            },
+        }
+        result = collector.collect_reaction(event, action="added")
+        assert result is True
+
+        msgs = store.load_pending("C_OBSERVE")
+        reactions = msgs[0].get("reactions", [])
+        assert len(reactions) == 1
+        assert reactions[0]["name"] == "thumbsup"
+
+    def test_collect_reaction_removed(self, collector, store):
+        """reaction_removed 이벤트 수집"""
+        store.append_pending("C_OBSERVE", {
+            "ts": "1234.5678", "user": "U001", "text": "hello",
+            "reactions": [{"name": "thumbsup", "users": ["U002"], "count": 1}],
+        })
+
+        event = {
+            "type": "reaction_removed",
+            "reaction": "thumbsup",
+            "user": "U002",
+            "item": {
+                "type": "message",
+                "channel": "C_OBSERVE",
+                "ts": "1234.5678",
+            },
+        }
+        result = collector.collect_reaction(event, action="removed")
+        assert result is True
+
+        msgs = store.load_pending("C_OBSERVE")
+        reactions = msgs[0].get("reactions", [])
+        assert len(reactions) == 0
+
+    def test_collect_reaction_ignores_non_target_channel(self, collector, store):
+        """대상 외 채널의 리액션은 무시"""
+        event = {
+            "type": "reaction_added",
+            "reaction": "thumbsup",
+            "user": "U002",
+            "item": {
+                "type": "message",
+                "channel": "C_OTHER",
+                "ts": "1234.5678",
+            },
+        }
+        result = collector.collect_reaction(event, action="added")
+        assert result is False
+
+    def test_collect_reaction_ignores_non_message_item(self, collector, store):
+        """메시지가 아닌 아이템(파일 등)에 대한 리액션은 무시"""
+        event = {
+            "type": "reaction_added",
+            "reaction": "thumbsup",
+            "user": "U002",
+            "item": {
+                "type": "file",
+                "channel": "C_OBSERVE",
+                "file": "F001",
+            },
+        }
+        result = collector.collect_reaction(event, action="added")
+        assert result is False
+
+
 class TestSubtypeHandling:
     """subtype 이벤트 처리 테스트"""
 

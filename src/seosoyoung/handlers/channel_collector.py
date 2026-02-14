@@ -75,3 +75,33 @@ class ChannelMessageCollector:
             self.store.append_channel_message(channel, msg)
 
         return True
+
+    def collect_reaction(self, event: dict, action: str) -> bool:
+        """리액션 이벤트에서 reactions 필드를 갱신합니다.
+
+        Args:
+            event: reaction_added / reaction_removed 이벤트
+            action: "added" | "removed"
+
+        Returns:
+            True: 갱신 성공, False: 대상이 아니거나 갱신하지 않음
+        """
+        item = event.get("item", {})
+        if item.get("type") != "message":
+            return False
+
+        channel = item.get("channel", "")
+        if not self.target_channels or channel not in self.target_channels:
+            return False
+
+        ts = item.get("ts", "")
+        emoji = event.get("reaction", "")
+        user = event.get("user", "")
+
+        if not ts or not emoji:
+            return False
+
+        self.store.update_reactions(
+            channel, ts=ts, emoji=emoji, user=user, action=action,
+        )
+        return True

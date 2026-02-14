@@ -210,6 +210,13 @@ def register_message_handlers(app, dependencies: dict):
         4. Execute 레이블이 있는 것과 동일한 프롬프트로 실행
         5. 원본 메시지의 스레드에 응답
         """
+        # 채널 리액션 수집 (EXECUTE_EMOJI 처리보다 먼저)
+        if channel_collector:
+            try:
+                channel_collector.collect_reaction(event, action="added")
+            except Exception as e:
+                logger.error(f"채널 리액션 수집 실패 (added): {e}")
+
         reaction = event.get("reaction", "")
         item = event.get("item", {})
         item_ts = item.get("ts", "")
@@ -357,6 +364,19 @@ def register_message_handlers(app, dependencies: dict):
         # 백그라운드 스레드에서 실행
         execute_thread = threading.Thread(target=run_with_compact, daemon=True)
         execute_thread.start()
+
+
+    @app.event("reaction_removed")
+    def handle_reaction_removed(event, client):
+        """리액션 제거 이벤트 처리
+
+        채널 모니터링 대상의 리액션 제거를 수집합니다.
+        """
+        if channel_collector:
+            try:
+                channel_collector.collect_reaction(event, action="removed")
+            except Exception as e:
+                logger.error(f"채널 리액션 수집 실패 (removed): {e}")
 
 
 def _contains_trigger_word(text: str) -> bool:

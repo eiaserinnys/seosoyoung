@@ -61,4 +61,6 @@ channel_id를 기본 키로 사용합니다.
 - `_digest_lock_path(self, channel_id)` (줄 237): 
 - `get_digest(self, channel_id)` (줄 240): digest.md를 로드. 없으면 None.
 - `save_digest(self, channel_id, content, meta)` (줄 259): digest.md를 저장
-- `_read_jsonl(path)` (줄 273): JSONL 파일을 읽어 리스트로 반환
+- `update_reactions(self, channel_id)` (줄 272): pending/judged/thread 버퍼에서 ts가 일치하는 메시지의 reactions를 갱신합니다.
+- `_update_reactions_in_jsonl(self, path, lock_path, ts, emoji, user, action)` (줄 312): JSONL 파일 내에서 ts가 일치하는 메시지의 reactions를 갱신합니다.
+- `_read_jsonl(path)` (줄 366): JSONL 파일을 읽어 리스트로 반환

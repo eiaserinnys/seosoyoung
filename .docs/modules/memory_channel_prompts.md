@@ -57,19 +57,23 @@
 - 위치: 줄 149
 - 설명: 리액션 판단 전용 사용자 프롬프트를 구성합니다.
 
-### `_format_pending_messages(messages, bot_user_id)`
+### `_format_reactions(reactions)`
 - 위치: 줄 175
+- 설명: reactions 리스트를 `:emoji:×count` 형식의 문자열로 변환
+
+### `_format_pending_messages(messages, bot_user_id)`
+- 위치: 줄 183
 - 설명: pending 메시지를 텍스트로 변환.
 
 사람이 보낸 봇 멘션 메시지는 멘션 핸들러가 처리하므로 [ALREADY REACTED] 표기.
 봇이 보낸 멘션은 채널 모니터가 처리해야 하므로 태그하지 않음.
 
 ### `_format_channel_messages(messages)`
-- 위치: 줄 199
+- 위치: 줄 208
 - 설명: 채널 루트 메시지를 텍스트로 변환
 
 ### `_format_thread_messages(thread_buffers)`
-- 위치: 줄 212
+- 위치: 줄 222
 - 설명: 스레드 메시지를 텍스트로 변환
 
 ## 내부 의존성
