@@ -365,6 +365,7 @@ async def _handle_multi_judge(
         react_actions=react_actions,
         message_actions_executed=executed_messages,
         pending_count=len(pending_messages),
+        pending_messages=pending_messages,
     )
 
 

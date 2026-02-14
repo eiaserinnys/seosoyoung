@@ -83,8 +83,8 @@
 - `CharacterLoader` (seosoyoung/mcp/tools/npc_chat.py:30): eb_lore 캐릭터 YAML 파일을 로드하고 필드를 추출한다.
 - `PromptBuilder` (seosoyoung/mcp/tools/npc_chat.py:126): 캐릭터 데이터를 프롬프트 템플릿에 채워 시스템 프롬프트를 생성한다.
 - `NpcSession` (seosoyoung/mcp/tools/npc_chat.py:200): NPC 대화 세션. 세션별 대화 이력과 설정을 보관한다.
-- `InterventionAction` (seosoyoung/memory/channel_intervention.py:29): 개입 액션
-- `InterventionHistory` (seosoyoung/memory/channel_intervention.py:152): 개입 이력 관리
+- `InterventionAction` (seosoyoung/memory/channel_intervention.py:30): 개입 액션
+- `InterventionHistory` (seosoyoung/memory/channel_intervention.py:153): 개입 이력 관리
 - `ChannelObserverResult` (seosoyoung/memory/channel_observer.py:30): 채널 관찰 결과 (하위호환 유지)
 - `DigestResult` (seosoyoung/memory/channel_observer.py:41): 소화 전용 결과
 - `JudgeItem` (seosoyoung/memory/channel_observer.py:49): 개별 메시지에 대한 리액션 판단 결과
@@ -204,14 +204,14 @@
 - `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
 - `get_user_profile()` (seosoyoung/mcp/tools/user_profile.py:25): Slack 사용자 프로필 정보를 조회
 - `async download_user_avatar()` (seosoyoung/mcp/tools/user_profile.py:67): Slack 사용자 프로필 이미지를 다운로드
-- `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:37): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
-- `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:78): InterventionAction 리스트를 슬랙 API로 발송합니다.
-- `intervention_probability()` (seosoyoung/memory/channel_intervention.py:130): 시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.
-- `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:275): 디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식).
-- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:329): 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
-- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:374): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
-- `send_intervention_probability_debug_log()` (seosoyoung/memory/channel_intervention.py:405): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
-- `send_multi_judge_debug_log()` (seosoyoung/memory/channel_intervention.py:450): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
+- `parse_intervention_markup()` (seosoyoung/memory/channel_intervention.py:38): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
+- `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:79): InterventionAction 리스트를 슬랙 API로 발송합니다.
+- `intervention_probability()` (seosoyoung/memory/channel_intervention.py:131): 시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.
+- `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:276): 디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식).
+- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:330): 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
+- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:375): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
+- `send_intervention_probability_debug_log()` (seosoyoung/memory/channel_intervention.py:406): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
+- `send_multi_judge_debug_log()` (seosoyoung/memory/channel_intervention.py:451): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:96): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_judge_output()` (seosoyoung/memory/channel_observer.py:122): Judge 응답에서 XML 태그를 파싱합니다.
 - `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:122): 소화/판단 분리 파이프라인을 실행합니다.

@@ -16,6 +16,7 @@ import math
 import random
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -455,10 +456,19 @@ def send_multi_judge_debug_log(
     react_actions: list[InterventionAction],
     message_actions_executed: list[InterventionAction],
     pending_count: int = 0,
+    pending_messages: list[dict] | None = None,
 ) -> None:
     """복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다."""
     if not debug_channel:
         return
+
+    # pending_messages를 ts 기준으로 인덱싱
+    msg_by_ts: dict[str, dict] = {}
+    if pending_messages:
+        for msg in pending_messages:
+            ts = msg.get("ts", "")
+            if ts:
+                msg_by_ts[ts] = msg
 
     react_count = len(react_actions)
     intervene_count = len(message_actions_executed)
@@ -473,11 +483,11 @@ def send_multi_judge_debug_log(
     ]
 
     summary_fields = [
-        {"type": "mrkdwn", "text": f"*채널*"},
+        {"type": "mrkdwn", "text": "*채널*"},
         {"type": "mrkdwn", "text": f"`{source_channel}`"},
-        {"type": "mrkdwn", "text": f"*pending*"},
+        {"type": "mrkdwn", "text": "*pending*"},
         {"type": "mrkdwn", "text": f"{pending_count}건"},
-        {"type": "mrkdwn", "text": f"*판단 결과*"},
+        {"type": "mrkdwn", "text": "*판단 결과*"},
         {"type": "mrkdwn", "text": f"react {react_count} · intervene {intervene_count} · none {none_count}"},
     ]
     blocks.append({"type": "section", "fields": summary_fields})
@@ -493,9 +503,38 @@ def send_multi_judge_debug_log(
             reaction_text = f"intervene → {target}"
 
         # 테이블 1: 메시지 정보
+        orig_msg = msg_by_ts.get(item.ts, {})
+        sender = orig_msg.get("user", "")
+        if sender:
+            sender = f"<@{sender}>"
+        bot_id = orig_msg.get("bot_id", "")
+        if bot_id:
+            sender += f" (bot: `{bot_id}`)" if sender else f"bot: `{bot_id}`"
+        sender = sender or "(알 수 없음)"
+
+        # ts → 사람이 읽을 수 있는 시각
+        msg_time = ""
+        try:
+            ts_float = float(item.ts.split(".")[0])
+            kst = timezone(timedelta(hours=9))
+            dt = datetime.fromtimestamp(ts_float, tz=kst)
+            msg_time = dt.strftime("%p %I:%M").replace("AM", "오전").replace("PM", "오후")
+        except (ValueError, IndexError):
+            msg_time = item.ts
+
+        msg_text = orig_msg.get("text", "")
+        if len(msg_text) > 100:
+            msg_text = msg_text[:100] + "..."
+
         table1_fields = [
             {"type": "mrkdwn", "text": "*메시지 ID*"},
             {"type": "mrkdwn", "text": f"`{item.ts}`"},
+            {"type": "mrkdwn", "text": "*발신자*"},
+            {"type": "mrkdwn", "text": sender},
+            {"type": "mrkdwn", "text": "*발신 시각*"},
+            {"type": "mrkdwn", "text": msg_time},
+            {"type": "mrkdwn", "text": "*내용*"},
+            {"type": "mrkdwn", "text": msg_text or "(없음)"},
         ]
         blocks.append({"type": "section", "fields": table1_fields})
 

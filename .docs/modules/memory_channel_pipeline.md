@@ -50,11 +50,11 @@ e) pending을 judged로 이동
 - 설명: 복수 JudgeItem 처리: 이모지 일괄 + 개입 확률 판단
 
 ### `async _handle_single_judge(judge_result, store, channel_id, slack_client, cooldown, pending_messages, current_digest, debug_channel, intervention_threshold, llm_call, claude_runner)`
-- 위치: 줄 371
+- 위치: 줄 372
 - 설명: 하위호환: 단일 JudgeResult 처리
 
 ### `async _execute_intervene(store, channel_id, slack_client, action, pending_messages, observer_reason, claude_runner, llm_call)`
-- 위치: 줄 485
+- 위치: 줄 486
 - 설명: 서소영의 개입 응답을 생성하고 발송합니다.
 
 ## 내부 의존성
