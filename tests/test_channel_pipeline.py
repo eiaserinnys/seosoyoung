@@ -13,7 +13,10 @@ from seosoyoung.memory.channel_observer import (
     JudgeItem,
     JudgeResult,
 )
-from seosoyoung.memory.channel_pipeline import run_channel_pipeline
+from seosoyoung.memory.channel_pipeline import (
+    _apply_importance_modifiers,
+    run_channel_pipeline,
+)
 from seosoyoung.memory.channel_store import ChannelStore
 
 
@@ -896,3 +899,85 @@ class TestMultiJudgePipeline:
         client.reactions_add.assert_called_once()
         # intervene은 차단됨
         mock_llm.assert_not_called()
+
+
+# ── _apply_importance_modifiers 테스트 ──────────────────
+
+class TestApplyImportanceModifiers:
+    """related_to_me 가중치와 addressed_to_me 강제 반응 로직 테스트"""
+
+    def test_related_to_me_doubles_importance(self):
+        """related_to_me=True → importance × 2"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="1.1", importance=3, related_to_me=True, reaction_type="react",
+                      reaction_target="1.1", reaction_content="eyes"),
+        ])
+        _apply_importance_modifiers(result, [{"ts": "1.1", "user": "U1", "text": "hi"}])
+        assert result.items[0].importance == 6  # 3 × 2
+
+    def test_related_to_me_caps_at_10(self):
+        """related_to_me 가중치는 10을 초과하지 않음"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="1.1", importance=7, related_to_me=True, reaction_type="none"),
+        ])
+        _apply_importance_modifiers(result, [{"ts": "1.1", "user": "U1", "text": "hi"}])
+        assert result.items[0].importance == 10  # min(14, 10)
+
+    def test_related_to_me_false_no_change(self):
+        """related_to_me=False → importance 변경 없음"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="1.1", importance=3, related_to_me=False, reaction_type="none"),
+        ])
+        _apply_importance_modifiers(result, [{"ts": "1.1", "user": "U1", "text": "hi"}])
+        assert result.items[0].importance == 3
+
+    def test_addressed_to_me_human_forces_intervene(self):
+        """addressed_to_me=True + 사람 → importance 최소 7, intervene 전환"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="1.1", importance=3, addressed_to_me=True,
+                      reaction_type="react", reaction_target="1.1", reaction_content="eyes"),
+        ])
+        pending = [{"ts": "1.1", "user": "U1", "text": "소영아"}]
+        _apply_importance_modifiers(result, pending)
+        item = result.items[0]
+        assert item.importance == 7
+        assert item.reaction_type == "intervene"
+
+    def test_addressed_to_me_bot_no_force(self):
+        """addressed_to_me=True + 봇 → 강제 반응 안 함"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="1.1", importance=3, addressed_to_me=True,
+                      reaction_type="react", reaction_target="1.1", reaction_content="eyes"),
+        ])
+        pending = [{"ts": "1.1", "user": "U1", "text": "소영아", "bot_id": "B123"}]
+        _apply_importance_modifiers(result, pending)
+        item = result.items[0]
+        assert item.importance == 3  # 변경 없음
+        assert item.reaction_type == "react"  # 변경 없음
+
+    def test_addressed_to_me_already_intervene_keeps(self):
+        """addressed_to_me=True + 이미 intervene → 유지"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="1.1", importance=9, addressed_to_me=True,
+                      reaction_type="intervene", reaction_target="channel",
+                      reaction_content="이미 개입 내용"),
+        ])
+        pending = [{"ts": "1.1", "user": "U1", "text": "소영아"}]
+        _apply_importance_modifiers(result, pending)
+        item = result.items[0]
+        assert item.importance == 9
+        assert item.reaction_type == "intervene"
+        assert item.reaction_content == "이미 개입 내용"
+
+    def test_both_related_and_addressed(self):
+        """related_to_me + addressed_to_me 동시 적용"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="1.1", importance=3, related_to_me=True,
+                      addressed_to_me=True, reaction_type="none"),
+        ])
+        pending = [{"ts": "1.1", "user": "U1", "text": "소영아"}]
+        _apply_importance_modifiers(result, pending)
+        item = result.items[0]
+        # related_to_me: 3 * 2 = 6, addressed_to_me: max(6, 7) = 7
+        assert item.importance == 7
+        assert item.reaction_type == "intervene"
