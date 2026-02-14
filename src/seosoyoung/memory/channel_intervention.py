@@ -253,12 +253,23 @@ class InterventionHistory:
 CooldownManager = InterventionHistory
 
 
-def _build_fields_block(fields: list[tuple[str, str]]) -> dict:
-    """(label, value) 쌍 리스트를 section.fields Block Kit 블록으로 변환합니다."""
+def _build_fields_blocks(fields: list[tuple[str, str]]) -> list[dict]:
+    """(label, value) 쌍 리스트를 2열 표 형식의 Block Kit 블록 리스트로 변환합니다.
+
+    왼쪽에 항목명(*bold*), 오른쪽에 값이 나오도록 라벨과 값을 별도 field로 배치합니다.
+    section.fields는 최대 10개이므로, 5쌍(=10 fields)씩 section 블록을 분할합니다.
+    """
     block_fields = []
     for label, value in fields:
-        block_fields.append({"type": "mrkdwn", "text": f"*{label}*\n{value}"})
-    return {"type": "section", "fields": block_fields}
+        block_fields.append({"type": "mrkdwn", "text": f"*{label}*"})
+        block_fields.append({"type": "mrkdwn", "text": value})
+
+    # 10개씩(5행) 분할
+    blocks = []
+    for i in range(0, len(block_fields), 10):
+        chunk = block_fields[i:i + 10]
+        blocks.append({"type": "section", "fields": chunk})
+    return blocks
 
 
 async def send_debug_log(
@@ -298,10 +309,9 @@ async def send_debug_log(
     if reasoning:
         fields.append(("판단 이유", reasoning))
 
-    # section.fields는 최대 10개까지만 지원
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": "Channel Observer"}},
-        _build_fields_block(fields[:10]),
+        *_build_fields_blocks(fields),
     ]
 
     fallback = (
@@ -350,7 +360,7 @@ def send_collect_debug_log(
 
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": ":memo: 채널 수집"}},
-        _build_fields_block(fields),
+        *_build_fields_blocks(fields),
     ]
 
     fallback = f"[채널 수집] {source_channel} | {location} | {ratio} tok"
@@ -381,7 +391,7 @@ def send_digest_skip_debug_log(
 
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": ":pause_button: 소화 스킵"}},
-        _build_fields_block(fields),
+        *_build_fields_blocks(fields),
     ]
 
     fallback = f"[소화 스킵] {source_channel} | 버퍼 {buffer_tokens} tok < 임계치 {threshold} tok"
@@ -422,7 +432,7 @@ def send_intervention_probability_debug_log(
 
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": f"{emoji} 개입 확률 판단"}},
-        _build_fields_block(fields),
+        *_build_fields_blocks(fields),
     ]
 
     fallback = (

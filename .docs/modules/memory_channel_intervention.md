@@ -83,24 +83,27 @@ Args:
 Returns:
     0.0~1.0 사이의 확률 값
 
-### `_build_fields_block(fields)`
+### `_build_fields_blocks(fields)`
 - 위치: 줄 256
-- 설명: (label, value) 쌍 리스트를 section.fields Block Kit 블록으로 변환합니다.
+- 설명: (label, value) 쌍 리스트를 2열 표 형식의 Block Kit 블록 리스트로 변환합니다.
+
+왼쪽에 항목명(*bold*), 오른쪽에 값이 나오도록 라벨과 값을 별도 field로 배치합니다.
+section.fields는 최대 10개이므로, 5쌍(=10 fields)씩 section 블록을 분할합니다.
 
 ### `async send_debug_log(client, debug_channel, source_channel, observer_result, actions, actions_filtered, reasoning, emotion, pending_count, reaction_detail)`
-- 위치: 줄 264
+- 위치: 줄 275
 - 설명: 디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식).
 
 ### `send_collect_debug_log(client, debug_channel, source_channel, buffer_tokens, threshold, message_text, user, is_thread)`
-- 위치: 줄 319
+- 위치: 줄 329
 - 설명: 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
 
 ### `send_digest_skip_debug_log(client, debug_channel, source_channel, buffer_tokens, threshold)`
-- 위치: 줄 364
+- 위치: 줄 374
 - 설명: 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
 
 ### `send_intervention_probability_debug_log(client, debug_channel, source_channel, importance, time_factor, freq_factor, probability, final_score, threshold, passed)`
-- 위치: 줄 395
+- 위치: 줄 405
 - 설명: 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
 
 ## 내부 의존성

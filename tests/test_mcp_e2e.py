@@ -45,7 +45,10 @@ class TestMCPServerStandalone:
         assert "npc_set_situation" in tools
         assert "npc_close_session" in tools
         assert "npc_get_history" in tools
-        assert len(tools) == 13
+        assert "npc_inject" in tools
+        assert "slack_download_user_avatar" in tools
+        assert "slack_get_user_profile" in tools
+        assert len(tools) == 14
 
     def test_get_context_reads_env(self):
         """slack_get_context가 환경변수에서 값을 읽음"""
@@ -488,7 +491,7 @@ class TestNpcE2EFlow:
             talk1 = npc_talk(sid, "같이 가자!")
         assert talk1["success"] is True
         assert talk1["message"] == "당연하지. 준비됐어."
-        assert talk1["turn_count"] == 4  # open(2) + talk(2)
+        assert talk1["turn_count"] == 3  # open(1) + talk(2)
 
         # 4. 상황 변경
         with patch(
@@ -502,14 +505,14 @@ class TestNpcE2EFlow:
         # 5. 이력 조회 (세션 유지)
         history = npc_get_history(sid)
         assert history["success"] is True
-        assert history["turn_count"] == 6  # open(2) + talk(2) + sit(2)
+        assert history["turn_count"] == 5  # open(1) + talk(2) + sit(2)
         assert history["has_digest"] is False
 
         # 6. 종료
         close = npc_close_session(sid)
         assert close["success"] is True
-        assert close["turn_count"] == 6
-        assert len(close["history"]) == 6
+        assert close["turn_count"] == 5
+        assert len(close["history"]) == 5
 
         # 7. 종료 후 대화 시도 → 실패
         fail = npc_talk(sid, "아직 있어?")
