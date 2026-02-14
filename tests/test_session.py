@@ -57,6 +57,43 @@ class TestSession:
         assert session.user_id == ""
         assert session.username == ""
 
+    def test_session_source_type_default(self):
+        """source_type 기본값은 thread"""
+        session = Session(thread_ts="1234567890.123456", channel_id="C12345")
+        assert session.source_type == "thread"
+
+    def test_session_source_type_channel(self):
+        """source_type을 channel로 설정"""
+        session = Session(
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+            source_type="channel",
+        )
+        assert session.source_type == "channel"
+
+    def test_session_source_type_hybrid(self):
+        """source_type을 hybrid로 설정"""
+        session = Session(
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+            source_type="hybrid",
+        )
+        assert session.source_type == "hybrid"
+
+    def test_session_last_seen_ts_default(self):
+        """last_seen_ts 기본값은 빈 문자열"""
+        session = Session(thread_ts="1234567890.123456", channel_id="C12345")
+        assert session.last_seen_ts == ""
+
+    def test_session_last_seen_ts(self):
+        """last_seen_ts 설정"""
+        session = Session(
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+            last_seen_ts="1234567890.999999",
+        )
+        assert session.last_seen_ts == "1234567890.999999"
+
 
 class TestSessionManager:
     """SessionManager 테스트"""
@@ -161,6 +198,39 @@ class TestSessionManager:
         thread_ts_list = [s.thread_ts for s in sessions]
         assert "1111111111.111111" in thread_ts_list
         assert "2222222222.222222" in thread_ts_list
+
+    def test_create_session_with_source_type(self, manager):
+        """source_type 포함 세션 생성 및 영속성 테스트"""
+        session = manager.create(
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+            source_type="channel",
+            last_seen_ts="1234567890.000001",
+        )
+
+        assert session.source_type == "channel"
+        assert session.last_seen_ts == "1234567890.000001"
+
+        # 파일에서 다시 로드해도 유지
+        manager._cache.clear()
+        reloaded = manager.get("1234567890.123456")
+        assert reloaded.source_type == "channel"
+        assert reloaded.last_seen_ts == "1234567890.000001"
+
+    def test_update_last_seen_ts(self, manager):
+        """last_seen_ts 업데이트"""
+        manager.create(
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+        )
+
+        session = manager.update_last_seen_ts("1234567890.123456", "1234567890.999999")
+        assert session.last_seen_ts == "1234567890.999999"
+
+        # 파일에서 다시 로드해도 유지
+        manager._cache.clear()
+        reloaded = manager.get("1234567890.123456")
+        assert reloaded.last_seen_ts == "1234567890.999999"
 
     def test_session_persistence(self, temp_dir):
         """세션 파일 저장/로드 테스트"""

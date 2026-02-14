@@ -9,6 +9,7 @@ from seosoyoung.config import Config
 from seosoyoung.handlers.translate import process_translate_message
 from seosoyoung.slack import download_files_sync, build_file_context
 from seosoyoung.claude import get_claude_runner
+from seosoyoung.claude.session_context import build_followup_context
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,8 @@ def build_slack_context(
 
 def process_thread_message(
     event, text, thread_ts, ts, channel, session, say, client,
-    get_user_role, run_claude_in_session, log_prefix="메시지"
+    get_user_role, run_claude_in_session, log_prefix="메시지",
+    channel_store=None, session_manager=None,
 ):
     """세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 
@@ -82,7 +84,37 @@ def process_thread_message(
         parent_thread_ts=thread_ts,
     )
 
+    # 후속 채널 컨텍스트 주입 (hybrid 세션이고 channel_store가 있는 경우)
+    followup_context = ""
+    if session.source_type == "hybrid" and channel_store and session.last_seen_ts:
+        followup = build_followup_context(
+            channel_id=channel,
+            last_seen_ts=session.last_seen_ts,
+            channel_store=channel_store,
+            monitored_channels=Config.CHANNEL_OBSERVER_CHANNELS,
+        )
+        if followup["messages"]:
+            lines = []
+            for msg in followup["messages"]:
+                user = msg.get("user", "unknown")
+                msg_text = msg.get("text", "")
+                linked = msg.get("linked_message_ts", "")
+                line = f"<{user}>: {msg_text}"
+                if linked:
+                    line += f" [linked:{linked}]"
+                lines.append(line)
+            followup_context = (
+                "[이전 대화 이후 채널에서 새로 발생한 대화입니다]\n"
+                + "\n".join(lines)
+            )
+
+            # last_seen_ts 업데이트
+            if session_manager:
+                session_manager.update_last_seen_ts(thread_ts, followup["last_seen_ts"])
+
     prompt_parts = [slack_context]
+    if followup_context:
+        prompt_parts.append(followup_context)
     if clean_text:
         prompt_parts.append(clean_text)
     if file_context:
@@ -193,7 +225,8 @@ def register_message_handlers(app, dependencies: dict):
 
         process_thread_message(
             event, text, thread_ts, ts, channel, session, say, client,
-            get_user_role, run_claude_in_session, log_prefix="메시지"
+            get_user_role, run_claude_in_session, log_prefix="메시지",
+            channel_store=channel_store, session_manager=session_manager,
         )
 
     @app.event("reaction_added")

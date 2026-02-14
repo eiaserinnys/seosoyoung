@@ -9,11 +9,11 @@
 ## 함수
 
 ### `_get_recall()`
-- 위치: 줄 21
+- 위치: 줄 22
 - 설명: Recall 싱글톤 반환 (지연 초기화)
 
 ### `_run_recall(user_request)`
-- 위치: 줄 52
+- 위치: 줄 53
 - 설명: Recall 실행 (동기 래퍼)
 
 Args:
@@ -23,11 +23,11 @@ Returns:
     RecallResult 또는 None
 
 ### `extract_command(text)`
-- 위치: 줄 81
+- 위치: 줄 82
 - 설명: 멘션에서 명령어 추출
 
 ### `_is_resume_list_run_command(command)`
-- 위치: 줄 87
+- 위치: 줄 88
 - 설명: 정주행 재개 명령어인지 확인
 
 다음과 같은 패턴을 인식합니다:
@@ -37,7 +37,7 @@ Returns:
 - resume list run
 
 ### `build_prompt_with_recall(context, question, file_context, recall_result, slack_context)`
-- 위치: 줄 107
+- 위치: 줄 108
 - 설명: Recall 결과를 포함한 프롬프트 구성.
 
 Args:
@@ -50,12 +50,20 @@ Args:
 Returns:
     구성된 프롬프트 문자열
 
+### `_get_channel_messages(client, channel, limit)`
+- 위치: 줄 152
+- 설명: 채널의 최근 메시지를 가져와서 dict 리스트로 반환
+
+### `_format_context_messages(messages)`
+- 위치: 줄 164
+- 설명: 메시지 dict 리스트를 컨텍스트 문자열로 포맷팅
+
 ### `get_channel_history(client, channel, limit)`
-- 위치: 줄 150
+- 위치: 줄 174
 - 설명: 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 171
+- 위치: 줄 179
 - 설명: 멘션 핸들러 등록
 
 Args:
@@ -64,6 +72,8 @@ Args:
 
 ## 내부 의존성
 
+- `seosoyoung.claude.session_context.build_initial_context`
+- `seosoyoung.claude.session_context.format_hybrid_context`
 - `seosoyoung.config.Config`
 - `seosoyoung.handlers.message.build_slack_context`
 - `seosoyoung.handlers.message.process_thread_message`

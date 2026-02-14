@@ -11,6 +11,7 @@ from seosoyoung.restart import RestartType
 from seosoyoung.translator import detect_language, translate
 from seosoyoung.slack import download_files_sync, build_file_context
 from seosoyoung.handlers.message import process_thread_message, build_slack_context
+from seosoyoung.claude.session_context import build_initial_context, format_hybrid_context
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +129,8 @@ def build_prompt_with_recall(
     if slack_context:
         prompt_parts.append(slack_context)
 
-    prompt_parts.append(f"아래는 Slack 채널의 최근 대화입니다:\n\n{context}")
+    if context:
+        prompt_parts.append(context)
 
     # Recall 결과 주입
     if recall_result and recall_result.has_recommendation:
@@ -147,25 +149,31 @@ def build_prompt_with_recall(
     return "\n".join(prompt_parts)
 
 
-def get_channel_history(client, channel: str, limit: int = 20) -> str:
-    """채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환"""
+def _get_channel_messages(client, channel: str, limit: int = 20) -> list[dict]:
+    """채널의 최근 메시지를 가져와서 dict 리스트로 반환"""
     try:
         result = client.conversations_history(channel=channel, limit=limit)
         messages = result.get("messages", [])
-
         # 시간순 정렬 (오래된 것부터)
-        messages = list(reversed(messages))
-
-        context_lines = []
-        for msg in messages:
-            user = msg.get("user", "unknown")
-            text = msg.get("text", "")
-            context_lines.append(f"<{user}>: {text}")
-
-        return "\n".join(context_lines)
+        return list(reversed(messages))
     except Exception as e:
         logger.warning(f"채널 히스토리 가져오기 실패: {e}")
-        return ""
+        return []
+
+
+def _format_context_messages(messages: list[dict]) -> str:
+    """메시지 dict 리스트를 컨텍스트 문자열로 포맷팅"""
+    context_lines = []
+    for msg in messages:
+        user = msg.get("user", "unknown")
+        text = msg.get("text", "")
+        context_lines.append(f"<{user}>: {text}")
+    return "\n".join(context_lines)
+
+
+def get_channel_history(client, channel: str, limit: int = 20) -> str:
+    """채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환"""
+    return _format_context_messages(_get_channel_messages(client, channel, limit))
 
 
 def register_mention_handlers(app, dependencies: dict):
@@ -183,6 +191,7 @@ def register_mention_handlers(app, dependencies: dict):
     get_user_role = dependencies["get_user_role"]
     send_restart_confirmation = dependencies["send_restart_confirmation"]
     list_runner_ref = dependencies.get("list_runner_ref", lambda: None)
+    channel_store = dependencies.get("channel_store")
 
     @app.event("app_mention")
     def handle_mention(event, say, client):
@@ -257,7 +266,8 @@ def register_mention_handlers(app, dependencies: dict):
 
                 process_thread_message(
                     event, text, thread_ts, ts, channel, session, say, client,
-                    get_user_role, run_claude_in_session, log_prefix="스레드 멘션"
+                    get_user_role, run_claude_in_session, log_prefix="스레드 멘션",
+                    channel_store=channel_store, session_manager=session_manager,
                 )
                 return
             logger.debug("스레드에서 멘션됨 (세션 없음) - 원샷 답변")
@@ -489,13 +499,24 @@ def register_mention_handlers(app, dependencies: dict):
         session_thread_ts = thread_ts or ts
         is_existing_thread = thread_ts is not None  # 기존 스레드에서 호출됨
 
-        # 세션 생성 (역할 정보 포함)
+        # 채널 컨텍스트 구성 (세션 생성 전)
+        slack_messages = _get_channel_messages(client, channel, limit=20)
+        initial_ctx = build_initial_context(
+            channel_id=channel,
+            slack_messages=slack_messages,
+            monitored_channels=Config.CHANNEL_OBSERVER_CHANNELS,
+            channel_store=channel_store,
+        )
+
+        # 세션 생성 (역할 + 컨텍스트 정보 포함)
         session = session_manager.create(
             thread_ts=session_thread_ts,
             channel_id=channel,
             user_id=user_id,
             username=user_info["username"],
-            role=user_info["role"]
+            role=user_info["role"],
+            source_type=initial_ctx["source_type"],
+            last_seen_ts=initial_ctx["last_seen_ts"],
         )
 
         # 멘션 텍스트에서 질문 추출 (멘션 제거)
@@ -571,8 +592,10 @@ def register_mention_handlers(app, dependencies: dict):
                     text="\n".join(recall_debug_lines),
                 )
 
-        # 채널 컨텍스트 가져오기
-        context = get_channel_history(client, channel, limit=20)
+        # 채널 컨텍스트 포맷팅 (hybrid 세션이면 출처 명시 헤더 포함)
+        context = format_hybrid_context(
+            initial_ctx["messages"], initial_ctx["source_type"]
+        )
 
         # 슬랙 컨텍스트 생성
         slack_ctx = build_slack_context(

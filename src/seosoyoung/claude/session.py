@@ -29,6 +29,8 @@ class Session:
     created_at: str = ""    # 생성 시각
     updated_at: str = ""    # 마지막 업데이트 시각
     message_count: int = 0  # 메시지 수
+    source_type: str = "thread"  # 세션 출처: "thread" | "channel" | "hybrid"
+    last_seen_ts: str = ""  # 마지막으로 세션에 전달된 메시지의 ts
 
     def __post_init__(self):
         now = datetime.now().isoformat()
@@ -81,7 +83,9 @@ class SessionManager:
         channel_id: str,
         user_id: str = "",
         username: str = "",
-        role: str = "viewer"
+        role: str = "viewer",
+        source_type: str = "thread",
+        last_seen_ts: str = "",
     ) -> Session:
         """새 세션 생성"""
         session = Session(
@@ -89,7 +93,9 @@ class SessionManager:
             channel_id=channel_id,
             user_id=user_id,
             username=username,
-            role=role
+            role=role,
+            source_type=source_type,
+            last_seen_ts=last_seen_ts,
         )
         self._save(session)
         self._cache[thread_ts] = session
@@ -140,6 +146,16 @@ class SessionManager:
         self._cache[new_thread_ts] = session
 
         logger.info(f"세션 thread_ts 변경: {old_thread_ts} -> {new_thread_ts}")
+        return session
+
+    def update_last_seen_ts(self, thread_ts: str, last_seen_ts: str) -> Optional[Session]:
+        """세션의 last_seen_ts 업데이트"""
+        session = self.get(thread_ts)
+        if session:
+            session.last_seen_ts = last_seen_ts
+            session.updated_at = datetime.now().isoformat()
+            self._save(session)
+            logger.debug(f"last_seen_ts 업데이트: thread_ts={thread_ts}, last_seen_ts={last_seen_ts}")
         return session
 
     def increment_message_count(self, thread_ts: str) -> Optional[Session]:
