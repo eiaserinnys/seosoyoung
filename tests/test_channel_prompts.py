@@ -83,6 +83,69 @@ class TestFormatThreadMessagesReactions:
         assert ":eyes:×1" in result
 
 
+class TestFormatMessagesWithFiles:
+    """파일 첨부 메시지 포맷팅 테스트"""
+
+    def test_image_only_message_shows_file_info(self):
+        """text 없고 이미지만 있는 메시지는 파일 정보 표시"""
+        msgs = [{
+            "ts": "1.1", "user": "U001", "text": "",
+            "files": [{"name": "screenshot.png", "filetype": "png"}],
+        }]
+        result = _format_pending_messages(msgs)
+        assert "[1.1] U001:" in result
+        assert "screenshot.png" in result
+
+    def test_text_with_files(self):
+        """text와 파일이 모두 있는 메시지"""
+        msgs = [{
+            "ts": "1.1", "user": "U001", "text": "이것 봐주세요",
+            "files": [{"name": "design.pdf", "filetype": "pdf"}],
+        }]
+        result = _format_pending_messages(msgs)
+        assert "이것 봐주세요" in result
+        assert "design.pdf" in result
+
+    def test_multiple_files(self):
+        """여러 파일이 첨부된 메시지"""
+        msgs = [{
+            "ts": "1.1", "user": "U001", "text": "",
+            "files": [
+                {"name": "img1.png", "filetype": "png"},
+                {"name": "img2.jpg", "filetype": "jpg"},
+            ],
+        }]
+        result = _format_pending_messages(msgs)
+        assert "img1.png" in result
+        assert "img2.jpg" in result
+
+    def test_channel_messages_with_files(self):
+        """채널 메시지 포맷도 파일 정보 표시"""
+        msgs = [{
+            "ts": "1.1", "user": "U001", "text": "",
+            "files": [{"name": "photo.jpg", "filetype": "jpg"}],
+        }]
+        result = _format_channel_messages(msgs)
+        assert "photo.jpg" in result
+
+    def test_thread_messages_with_files(self):
+        """스레드 메시지 포맷도 파일 정보 표시"""
+        buffers = {
+            "parent.ts": [{
+                "ts": "2.1", "user": "U001", "text": "",
+                "files": [{"name": "report.xlsx", "filetype": "xlsx"}],
+            }],
+        }
+        result = _format_thread_messages(buffers)
+        assert "report.xlsx" in result
+
+    def test_no_files_no_change(self):
+        """파일이 없는 메시지는 기존 포맷 유지"""
+        msgs = [{"ts": "1.1", "user": "U001", "text": "hello"}]
+        result = _format_pending_messages(msgs)
+        assert result == "[1.1] U001: hello"
+
+
 class TestDisplayNameResolver:
     """DisplayNameResolver 단위 테스트"""
 

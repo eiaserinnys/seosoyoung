@@ -18,7 +18,7 @@
 
 - `__init__(self, store, target_channels)` (줄 27): 
 - `collect(self, event)` (줄 31): 이벤트에서 메시지를 추출하여 버퍼에 저장.
-- `collect_reaction(self, event, action)` (줄 79): 리액션 이벤트에서 reactions 필드를 갱신합니다.
+- `collect_reaction(self, event, action)` (줄 85): 리액션 이벤트에서 reactions 필드를 갱신합니다.
 
 ## 내부 의존성
 

@@ -56,9 +56,10 @@ class ChannelMessageCollector:
 
         text = source.get("text", "")
         user = source.get("user", "")
+        files = source.get("files") or event.get("files")
 
-        # text와 user 모두 비어있으면 수집하지 않음
-        if not text and not user:
+        # text와 user 모두 비어있고 파일도 없으면 수집하지 않음
+        if not text and not user and not files:
             return False
 
         ts = source.get("ts", "") or event.get("ts", "")
@@ -66,6 +67,11 @@ class ChannelMessageCollector:
         msg = {"ts": ts, "user": user, "text": text}
         if bot_id:
             msg["bot_id"] = bot_id
+        if files:
+            msg["files"] = [
+                {"name": f.get("name", ""), "filetype": f.get("filetype", "")}
+                for f in files
+            ]
 
         thread_ts = source.get("thread_ts") or event.get("thread_ts")
         if thread_ts:

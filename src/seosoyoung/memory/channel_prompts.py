@@ -141,7 +141,8 @@ def build_channel_intervene_user_prompt(
         user = trigger_message.get("user", "unknown")
         sender = resolver.resolve(user) if resolver else user
         text = trigger_message.get("text", "")
-        trigger_text = f"[{ts}] {sender}: {text}"
+        files_str = _format_files(trigger_message.get("files", []))
+        trigger_text = f"[{ts}] {sender}: {text}{files_str}"
     else:
         trigger_text = "(없음)"
 
@@ -236,6 +237,14 @@ def _format_reactions(reactions: list[dict]) -> str:
     return " [" + " ".join(parts) + "]"
 
 
+def _format_files(files: list[dict]) -> str:
+    """files 리스트를 `[📎 name (type)]` 형식의 문자열로 변환"""
+    if not files:
+        return ""
+    parts = [f"{f.get('name', 'file')}" for f in files]
+    return " [📎 " + ", ".join(parts) + "]"
+
+
 def _format_pending_messages(
     messages: list[dict],
     bot_user_id: str | None = None,
@@ -259,8 +268,9 @@ def _format_pending_messages(
         tag = ""
         if mention_pattern and mention_pattern in text and not is_bot:
             tag = " [ALREADY REACTED]"
+        files_str = _format_files(msg.get("files", []))
         reactions_str = _format_reactions(msg.get("reactions", []))
-        lines.append(f"[{ts}] {sender}: {text}{tag}{reactions_str}")
+        lines.append(f"[{ts}] {sender}: {text}{files_str}{tag}{reactions_str}")
     return "\n".join(lines)
 
 
@@ -277,8 +287,9 @@ def _format_channel_messages(
         user = msg.get("user", "unknown")
         sender = resolver.resolve(user) if resolver else user
         text = msg.get("text", "")
+        files_str = _format_files(msg.get("files", []))
         reactions_str = _format_reactions(msg.get("reactions", []))
-        lines.append(f"[{ts}] {sender}: {text}{reactions_str}")
+        lines.append(f"[{ts}] {sender}: {text}{files_str}{reactions_str}")
     return "\n".join(lines)
 
 
@@ -297,7 +308,8 @@ def _format_thread_messages(
             user = msg.get("user", "unknown")
             sender = resolver.resolve(user) if resolver else user
             text = msg.get("text", "")
+            files_str = _format_files(msg.get("files", []))
             reactions_str = _format_reactions(msg.get("reactions", []))
-            lines.append(f"  [{ts}] {sender}: {text}{reactions_str}")
+            lines.append(f"  [{ts}] {sender}: {text}{files_str}{reactions_str}")
         sections.append("\n".join(lines))
     return "\n\n".join(sections)

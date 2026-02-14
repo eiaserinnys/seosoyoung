@@ -331,3 +331,105 @@ class TestSubtypeHandling:
         messages = store.load_thread_buffer("C_OBSERVE", "1234.0000")
         assert len(messages) == 1
         assert messages[0]["text"] == "스레드에서 unfurl된 메시지"
+
+
+class TestFileCollection:
+    """파일(이미지 등) 첨부 메시지 수집 테스트"""
+
+    def test_collect_image_only_message(self, collector, store):
+        """text 없이 이미지만 있는 메시지도 수집"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "user": "U001",
+            "text": "",
+            "files": [
+                {
+                    "id": "F001",
+                    "name": "screenshot.png",
+                    "mimetype": "image/png",
+                    "filetype": "png",
+                }
+            ],
+        }
+        result = collector.collect(event)
+        assert result is True
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 1
+        assert messages[0]["files"] == [{"name": "screenshot.png", "filetype": "png"}]
+
+    def test_collect_text_with_files(self, collector, store):
+        """text와 파일이 모두 있는 메시지"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "user": "U001",
+            "text": "이것 좀 봐주세요",
+            "files": [
+                {
+                    "id": "F002",
+                    "name": "design.pdf",
+                    "mimetype": "application/pdf",
+                    "filetype": "pdf",
+                }
+            ],
+        }
+        result = collector.collect(event)
+        assert result is True
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 1
+        assert messages[0]["text"] == "이것 좀 봐주세요"
+        assert messages[0]["files"] == [{"name": "design.pdf", "filetype": "pdf"}]
+
+    def test_collect_multiple_files(self, collector, store):
+        """여러 파일이 첨부된 메시지"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "user": "U001",
+            "text": "",
+            "files": [
+                {"id": "F001", "name": "img1.png", "mimetype": "image/png", "filetype": "png"},
+                {"id": "F002", "name": "img2.jpg", "mimetype": "image/jpeg", "filetype": "jpg"},
+            ],
+        }
+        result = collector.collect(event)
+        assert result is True
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 1
+        assert len(messages[0]["files"]) == 2
+
+    def test_file_share_subtype_collected(self, collector, store):
+        """file_share subtype도 수집"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "subtype": "file_share",
+            "user": "U001",
+            "text": "",
+            "files": [
+                {"id": "F001", "name": "doc.xlsx", "mimetype": "application/vnd.ms-excel", "filetype": "xlsx"},
+            ],
+        }
+        result = collector.collect(event)
+        assert result is True
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 1
+        assert messages[0]["files"] == [{"name": "doc.xlsx", "filetype": "xlsx"}]
+
+    def test_no_files_key_means_no_files_field(self, collector, store):
+        """files 키가 없는 일반 메시지에는 files 필드 없음"""
+        event = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "user": "U001",
+            "text": "일반 텍스트 메시지",
+        }
+        collector.collect(event)
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert "files" not in messages[0]
