@@ -232,6 +232,36 @@ class TestSessionManager:
         reloaded = manager.get("1234567890.123456")
         assert reloaded.last_seen_ts == "1234567890.999999"
 
+    def test_update_user(self, manager):
+        """user_id/username/role 업데이트"""
+        manager.create(
+            thread_ts="1234567890.123456",
+            channel_id="C12345",
+        )
+        assert manager.get("1234567890.123456").user_id == ""
+
+        session = manager.update_user(
+            "1234567890.123456",
+            user_id="U999",
+            username="newuser",
+            role="admin",
+        )
+        assert session.user_id == "U999"
+        assert session.username == "newuser"
+        assert session.role == "admin"
+
+        # 파일에서 다시 로드해도 유지
+        manager._cache.clear()
+        reloaded = manager.get("1234567890.123456")
+        assert reloaded.user_id == "U999"
+        assert reloaded.username == "newuser"
+        assert reloaded.role == "admin"
+
+    def test_update_user_nonexistent(self, manager):
+        """존재하지 않는 세션의 사용자 업데이트는 None 반환"""
+        result = manager.update_user("nonexistent.123", user_id="U1")
+        assert result is None
+
     def test_session_persistence(self, temp_dir):
         """세션 파일 저장/로드 테스트"""
         # 첫 번째 매니저로 세션 생성

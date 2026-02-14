@@ -6,6 +6,7 @@ DisplayNameResolver와 resolver 적용 포맷을 검증합니다.
 
 from seosoyoung.memory.channel_prompts import (
     DisplayNameResolver,
+    build_channel_intervene_user_prompt,
     _format_channel_messages,
     _format_pending_messages,
     _format_thread_messages,
@@ -200,3 +201,36 @@ class TestFormatWithResolver:
         resolver = self._make_resolver()
         result = _format_thread_messages(buffers, resolver=resolver)
         assert "Alice (U001)" in result
+
+
+class TestIntervenePromptWithThreadBuffers:
+    """개입 프롬프트에 thread_buffers 포함 테스트"""
+
+    def test_thread_buffers_included_in_prompt(self):
+        """thread_buffers가 있으면 프롬프트에 스레드 메시지 포함"""
+        thread_buffers = {
+            "100.0": [
+                {"ts": "100.1", "user": "U001", "text": "스레드 메시지 1"},
+                {"ts": "100.2", "user": "U002", "text": "스레드 메시지 2"},
+            ],
+        }
+        result = build_channel_intervene_user_prompt(
+            digest="기존 다이제스트",
+            recent_messages=[{"ts": "1.0", "user": "U001", "text": "최근"}],
+            trigger_message={"ts": "2.0", "user": "U001", "text": "트리거"},
+            target="2.0",
+            thread_buffers=thread_buffers,
+        )
+        assert "스레드 메시지 1" in result
+        assert "스레드 메시지 2" in result
+
+    def test_no_thread_buffers_still_works(self):
+        """thread_buffers 없어도 정상 동작 (하위호환)"""
+        result = build_channel_intervene_user_prompt(
+            digest="다이제스트",
+            recent_messages=[{"ts": "1.0", "user": "U001", "text": "최근"}],
+            trigger_message={"ts": "2.0", "user": "U001", "text": "트리거"},
+            target="2.0",
+        )
+        assert "다이제스트" in result
+        assert "트리거" in result

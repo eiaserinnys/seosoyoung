@@ -76,7 +76,7 @@
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:43): 세션 매니저
-- `SessionRuntime` (seosoyoung/claude/session.py:201): 세션 실행 상태 관리자
+- `SessionRuntime` (seosoyoung/claude/session.py:223): 세션 실행 상태 관리자
 - `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
@@ -226,10 +226,10 @@
 - `build_digest_compressor_retry_prompt()` (seosoyoung/memory/channel_prompts.py:109): digest 압축 재시도 프롬프트를 반환합니다.
 - `get_channel_intervene_system_prompt()` (seosoyoung/memory/channel_prompts.py:118): 채널 개입 응답 생성 시스템 프롬프트를 반환합니다.
 - `build_channel_intervene_user_prompt()` (seosoyoung/memory/channel_prompts.py:123): 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
-- `build_digest_only_system_prompt()` (seosoyoung/memory/channel_prompts.py:158): 소화 전용 시스템 프롬프트를 반환합니다.
-- `build_digest_only_user_prompt()` (seosoyoung/memory/channel_prompts.py:163): 소화 전용 사용자 프롬프트를 구성합니다.
-- `build_judge_system_prompt()` (seosoyoung/memory/channel_prompts.py:194): 리액션 판단 전용 시스템 프롬프트를 반환합니다.
-- `build_judge_user_prompt()` (seosoyoung/memory/channel_prompts.py:199): 리액션 판단 전용 사용자 프롬프트를 구성합니다.
+- `build_digest_only_system_prompt()` (seosoyoung/memory/channel_prompts.py:161): 소화 전용 시스템 프롬프트를 반환합니다.
+- `build_digest_only_user_prompt()` (seosoyoung/memory/channel_prompts.py:166): 소화 전용 사용자 프롬프트를 구성합니다.
+- `build_judge_system_prompt()` (seosoyoung/memory/channel_prompts.py:197): 리액션 판단 전용 시스템 프롬프트를 반환합니다.
+- `build_judge_user_prompt()` (seosoyoung/memory/channel_prompts.py:202): 리액션 판단 전용 사용자 프롬프트를 구성합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:45): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:88): 관찰 로그를 컨텍스트 주입에 최적화합니다.
 - `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:102): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.

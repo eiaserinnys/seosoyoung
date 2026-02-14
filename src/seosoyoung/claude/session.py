@@ -158,6 +158,28 @@ class SessionManager:
             logger.debug(f"last_seen_ts 업데이트: thread_ts={thread_ts}, last_seen_ts={last_seen_ts}")
         return session
 
+    def update_user(
+        self,
+        thread_ts: str,
+        user_id: str = "",
+        username: str = "",
+        role: str = "",
+    ) -> Optional[Session]:
+        """세션의 사용자 정보 업데이트 (개입 세션 → 멘션 시 승격)"""
+        session = self.get(thread_ts)
+        if not session:
+            return None
+        if user_id:
+            session.user_id = user_id
+        if username:
+            session.username = username
+        if role:
+            session.role = role
+        session.updated_at = datetime.now().isoformat()
+        self._save(session)
+        logger.info(f"세션 사용자 업데이트: thread_ts={thread_ts}, user={username}, role={role}")
+        return session
+
     def increment_message_count(self, thread_ts: str) -> Optional[Session]:
         """메시지 카운트 증가"""
         session = self.get(thread_ts)
