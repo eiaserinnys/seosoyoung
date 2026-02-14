@@ -77,11 +77,18 @@ Use ONLY the following emoji names for `react` type responses.
 - `beautiful` — 감탄/아름다움. 시각적으로 인상적인 결과물에
 - `arrow_forward` — 작업 재개/계속 진행 요청
 
-## CONTEXT MEANING GUIDELINES
+## LINKED CONVERSATION GUIDELINES
 
-For each pending message, interpret what the message means in the broader conversation context.
-Consider the digest (background), already-judged messages, and other pending messages to understand the full picture.
-Write 1-2 Korean sentences explaining what kind of conversation this message belongs to and what the sender's intent is.
+For each pending message, determine whether it is a continuation of or response to a previous message in the conversation.
+
+1. **Identify the linked message**: Look through the already-judged messages AND other pending messages. If this message is a reply, continuation, or direct response to a specific earlier message, record that message's timestamp.
+   - Only link to messages whose timestamps appear in the ALREADY JUDGED or PENDING sections.
+   - Do NOT invent or guess timestamps. If no clear link exists, omit the `<linked_conversation>` block entirely.
+   - A message can link to at most ONE previous message (the most directly related one).
+
+2. **Link reason**: Briefly explain why these messages are connected (e.g., "답변", "이어지는 대화", "같은 주제에 대한 반응").
+
+3. **Context meaning**: Regardless of whether a link exists, interpret what the message means in the broader conversation context. Consider the digest, already-judged messages, and other pending messages. Write 1-2 Korean sentences explaining what kind of conversation this message belongs to and what the sender's intent is.
 
 ## ADDRESSED TO ME GUIDELINES
 
@@ -107,10 +114,17 @@ Determine whether each message contains an instruction or request:
 
 Output one `<judgment>` block per pending message. Each block must include the message's timestamp in the `ts` attribute. Wrap all judgments in `<judgments>`.
 
-Think step by step: first interpret the context meaning, then determine if the message is addressed to 서소영, whether it's related to 서소영, whether it's an instruction, then assess 서소영's emotion in this context and importance, and finally decide the reaction.
+Think step by step: first check if the message links to a previous message, then interpret the context meaning, determine if the message is addressed to 서소영, whether it's related to 서소영, whether it's an instruction, then assess 서소영's emotion in this context and importance, and finally decide the reaction.
+
+IMPORTANT: The `<linked_conversation>` block is OPTIONAL. Only include it when a clear conversational link to a specific previous message exists. If no link exists, omit it entirely — do NOT output empty linked_message_ts tags.
 
 <judgments>
+<!-- Example: message linked to a previous message, no reaction -->
 <judgment ts="{message_ts}">
+<linked_conversation>
+<linked_message_ts>{ts of the earlier message this replies to}</linked_message_ts>
+<link_reason>(brief reason for the link)</link_reason>
+</linked_conversation>
 <context_meaning>(1-2 Korean sentences: what this message means in the conversation context)</context_meaning>
 <addressed_to_me>(yes/no)</addressed_to_me>
 <addressed_to_me_reason>(1 sentence reason)</addressed_to_me_reason>
@@ -124,6 +138,7 @@ Think step by step: first interpret the context meaning, then determine if the m
 <reasoning>(1-2 sentence explanation)</reasoning>
 </judgment>
 
+<!-- Example: standalone message, react -->
 <judgment ts="{message_ts}">
 <context_meaning>(1-2 Korean sentences: what this message means in the conversation context)</context_meaning>
 <addressed_to_me>(yes/no)</addressed_to_me>
@@ -140,7 +155,12 @@ Think step by step: first interpret the context meaning, then determine if the m
 <reasoning>(1-2 sentence explanation)</reasoning>
 </judgment>
 
+<!-- Example: message linked to previous, intervene -->
 <judgment ts="{message_ts}">
+<linked_conversation>
+<linked_message_ts>{ts of the earlier message}</linked_message_ts>
+<link_reason>(brief reason)</link_reason>
+</linked_conversation>
 <context_meaning>(1-2 Korean sentences: what this message means in the conversation context)</context_meaning>
 <addressed_to_me>(yes/no)</addressed_to_me>
 <addressed_to_me_reason>(1 sentence reason)</addressed_to_me_reason>

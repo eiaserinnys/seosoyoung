@@ -145,6 +145,37 @@ def _apply_importance_modifiers(
                         item.reaction_content = "(addressed)"
 
 
+def _validate_linked_messages(
+    judge_result: JudgeResult,
+    judged_messages: list[dict],
+    pending_messages: list[dict],
+) -> None:
+    """linked_message_ts가 실제 존재하는 ts인지 검증하고, 환각된 ts를 제거합니다.
+
+    자기 자신을 가리키는 링크도 제거합니다.
+    """
+    known_ts: set[str] = set()
+    for msg in judged_messages:
+        ts = msg.get("ts", "")
+        if ts:
+            known_ts.add(ts)
+    for msg in pending_messages:
+        ts = msg.get("ts", "")
+        if ts:
+            known_ts.add(ts)
+
+    for item in judge_result.items:
+        if item.linked_message_ts is None:
+            continue
+        # 자기 자신을 가리키거나 존재하지 않는 ts → 제거
+        if item.linked_message_ts == item.ts or item.linked_message_ts not in known_ts:
+            logger.debug(
+                f"linked_message_ts 환각 제거: {item.ts} → {item.linked_message_ts}"
+            )
+            item.linked_message_ts = None
+            item.link_reason = None
+
+
 def _get_max_importance_item(judge_result: JudgeResult) -> JudgeItem | None:
     """JudgeResult에서 가장 높은 중요도의 JudgeItem을 반환합니다."""
     if not judge_result.items:
@@ -272,7 +303,10 @@ async def run_channel_pipeline(
         logger.warning(f"judge가 None 반환 ({channel_id})")
         return
 
-    # d-0) 가중치 적용: related_to_me, addressed_to_me 강제 반응
+    # d-0a) linked_message_ts 환각 검증
+    _validate_linked_messages(judge_result, judged_messages, pending_messages)
+
+    # d-0b) 가중치 적용: related_to_me, addressed_to_me 강제 반응
     _apply_importance_modifiers(judge_result, pending_messages)
 
     # d) 리액션 처리
@@ -290,6 +324,7 @@ async def run_channel_pipeline(
             intervention_threshold=intervention_threshold,
             llm_call=llm_call,
             claude_runner=claude_runner,
+            bot_user_id=bot_user_id,
         )
     else:
         # 하위호환: 단일 판단 경로
@@ -305,6 +340,7 @@ async def run_channel_pipeline(
             intervention_threshold=intervention_threshold,
             llm_call=llm_call,
             claude_runner=claude_runner,
+            bot_user_id=bot_user_id,
         )
 
     # e) pending을 judged로 이동
@@ -323,6 +359,7 @@ async def _handle_multi_judge(
     intervention_threshold: float,
     llm_call: Optional[Callable],
     claude_runner: Optional["ClaudeAgentRunner"],
+    bot_user_id: str | None = None,
 ) -> None:
     """복수 JudgeItem 처리: 이모지 일괄 + 개입 확률 판단"""
     actions = _parse_judge_actions(judge_result)
@@ -385,6 +422,7 @@ async def _handle_multi_judge(
                             observer_reason=intervene_item.reaction_content,
                             claude_runner=claude_runner,
                             llm_call=llm_call,
+                            bot_user_id=bot_user_id,
                         )
                     else:
                         await execute_interventions(
@@ -419,6 +457,7 @@ async def _handle_single_judge(
     intervention_threshold: float,
     llm_call: Optional[Callable],
     claude_runner: Optional["ClaudeAgentRunner"],
+    bot_user_id: str | None = None,
 ) -> None:
     """하위호환: 단일 JudgeResult 처리"""
     logger.info(
@@ -497,6 +536,7 @@ async def _handle_single_judge(
                             observer_reason=judge_result.reaction_content,
                             claude_runner=claude_runner,
                             llm_call=llm_call,
+                            bot_user_id=bot_user_id,
                         )
                 else:
                     await execute_interventions(
@@ -530,6 +570,7 @@ async def _execute_intervene(
     observer_reason: str | None = None,
     claude_runner: Optional["ClaudeAgentRunner"] = None,
     llm_call: Optional[Callable] = None,
+    bot_user_id: str | None = None,
 ) -> None:
     """서소영의 개입 응답을 생성하고 발송합니다."""
     # 1. 갱신된 digest 로드
@@ -589,18 +630,35 @@ async def _execute_intervene(
         logger.warning(f"intervene 빈 응답 ({channel_id})")
         return
 
-    # 5. 슬랙 발송
+    # 5. 슬랙 발송 + 봇 응답 ts를 judged에 기록
     try:
         if action.target == "channel":
-            slack_client.chat_postMessage(
+            resp = slack_client.chat_postMessage(
                 channel=channel_id,
                 text=response_text.strip(),
             )
         else:
-            slack_client.chat_postMessage(
+            resp = slack_client.chat_postMessage(
                 channel=channel_id,
                 text=response_text.strip(),
                 thread_ts=action.target,
             )
+
+        # 봇 응답을 judged에 기록하여 후속 judge에서 맥락으로 사용
+        resp_ts = None
+        if isinstance(resp, dict):
+            resp_ts = resp.get("ts")
+        elif hasattr(resp, "data"):
+            resp_ts = resp.data.get("ts")
+
+        if resp_ts:
+            bot_msg = {
+                "ts": resp_ts,
+                "user": bot_user_id or "bot",
+                "text": response_text.strip(),
+            }
+            store.append_judged(channel_id, [bot_msg])
+            logger.info(f"봇 응답 judged 기록 ({channel_id}): ts={resp_ts}")
+
     except Exception as e:
         logger.error(f"intervene 슬랙 발송 실패 ({channel_id}): {e}")

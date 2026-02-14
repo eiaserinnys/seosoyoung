@@ -15,6 +15,7 @@ from seosoyoung.memory.channel_observer import (
 )
 from seosoyoung.memory.channel_pipeline import (
     _apply_importance_modifiers,
+    _validate_linked_messages,
     run_channel_pipeline,
 )
 from seosoyoung.memory.channel_store import ChannelStore
@@ -981,3 +982,101 @@ class TestApplyImportanceModifiers:
         # related_to_me: 3 * 2 = 6, addressed_to_me: max(6, 7) = 7
         assert item.importance == 7
         assert item.reaction_type == "intervene"
+
+
+class TestValidateLinkedMessages:
+    """linked_message_ts 환각 방지 검증 테스트"""
+
+    def test_valid_linked_ts_preserved(self):
+        """실제로 존재하는 ts에 대한 링크는 유지"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="2.2", linked_message_ts="1.1", link_reason="답변"),
+        ])
+        judged = [{"ts": "1.1", "user": "U1", "text": "hello"}]
+        pending = [{"ts": "2.2", "user": "U2", "text": "reply"}]
+        _validate_linked_messages(result, judged, pending)
+        assert result.items[0].linked_message_ts == "1.1"
+        assert result.items[0].link_reason == "답변"
+
+    def test_hallucinated_ts_removed(self):
+        """존재하지 않는 ts에 대한 링크는 제거"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="2.2", linked_message_ts="999.999", link_reason="환각"),
+        ])
+        judged = [{"ts": "1.1", "user": "U1", "text": "hello"}]
+        pending = [{"ts": "2.2", "user": "U2", "text": "reply"}]
+        _validate_linked_messages(result, judged, pending)
+        assert result.items[0].linked_message_ts is None
+        assert result.items[0].link_reason is None
+
+    def test_no_linked_ts_unaffected(self):
+        """linked_message_ts가 None인 아이템은 변경 없음"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="1.1", linked_message_ts=None, link_reason=None),
+        ])
+        _validate_linked_messages(result, [], [{"ts": "1.1"}])
+        assert result.items[0].linked_message_ts is None
+
+    def test_link_to_pending_message(self):
+        """같은 pending 배치 내 메시지에 대한 링크도 유효"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="2.2", linked_message_ts="1.1", link_reason="같은 배치"),
+        ])
+        pending = [
+            {"ts": "1.1", "user": "U1", "text": "first"},
+            {"ts": "2.2", "user": "U2", "text": "reply"},
+        ]
+        _validate_linked_messages(result, [], pending)
+        assert result.items[0].linked_message_ts == "1.1"
+
+    def test_self_link_removed(self):
+        """자기 자신을 가리키는 링크는 제거"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="1.1", linked_message_ts="1.1", link_reason="self"),
+        ])
+        pending = [{"ts": "1.1", "user": "U1", "text": "msg"}]
+        _validate_linked_messages(result, [], pending)
+        assert result.items[0].linked_message_ts is None
+        assert result.items[0].link_reason is None
+
+
+class TestBotResponseRecordedInJudged:
+    """봇 개입 응답 ts가 judged에 기록되는지 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_bot_response_ts_appended_to_judged(self, store, channel_id):
+        """개입 후 봇 응답이 judged에 기록됨"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="1005.000",
+            reaction_content="개입해야 함",
+        ))
+        client = MagicMock()
+        # chat_postMessage가 ts를 반환하도록 설정
+        client.chat_postMessage = MagicMock(return_value={
+            "ok": True,
+            "ts": "9999.000",
+        })
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="개입 메시지입니다.")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
+            llm_call=mock_llm,
+            bot_user_id="BOT_U123",
+        )
+
+        # judged에 봇 응답이 포함되어야 함
+        judged = store.load_judged(channel_id)
+        bot_msgs = [m for m in judged if m.get("user") == "BOT_U123"]
+        assert len(bot_msgs) == 1
+        assert bot_msgs[0]["ts"] == "9999.000"
+        assert bot_msgs[0]["text"] == "개입 메시지입니다."

@@ -63,6 +63,8 @@ class JudgeItem:
     is_instruction: bool = False
     is_instruction_reason: Optional[str] = None
     context_meaning: Optional[str] = None
+    linked_message_ts: Optional[str] = None
+    link_reason: Optional[str] = None
 
 
 @dataclass
@@ -201,6 +203,14 @@ def _parse_judge_item(ts: str, block: str) -> JudgeItem:
     is_instruction = _parse_yes_no(block, "is_instruction")
     is_instruction_reason = _extract_tag(block, "is_instruction_reason") or None
 
+    # linked_conversation 파싱
+    linked_block = _extract_tag(block, "linked_conversation")
+    linked_message_ts = None
+    link_reason = None
+    if linked_block:
+        linked_message_ts = _extract_tag(linked_block, "linked_message_ts") or None
+        link_reason = _extract_tag(linked_block, "link_reason") or None
+
     importance_str = _extract_tag(block, "importance")
     try:
         importance = int(importance_str)
@@ -225,6 +235,8 @@ def _parse_judge_item(ts: str, block: str) -> JudgeItem:
         is_instruction=is_instruction,
         is_instruction_reason=is_instruction_reason,
         context_meaning=context_meaning,
+        linked_message_ts=linked_message_ts,
+        link_reason=link_reason,
     )
 
 

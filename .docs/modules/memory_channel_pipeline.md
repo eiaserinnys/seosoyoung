@@ -37,12 +37,18 @@ items가 있으면 각 JudgeItem에서 액션을 추출합니다.
 - related_to_me == True → importance × 2 (상한 10)
 - addressed_to_me == True && 발신자가 사람 → importance 최소 7, intervene 전환
 
-### `_get_max_importance_item(judge_result)`
+### `_validate_linked_messages(judge_result, judged_messages, pending_messages)`
 - 위치: 줄 148
+- 설명: linked_message_ts가 실제 존재하는 ts인지 검증하고, 환각된 ts를 제거합니다.
+
+자기 자신을 가리키는 링크도 제거합니다.
+
+### `_get_max_importance_item(judge_result)`
+- 위치: 줄 179
 - 설명: JudgeResult에서 가장 높은 중요도의 JudgeItem을 반환합니다.
 
 ### `async run_channel_pipeline(store, observer, channel_id, slack_client, cooldown, threshold_a, threshold_b, compressor, digest_max_tokens, digest_target_tokens, debug_channel, intervention_threshold, llm_call, claude_runner, bot_user_id)`
-- 위치: 줄 155
+- 위치: 줄 186
 - 설명: 소화/판단 분리 파이프라인을 실행합니다.
 
 흐름:
@@ -52,16 +58,16 @@ c) judge() 호출 (digest + judged + pending → 메시지별 판단)
 d) 리액션 처리 (이모지 일괄 + 확률 기반 개입 판단 + 슬랙 발송)
 e) pending을 judged로 이동
 
-### `async _handle_multi_judge(judge_result, store, channel_id, slack_client, cooldown, pending_messages, current_digest, debug_channel, intervention_threshold, llm_call, claude_runner)`
-- 위치: 줄 314
+### `async _handle_multi_judge(judge_result, store, channel_id, slack_client, cooldown, pending_messages, current_digest, debug_channel, intervention_threshold, llm_call, claude_runner, bot_user_id)`
+- 위치: 줄 350
 - 설명: 복수 JudgeItem 처리: 이모지 일괄 + 개입 확률 판단
 
-### `async _handle_single_judge(judge_result, store, channel_id, slack_client, cooldown, pending_messages, current_digest, debug_channel, intervention_threshold, llm_call, claude_runner)`
-- 위치: 줄 410
+### `async _handle_single_judge(judge_result, store, channel_id, slack_client, cooldown, pending_messages, current_digest, debug_channel, intervention_threshold, llm_call, claude_runner, bot_user_id)`
+- 위치: 줄 448
 - 설명: 하위호환: 단일 JudgeResult 처리
 
-### `async _execute_intervene(store, channel_id, slack_client, action, pending_messages, observer_reason, claude_runner, llm_call)`
-- 위치: 줄 524
+### `async _execute_intervene(store, channel_id, slack_client, action, pending_messages, observer_reason, claude_runner, llm_call, bot_user_id)`
+- 위치: 줄 564
 - 설명: 서소영의 개입 응답을 생성하고 발송합니다.
 
 ## 내부 의존성
