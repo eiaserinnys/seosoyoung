@@ -118,6 +118,7 @@ class ChannelDigestScheduler:
         """소화/판단 파이프라인을 실행합니다."""
         from seosoyoung.memory.channel_pipeline import run_channel_pipeline
         from seosoyoung.claude import get_claude_runner
+        from seosoyoung.config import Config
 
         runner = get_claude_runner()
 
@@ -137,6 +138,7 @@ class ChannelDigestScheduler:
                     debug_channel=self.debug_channel,
                     intervention_threshold=self.intervention_threshold,
                     claude_runner=runner,
+                    bot_user_id=Config.BOT_USER_ID,
                 )
             )
         except Exception as e:

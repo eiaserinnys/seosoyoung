@@ -53,16 +53,23 @@
 - 위치: 줄 144
 - 설명: 리액션 판단 전용 시스템 프롬프트를 반환합니다.
 
-### `build_judge_user_prompt(channel_id, digest, judged_messages, pending_messages, thread_buffers)`
+### `build_judge_user_prompt(channel_id, digest, judged_messages, pending_messages, thread_buffers, bot_user_id)`
 - 위치: 줄 149
 - 설명: 리액션 판단 전용 사용자 프롬프트를 구성합니다.
 
+### `_format_pending_messages(messages, bot_user_id)`
+- 위치: 줄 175
+- 설명: pending 메시지를 텍스트로 변환.
+
+사람이 보낸 봇 멘션 메시지는 멘션 핸들러가 처리하므로 [ALREADY REACTED] 표기.
+봇이 보낸 멘션은 채널 모니터가 처리해야 하므로 태그하지 않음.
+
 ### `_format_channel_messages(messages)`
-- 위치: 줄 172
+- 위치: 줄 199
 - 설명: 채널 루트 메시지를 텍스트로 변환
 
 ### `_format_thread_messages(thread_buffers)`
-- 위치: 줄 185
+- 위치: 줄 212
 - 설명: 스레드 메시지를 텍스트로 변환
 
 ## 내부 의존성

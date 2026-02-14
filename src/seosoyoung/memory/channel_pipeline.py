@@ -90,6 +90,7 @@ async def run_channel_pipeline(
     intervention_threshold: float = 0.3,
     llm_call: Optional[Callable] = None,
     claude_runner: Optional["ClaudeAgentRunner"] = None,
+    bot_user_id: str | None = None,
     **kwargs,
 ) -> None:
     """소화/판단 분리 파이프라인을 실행합니다.
@@ -202,6 +203,7 @@ async def run_channel_pipeline(
         judged_messages=judged_messages,
         pending_messages=pending_messages,
         thread_buffers=thread_buffers,
+        bot_user_id=bot_user_id,
     )
 
     if judge_result is None:
@@ -229,6 +231,7 @@ async def run_channel_pipeline(
             actions=[],
             actions_filtered=[],
             reasoning=judge_result.reasoning,
+            emotion=judge_result.emotion,
         )
     else:
         react_actions = [a for a in actions if a.type == "react"]
@@ -294,6 +297,7 @@ async def run_channel_pipeline(
             actions=actions,
             actions_filtered=filtered,
             reasoning=judge_result.reasoning,
+            emotion=judge_result.emotion,
         )
 
     # e) pending을 judged로 이동

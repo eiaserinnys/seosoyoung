@@ -50,7 +50,7 @@ Args:
 force=True이면 임계치와 무관하게 즉시 트리거합니다.
 
 ### `_send_collect_log(client, channel_id, store, event)`
-- 위치: 줄 425
+- 위치: 줄 426
 - 설명: 수집 디버그 로그를 전송합니다.
 
 ## 내부 의존성

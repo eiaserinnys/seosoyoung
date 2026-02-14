@@ -193,11 +193,16 @@ def register_mention_handlers(app, dependencies: dict):
         - 스레드에서 멘션 (세션 없음): 원샷 답변
         - help/status/update/restart: 관리자 명령어
         """
-        user_id = event["user"]
+        user_id = event.get("user", "")
         text = event.get("text", "")
         channel = event["channel"]
         ts = event["ts"]
         thread_ts = event.get("thread_ts")
+
+        # 봇이 멘션한 경우 무시 (bot_id가 있거나 subtype이 bot_message)
+        if event.get("bot_id") or event.get("subtype") == "bot_message":
+            logger.debug(f"봇의 멘션 무시: channel={channel}, ts={ts}")
+            return
 
         logger.info(f"멘션 수신: user={user_id}, channel={channel}, text={text[:50]}")
 

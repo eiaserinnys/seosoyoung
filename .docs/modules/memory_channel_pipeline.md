@@ -23,7 +23,7 @@ pending 버퍼에 쌓인 메시지를 기반으로:
 - 위치: 줄 56
 - 설명: JudgeResult에서 InterventionAction 리스트를 생성합니다.
 
-### `async run_channel_pipeline(store, observer, channel_id, slack_client, cooldown, threshold_a, threshold_b, compressor, digest_max_tokens, digest_target_tokens, debug_channel, intervention_threshold, llm_call, claude_runner)`
+### `async run_channel_pipeline(store, observer, channel_id, slack_client, cooldown, threshold_a, threshold_b, compressor, digest_max_tokens, digest_target_tokens, debug_channel, intervention_threshold, llm_call, claude_runner, bot_user_id)`
 - 위치: 줄 78
 - 설명: 소화/판단 분리 파이프라인을 실행합니다.
 
@@ -51,7 +51,7 @@ Args:
     claude_runner: Claude Code SDK 기반 실행기 (우선 사용, 없으면 llm_call 폴백)
 
 ### `async _execute_intervene(store, channel_id, slack_client, action, pending_messages, observer_reason, claude_runner, llm_call)`
-- 위치: 줄 303
+- 위치: 줄 307
 - 설명: 서소영의 개입 응답을 생성하고 발송합니다.
 
 claude_runner가 있으면 Claude Code SDK로, 없으면 llm_call 폴백으로 응답을 생성합니다.

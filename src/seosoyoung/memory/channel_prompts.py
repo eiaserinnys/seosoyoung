@@ -152,11 +152,14 @@ def build_judge_user_prompt(
     judged_messages: list[dict],
     pending_messages: list[dict],
     thread_buffers: dict[str, list[dict]] | None = None,
+    bot_user_id: str | None = None,
 ) -> str:
     """리액션 판단 전용 사용자 프롬프트를 구성합니다."""
     digest_text = digest or "(없음)"
     judged_text = _format_channel_messages(judged_messages) or "(없음)"
-    pending_text = _format_channel_messages(pending_messages) or "(없음)"
+    pending_text = _format_pending_messages(
+        pending_messages, bot_user_id=bot_user_id
+    ) or "(없음)"
     thread_text = _format_thread_messages(thread_buffers or {}) or "(없음)"
 
     template = _load("judge_user.txt")
@@ -167,6 +170,30 @@ def build_judge_user_prompt(
         pending_messages=pending_text,
         thread_messages=thread_text,
     )
+
+
+def _format_pending_messages(
+    messages: list[dict], bot_user_id: str | None = None,
+) -> str:
+    """pending 메시지를 텍스트로 변환.
+
+    사람이 보낸 봇 멘션 메시지는 멘션 핸들러가 처리하므로 [ALREADY REACTED] 표기.
+    봇이 보낸 멘션은 채널 모니터가 처리해야 하므로 태그하지 않음.
+    """
+    if not messages:
+        return ""
+    mention_pattern = f"<@{bot_user_id}>" if bot_user_id else None
+    lines = []
+    for msg in messages:
+        ts = msg.get("ts", "")
+        user = msg.get("user", "unknown")
+        text = msg.get("text", "")
+        is_bot = bool(msg.get("bot_id"))
+        tag = ""
+        if mention_pattern and mention_pattern in text and not is_bot:
+            tag = " [ALREADY REACTED]"
+        lines.append(f"[{ts}] <{user}>: {text}{tag}")
+    return "\n".join(lines)
 
 
 def _format_channel_messages(messages: list[dict]) -> str:

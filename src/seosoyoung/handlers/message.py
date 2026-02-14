@@ -411,6 +411,7 @@ def _maybe_trigger_digest(
                     debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
                     intervention_threshold=Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD,
                     claude_runner=runner,
+                    bot_user_id=Config.BOT_USER_ID,
                 )
             )
         except Exception as e:

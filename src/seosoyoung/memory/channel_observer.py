@@ -54,6 +54,7 @@ class JudgeResult:
     reaction_target: Optional[str] = None
     reaction_content: Optional[str] = None
     reasoning: Optional[str] = None
+    emotion: Optional[str] = None
 
 
 @dataclass
@@ -93,6 +94,7 @@ def parse_channel_observer_output(text: str) -> ChannelObserverResult:
 def parse_judge_output(text: str) -> JudgeResult:
     """Judge 응답에서 XML 태그를 파싱합니다."""
     reasoning = _extract_tag(text, "reasoning") or None
+    emotion = _extract_tag(text, "emotion") or None
 
     importance_str = _extract_tag(text, "importance")
     try:
@@ -109,6 +111,7 @@ def parse_judge_output(text: str) -> JudgeResult:
         reaction_target=reaction_target,
         reaction_content=reaction_content,
         reasoning=reasoning,
+        emotion=emotion,
     )
 
 
@@ -250,6 +253,7 @@ class ChannelObserver:
         judged_messages: list[dict],
         pending_messages: list[dict],
         thread_buffers: dict[str, list[dict]] | None = None,
+        bot_user_id: str | None = None,
     ) -> JudgeResult | None:
         """pending 메시지에 대해 리액션을 판단합니다 (판단 전용).
 
@@ -259,6 +263,7 @@ class ChannelObserver:
             judged_messages: 이미 판단을 거친 최근 대화
             pending_messages: 아직 판단하지 않은 새 대화
             thread_buffers: {thread_ts: [messages]} 스레드 버퍼
+            bot_user_id: 봇 사용자 ID (멘션 포함 메시지 마킹용)
 
         Returns:
             JudgeResult 또는 None (API 오류 시)
@@ -270,6 +275,7 @@ class ChannelObserver:
             judged_messages=judged_messages,
             pending_messages=pending_messages,
             thread_buffers=thread_buffers or {},
+            bot_user_id=bot_user_id,
         )
 
         try:

@@ -62,7 +62,10 @@ class ChannelMessageCollector:
             return False
 
         ts = source.get("ts", "") or event.get("ts", "")
+        bot_id = source.get("bot_id") or event.get("bot_id") or ""
         msg = {"ts": ts, "user": user, "text": text}
+        if bot_id:
+            msg["bot_id"] = bot_id
 
         thread_ts = source.get("thread_ts") or event.get("thread_ts")
         if thread_ts:

@@ -78,14 +78,20 @@ Use ONLY the following emoji names for `react` type responses.
 
 ## OUTPUT FORMAT
 
-Always start with `<reasoning>` explaining your judgment, then provide importance and reaction.
+Always start with `<reasoning>` explaining your judgment, then provide importance, emotion, and reaction.
+
+The `<emotion>` tag describes what 서소영 is feeling right now as she reads the conversation.
+Write it in Korean, 1 short sentence from 서소영's perspective.
+Examples: "재미있는 이야기라 웃음이 나온다", "조금 걱정되는 상황이다", "별다른 감정 없이 지켜보는 중이다"
 
 <reasoning>(1-2 sentence explanation of why you chose this importance and reaction)</reasoning>
+<emotion>(서소영's current feeling in Korean, 1 sentence)</emotion>
 <importance>(integer 0-10)</importance>
 <reaction type="none" />
 
 OR:
 <reasoning>(1-2 sentence explanation)</reasoning>
+<emotion>(서소영's current feeling in Korean, 1 sentence)</emotion>
 <importance>(integer 0-10)</importance>
 <reaction type="react">
 <react target="{message_ts}" emoji="{emoji_name}" />
@@ -93,6 +99,7 @@ OR:
 
 OR:
 <reasoning>(1-2 sentence explanation)</reasoning>
+<emotion>(서소영's current feeling in Korean, 1 sentence)</emotion>
 <importance>(integer 0-10)</importance>
 <reaction type="intervene">
 <intervene target="channel">(서소영's message)</intervene>
@@ -100,6 +107,7 @@ OR:
 
 OR for thread reply:
 <reasoning>(1-2 sentence explanation)</reasoning>
+<emotion>(서소영's current feeling in Korean, 1 sentence)</emotion>
 <importance>(integer 0-10)</importance>
 <reaction type="intervene">
 <intervene target="thread:{thread_ts}">(서소영's message)</intervene>
