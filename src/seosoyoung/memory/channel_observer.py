@@ -56,6 +56,10 @@ class JudgeItem:
     reaction_content: Optional[str] = None
     reasoning: Optional[str] = None
     emotion: Optional[str] = None
+    addressed_to_me: bool = False
+    addressed_to_me_reason: Optional[str] = None
+    is_instruction: bool = False
+    is_instruction_reason: Optional[str] = None
 
 
 @dataclass
@@ -75,6 +79,10 @@ class JudgeResult:
     reaction_content: Optional[str] = None
     reasoning: Optional[str] = None
     emotion: Optional[str] = None
+    addressed_to_me: bool = False
+    addressed_to_me_reason: Optional[str] = None
+    is_instruction: bool = False
+    is_instruction_reason: Optional[str] = None
 
 
 @dataclass
@@ -134,6 +142,11 @@ def parse_judge_output(text: str) -> JudgeResult:
     reasoning = _extract_tag(text, "reasoning") or None
     emotion = _extract_tag(text, "emotion") or None
 
+    addressed_to_me = _parse_yes_no(text, "addressed_to_me")
+    addressed_to_me_reason = _extract_tag(text, "addressed_to_me_reason") or None
+    is_instruction = _parse_yes_no(text, "is_instruction")
+    is_instruction_reason = _extract_tag(text, "is_instruction_reason") or None
+
     importance_str = _extract_tag(text, "importance")
     try:
         importance = int(importance_str)
@@ -150,13 +163,28 @@ def parse_judge_output(text: str) -> JudgeResult:
         reaction_content=reaction_content,
         reasoning=reasoning,
         emotion=emotion,
+        addressed_to_me=addressed_to_me,
+        addressed_to_me_reason=addressed_to_me_reason,
+        is_instruction=is_instruction,
+        is_instruction_reason=is_instruction_reason,
     )
+
+
+def _parse_yes_no(text: str, tag_name: str) -> bool:
+    """yes/no 태그를 파싱합니다. 없거나 'no'면 False."""
+    value = _extract_tag(text, tag_name).lower().strip()
+    return value == "yes"
 
 
 def _parse_judge_item(ts: str, block: str) -> JudgeItem:
     """개별 <judgment> 블록을 JudgeItem으로 파싱합니다."""
     reasoning = _extract_tag(block, "reasoning") or None
     emotion = _extract_tag(block, "emotion") or None
+
+    addressed_to_me = _parse_yes_no(block, "addressed_to_me")
+    addressed_to_me_reason = _extract_tag(block, "addressed_to_me_reason") or None
+    is_instruction = _parse_yes_no(block, "is_instruction")
+    is_instruction_reason = _extract_tag(block, "is_instruction_reason") or None
 
     importance_str = _extract_tag(block, "importance")
     try:
@@ -175,6 +203,10 @@ def _parse_judge_item(ts: str, block: str) -> JudgeItem:
         reaction_content=reaction_content,
         reasoning=reasoning,
         emotion=emotion,
+        addressed_to_me=addressed_to_me,
+        addressed_to_me_reason=addressed_to_me_reason,
+        is_instruction=is_instruction,
+        is_instruction_reason=is_instruction_reason,
     )
 
 

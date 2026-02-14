@@ -434,6 +434,93 @@ class TestParseJudgeOutputMulti:
         assert result.importance == 4
         assert result.reaction_type == "none"
 
+    def test_parse_multi_with_addressed_and_instruction(self):
+        """addressed_to_me, is_instruction 필드가 포함된 복수 판단 파싱"""
+        text = (
+            '<judgments>\n'
+            '<judgment ts="111.222">\n'
+            '<addressed_to_me>yes</addressed_to_me>\n'
+            '<addressed_to_me_reason>서소영을 직접 멘션함</addressed_to_me_reason>\n'
+            '<is_instruction>yes</is_instruction>\n'
+            '<is_instruction_reason>번역 작업을 요청함</is_instruction_reason>\n'
+            '<emotion>호출받았다</emotion>\n'
+            '<importance>8</importance>\n'
+            '<reaction type="intervene">\n'
+            '<intervene target="channel">알겠습니다.</intervene>\n'
+            '</reaction>\n'
+            '<reasoning>서소영에게 직접 번역을 요청함</reasoning>\n'
+            '</judgment>\n'
+            '<judgment ts="333.444">\n'
+            '<addressed_to_me>no</addressed_to_me>\n'
+            '<addressed_to_me_reason>일반 대화임</addressed_to_me_reason>\n'
+            '<is_instruction>no</is_instruction>\n'
+            '<is_instruction_reason>정보 공유일 뿐</is_instruction_reason>\n'
+            '<emotion>평온하다</emotion>\n'
+            '<importance>2</importance>\n'
+            '<reaction type="none" />\n'
+            '<reasoning>별다른 반응이 필요 없음</reasoning>\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        result = parse_judge_output(text)
+        assert len(result.items) == 2
+
+        item0 = result.items[0]
+        assert item0.addressed_to_me is True
+        assert item0.addressed_to_me_reason == "서소영을 직접 멘션함"
+        assert item0.is_instruction is True
+        assert item0.is_instruction_reason == "번역 작업을 요청함"
+        assert item0.importance == 8
+        assert item0.reaction_type == "intervene"
+
+        item1 = result.items[1]
+        assert item1.addressed_to_me is False
+        assert item1.addressed_to_me_reason == "일반 대화임"
+        assert item1.is_instruction is False
+        assert item1.is_instruction_reason == "정보 공유일 뿐"
+        assert item1.importance == 2
+        assert item1.reaction_type == "none"
+
+    def test_backward_compat_no_addressed_instruction_fields(self):
+        """새 필드가 없는 기존 형식 응답도 정상 파싱 (하위호환)"""
+        text = (
+            '<judgments>\n'
+            '<judgment ts="500.000">\n'
+            '<reasoning>별 일 없음</reasoning>\n'
+            '<emotion>평온</emotion>\n'
+            '<importance>3</importance>\n'
+            '<reaction type="none" />\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        result = parse_judge_output(text)
+        assert len(result.items) == 1
+        item = result.items[0]
+        assert item.addressed_to_me is False
+        assert item.addressed_to_me_reason is None
+        assert item.is_instruction is False
+        assert item.is_instruction_reason is None
+        assert item.importance == 3
+
+    def test_backward_compat_single_with_new_fields(self):
+        """judgment 블록 없이 단일 파싱에서도 새 필드 파싱"""
+        text = (
+            '<addressed_to_me>yes</addressed_to_me>\n'
+            '<addressed_to_me_reason>이름 호출</addressed_to_me_reason>\n'
+            '<is_instruction>no</is_instruction>\n'
+            '<is_instruction_reason>질문일 뿐</is_instruction_reason>\n'
+            '<importance>5</importance>\n'
+            '<reaction type="react">\n'
+            '<react target="1.1" emoji="eyes" />\n'
+            '</reaction>'
+        )
+        result = parse_judge_output(text)
+        assert result.items == []
+        assert result.addressed_to_me is True
+        assert result.addressed_to_me_reason == "이름 호출"
+        assert result.is_instruction is False
+        assert result.is_instruction_reason == "질문일 뿐"
+
 
 # ── ChannelObserver.judge() 복수 판단 ─────────────────────
 

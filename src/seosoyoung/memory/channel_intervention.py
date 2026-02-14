@@ -483,7 +483,7 @@ def send_multi_judge_debug_log(
     blocks.append({"type": "section", "fields": summary_fields})
     blocks.append({"type": "divider"})
 
-    # 메시지별 블록
+    # 메시지별 블록 (3분할 테이블)
     for item in items:
         reaction_text = item.reaction_type
         if item.reaction_type == "react" and item.reaction_content:
@@ -492,29 +492,47 @@ def send_multi_judge_debug_log(
             target = item.reaction_target or "channel"
             reaction_text = f"intervene → {target}"
 
-        item_fields = [
-            {"type": "mrkdwn", "text": f"*메시지 ID*"},
+        # 테이블 1: 메시지 정보
+        table1_fields = [
+            {"type": "mrkdwn", "text": "*메시지 ID*"},
             {"type": "mrkdwn", "text": f"`{item.ts}`"},
-            {"type": "mrkdwn", "text": f"*중요도*"},
-            {"type": "mrkdwn", "text": f"{item.importance}/10"},
-            {"type": "mrkdwn", "text": f"*리액션*"},
-            {"type": "mrkdwn", "text": reaction_text},
+        ]
+        blocks.append({"type": "section", "fields": table1_fields})
+
+        # 테이블 2: 판단
+        addressed_text = "yes" if item.addressed_to_me else "no"
+        if item.addressed_to_me_reason:
+            addressed_text += f" — {item.addressed_to_me_reason}"
+        instruction_text = "yes" if item.is_instruction else "no"
+        if item.is_instruction_reason:
+            instruction_text += f" — {item.is_instruction_reason}"
+
+        table2_fields = [
+            {"type": "mrkdwn", "text": "*서소영 대상?*"},
+            {"type": "mrkdwn", "text": addressed_text},
+            {"type": "mrkdwn", "text": "*지시?*"},
+            {"type": "mrkdwn", "text": instruction_text},
         ]
         if item.emotion:
-            item_fields.extend([
-                {"type": "mrkdwn", "text": f"*감정*"},
+            table2_fields.extend([
+                {"type": "mrkdwn", "text": "*감정*"},
                 {"type": "mrkdwn", "text": item.emotion},
             ])
+        blocks.append({"type": "section", "fields": table2_fields})
+
+        # 테이블 3: 리액션
+        table3_fields = [
+            {"type": "mrkdwn", "text": "*중요도*"},
+            {"type": "mrkdwn", "text": f"{'⭐' * min(item.importance, 10)} ({item.importance}/10)"},
+            {"type": "mrkdwn", "text": "*리액션*"},
+            {"type": "mrkdwn", "text": reaction_text},
+        ]
         if item.reasoning:
-            item_fields.extend([
-                {"type": "mrkdwn", "text": f"*판단 이유*"},
+            table3_fields.extend([
+                {"type": "mrkdwn", "text": "*판단 이유*"},
                 {"type": "mrkdwn", "text": item.reasoning},
             ])
-
-        # section.fields 최대 10개씩 분할
-        for i in range(0, len(item_fields), 10):
-            chunk = item_fields[i:i + 10]
-            blocks.append({"type": "section", "fields": chunk})
+        blocks.append({"type": "section", "fields": table3_fields})
 
         blocks.append({"type": "divider"})
 
