@@ -11,6 +11,7 @@
 - [`claude/message_formatter.py`](modules/claude_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티
 - [`claude/security.py`](modules/claude_security.md): 보안 레이어
 - [`claude/session.py`](modules/claude_session.md): Claude Code 세션 관리
+- [`claude/session_context.py`](modules/claude_session_context.md): 세션 컨텍스트 주입
 - [`seosoyoung/config.py`](modules/seosoyoung_config.md): 설정 관리
 - [`handlers/actions.py`](modules/handlers_actions.md): 재시작 버튼 액션 핸들러
 - [`handlers/channel_collector.py`](modules/handlers_channel_collector.md): 채널 메시지 수집기
@@ -74,8 +75,8 @@
 - `ClaudeExecutor` (seosoyoung/claude/executor.py:70): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
-- `SessionManager` (seosoyoung/claude/session.py:41): 세션 매니저
-- `SessionRuntime` (seosoyoung/claude/session.py:185): 세션 실행 상태 관리자
+- `SessionManager` (seosoyoung/claude/session.py:43): 세션 매니저
+- `SessionRuntime` (seosoyoung/claude/session.py:201): 세션 실행 상태 관리자
 - `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
@@ -158,16 +159,19 @@
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:69): 응답에서 요약과 상세 내용을 파싱
 - `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:103): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:127): 트렐로 카드용 슬랙 메시지 헤더 생성
+- `build_initial_context()` (seosoyoung/claude/session_context.py:15): 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
+- `build_followup_context()` (seosoyoung/claude/session_context.py:67): 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
+- `format_hybrid_context()` (seosoyoung/claude/session_context.py:134): hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
 - `register_all_handlers()` (seosoyoung/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/handlers/actions.py:79): 액션 핸들러 등록
-- `extract_command()` (seosoyoung/handlers/mention.py:81): 멘션에서 명령어 추출
-- `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:107): Recall 결과를 포함한 프롬프트 구성.
-- `get_channel_history()` (seosoyoung/handlers/mention.py:150): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-- `register_mention_handlers()` (seosoyoung/handlers/mention.py:171): 멘션 핸들러 등록
-- `build_slack_context()` (seosoyoung/handlers/message.py:19): 슬랙 컨텍스트 블록 문자열을 생성합니다.
-- `process_thread_message()` (seosoyoung/handlers/message.py:45): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
-- `register_message_handlers()` (seosoyoung/handlers/message.py:110): 메시지 핸들러 등록
+- `extract_command()` (seosoyoung/handlers/mention.py:82): 멘션에서 명령어 추출
+- `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:108): Recall 결과를 포함한 프롬프트 구성.
+- `get_channel_history()` (seosoyoung/handlers/mention.py:174): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
+- `register_mention_handlers()` (seosoyoung/handlers/mention.py:179): 멘션 핸들러 등록
+- `build_slack_context()` (seosoyoung/handlers/message.py:20): 슬랙 컨텍스트 블록 문자열을 생성합니다.
+- `process_thread_message()` (seosoyoung/handlers/message.py:46): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
+- `register_message_handlers()` (seosoyoung/handlers/message.py:142): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
