@@ -106,7 +106,12 @@ section.fields는 최대 10개이므로, 5쌍(=10 fields)씩 section 블록을 �
 - 위치: 줄 405
 - 설명: 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
 
+### `send_multi_judge_debug_log(client, debug_channel, source_channel, items, react_actions, message_actions_executed, pending_count)`
+- 위치: 줄 450
+- 설명: 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
+
 ## 내부 의존성
 
 - `seosoyoung.config.Config`
 - `seosoyoung.memory.channel_observer.ChannelObserverResult`
+- `seosoyoung.memory.channel_observer.JudgeItem`

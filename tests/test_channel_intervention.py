@@ -20,10 +20,12 @@ from seosoyoung.memory.channel_intervention import (
     send_debug_log,
     send_digest_skip_debug_log,
     send_intervention_probability_debug_log,
+    send_multi_judge_debug_log,
 )
 from seosoyoung.memory.channel_observer import (
     ChannelObserverResult,
     DigestResult,
+    JudgeItem,
     JudgeResult,
 )
 from seosoyoung.memory.channel_pipeline import run_channel_pipeline
@@ -951,3 +953,135 @@ class TestSendDigestSkipDebugLog:
         )
 
         client.chat_postMessage.assert_not_called()
+
+
+# ── send_multi_judge_debug_log 테스트 ─────────────────
+
+class TestSendMultiJudgeDebugLog:
+    """복수 판단 디버그 로그 테스트"""
+
+    def test_sends_blocks_with_summary(self):
+        """요약 블록에 채널, pending 수, 판단 결과 포함"""
+        client = MagicMock()
+
+        items = [
+            JudgeItem(ts="1001.000", importance=7, reaction_type="react",
+                      reaction_content="laughing", emotion="유쾌"),
+            JudgeItem(ts="1002.000", importance=3, reaction_type="none"),
+        ]
+        react_actions = [
+            InterventionAction(type="react", target="1001.000", content="laughing"),
+        ]
+
+        send_multi_judge_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            items=items,
+            react_actions=react_actions,
+            message_actions_executed=[],
+            pending_count=5,
+        )
+
+        client.chat_postMessage.assert_called_once()
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert call_kwargs["channel"] == "C_DEBUG"
+        assert "blocks" in call_kwargs
+        blocks_str = json.dumps(call_kwargs["blocks"], ensure_ascii=False)
+        assert "C123" in blocks_str
+        assert "5건" in blocks_str
+        assert "react 1" in blocks_str
+        assert "none 1" in blocks_str
+
+    def test_per_message_blocks(self):
+        """각 메시지별 독립 블록이 생성됨"""
+        client = MagicMock()
+
+        items = [
+            JudgeItem(ts="1001.000", importance=7, reaction_type="react",
+                      reaction_content="laughing", emotion="유쾌", reasoning="재미있는 대화"),
+            JudgeItem(ts="1002.000", importance=5, reaction_type="intervene",
+                      reaction_target="channel", reaction_content="한 마디",
+                      emotion="관심", reasoning="흥미로운 주제"),
+        ]
+
+        send_multi_judge_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            items=items,
+            react_actions=[],
+            message_actions_executed=[],
+        )
+
+        call_kwargs = client.chat_postMessage.call_args[1]
+        blocks_str = json.dumps(call_kwargs["blocks"], ensure_ascii=False)
+        # 각 메시지의 ts가 포함
+        assert "1001.000" in blocks_str
+        assert "1002.000" in blocks_str
+        # 감정과 판단 이유가 포함
+        assert "유쾌" in blocks_str
+        assert "재미있는 대화" in blocks_str
+        assert "관심" in blocks_str
+
+    def test_header_shows_message_count(self):
+        """헤더에 메시지 개수 표시"""
+        client = MagicMock()
+
+        items = [
+            JudgeItem(ts="1001.000", importance=3, reaction_type="none"),
+            JudgeItem(ts="1002.000", importance=2, reaction_type="none"),
+            JudgeItem(ts="1003.000", importance=4, reaction_type="none"),
+        ]
+
+        send_multi_judge_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            items=items,
+            react_actions=[],
+            message_actions_executed=[],
+        )
+
+        call_kwargs = client.chat_postMessage.call_args[1]
+        blocks = call_kwargs["blocks"]
+        header_text = blocks[0]["text"]["text"]
+        assert "3 messages" in header_text
+
+    def test_skips_when_no_debug_channel(self):
+        """디버그 채널 미설정이면 전송 안 함"""
+        client = MagicMock()
+
+        send_multi_judge_debug_log(
+            client=client,
+            debug_channel="",
+            source_channel="C123",
+            items=[JudgeItem(ts="1.0", importance=1, reaction_type="none")],
+            react_actions=[],
+            message_actions_executed=[],
+        )
+
+        client.chat_postMessage.assert_not_called()
+
+    def test_fallback_text(self):
+        """fallback text에 요약 정보 포함"""
+        client = MagicMock()
+
+        items = [
+            JudgeItem(ts="1001.000", importance=5, reaction_type="react",
+                      reaction_content="heart"),
+        ]
+
+        send_multi_judge_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            items=items,
+            react_actions=[InterventionAction(type="react", target="1001.000", content="heart")],
+            message_actions_executed=[],
+        )
+
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert "text" in call_kwargs
+        assert "C123" in call_kwargs["text"]
+        assert "1 messages" in call_kwargs["text"]

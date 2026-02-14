@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from seosoyoung.config import Config
-from seosoyoung.memory.channel_observer import ChannelObserverResult
+from seosoyoung.memory.channel_observer import ChannelObserverResult, JudgeItem
 
 logger = logging.getLogger(__name__)
 
@@ -445,3 +445,90 @@ def send_intervention_probability_debug_log(
         client.chat_postMessage(channel=debug_channel, blocks=blocks, text=fallback)
     except Exception as e:
         logger.error(f"개입 확률 디버그 로그 전송 실패: {e}")
+
+
+def send_multi_judge_debug_log(
+    client,
+    debug_channel: str,
+    source_channel: str,
+    items: list[JudgeItem],
+    react_actions: list[InterventionAction],
+    message_actions_executed: list[InterventionAction],
+    pending_count: int = 0,
+) -> None:
+    """복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다."""
+    if not debug_channel:
+        return
+
+    react_count = len(react_actions)
+    intervene_count = len(message_actions_executed)
+    none_count = sum(1 for item in items if item.reaction_type == "none")
+
+    # 헤더 블록 + 요약
+    blocks = [
+        {"type": "header", "text": {
+            "type": "plain_text",
+            "text": f"Channel Observer ({len(items)} messages)",
+        }},
+    ]
+
+    summary_fields = [
+        {"type": "mrkdwn", "text": f"*채널*"},
+        {"type": "mrkdwn", "text": f"`{source_channel}`"},
+        {"type": "mrkdwn", "text": f"*pending*"},
+        {"type": "mrkdwn", "text": f"{pending_count}건"},
+        {"type": "mrkdwn", "text": f"*판단 결과*"},
+        {"type": "mrkdwn", "text": f"react {react_count} · intervene {intervene_count} · none {none_count}"},
+    ]
+    blocks.append({"type": "section", "fields": summary_fields})
+    blocks.append({"type": "divider"})
+
+    # 메시지별 블록
+    for item in items:
+        reaction_text = item.reaction_type
+        if item.reaction_type == "react" and item.reaction_content:
+            reaction_text = f":{item.reaction_content}:"
+        elif item.reaction_type == "intervene":
+            target = item.reaction_target or "channel"
+            reaction_text = f"intervene → {target}"
+
+        item_fields = [
+            {"type": "mrkdwn", "text": f"*메시지 ID*"},
+            {"type": "mrkdwn", "text": f"`{item.ts}`"},
+            {"type": "mrkdwn", "text": f"*중요도*"},
+            {"type": "mrkdwn", "text": f"{item.importance}/10"},
+            {"type": "mrkdwn", "text": f"*리액션*"},
+            {"type": "mrkdwn", "text": reaction_text},
+        ]
+        if item.emotion:
+            item_fields.extend([
+                {"type": "mrkdwn", "text": f"*감정*"},
+                {"type": "mrkdwn", "text": item.emotion},
+            ])
+        if item.reasoning:
+            item_fields.extend([
+                {"type": "mrkdwn", "text": f"*판단 이유*"},
+                {"type": "mrkdwn", "text": item.reasoning},
+            ])
+
+        # section.fields 최대 10개씩 분할
+        for i in range(0, len(item_fields), 10):
+            chunk = item_fields[i:i + 10]
+            blocks.append({"type": "section", "fields": chunk})
+
+        blocks.append({"type": "divider"})
+
+    # 마지막 divider 제거
+    if blocks and blocks[-1].get("type") == "divider":
+        blocks.pop()
+
+    fallback = (
+        f"[Channel Observer] {source_channel} | "
+        f"{len(items)} messages | "
+        f"react {react_count} · intervene {intervene_count} · none {none_count}"
+    )
+
+    try:
+        client.chat_postMessage(channel=debug_channel, blocks=blocks, text=fallback)
+    except Exception as e:
+        logger.error(f"복수 판단 디버그 로그 전송 실패: {e}")

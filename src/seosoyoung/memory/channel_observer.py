@@ -6,7 +6,7 @@ DigestCompressor는 digest가 임계치를 초과할 때 압축합니다.
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import openai
@@ -46,11 +46,31 @@ class DigestResult:
 
 
 @dataclass
-class JudgeResult:
-    """리액션 판단 결과"""
+class JudgeItem:
+    """개별 메시지에 대한 리액션 판단 결과"""
 
+    ts: str = ""
     importance: int = 0
     reaction_type: str = "none"  # "none" | "react" | "intervene"
+    reaction_target: Optional[str] = None
+    reaction_content: Optional[str] = None
+    reasoning: Optional[str] = None
+    emotion: Optional[str] = None
+
+
+@dataclass
+class JudgeResult:
+    """복수 메시지에 대한 리액션 판단 결과
+
+    items가 있으면 메시지별 개별 판단 결과를 사용합니다.
+    items가 없으면 하위호환용 단일 필드를 사용합니다.
+    """
+
+    items: list[JudgeItem] = field(default_factory=list)
+
+    # 하위호환: items가 비어있으면 단일 필드 사용
+    importance: int = 0
+    reaction_type: str = "none"
     reaction_target: Optional[str] = None
     reaction_content: Optional[str] = None
     reasoning: Optional[str] = None
@@ -92,7 +112,25 @@ def parse_channel_observer_output(text: str) -> ChannelObserverResult:
 
 
 def parse_judge_output(text: str) -> JudgeResult:
-    """Judge 응답에서 XML 태그를 파싱합니다."""
+    """Judge 응답에서 XML 태그를 파싱합니다.
+
+    복수 <judgment ts="..."> 블록이 있으면 각각을 JudgeItem으로 파싱합니다.
+    없으면 하위호환으로 단일 결과를 파싱합니다.
+    """
+    # 복수 judgment 블록 파싱 시도
+    judgment_blocks = re.findall(
+        r'<judgment\s+ts="([^"]+)">(.*?)</judgment>',
+        text, re.DOTALL,
+    )
+
+    if judgment_blocks:
+        items = []
+        for ts, block in judgment_blocks:
+            item = _parse_judge_item(ts, block)
+            items.append(item)
+        return JudgeResult(items=items)
+
+    # 하위호환: 단일 결과 파싱
     reasoning = _extract_tag(text, "reasoning") or None
     emotion = _extract_tag(text, "emotion") or None
 
@@ -106,6 +144,31 @@ def parse_judge_output(text: str) -> JudgeResult:
     reaction_type, reaction_target, reaction_content = _parse_reaction(text)
 
     return JudgeResult(
+        importance=importance,
+        reaction_type=reaction_type,
+        reaction_target=reaction_target,
+        reaction_content=reaction_content,
+        reasoning=reasoning,
+        emotion=emotion,
+    )
+
+
+def _parse_judge_item(ts: str, block: str) -> JudgeItem:
+    """개별 <judgment> 블록을 JudgeItem으로 파싱합니다."""
+    reasoning = _extract_tag(block, "reasoning") or None
+    emotion = _extract_tag(block, "emotion") or None
+
+    importance_str = _extract_tag(block, "importance")
+    try:
+        importance = int(importance_str)
+    except (ValueError, TypeError):
+        importance = 0
+    importance = max(0, min(10, importance))
+
+    reaction_type, reaction_target, reaction_content = _parse_reaction(block)
+
+    return JudgeItem(
+        ts=ts,
         importance=importance,
         reaction_type=reaction_type,
         reaction_target=reaction_target,
@@ -285,7 +348,7 @@ class ChannelObserver:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_completion_tokens=4_000,
+                max_completion_tokens=8_000,
             )
 
             result_text = response.choices[0].message.content or ""

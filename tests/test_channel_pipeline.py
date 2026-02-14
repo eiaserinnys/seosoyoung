@@ -10,6 +10,7 @@ from seosoyoung.memory.channel_intervention import InterventionHistory
 from seosoyoung.memory.channel_observer import (
     DigestCompressorResult,
     DigestResult,
+    JudgeItem,
     JudgeResult,
 )
 from seosoyoung.memory.channel_pipeline import run_channel_pipeline
@@ -704,3 +705,194 @@ class TestIntervenWithClaudeRunner:
         calls = [c for c in client.chat_postMessage.call_args_list
                  if c[1].get("channel") == channel_id]
         assert len(calls) == 0
+
+
+# ── 복수 판단 파이프라인 테스트 ────────────────────────────
+
+class TestMultiJudgePipeline:
+    """JudgeResult.items를 사용하는 복수 판단 파이프라인 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_multi_react_all_executed(self, store, channel_id):
+        """복수 react 판단이 모두 실행됨"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=5, reaction_type="react",
+                          reaction_target="1001.000", reaction_content="laughing"),
+                JudgeItem(ts="1003.000", importance=4, reaction_type="react",
+                          reaction_target="1003.000", reaction_content="eyes"),
+                JudgeItem(ts="1005.000", importance=2, reaction_type="none"),
+            ],
+        ))
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+        )
+
+        # 2개 이모지 리액션 실행
+        assert client.reactions_add.call_count == 2
+        call_args_list = [c[1] for c in client.reactions_add.call_args_list]
+        emojis = {c["name"] for c in call_args_list}
+        assert emojis == {"laughing", "eyes"}
+
+    @pytest.mark.asyncio
+    async def test_multi_react_plus_intervene(self, store, channel_id):
+        """react + intervene이 섞인 경우: react 일괄 + intervene 확률 판단"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=4, reaction_type="react",
+                          reaction_target="1001.000", reaction_content="fire"),
+                JudgeItem(ts="1005.000", importance=8, reaction_type="intervene",
+                          reaction_target="channel",
+                          reaction_content="흥미로운 대화로군요"),
+            ],
+        ))
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="서소영 응답")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
+            llm_call=mock_llm,
+        )
+
+        # react 실행됨
+        client.reactions_add.assert_called_once()
+        # intervene도 실행됨
+        mock_llm.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_multi_all_none(self, store, channel_id):
+        """모든 판단이 none이면 아무 액션도 없음"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=1, reaction_type="none"),
+                JudgeItem(ts="1002.000", importance=2, reaction_type="none"),
+            ],
+        ))
+        client = MagicMock()
+        history = InterventionHistory(base_dir=store.base_dir)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+        )
+
+        client.reactions_add.assert_not_called()
+        client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_multi_pending_moved_to_judged(self, store, channel_id):
+        """복수 판단 후에도 pending이 judged로 이동"""
+        _fill_pending(store, channel_id, n=5)
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=5, reaction_type="react",
+                          reaction_target="1001.000", reaction_content="eyes"),
+            ],
+        ))
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+        )
+
+        assert len(store.load_pending(channel_id)) == 0
+        assert len(store.load_judged(channel_id)) == 5
+
+    @pytest.mark.asyncio
+    async def test_multi_debug_log_sent(self, store, channel_id):
+        """복수 판단 시 디버그 로그가 전송됨"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=3, reaction_type="none"),
+                JudgeItem(ts="1002.000", importance=5, reaction_type="react",
+                          reaction_target="1002.000", reaction_content="laughing"),
+            ],
+        ))
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            debug_channel="C_DEBUG",
+        )
+
+        debug_calls = [c for c in client.chat_postMessage.call_args_list
+                       if c[1].get("channel") == "C_DEBUG"]
+        assert len(debug_calls) >= 1
+        # 복수 판단 로그에 메시지 수 포함
+        fallback = debug_calls[0][1]["text"]
+        assert "2 messages" in fallback
+
+    @pytest.mark.asyncio
+    async def test_multi_intervene_threshold_blocks(self, store, channel_id):
+        """복수 판단에서 확률 임계치가 intervene을 차단"""
+        _fill_pending(store, channel_id)
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=3, reaction_type="react",
+                          reaction_target="1001.000", reaction_content="eyes"),
+                JudgeItem(ts="1005.000", importance=3, reaction_type="intervene",
+                          reaction_target="channel", reaction_content="개입"),
+            ],
+        ))
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="응답")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=1.0,  # 높은 임계치 → 차단
+            llm_call=mock_llm,
+        )
+
+        # react는 실행됨
+        client.reactions_add.assert_called_once()
+        # intervene은 차단됨
+        mock_llm.assert_not_called()

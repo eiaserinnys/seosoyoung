@@ -3,8 +3,8 @@
 pending 버퍼에 쌓인 메시지를 기반으로:
 1. pending 토큰 확인 → threshold_A 미만이면 스킵
 2. judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 digest에 편입)
-3. judge() 호출 (digest + judged + pending → 리액션 판단)
-4. 리액션 처리 (확률 기반 개입 판단 + 슬랙 발송)
+3. judge() 호출 (digest + judged + pending → 메시지별 리액션 판단)
+4. 리액션 처리 (이모지 일괄 + 확률 기반 개입 판단 + 슬랙 발송)
 5. pending을 judged로 이동
 """
 
@@ -20,11 +20,13 @@ from seosoyoung.memory.channel_intervention import (
     intervention_probability,
     send_debug_log,
     send_intervention_probability_debug_log,
+    send_multi_judge_debug_log,
 )
 from seosoyoung.memory.channel_observer import (
     ChannelObserver,
     ChannelObserverResult,
     DigestCompressor,
+    JudgeItem,
     JudgeResult,
 )
 from seosoyoung.memory.channel_prompts import (
@@ -53,19 +55,54 @@ def _judge_result_to_observer_result(
     )
 
 
+def _parse_judge_item_action(item: JudgeItem) -> InterventionAction | None:
+    """JudgeItem에서 InterventionAction을 생성합니다. 반응이 없으면 None."""
+    if item.reaction_type == "none":
+        return None
+
+    if item.reaction_type == "react" and item.reaction_target and item.reaction_content:
+        return InterventionAction(
+            type="react",
+            target=item.reaction_target,
+            content=item.reaction_content,
+        )
+
+    if item.reaction_type == "intervene" and item.reaction_target and item.reaction_content:
+        return InterventionAction(
+            type="message",
+            target=item.reaction_target,
+            content=item.reaction_content,
+        )
+
+    return None
+
+
 def _parse_judge_actions(judge_result: JudgeResult) -> list[InterventionAction]:
-    """JudgeResult에서 InterventionAction 리스트를 생성합니다."""
+    """JudgeResult에서 InterventionAction 리스트를 생성합니다.
+
+    items가 있으면 각 JudgeItem에서 액션을 추출합니다.
+    없으면 하위호환 단일 필드에서 추출합니다.
+    """
+    if judge_result.items:
+        actions = []
+        for item in judge_result.items:
+            action = _parse_judge_item_action(item)
+            if action:
+                actions.append(action)
+        return actions
+
+    # 하위호환: 단일 필드
     if judge_result.reaction_type == "none":
         return []
 
-    if judge_result.reaction_type == "react":
+    if judge_result.reaction_type == "react" and judge_result.reaction_target:
         return [InterventionAction(
             type="react",
             target=judge_result.reaction_target,
             content=judge_result.reaction_content,
         )]
 
-    if judge_result.reaction_type == "intervene":
+    if judge_result.reaction_type == "intervene" and judge_result.reaction_target:
         return [InterventionAction(
             type="message",
             target=judge_result.reaction_target,
@@ -73,6 +110,13 @@ def _parse_judge_actions(judge_result: JudgeResult) -> list[InterventionAction]:
         )]
 
     return []
+
+
+def _get_max_importance_item(judge_result: JudgeResult) -> JudgeItem | None:
+    """JudgeResult에서 가장 높은 중요도의 JudgeItem을 반환합니다."""
+    if not judge_result.items:
+        return None
+    return max(judge_result.items, key=lambda item: item.importance)
 
 
 async def run_channel_pipeline(
@@ -98,25 +142,9 @@ async def run_channel_pipeline(
     흐름:
     a) pending 토큰 확인 → threshold_A 미만이면 스킵
     b) judged + pending 합산 > threshold_B이면 → digest() 호출 (judged를 편입)
-    c) judge() 호출 (digest + judged + pending)
-    d) 리액션 처리 (확률 기반 개입 판단 + 슬랙 발송)
+    c) judge() 호출 (digest + judged + pending → 메시지별 판단)
+    d) 리액션 처리 (이모지 일괄 + 확률 기반 개입 판단 + 슬랙 발송)
     e) pending을 judged로 이동
-
-    Args:
-        store: 채널 데이터 저장소
-        observer: ChannelObserver 인스턴스
-        channel_id: 대상 채널
-        slack_client: Slack WebClient
-        cooldown: InterventionHistory 인스턴스
-        threshold_a: pending 판단 트리거 토큰 임계치
-        threshold_b: digest 편입 트리거 토큰 임계치
-        compressor: DigestCompressor (None이면 압축 건너뜀)
-        digest_max_tokens: digest 압축 트리거 토큰 임계치
-        digest_target_tokens: digest 압축 목표 토큰
-        debug_channel: 디버그 로그 채널 (빈 문자열이면 생략)
-        intervention_threshold: 확률 기반 개입 임계치 (기본 0.3)
-        llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
-        claude_runner: Claude Code SDK 기반 실행기 (우선 사용, 없으면 llm_call 폴백)
     """
     token_counter = TokenCounter()
 
@@ -210,18 +238,160 @@ async def run_channel_pipeline(
         logger.warning(f"judge가 None 반환 ({channel_id})")
         return
 
+    # d) 리액션 처리
+    if judge_result.items:
+        # 복수 판단 경로
+        await _handle_multi_judge(
+            judge_result=judge_result,
+            store=store,
+            channel_id=channel_id,
+            slack_client=slack_client,
+            cooldown=cooldown,
+            pending_messages=pending_messages,
+            current_digest=current_digest,
+            debug_channel=debug_channel,
+            intervention_threshold=intervention_threshold,
+            llm_call=llm_call,
+            claude_runner=claude_runner,
+        )
+    else:
+        # 하위호환: 단일 판단 경로
+        await _handle_single_judge(
+            judge_result=judge_result,
+            store=store,
+            channel_id=channel_id,
+            slack_client=slack_client,
+            cooldown=cooldown,
+            pending_messages=pending_messages,
+            current_digest=current_digest,
+            debug_channel=debug_channel,
+            intervention_threshold=intervention_threshold,
+            llm_call=llm_call,
+            claude_runner=claude_runner,
+        )
+
+    # e) pending을 judged로 이동
+    store.move_pending_to_judged(channel_id)
+
+
+async def _handle_multi_judge(
+    judge_result: JudgeResult,
+    store: ChannelStore,
+    channel_id: str,
+    slack_client,
+    cooldown: InterventionHistory,
+    pending_messages: list[dict],
+    current_digest: str | None,
+    debug_channel: str,
+    intervention_threshold: float,
+    llm_call: Optional[Callable],
+    claude_runner: Optional["ClaudeAgentRunner"],
+) -> None:
+    """복수 JudgeItem 처리: 이모지 일괄 + 개입 확률 판단"""
+    actions = _parse_judge_actions(judge_result)
+
+    react_actions = [a for a in actions if a.type == "react"]
+    message_actions = [a for a in actions if a.type == "message"]
+
+    # 이모지 리액션 일괄 실행
+    if react_actions:
+        await execute_interventions(slack_client, channel_id, react_actions)
+
+    # 개입 처리 (확률 기반)
+    executed_messages: list[InterventionAction] = []
+    if message_actions:
+        # 개입에 사용할 importance는 가장 높은 item의 것
+        max_item = _get_max_importance_item(judge_result)
+        importance_for_prob = max_item.importance if max_item else 5
+
+        mins_since = cooldown.minutes_since_last(channel_id)
+        recent = cooldown.recent_count(channel_id)
+        prob = intervention_probability(mins_since, recent)
+
+        time_factor = 1 - math.exp(-mins_since / 40) if mins_since != float("inf") else 1.0
+        freq_factor = 1 / (1 + recent * 0.3)
+
+        final_score = (importance_for_prob / 10.0) * prob
+        passed = final_score >= intervention_threshold
+
+        send_intervention_probability_debug_log(
+            client=slack_client,
+            debug_channel=debug_channel,
+            source_channel=channel_id,
+            importance=importance_for_prob,
+            time_factor=time_factor,
+            freq_factor=freq_factor,
+            probability=prob,
+            final_score=final_score,
+            threshold=intervention_threshold,
+            passed=passed,
+        )
+
+        if passed:
+            # 개입은 1건만 (가장 중요한 것)
+            intervene_item = None
+            for item in judge_result.items:
+                if item.reaction_type == "intervene":
+                    if intervene_item is None or item.importance > intervene_item.importance:
+                        intervene_item = item
+
+            if intervene_item:
+                action = _parse_judge_item_action(intervene_item)
+                if action:
+                    if claude_runner or llm_call:
+                        await _execute_intervene(
+                            store=store,
+                            channel_id=channel_id,
+                            slack_client=slack_client,
+                            action=action,
+                            pending_messages=pending_messages,
+                            observer_reason=intervene_item.reaction_content,
+                            claude_runner=claude_runner,
+                            llm_call=llm_call,
+                        )
+                    else:
+                        await execute_interventions(
+                            slack_client, channel_id, [action]
+                        )
+                    cooldown.record(channel_id)
+                    executed_messages = [action]
+
+    # 디버그 로그: 메시지별 독립 블록
+    send_multi_judge_debug_log(
+        client=slack_client,
+        debug_channel=debug_channel,
+        source_channel=channel_id,
+        items=judge_result.items,
+        react_actions=react_actions,
+        message_actions_executed=executed_messages,
+        pending_count=len(pending_messages),
+    )
+
+
+async def _handle_single_judge(
+    judge_result: JudgeResult,
+    store: ChannelStore,
+    channel_id: str,
+    slack_client,
+    cooldown: InterventionHistory,
+    pending_messages: list[dict],
+    current_digest: str | None,
+    debug_channel: str,
+    intervention_threshold: float,
+    llm_call: Optional[Callable],
+    claude_runner: Optional["ClaudeAgentRunner"],
+) -> None:
+    """하위호환: 단일 JudgeResult 처리"""
     logger.info(
         f"리액션 판단 완료 ({channel_id}): "
         f"중요도 {judge_result.importance}, "
         f"반응 {judge_result.reaction_type}"
     )
 
-    # d) 리액션 처리
     observer_result = _judge_result_to_observer_result(
         judge_result, digest=current_digest or ""
     )
 
-    # 리액션 상세 정보 구성
     reaction_detail = None
     if judge_result.reaction_type != "none" and judge_result.reaction_target:
         reaction_detail = (
@@ -251,14 +421,12 @@ async def run_channel_pipeline(
         if react_actions:
             await execute_interventions(slack_client, channel_id, react_actions)
 
-        # 확률 기반 개입 판단
         executed_messages: list[InterventionAction] = []
         if message_actions:
             mins_since = cooldown.minutes_since_last(channel_id)
             recent = cooldown.recent_count(channel_id)
             prob = intervention_probability(mins_since, recent)
 
-            # 시간/빈도 감쇠 요소를 디버그용으로 재계산
             time_factor = 1 - math.exp(-mins_since / 40) if mins_since != float("inf") else 1.0
             freq_factor = 1 / (1 + recent * 0.3)
 
@@ -313,9 +481,6 @@ async def run_channel_pipeline(
             reaction_detail=reaction_detail,
         )
 
-    # e) pending을 judged로 이동
-    store.move_pending_to_judged(channel_id)
-
 
 async def _execute_intervene(
     store: ChannelStore,
@@ -327,20 +492,7 @@ async def _execute_intervene(
     claude_runner: Optional["ClaudeAgentRunner"] = None,
     llm_call: Optional[Callable] = None,
 ) -> None:
-    """서소영의 개입 응답을 생성하고 발송합니다.
-
-    claude_runner가 있으면 Claude Code SDK로, 없으면 llm_call 폴백으로 응답을 생성합니다.
-
-    Args:
-        store: 채널 데이터 저장소
-        channel_id: 대상 채널
-        slack_client: Slack WebClient
-        action: 실행할 InterventionAction (type="message")
-        pending_messages: pending 메시지 (트리거/컨텍스트 분리용)
-        observer_reason: judge의 reaction_content (판단 근거/초안)
-        claude_runner: Claude Code SDK 기반 실행기 (우선 사용)
-        llm_call: (deprecated) async callable(system_prompt, user_prompt) -> str
-    """
+    """서소영의 개입 응답을 생성하고 발송합니다."""
     # 1. 갱신된 digest 로드
     digest_data = store.get_digest(channel_id)
     digest = digest_data["content"] if digest_data else None
@@ -412,5 +564,3 @@ async def _execute_intervene(
             )
     except Exception as e:
         logger.error(f"intervene 슬랙 발송 실패 ({channel_id}): {e}")
-
-

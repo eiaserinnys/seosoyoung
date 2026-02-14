@@ -8,7 +8,7 @@ Channel: {channel_id}
 
 {judged_messages}
 
-## PENDING MESSAGES (new, decide reaction for these)
+## PENDING MESSAGES (new, decide reaction for EACH)
 
 {pending_messages}
 
@@ -16,5 +16,6 @@ Channel: {channel_id}
 
 {thread_messages}
 
-Based on the pending messages and thread conversations above (with digest and judged messages as context), decide on a reaction.
+For EACH pending message above, output a `<judgment ts="...">` block with importance, emotion, reasoning, and reaction decision.
 Do NOT react to messages marked [ALREADY REACTED].
+Wrap all judgments in `<judgments>...</judgments>`.

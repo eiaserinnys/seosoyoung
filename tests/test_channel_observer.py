@@ -8,6 +8,7 @@ from seosoyoung.memory.channel_observer import (
     DigestCompressor,
     DigestCompressorResult,
     DigestResult,
+    JudgeItem,
     JudgeResult,
     parse_channel_observer_output,
     parse_judge_output,
@@ -332,6 +333,149 @@ class TestParseJudgeOutput:
         assert result.importance == 8
         assert result.reaction_type == "intervene"
         assert result.reaction_content == "그 이야기, 저도 한마디 보태겠습니다."
+
+
+# ── parse_judge_output 복수 판단 ────────────────────────
+
+class TestParseJudgeOutputMulti:
+    """복수 <judgment> 블록 파싱 테스트"""
+
+    def test_parse_multi_judgments(self):
+        """여러 judgment 블록 파싱"""
+        text = (
+            '<judgments>\n'
+            '<judgment ts="111.222">\n'
+            '<reasoning>재미있는 대화</reasoning>\n'
+            '<emotion>웃음이 나온다</emotion>\n'
+            '<importance>5</importance>\n'
+            '<reaction type="react">\n'
+            '<react target="111.222" emoji="laughing" />\n'
+            '</reaction>\n'
+            '</judgment>\n'
+            '<judgment ts="333.444">\n'
+            '<reasoning>별 일 없음</reasoning>\n'
+            '<emotion>평온하다</emotion>\n'
+            '<importance>1</importance>\n'
+            '<reaction type="none" />\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        result = parse_judge_output(text)
+        assert isinstance(result, JudgeResult)
+        assert len(result.items) == 2
+
+        item0 = result.items[0]
+        assert isinstance(item0, JudgeItem)
+        assert item0.ts == "111.222"
+        assert item0.importance == 5
+        assert item0.reaction_type == "react"
+        assert item0.reaction_target == "111.222"
+        assert item0.reaction_content == "laughing"
+        assert item0.reasoning == "재미있는 대화"
+        assert item0.emotion == "웃음이 나온다"
+
+        item1 = result.items[1]
+        assert item1.ts == "333.444"
+        assert item1.importance == 1
+        assert item1.reaction_type == "none"
+
+    def test_parse_multi_with_intervene(self):
+        """react와 intervene이 섞인 복수 판단"""
+        text = (
+            '<judgments>\n'
+            '<judgment ts="100.000">\n'
+            '<reasoning>EB 프로젝트 이야기</reasoning>\n'
+            '<emotion>관심이 간다</emotion>\n'
+            '<importance>6</importance>\n'
+            '<reaction type="react">\n'
+            '<react target="100.000" emoji="eyes" />\n'
+            '</reaction>\n'
+            '</judgment>\n'
+            '<judgment ts="200.000">\n'
+            '<reasoning>서소영이 직접 언급됨</reasoning>\n'
+            '<emotion>호출받은 느낌이다</emotion>\n'
+            '<importance>9</importance>\n'
+            '<reaction type="intervene">\n'
+            '<intervene target="channel">부르셨습니까?</intervene>\n'
+            '</reaction>\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        result = parse_judge_output(text)
+        assert len(result.items) == 2
+        assert result.items[0].reaction_type == "react"
+        assert result.items[1].reaction_type == "intervene"
+        assert result.items[1].reaction_content == "부르셨습니까?"
+
+    def test_parse_single_judgment_block(self):
+        """judgment 블록이 1개만 있는 경우"""
+        text = (
+            '<judgments>\n'
+            '<judgment ts="500.000">\n'
+            '<importance>3</importance>\n'
+            '<reaction type="none" />\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        result = parse_judge_output(text)
+        assert len(result.items) == 1
+        assert result.items[0].ts == "500.000"
+        assert result.items[0].importance == 3
+        assert result.items[0].reaction_type == "none"
+
+    def test_backward_compat_no_judgment_blocks(self):
+        """judgment 블록이 없으면 하위호환 단일 파싱"""
+        text = (
+            '<importance>4</importance>\n'
+            '<reaction type="none" />'
+        )
+        result = parse_judge_output(text)
+        assert result.items == []
+        assert result.importance == 4
+        assert result.reaction_type == "none"
+
+
+# ── ChannelObserver.judge() 복수 판단 ─────────────────────
+
+class TestChannelObserverJudgeMulti:
+    """ChannelObserver.judge()가 복수 판단 응답을 반환하는 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_judge_returns_multi_items(self):
+        mock_text = (
+            '<judgments>\n'
+            '<judgment ts="1.1">\n'
+            '<reasoning>test</reasoning>\n'
+            '<importance>3</importance>\n'
+            '<reaction type="react">\n'
+            '<react target="1.1" emoji="eyes" />\n'
+            '</reaction>\n'
+            '</judgment>\n'
+            '<judgment ts="2.2">\n'
+            '<importance>1</importance>\n'
+            '<reaction type="none" />\n'
+            '</judgment>\n'
+            '</judgments>'
+        )
+        observer = ChannelObserver(api_key="fake-key")
+        observer.client = _make_mock_client(mock_text)
+
+        result = await observer.judge(
+            channel_id="C123",
+            digest=None,
+            judged_messages=[],
+            pending_messages=[
+                {"ts": "1.1", "user": "U1", "text": "hi"},
+                {"ts": "2.2", "user": "U2", "text": "bye"},
+            ],
+        )
+
+        assert result is not None
+        assert len(result.items) == 2
+        assert result.items[0].ts == "1.1"
+        assert result.items[0].reaction_type == "react"
+        assert result.items[1].ts == "2.2"
+        assert result.items[1].reaction_type == "none"
 
 
 # ── ChannelObserver.digest() ─────────────────────────────
