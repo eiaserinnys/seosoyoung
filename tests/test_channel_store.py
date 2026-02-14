@@ -182,6 +182,82 @@ class TestMovePendingToJudged:
         assert judged[0]["text"] == "스레드만"
 
 
+class TestMoveSnapshotToJudged:
+    """스냅샷 기반 pending → judged 이동 테스트"""
+
+    def test_snapshot_moves_only_specified_ts(self, store):
+        """스냅샷에 포함된 ts만 judged로 이동하고 나머지는 pending에 남음"""
+        store.append_pending("C001", {"ts": "1", "user": "U001", "text": "msg1"})
+        store.append_pending("C001", {"ts": "2", "user": "U002", "text": "msg2"})
+        store.append_pending("C001", {"ts": "3", "user": "U003", "text": "msg3 (새로 도착)"})
+
+        store.move_snapshot_to_judged("C001", snapshot_ts={"1", "2"})
+
+        # msg1, msg2는 judged로 이동
+        judged = store.load_judged("C001")
+        assert len(judged) == 2
+        assert {m["ts"] for m in judged} == {"1", "2"}
+
+        # msg3은 pending에 남음
+        remaining = store.load_pending("C001")
+        assert len(remaining) == 1
+        assert remaining[0]["ts"] == "3"
+
+    def test_snapshot_all_moved(self, store):
+        """모든 pending이 스냅샷에 포함되면 pending이 비워짐"""
+        store.append_pending("C001", {"ts": "1", "user": "U001", "text": "msg1"})
+        store.append_pending("C001", {"ts": "2", "user": "U002", "text": "msg2"})
+
+        store.move_snapshot_to_judged("C001", snapshot_ts={"1", "2"})
+
+        assert store.load_judged("C001") != []
+        assert store.load_pending("C001") == []
+
+    def test_snapshot_empty_ts(self, store):
+        """빈 스냅샷이면 아무것도 이동하지 않음"""
+        store.append_pending("C001", {"ts": "1", "user": "U001", "text": "msg1"})
+
+        store.move_snapshot_to_judged("C001", snapshot_ts=set())
+
+        assert store.load_judged("C001") == []
+        assert len(store.load_pending("C001")) == 1
+
+    def test_snapshot_with_threads(self, store):
+        """스냅샷에 포함된 스레드 버퍼만 judged로 이동"""
+        store.append_pending("C001", {"ts": "1", "user": "U001", "text": "채널 msg"})
+        store.append_thread_message("C001", "t_a", {"ts": "2", "user": "U002", "text": "스레드 A"})
+        store.append_thread_message("C001", "t_b", {"ts": "3", "user": "U003", "text": "스레드 B (새로 도착)"})
+
+        store.move_snapshot_to_judged(
+            "C001", snapshot_ts={"1"}, snapshot_thread_ts={"t_a"},
+        )
+
+        judged = store.load_judged("C001")
+        texts = [m["text"] for m in judged]
+        assert "채널 msg" in texts
+        assert "스레드 A" in texts
+        assert "스레드 B (새로 도착)" not in texts
+
+        # 남은 pending
+        assert store.load_pending("C001") == []
+        # t_b 스레드는 아직 남아있어야 함
+        assert len(store.load_thread_buffer("C001", "t_b")) == 1
+        # t_a 스레드는 비워져야 함
+        assert store.load_thread_buffer("C001", "t_a") == []
+
+    def test_snapshot_appends_to_existing_judged(self, store):
+        """기존 judged에 스냅샷 메시지가 추가됨"""
+        store.append_judged("C001", [{"ts": "0", "user": "U001", "text": "기존"}])
+        store.append_pending("C001", {"ts": "1", "user": "U002", "text": "새 msg"})
+
+        store.move_snapshot_to_judged("C001", snapshot_ts={"1"})
+
+        judged = store.load_judged("C001")
+        assert len(judged) == 2
+        assert judged[0]["text"] == "기존"
+        assert judged[1]["text"] == "새 msg"
+
+
 class TestThreadBuffer:
     """스레드 메시지 버퍼 테스트"""
 

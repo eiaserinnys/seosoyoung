@@ -275,12 +275,17 @@ async def run_channel_pipeline(
             else:
                 logger.warning(f"digest 편입 실패 ({channel_id})")
 
-    # c) judge() 호출
+    # c) judge() 호출 — 스냅샷 시점의 pending/thread를 기록해두고,
+    #    파이프라인 완료 후에는 스냅샷에 포함된 메시지만 judged로 이동합니다.
     digest_data = store.get_digest(channel_id)
     current_digest = digest_data["content"] if digest_data else None
     judged_messages = store.load_judged(channel_id)
     pending_messages = store.load_pending(channel_id)
     thread_buffers = store.load_all_thread_buffers(channel_id)
+
+    # 스냅샷 ts 기록
+    snapshot_ts = {m.get("ts", "") for m in pending_messages if m.get("ts")}
+    snapshot_thread_ts = set(thread_buffers.keys()) if thread_buffers else None
 
     logger.info(
         f"리액션 판단 시작 ({channel_id}): "
@@ -347,8 +352,8 @@ async def run_channel_pipeline(
             thread_buffers=thread_buffers,
         )
 
-    # e) pending을 judged로 이동
-    store.move_pending_to_judged(channel_id)
+    # e) 스냅샷에 포함된 메시지만 judged로 이동 (파이프라인 중 새로 도착한 메시지는 pending에 잔류)
+    store.move_snapshot_to_judged(channel_id, snapshot_ts, snapshot_thread_ts)
 
 
 async def _handle_multi_judge(
@@ -587,6 +592,16 @@ async def _execute_intervene(
     thread_buffers: dict[str, list[dict]] | None = None,
 ) -> None:
     """서소영의 개입 응답을 생성하고 발송합니다."""
+    # 0. 트리거 메시지에 :ssy-thinking: 이모지 추가 (응답 생성 중 피드백)
+    reaction_ts = action.target if action.target and action.target != "channel" else None
+    if reaction_ts:
+        try:
+            slack_client.reactions_add(
+                channel=channel_id, timestamp=reaction_ts, name="ssy-thinking",
+            )
+        except Exception as e:
+            logger.debug(f"ssy-thinking 이모지 추가 실패: {e}")
+
     # 1. 갱신된 digest 로드
     digest_data = store.get_digest(channel_id)
     digest = digest_data["content"] if digest_data else None
@@ -628,6 +643,7 @@ async def _execute_intervene(
             response_text = result.output if result.success else None
             if not result.success:
                 logger.error(f"intervene Claude SDK 실패 ({channel_id}): {result.error}")
+                _remove_thinking_reaction(slack_client, channel_id, reaction_ts)
                 return
         elif llm_call:
             response_text = await llm_call(
@@ -636,13 +652,16 @@ async def _execute_intervene(
             )
         else:
             logger.warning(f"intervene: claude_runner와 llm_call 모두 없음 ({channel_id})")
+            _remove_thinking_reaction(slack_client, channel_id, reaction_ts)
             return
     except Exception as e:
         logger.error(f"intervene 응답 생성 실패 ({channel_id}): {e}")
+        _remove_thinking_reaction(slack_client, channel_id, reaction_ts)
         return
 
     if not response_text or not response_text.strip():
         logger.warning(f"intervene 빈 응답 ({channel_id})")
+        _remove_thinking_reaction(slack_client, channel_id, reaction_ts)
         return
 
     # 5. 슬랙 발송 + 봇 응답 ts를 judged에 기록
@@ -687,5 +706,33 @@ async def _execute_intervene(
                 except Exception as e:
                     logger.error(f"개입 세션 생성 실패 ({channel_id}): {e}")
 
+        # 발송 성공: :ssy-thinking: → :ssy-happy: 교체
+        _swap_thinking_to_happy(slack_client, channel_id, reaction_ts)
+
     except Exception as e:
         logger.error(f"intervene 슬랙 발송 실패 ({channel_id}): {e}")
+        _remove_thinking_reaction(slack_client, channel_id, reaction_ts)
+
+
+def _remove_thinking_reaction(client, channel_id: str, ts: str | None) -> None:
+    """트리거 메시지에서 :ssy-thinking: 이모지를 제거합니다."""
+    if not ts:
+        return
+    try:
+        client.reactions_remove(channel=channel_id, timestamp=ts, name="ssy-thinking")
+    except Exception:
+        pass
+
+
+def _swap_thinking_to_happy(client, channel_id: str, ts: str | None) -> None:
+    """:ssy-thinking: 이모지를 :ssy-happy:로 교체합니다."""
+    if not ts:
+        return
+    try:
+        client.reactions_remove(channel=channel_id, timestamp=ts, name="ssy-thinking")
+    except Exception:
+        pass
+    try:
+        client.reactions_add(channel=channel_id, timestamp=ts, name="ssy-happy")
+    except Exception as e:
+        logger.debug(f"ssy-happy 이모지 추가 실패: {e}")

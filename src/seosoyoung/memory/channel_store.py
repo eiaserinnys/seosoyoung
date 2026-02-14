@@ -138,6 +138,56 @@ class ChannelStore:
                 self.append_judged(channel_id, thread_msgs)
         self._clear_thread_buffers(channel_id)
 
+    def move_snapshot_to_judged(
+        self,
+        channel_id: str,
+        snapshot_ts: set[str],
+        snapshot_thread_ts: set[str] | None = None,
+    ) -> None:
+        """스냅샷에 포함된 메시지만 judged로 이동하고 나머지는 pending에 남깁니다.
+
+        파이프라인 실행 중 새로 도착한 메시지가 판단 없이 유실되는 것을 방지합니다.
+
+        Args:
+            channel_id: 채널 ID
+            snapshot_ts: 파이프라인 시작 시점에 읽은 pending 메시지의 ts 집합
+            snapshot_thread_ts: 파이프라인 시작 시점에 읽은 스레드 버퍼의 thread_ts 집합
+        """
+        self._ensure_channel_dir(channel_id)
+        lock = FileLock(str(self._pending_lock(channel_id)), timeout=5)
+        with lock:
+            current_pending = self._read_jsonl(self._pending_path(channel_id))
+            to_judged = [m for m in current_pending if m.get("ts", "") in snapshot_ts]
+            remaining = [m for m in current_pending if m.get("ts", "") not in snapshot_ts]
+
+            if to_judged:
+                self.append_judged(channel_id, to_judged)
+
+            # remaining을 pending에 다시 쓰기
+            path = self._pending_path(channel_id)
+            if remaining:
+                with open(path, "w", encoding="utf-8") as f:
+                    for msg in remaining:
+                        f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            elif path.exists():
+                path.unlink()
+
+        # 스레드 버퍼: 스냅샷에 포함된 thread_ts만 judged로 이동
+        if snapshot_thread_ts:
+            threads_dir = self._threads_dir(channel_id)
+            if threads_dir.exists():
+                for thread_ts in snapshot_thread_ts:
+                    thread_path = self._thread_buffer_path(channel_id, thread_ts)
+                    if thread_path.exists():
+                        thread_msgs = self._read_jsonl(thread_path)
+                        if thread_msgs:
+                            self.append_judged(channel_id, thread_msgs)
+                        thread_path.unlink()
+                        # lock 파일도 정리
+                        lock_path = self._thread_buffer_lock(channel_id, thread_ts)
+                        if lock_path.exists():
+                            lock_path.unlink()
+
     # ── 스레드 메시지 버퍼 ───────────────────────────────
 
     def _thread_buffer_path(self, channel_id: str, thread_ts: str) -> Path:
