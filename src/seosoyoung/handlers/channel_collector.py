@@ -74,11 +74,19 @@ class ChannelMessageCollector:
             ]
 
         thread_ts = source.get("thread_ts") or event.get("thread_ts")
+        # message_changed(unfurl 등)는 기존 메시지를 교체(upsert)하여 중복 방지
+        is_update = subtype == "message_changed"
         if thread_ts:
             msg["thread_ts"] = thread_ts
-            self.store.append_thread_message(channel, thread_ts, msg)
+            if is_update:
+                self.store.upsert_thread_message(channel, thread_ts, msg)
+            else:
+                self.store.append_thread_message(channel, thread_ts, msg)
         else:
-            self.store.append_channel_message(channel, msg)
+            if is_update:
+                self.store.upsert_pending(channel, msg)
+            else:
+                self.store.append_channel_message(channel, msg)
 
         return True
 

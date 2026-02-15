@@ -62,6 +62,31 @@ class ChannelStore:
             with open(self._pending_path(channel_id), "a", encoding="utf-8") as f:
                 f.write(json.dumps(message, ensure_ascii=False) + "\n")
 
+    def upsert_pending(self, channel_id: str, message: dict) -> None:
+        """같은 ts의 메시지가 있으면 교체, 없으면 추가.
+
+        Slack의 message_changed(unfurl 등) 이벤트 시 중복 저장을 방지합니다.
+        """
+        ts = message.get("ts", "")
+        self._ensure_channel_dir(channel_id)
+        lock = FileLock(str(self._pending_lock(channel_id)), timeout=5)
+        with lock:
+            path = self._pending_path(channel_id)
+            existing = self._read_jsonl(path) if path.exists() else []
+            replaced = False
+            for i, msg in enumerate(existing):
+                if msg.get("ts") == ts:
+                    existing[i] = message
+                    replaced = True
+                    break
+            if replaced:
+                with open(path, "w", encoding="utf-8") as f:
+                    for msg in existing:
+                        f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            else:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(message, ensure_ascii=False) + "\n")
+
     def load_pending(self, channel_id: str) -> list[dict]:
         """pending 버퍼를 로드. 없으면 빈 리스트."""
         path = self._pending_path(channel_id)
@@ -203,6 +228,28 @@ class ChannelStore:
         with lock:
             with open(self._thread_buffer_path(channel_id, thread_ts), "a", encoding="utf-8") as f:
                 f.write(json.dumps(message, ensure_ascii=False) + "\n")
+
+    def upsert_thread_message(self, channel_id: str, thread_ts: str, message: dict) -> None:
+        """같은 ts의 스레드 메시지가 있으면 교체, 없으면 추가."""
+        ts = message.get("ts", "")
+        self._ensure_threads_dir(channel_id)
+        lock = FileLock(str(self._thread_buffer_lock(channel_id, thread_ts)), timeout=5)
+        with lock:
+            path = self._thread_buffer_path(channel_id, thread_ts)
+            existing = self._read_jsonl(path) if path.exists() else []
+            replaced = False
+            for i, msg in enumerate(existing):
+                if msg.get("ts") == ts:
+                    existing[i] = message
+                    replaced = True
+                    break
+            if replaced:
+                with open(path, "w", encoding="utf-8") as f:
+                    for msg in existing:
+                        f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            else:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(message, ensure_ascii=False) + "\n")
 
     def load_thread_buffer(self, channel_id: str, thread_ts: str) -> list[dict]:
         """스레드 메시지 버퍼를 로드. 없으면 빈 리스트."""

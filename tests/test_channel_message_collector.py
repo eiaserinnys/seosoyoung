@@ -433,3 +433,151 @@ class TestFileCollection:
 
         messages = store.load_channel_buffer("C_OBSERVE")
         assert "files" not in messages[0]
+
+
+class TestUnfurlDedup:
+    """URL unfurl 시 message_changed 중복 저장 방지 테스트"""
+
+    def test_unfurl_does_not_duplicate_channel_message(self, collector, store):
+        """URL 포함 메시지 → unfurl message_changed: 채널 메시지가 중복되지 않음"""
+        # 1) 원래 메시지
+        original = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "user": "U001",
+            "text": "https://example.com 확인해보세요",
+        }
+        collector.collect(original)
+
+        # 2) unfurl 후 message_changed
+        changed = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "subtype": "message_changed",
+            "message": {
+                "text": "https://example.com 확인해보세요",
+                "user": "U001",
+                "ts": "1234.5678",
+            },
+            "text": "",
+            "user": "",
+        }
+        collector.collect(changed)
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 1
+        assert messages[0]["ts"] == "1234.5678"
+
+    def test_unfurl_updates_text_on_channel_message(self, collector, store):
+        """message_changed로 text가 변경되면 기존 메시지를 교체"""
+        original = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "user": "U001",
+            "text": "원래 텍스트",
+        }
+        collector.collect(original)
+
+        changed = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "subtype": "message_changed",
+            "message": {
+                "text": "수정된 텍스트",
+                "user": "U001",
+                "ts": "1234.5678",
+            },
+        }
+        collector.collect(changed)
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 1
+        assert messages[0]["text"] == "수정된 텍스트"
+
+    def test_unfurl_does_not_duplicate_thread_message(self, collector, store):
+        """URL 포함 스레드 메시지 → unfurl: 스레드 메시지가 중복되지 않음"""
+        original = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.9999",
+            "user": "U001",
+            "text": "스레드에서 https://example.com",
+            "thread_ts": "1234.0000",
+        }
+        collector.collect(original)
+
+        changed = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.9999",
+            "subtype": "message_changed",
+            "message": {
+                "text": "스레드에서 https://example.com",
+                "user": "U001",
+                "ts": "1234.9999",
+                "thread_ts": "1234.0000",
+            },
+        }
+        collector.collect(changed)
+
+        messages = store.load_thread_buffer("C_OBSERVE", "1234.0000")
+        assert len(messages) == 1
+        assert messages[0]["ts"] == "1234.9999"
+
+    def test_message_changed_without_prior_message_appends(self, collector, store):
+        """사전 메시지 없이 message_changed만 오면 새로 추가"""
+        changed = {
+            "channel": "C_OBSERVE",
+            "ts": "1234.5678",
+            "subtype": "message_changed",
+            "message": {
+                "text": "편집된 메시지",
+                "user": "U001",
+                "ts": "1234.5678",
+            },
+        }
+        collector.collect(changed)
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 1
+        assert messages[0]["text"] == "편집된 메시지"
+
+    def test_unfurl_preserves_other_messages(self, collector, store):
+        """unfurl로 교체 시 다른 메시지는 영향 없음"""
+        # 메시지 A
+        collector.collect({
+            "channel": "C_OBSERVE",
+            "ts": "1234.0001",
+            "user": "U001",
+            "text": "메시지 A",
+        })
+        # 메시지 B (URL 포함)
+        collector.collect({
+            "channel": "C_OBSERVE",
+            "ts": "1234.0002",
+            "user": "U002",
+            "text": "https://example.com",
+        })
+        # 메시지 C
+        collector.collect({
+            "channel": "C_OBSERVE",
+            "ts": "1234.0003",
+            "user": "U001",
+            "text": "메시지 C",
+        })
+
+        # 메시지 B unfurl
+        collector.collect({
+            "channel": "C_OBSERVE",
+            "ts": "1234.0002",
+            "subtype": "message_changed",
+            "message": {
+                "text": "https://example.com",
+                "user": "U002",
+                "ts": "1234.0002",
+            },
+        })
+
+        messages = store.load_channel_buffer("C_OBSERVE")
+        assert len(messages) == 3
+        assert messages[0]["text"] == "메시지 A"
+        assert messages[1]["text"] == "https://example.com"
+        assert messages[2]["text"] == "메시지 C"
