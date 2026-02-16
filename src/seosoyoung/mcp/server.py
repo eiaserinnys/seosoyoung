@@ -1,5 +1,8 @@
 """seosoyoung MCP 서버 정의"""
 
+import atexit
+import logging
+from pathlib import Path
 from typing import Optional
 
 from fastmcp import FastMCP
@@ -18,8 +21,60 @@ from seosoyoung.mcp.tools.npc_chat import (
     npc_get_history as _npc_get_history,
 )
 from seosoyoung.mcp.tools.user_profile import download_user_avatar, get_user_profile
+from seosoyoung.mcp.tools.lore_search import (
+    lore_keyword_search as _lore_keyword_search,
+    lore_semantic_search as _lore_semantic_search,
+    lore_chunk_read as _lore_chunk_read,
+    reset_indices as _reset_lore_indices,
+)
+from seosoyoung.search.git_watcher import GitWatcher
+
+logger = logging.getLogger(__name__)
 
 mcp = FastMCP("seosoyoung-attach")
+
+# Git watcher 싱글턴 — 서버 시작 시 초기화
+_git_watcher: GitWatcher | None = None
+
+
+def _on_index_rebuild():
+    """인덱스 재빌드 완료 콜백 — 인메모리 인덱스 캐시 초기화."""
+    _reset_lore_indices()
+    logger.info("In-memory index cache cleared after rebuild")
+
+
+def start_git_watcher():
+    """Git watcher 백그라운드 스레드 시작."""
+    global _git_watcher
+
+    cwd = Path.cwd()
+    narrative_path = cwd / "eb_narrative"
+    lore_path = cwd / "eb_lore"
+    index_root = cwd / ".local" / "index"
+
+    if not narrative_path.exists() or not lore_path.exists():
+        logger.warning(
+            "Git watcher not started: eb_narrative or eb_lore not found at %s", cwd
+        )
+        return
+
+    _git_watcher = GitWatcher(
+        narrative_path=narrative_path,
+        lore_path=lore_path,
+        index_root=index_root,
+        poll_interval=60.0,
+        on_rebuild=_on_index_rebuild,
+    )
+    _git_watcher.start()
+    atexit.register(stop_git_watcher)
+
+
+def stop_git_watcher():
+    """Git watcher 정지."""
+    global _git_watcher
+    if _git_watcher is not None:
+        _git_watcher.stop()
+        _git_watcher = None
 
 
 @mcp.tool()
@@ -225,3 +280,87 @@ def npc_get_history(session_id: str) -> dict:
         session_id: 세션 ID
     """
     return _npc_get_history(session_id)
+
+
+@mcp.tool()
+def lore_keyword_search(
+    keywords: list[str],
+    speaker: Optional[str] = None,
+    source: str = "all",
+    top_k: int = 10,
+) -> dict:
+    """키워드 기반 로어/대사 검색.
+
+    Whoosh 인덱스에서 키워드를 검색하여 chunk_id + 매칭된 스니펫을 반환합니다.
+    검색 결과의 chunk_id를 lore_chunk_read에 전달하면 전체 텍스트를 읽을 수 있습니다.
+
+    Args:
+        keywords: 검색 키워드 리스트 (예: ["악마", "사냥"])
+        speaker: 화자 필터 — 대사 검색 시 사용 (예: "fx", "ar")
+        source: 검색 대상 — "dlg" (대사), "lore" (설정), "all" (전체)
+        top_k: 최대 결과 수 (기본 10)
+    """
+    return _lore_keyword_search(keywords, speaker, source, top_k)
+
+
+@mcp.tool()
+def lore_semantic_search(
+    query: str,
+    speaker: Optional[str] = None,
+    source: str = "all",
+    top_k: int = 10,
+) -> dict:
+    """의미 기반 로어/대사 검색.
+
+    쿼리 텍스트를 임베딩 벡터로 변환하여 코사인 유사도 기반 검색을 수행합니다.
+    A-RAG 방식으로 부모 청크 기준 집계하여 반환합니다.
+    검색 결과의 chunk_id를 lore_chunk_read에 전달하면 전체 텍스트를 읽을 수 있습니다.
+
+    Args:
+        query: 검색 쿼리 텍스트 (자연어, 예: "계약의 대가에 대한 고민")
+        speaker: 화자 필터 — 대사 검색 시 사용 (예: "fx", "ar")
+        source: 검색 대상 — "dlg" (대사), "lore" (설정), "all" (전체)
+        top_k: 최대 결과 수 (기본 10)
+    """
+    return _lore_semantic_search(query, speaker, source, top_k)
+
+
+@mcp.tool()
+def lore_chunk_read(
+    chunk_id: str,
+    include_adjacent: bool = False,
+) -> dict:
+    """chunk_id로 전체 텍스트를 읽습니다.
+
+    keyword_search나 semantic_search 결과의 chunk_id를 전달하면
+    해당 청크의 전체 한/영 텍스트를 반환합니다.
+    이미 읽은 청크를 다시 요청하면 토큰 절약을 위해 간략 메시지만 반환합니다.
+
+    Args:
+        chunk_id: 청크 ID — 대사 ID (예: "fx-008V57I1") 또는 로어 청크 (예: "char:fx:basic_info")
+        include_adjacent: True면 인접 대사/섹션도 함께 반환 (기본 False)
+    """
+    return _lore_chunk_read(chunk_id, include_adjacent)
+
+
+def _lore_index_status() -> dict:
+    """lore_index_status 내부 구현."""
+    if _git_watcher is None:
+        return {
+            "watcher_running": False,
+            "message": "Git watcher가 시작되지 않았습니다.",
+        }
+
+    status = _git_watcher.status.to_dict()
+    status["watcher_running"] = _git_watcher.is_running
+    return status
+
+
+@mcp.tool()
+def lore_index_status() -> dict:
+    """로어/대사 검색 인덱스의 상태를 반환합니다.
+
+    인덱스 빌드 시각, 문서 수, 마지막 HEAD 해시, 빌드 진행 여부, 폴링 횟수 등을 반환합니다.
+    git watcher가 실행 중이 아니면 watcher 미실행 상태를 반환합니다.
+    """
+    return _lore_index_status()
