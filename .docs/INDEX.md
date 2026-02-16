@@ -54,6 +54,7 @@
 - [`search/build.py`](modules/search_build.md): 통합 빌드 스크립트 — Whoosh + 임베딩 인덱스를 한 번에 빌드.
 - [`search/embedding_cache.py`](modules/search_embedding_cache.md): OpenAI 임베딩 캐시.
 - [`search/embedding_index.py`](modules/search_embedding_index.md): 임베딩 인덱스 빌더 + 코사인 유사도 검색.
+- [`search/git_watcher.py`](modules/search_git_watcher.md): Git Poll Watcher — eb_narrative/eb_lore HEAD 감시 + 인덱스 자동 재빌드.
 - [`search/indexer.py`](modules/search_indexer.md): Dialogue indexer — dlglist YAML → Whoosh index.
 - [`search/lore_indexer.py`](modules/search_lore_indexer.md): eb_lore 인덱서 — YAML → Whoosh lore index.
 - [`search/schema.py`](modules/search_schema.md): Whoosh schema definitions for search indices.
@@ -133,6 +134,9 @@
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
 - `EmbeddingCache` (seosoyoung/search/embedding_cache.py:14): OpenAI text-embedding-3-small 임베딩 + 로컬 JSON 캐시.
 - `EmbeddingIndexBuilder` (seosoyoung/search/embedding_index.py:45): dlglist 대사와 eb_lore 텍스트를 문장 단위 임베딩 인덱스로 빌드.
+- `BuildLock` (seosoyoung/search/git_watcher.py:26): 파일 기반 빌드 lock — pre-commit hook과 동시 빌드 방지.
+- `IndexStatus` (seosoyoung/search/git_watcher.py:65): 인덱스 상태 정보 — lore_index_status 도구에서 조회.
+- `GitWatcher` (seosoyoung/search/git_watcher.py:128): Git HEAD 폴링 워처 — 백그라운드 스레드로 실행.
 - `DialogueMetadata` (seosoyoung/search/indexer.py:19): dlgId에 대한 메타데이터.
 - `DialogueReferenceMap` (seosoyoung/search/indexer.py:27): 대화 구조 파일을 스캔하여 dlgId → 메타데이터 역참조 맵 생성.
 - `DialogueIndexer` (seosoyoung/search/indexer.py:164): dlglist YAML 파일을 Whoosh 인덱스로 변환.
@@ -193,23 +197,26 @@
 - `start_trello_watcher()` (seosoyoung/main.py:173): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:193): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:203): 봇 사용자 ID 초기화
-- `slack_attach_file()` (seosoyoung/mcp/server.py:31): 슬랙에 파일을 첨부합니다.
-- `slack_get_context()` (seosoyoung/mcp/server.py:47): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
-- `slack_post_message()` (seosoyoung/mcp/server.py:57): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
-- `async slack_generate_image()` (seosoyoung/mcp/server.py:78): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
-- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:101): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
-- `slack_get_user_profile()` (seosoyoung/mcp/server.py:115): Slack 사용자의 프로필 정보를 조회합니다.
-- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:127): Slack 사용자의 프로필 이미지를 다운로드합니다.
-- `npc_list_characters()` (seosoyoung/mcp/server.py:142): 대화 가능한 NPC 캐릭터 목록을 반환합니다.
-- `npc_open_session()` (seosoyoung/mcp/server.py:152): NPC 대화 세션을 열고 NPC의 첫 반응을 반환합니다.
-- `npc_talk()` (seosoyoung/mcp/server.py:171): NPC에게 말을 걸고 응답을 받습니다.
-- `npc_set_situation()` (seosoyoung/mcp/server.py:184): 대화 중 상황을 변경하고 NPC의 반응을 받습니다.
-- `npc_inject()` (seosoyoung/mcp/server.py:197): 다른 NPC의 대사를 세션 대화 이력에 주입합니다.
-- `npc_close_session()` (seosoyoung/mcp/server.py:212): 세션을 종료하고 전체 대화 이력을 반환합니다.
-- `npc_get_history()` (seosoyoung/mcp/server.py:224): 세션의 대화 이력을 조회합니다 (세션 유지).
-- `lore_keyword_search()` (seosoyoung/mcp/server.py:236): 키워드 기반 로어/대사 검색.
-- `lore_semantic_search()` (seosoyoung/mcp/server.py:257): 의미 기반 로어/대사 검색.
-- `lore_chunk_read()` (seosoyoung/mcp/server.py:279): chunk_id로 전체 텍스트를 읽습니다.
+- `start_git_watcher()` (seosoyoung/mcp/server.py:46): Git watcher 백그라운드 스레드 시작.
+- `stop_git_watcher()` (seosoyoung/mcp/server.py:72): Git watcher 정지.
+- `slack_attach_file()` (seosoyoung/mcp/server.py:81): 슬랙에 파일을 첨부합니다.
+- `slack_get_context()` (seosoyoung/mcp/server.py:97): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:107): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `async slack_generate_image()` (seosoyoung/mcp/server.py:128): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
+- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:151): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
+- `slack_get_user_profile()` (seosoyoung/mcp/server.py:165): Slack 사용자의 프로필 정보를 조회합니다.
+- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:177): Slack 사용자의 프로필 이미지를 다운로드합니다.
+- `npc_list_characters()` (seosoyoung/mcp/server.py:192): 대화 가능한 NPC 캐릭터 목록을 반환합니다.
+- `npc_open_session()` (seosoyoung/mcp/server.py:202): NPC 대화 세션을 열고 NPC의 첫 반응을 반환합니다.
+- `npc_talk()` (seosoyoung/mcp/server.py:221): NPC에게 말을 걸고 응답을 받습니다.
+- `npc_set_situation()` (seosoyoung/mcp/server.py:234): 대화 중 상황을 변경하고 NPC의 반응을 받습니다.
+- `npc_inject()` (seosoyoung/mcp/server.py:247): 다른 NPC의 대사를 세션 대화 이력에 주입합니다.
+- `npc_close_session()` (seosoyoung/mcp/server.py:262): 세션을 종료하고 전체 대화 이력을 반환합니다.
+- `npc_get_history()` (seosoyoung/mcp/server.py:274): 세션의 대화 이력을 조회합니다 (세션 유지).
+- `lore_keyword_search()` (seosoyoung/mcp/server.py:286): 키워드 기반 로어/대사 검색.
+- `lore_semantic_search()` (seosoyoung/mcp/server.py:307): 의미 기반 로어/대사 검색.
+- `lore_chunk_read()` (seosoyoung/mcp/server.py:329): chunk_id로 전체 텍스트를 읽습니다.
+- `lore_index_status()` (seosoyoung/mcp/server.py:360): 로어/대사 검색 인덱스의 상태를 반환합니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:57): Gemini API로 이미지를 생성하고 임시 파일로 저장

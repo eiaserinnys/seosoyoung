@@ -9,6 +9,7 @@ from .embedding_index import (
     load_embedding_index,
 )
 from .build import build_all, build_whoosh, build_embeddings
+from .git_watcher import GitWatcher, BuildLock, IndexStatus
 
 __all__ = [
     "dialogue_schema",
@@ -24,4 +25,7 @@ __all__ = [
     "build_all",
     "build_whoosh",
     "build_embeddings",
+    "GitWatcher",
+    "BuildLock",
+    "IndexStatus",
 ]

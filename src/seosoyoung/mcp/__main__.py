@@ -2,7 +2,7 @@
 
 import sys
 
-from seosoyoung.mcp.server import mcp
+from seosoyoung.mcp.server import mcp, start_git_watcher
 
 if __name__ == "__main__":
     transport = "stdio"
@@ -16,6 +16,8 @@ if __name__ == "__main__":
             port = int(arg.split("=", 1)[1])
         elif arg.startswith("--host="):
             host = arg.split("=", 1)[1]
+
+    start_git_watcher()
 
     if transport == "sse":
         mcp.run(transport="sse", host=host, port=port)

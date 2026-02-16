@@ -51,7 +51,8 @@ class TestMCPServerStandalone:
         assert "lore_keyword_search" in tools
         assert "lore_semantic_search" in tools
         assert "lore_chunk_read" in tools
-        assert len(tools) == 17
+        assert "lore_index_status" in tools
+        assert len(tools) == 18
 
     def test_get_context_reads_env(self):
         """slack_get_context가 환경변수에서 값을 읽음"""

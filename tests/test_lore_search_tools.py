@@ -449,3 +449,44 @@ class TestServerRegistration:
         assert "lore_keyword_search" in registered
         assert "lore_semantic_search" in registered
         assert "lore_chunk_read" in registered
+        assert "lore_index_status" in registered
+
+
+class TestLoreIndexStatus:
+    """lore_index_status 도구 테스트."""
+
+    def test_status_when_watcher_not_started(self):
+        import seosoyoung.mcp.server as srv
+
+        old_watcher = srv._git_watcher
+        try:
+            srv._git_watcher = None
+            result = srv._lore_index_status()
+            assert result["watcher_running"] is False
+        finally:
+            srv._git_watcher = old_watcher
+
+    def test_status_when_watcher_running(self):
+        import seosoyoung.mcp.server as srv
+        from seosoyoung.search.git_watcher import IndexStatus
+
+        old_watcher = srv._git_watcher
+        try:
+            mock_watcher = MagicMock()
+            mock_watcher.is_running = True
+            status = IndexStatus()
+            status.last_build_time = "2025-01-01T00:00:00Z"
+            status.last_head_narrative = "abc123"
+            status.last_head_lore = "def456"
+            status.doc_count_dialogue = 100
+            status.doc_count_lore = 20
+            status.poll_count = 5
+            mock_watcher.status = status
+            srv._git_watcher = mock_watcher
+
+            result = srv._lore_index_status()
+            assert result["watcher_running"] is True
+            assert result["last_build_time"] == "2025-01-01T00:00:00Z"
+            assert result["poll_count"] == 5
+        finally:
+            srv._git_watcher = old_watcher
