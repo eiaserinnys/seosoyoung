@@ -50,7 +50,9 @@
 - [`recall/loader.py`](modules/recall_loader.md): 도구 정의 로더
 - [`recall/recall.py`](modules/recall_recall.md): Recall - 도구 선택 사전 분석 파이프라인
 - [`seosoyoung/restart.py`](modules/seosoyoung_restart.md): 재시작 관리
+- [`search/build.py`](modules/search_build.md): 통합 빌드 스크립트 — Whoosh + 임베딩 인덱스를 한 번에 빌드.
 - [`search/embedding_cache.py`](modules/search_embedding_cache.md): OpenAI 임베딩 캐시.
+- [`search/embedding_index.py`](modules/search_embedding_index.md): 임베딩 인덱스 빌더 + 코사인 유사도 검색.
 - [`search/indexer.py`](modules/search_indexer.md): Dialogue indexer — dlglist YAML → Whoosh index.
 - [`search/lore_indexer.py`](modules/search_lore_indexer.md): eb_lore 인덱서 — YAML → Whoosh lore index.
 - [`search/schema.py`](modules/search_schema.md): Whoosh schema definitions for search indices.
@@ -129,6 +131,7 @@
 - `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
 - `EmbeddingCache` (seosoyoung/search/embedding_cache.py:14): OpenAI text-embedding-3-small 임베딩 + 로컬 JSON 캐시.
+- `EmbeddingIndexBuilder` (seosoyoung/search/embedding_index.py:45): dlglist 대사와 eb_lore 텍스트를 문장 단위 임베딩 인덱스로 빌드.
 - `DialogueMetadata` (seosoyoung/search/indexer.py:19): dlgId에 대한 메타데이터.
 - `DialogueReferenceMap` (seosoyoung/search/indexer.py:27): 대화 구조 파일을 스캔하여 dlgId → 메타데이터 역참조 맵 생성.
 - `DialogueIndexer` (seosoyoung/search/indexer.py:164): dlglist YAML 파일을 Whoosh 인덱스로 변환.
@@ -260,6 +263,12 @@
 - `build_evaluation_prompt()` (seosoyoung/recall/evaluator.py:28): 도구 평가를 위한 프롬프트 생성.
 - `parse_evaluation_response()` (seosoyoung/recall/evaluator.py:90): 평가 응답 파싱.
 - `parse_frontmatter()` (seosoyoung/recall/loader.py:19): YAML frontmatter와 본문을 분리하여 파싱.
+- `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
+- `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
+- `build_all()` (seosoyoung/search/build.py:84): Whoosh + 임베딩 인덱스 통합 빌드.
+- `main()` (seosoyoung/search/build.py:131): CLI 진입점.
+- `load_embedding_index()` (seosoyoung/search/embedding_index.py:335): 저장된 임베딩 인덱스 로드.
+- `cosine_similarity_search()` (seosoyoung/search/embedding_index.py:363): 코사인 유사도 기반 검색.
 - `get_default_index_path()` (seosoyoung/search/searcher.py:197): 기본 인덱스 경로 반환.
 - `format_results()` (seosoyoung/search/searcher.py:202): 결과 포맷팅.
 - `main()` (seosoyoung/search/searcher.py:222): CLI 진입점.
