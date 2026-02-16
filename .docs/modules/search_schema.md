@@ -4,4 +4,4 @@
 
 ## 개요
 
-Whoosh schema definition for dialogue search.
+Whoosh schema definitions for search indices.

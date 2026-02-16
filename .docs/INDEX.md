@@ -50,8 +50,12 @@
 - [`recall/loader.py`](modules/recall_loader.md): 도구 정의 로더
 - [`recall/recall.py`](modules/recall_recall.md): Recall - 도구 선택 사전 분석 파이프라인
 - [`seosoyoung/restart.py`](modules/seosoyoung_restart.md): 재시작 관리
-- [`search/schema.py`](modules/search_schema.md): Whoosh schema definition for dialogue search.
+- [`search/embedding_cache.py`](modules/search_embedding_cache.md): OpenAI 임베딩 캐시.
+- [`search/indexer.py`](modules/search_indexer.md): Dialogue indexer — dlglist YAML → Whoosh index.
+- [`search/lore_indexer.py`](modules/search_lore_indexer.md): eb_lore 인덱서 — YAML → Whoosh lore index.
+- [`search/schema.py`](modules/search_schema.md): Whoosh schema definitions for search indices.
 - [`search/searcher.py`](modules/search_searcher.md): Whoosh searcher for dialogue data.
+- [`search/sentence_splitter.py`](modules/search_sentence_splitter.md): 한/영 텍스트 문장 분할기.
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
 - [`slack/helpers.py`](modules/slack_helpers.md): Slack 메시지 유틸리티
 - [`translator/__main__.py`](modules/translator___main__.md): 번역 기능 CLI 테스트
@@ -124,6 +128,11 @@
 - `RestartType` (seosoyoung/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
+- `EmbeddingCache` (seosoyoung/search/embedding_cache.py:14): OpenAI text-embedding-3-small 임베딩 + 로컬 JSON 캐시.
+- `DialogueMetadata` (seosoyoung/search/indexer.py:19): dlgId에 대한 메타데이터.
+- `DialogueReferenceMap` (seosoyoung/search/indexer.py:27): 대화 구조 파일을 스캔하여 dlgId → 메타데이터 역참조 맵 생성.
+- `DialogueIndexer` (seosoyoung/search/indexer.py:164): dlglist YAML 파일을 Whoosh 인덱스로 변환.
+- `LoreIndexer` (seosoyoung/search/lore_indexer.py:62): eb_lore YAML → Whoosh lore index.
 - `DialogueSearcher` (seosoyoung/search/searcher.py:14): 대사 검색 API.
 - `SlackFile` (seosoyoung/slack/file_handler.py:35): 슬랙 파일 정보
 - `DownloadedFile` (seosoyoung/slack/file_handler.py:45): 다운로드된 파일 정보
@@ -254,6 +263,7 @@
 - `get_default_index_path()` (seosoyoung/search/searcher.py:197): 기본 인덱스 경로 반환.
 - `format_results()` (seosoyoung/search/searcher.py:202): 결과 포맷팅.
 - `main()` (seosoyoung/search/searcher.py:222): CLI 진입점.
+- `split_sentences()` (seosoyoung/search/sentence_splitter.py:16): 텍스트를 문장 단위로 분할.
 - `get_file_type()` (seosoyoung/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slack/file_handler.py:67): 스레드별 임시 폴더 생성
 - `cleanup_thread_files()` (seosoyoung/slack/file_handler.py:76): 스레드의 임시 파일 정리
