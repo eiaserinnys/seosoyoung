@@ -69,9 +69,10 @@ To Go 리스트에 새 카드가 들어오면:
 - `_build_to_go_prompt(self, card, has_execute)` (줄 693): To Go 카드용 프롬프트 생성
 - `build_reaction_execute_prompt(self, info)` (줄 730): 리액션 기반 실행용 프롬프트 생성
 - `_check_run_list_labels(self)` (줄 760): 🏃 Run List 레이블을 가진 카드 감지 및 리스트 정주행 시작
-- `_start_list_run(self, list_id, list_name, cards)` (줄 798): 리스트 정주행 시작
-- `_process_list_run_card(self, session_id, thread_ts, run_channel)` (줄 866): 리스트 정주행 카드 처리
-- `_build_list_run_prompt(self, card, session_id, current, total)` (줄 1021): 리스트 정주행용 프롬프트 생성
+- `_preemptive_compact(self, thread_ts, channel, card_name)` (줄 798): 카드 완료 후 선제적 컨텍스트 컴팩트
+- `_start_list_run(self, list_id, list_name, cards)` (줄 830): 리스트 정주행 시작
+- `_process_list_run_card(self, session_id, thread_ts, run_channel)` (줄 898): 리스트 정주행 카드 처리
+- `_build_list_run_prompt(self, card, session_id, current, total)` (줄 1056): 리스트 정주행용 프롬프트 생성
 
 ## 내부 의존성
 

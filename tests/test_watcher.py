@@ -534,5 +534,165 @@ class TestToGoReturnRetrack:
             watcher._tracked["return_card"].detected_at != stale_time
 
 
+class TestPreemptiveCompact:
+    """정주행 카드 완료 시 선제적 컨텍스트 컴팩트 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_compact_success_with_session_id(self, mock_config, mock_trello_client):
+        """세션 ID가 있을 때 compact_session 호출 성공"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.claude.session import Session
+
+        mock_session_manager = MagicMock()
+        mock_session = Session(
+            thread_ts="1234.5678",
+            channel_id="C12345",
+            session_id="test-session-abc123",
+        )
+        mock_session_manager.get.return_value = mock_session
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=mock_session_manager,
+            claude_runner_factory=MagicMock(),
+        )
+
+        # ClaudeAgentRunner.compact_session을 mock
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.session_id = "test-session-abc123"  # 동일 session_id
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeAgentRunner") as MockRunner:
+            mock_runner_instance = MagicMock()
+            mock_runner_instance.compact_session.return_value = mock_result
+            mock_runner_instance.run_sync.return_value = mock_result
+            MockRunner.return_value = mock_runner_instance
+
+            watcher._preemptive_compact("1234.5678", "C12345", "Test Card")
+
+            # compact_session이 올바른 session_id로 호출되었는지 확인
+            mock_runner_instance.compact_session.assert_called_once_with("test-session-abc123")
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_compact_skipped_without_session_id(self, mock_config, mock_trello_client):
+        """세션 ID가 없으면 compact를 스킵"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.claude.session import Session
+
+        mock_session_manager = MagicMock()
+        # session_id가 None인 세션
+        mock_session = Session(
+            thread_ts="1234.5678",
+            channel_id="C12345",
+            session_id=None,
+        )
+        mock_session_manager.get.return_value = mock_session
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=mock_session_manager,
+            claude_runner_factory=MagicMock(),
+        )
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeAgentRunner") as MockRunner:
+            watcher._preemptive_compact("1234.5678", "C12345", "Test Card")
+
+            # Runner가 생성되지 않아야 함
+            MockRunner.assert_not_called()
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_compact_failure_does_not_block_next_card(self, mock_config, mock_trello_client):
+        """compact 실패해도 예외가 전파되지 않아 다음 카드 처리를 막지 않음"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.claude.session import Session
+
+        mock_session_manager = MagicMock()
+        mock_session = Session(
+            thread_ts="1234.5678",
+            channel_id="C12345",
+            session_id="test-session-abc123",
+        )
+        mock_session_manager.get.return_value = mock_session
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=mock_session_manager,
+            claude_runner_factory=MagicMock(),
+        )
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeAgentRunner") as MockRunner:
+            mock_runner_instance = MagicMock()
+            # compact_session이 예외를 발생시킴
+            mock_runner_instance.run_sync.side_effect = RuntimeError("Connection failed")
+            MockRunner.return_value = mock_runner_instance
+
+            # 예외가 전파되지 않아야 함
+            watcher._preemptive_compact("1234.5678", "C12345", "Test Card")
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_compact_updates_session_id_when_changed(self, mock_config, mock_trello_client):
+        """compact 후 세션 ID가 변경되면 session_manager에 업데이트"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.claude.session import Session
+
+        mock_session_manager = MagicMock()
+        mock_session = Session(
+            thread_ts="1234.5678",
+            channel_id="C12345",
+            session_id="old-session-id",
+        )
+        mock_session_manager.get.return_value = mock_session
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=mock_session_manager,
+            claude_runner_factory=MagicMock(),
+        )
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.session_id = "new-session-id"  # 변경된 session_id
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeAgentRunner") as MockRunner:
+            mock_runner_instance = MagicMock()
+            mock_runner_instance.run_sync.return_value = mock_result
+            MockRunner.return_value = mock_runner_instance
+
+            watcher._preemptive_compact("1234.5678", "C12345", "Test Card")
+
+            # session_manager.update_session_id가 새 ID로 호출되었는지 확인
+            mock_session_manager.update_session_id.assert_called_once_with(
+                "1234.5678", "new-session-id"
+            )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
