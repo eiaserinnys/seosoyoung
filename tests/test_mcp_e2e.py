@@ -48,7 +48,10 @@ class TestMCPServerStandalone:
         assert "npc_inject" in tools
         assert "slack_download_user_avatar" in tools
         assert "slack_get_user_profile" in tools
-        assert len(tools) == 14
+        assert "lore_keyword_search" in tools
+        assert "lore_semantic_search" in tools
+        assert "lore_chunk_read" in tools
+        assert len(tools) == 17
 
     def test_get_context_reads_env(self):
         """slack_get_context가 환경변수에서 값을 읽음"""

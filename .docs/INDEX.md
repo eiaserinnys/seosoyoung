@@ -25,6 +25,7 @@
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
 - [`tools/image_gen.py`](modules/tools_image_gen.md): 이미지 생성 및 슬랙 업로드 MCP 도구
+- [`tools/lore_search.py`](modules/tools_lore_search.md): A-RAG 로어 검색 MCP 도구 — keyword_search, semantic_search, chunk_read.
 - [`tools/npc_chat.py`](modules/tools_npc_chat.md): NPC 대화 모듈: 캐릭터 로더, 프롬프트 빌더, 세션 관리, Claude API 연동.
 - [`tools/slack_messaging.py`](modules/tools_slack_messaging.md): 슬랙 메시지 전송 MCP 도구
 - [`tools/thread_files.py`](modules/tools_thread_files.md): 스레드 내 파일 다운로드 MCP 도구
@@ -192,24 +193,32 @@
 - `start_trello_watcher()` (seosoyoung/main.py:173): Trello 워처 시작
 - `start_list_runner()` (seosoyoung/main.py:193): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/main.py:203): 봇 사용자 ID 초기화
-- `slack_attach_file()` (seosoyoung/mcp/server.py:26): 슬랙에 파일을 첨부합니다.
-- `slack_get_context()` (seosoyoung/mcp/server.py:42): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
-- `slack_post_message()` (seosoyoung/mcp/server.py:52): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
-- `async slack_generate_image()` (seosoyoung/mcp/server.py:73): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
-- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:96): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
-- `slack_get_user_profile()` (seosoyoung/mcp/server.py:110): Slack 사용자의 프로필 정보를 조회합니다.
-- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:122): Slack 사용자의 프로필 이미지를 다운로드합니다.
-- `npc_list_characters()` (seosoyoung/mcp/server.py:137): 대화 가능한 NPC 캐릭터 목록을 반환합니다.
-- `npc_open_session()` (seosoyoung/mcp/server.py:147): NPC 대화 세션을 열고 NPC의 첫 반응을 반환합니다.
-- `npc_talk()` (seosoyoung/mcp/server.py:166): NPC에게 말을 걸고 응답을 받습니다.
-- `npc_set_situation()` (seosoyoung/mcp/server.py:179): 대화 중 상황을 변경하고 NPC의 반응을 받습니다.
-- `npc_inject()` (seosoyoung/mcp/server.py:192): 다른 NPC의 대사를 세션 대화 이력에 주입합니다.
-- `npc_close_session()` (seosoyoung/mcp/server.py:207): 세션을 종료하고 전체 대화 이력을 반환합니다.
-- `npc_get_history()` (seosoyoung/mcp/server.py:219): 세션의 대화 이력을 조회합니다 (세션 유지).
+- `slack_attach_file()` (seosoyoung/mcp/server.py:31): 슬랙에 파일을 첨부합니다.
+- `slack_get_context()` (seosoyoung/mcp/server.py:47): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:57): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `async slack_generate_image()` (seosoyoung/mcp/server.py:78): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
+- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:101): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
+- `slack_get_user_profile()` (seosoyoung/mcp/server.py:115): Slack 사용자의 프로필 정보를 조회합니다.
+- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:127): Slack 사용자의 프로필 이미지를 다운로드합니다.
+- `npc_list_characters()` (seosoyoung/mcp/server.py:142): 대화 가능한 NPC 캐릭터 목록을 반환합니다.
+- `npc_open_session()` (seosoyoung/mcp/server.py:152): NPC 대화 세션을 열고 NPC의 첫 반응을 반환합니다.
+- `npc_talk()` (seosoyoung/mcp/server.py:171): NPC에게 말을 걸고 응답을 받습니다.
+- `npc_set_situation()` (seosoyoung/mcp/server.py:184): 대화 중 상황을 변경하고 NPC의 반응을 받습니다.
+- `npc_inject()` (seosoyoung/mcp/server.py:197): 다른 NPC의 대사를 세션 대화 이력에 주입합니다.
+- `npc_close_session()` (seosoyoung/mcp/server.py:212): 세션을 종료하고 전체 대화 이력을 반환합니다.
+- `npc_get_history()` (seosoyoung/mcp/server.py:224): 세션의 대화 이력을 조회합니다 (세션 유지).
+- `lore_keyword_search()` (seosoyoung/mcp/server.py:236): 키워드 기반 로어/대사 검색.
+- `lore_semantic_search()` (seosoyoung/mcp/server.py:257): 의미 기반 로어/대사 검색.
+- `lore_chunk_read()` (seosoyoung/mcp/server.py:279): chunk_id로 전체 텍스트를 읽습니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:57): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:132): 이미지를 생성하고 슬랙 스레드에 업로드
+- `reset_context_tracker()` (seosoyoung/mcp/tools/lore_search.py:50): 테스트용: 트래커 초기화.
+- `reset_indices()` (seosoyoung/mcp/tools/lore_search.py:101): 테스트용: 인덱스 캐시 초기화.
+- `lore_keyword_search()` (seosoyoung/mcp/tools/lore_search.py:106): 키워드 기반 로어/대사 검색.
+- `lore_semantic_search()` (seosoyoung/mcp/tools/lore_search.py:210): 의미 기반 로어/대사 검색.
+- `lore_chunk_read()` (seosoyoung/mcp/tools/lore_search.py:300): chunk_id로 전체 텍스트를 읽는다.
 - `npc_list_characters()` (seosoyoung/mcp/tools/npc_chat.py:185): 대화 가능한 NPC 캐릭터 목록을 반환한다.
 - `npc_open_session()` (seosoyoung/mcp/tools/npc_chat.py:311): NPC 대화 세션을 열고 NPC의 첫 반응을 반환한다.
 - `npc_talk()` (seosoyoung/mcp/tools/npc_chat.py:362): NPC에게 말하기. 사용자 메시지를 보내고 NPC 응답을 받는다.
