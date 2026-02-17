@@ -185,6 +185,33 @@ def build_process_configs() -> list[ProcessConfig]:
         port=3105,
     ))
 
+    # --- 선택적: rescue-bot (긴급 복구용 경량 슬랙 봇) ---
+    # 메인 봇과 독립된 별도 Slack App 사용 (SocketMode, 포트 불필요)
+    # RESCUE_SLACK_BOT_TOKEN, RESCUE_SLACK_APP_TOKEN 환경변수 필요
+    if os.environ.get("RESCUE_SLACK_BOT_TOKEN") and os.environ.get("RESCUE_SLACK_APP_TOKEN"):
+        rescue_env: dict[str, str] = {
+            "PYTHONUTF8": "1",
+            "PYTHONPATH": str(paths["runtime"] / "src"),
+        }
+        if claude_cli_dir:
+            rescue_env["PATH"] = claude_cli_dir
+
+        configs.append(ProcessConfig(
+            name="rescue-bot",
+            command=str(paths["venv_python"]),
+            args=["-m", "seosoyoung.rescue.main"],
+            cwd=str(paths["workspace"].resolve()),
+            env=rescue_env,
+            restart_policy=RestartPolicy(
+                use_exit_codes=False,
+                auto_restart=True,
+                restart_delay=5.0,
+            ),
+            log_dir=str(paths["logs"]),
+        ))
+    else:
+        logger.info("rescue-bot 설정 건너뜀: RESCUE_SLACK_BOT_TOKEN 또는 RESCUE_SLACK_APP_TOKEN 미설정")
+
     # --- 선택적: mcp-outline ---
     try:
         mcp_outline_exe = _find_mcp_outline_exe()
