@@ -1,10 +1,13 @@
 """rescue-bot 메인 모듈
 
-슬랙 멘션 → Claude Code SDK 직접 호출 → 결과 응답
+슬랙 멘션/스레드 메시지 → Claude Code SDK 직접 호출 → 결과 응답
 soul 서버를 경유하지 않는 독립 경량 봇입니다.
+
+세션 관리:
+- 스레드 ts를 키로 session_id를 in-memory dict에 저장
+- 스레드 내 후속 대화(멘션 또는 일반 메시지)에서 세션을 이어감
 """
 
-import asyncio
 import logging
 import re
 import sys
@@ -14,7 +17,7 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from seosoyoung.rescue.config import RescueConfig
-from seosoyoung.rescue.runner import run_claude
+from seosoyoung.rescue.runner import run_claude, run_sync
 
 # 로깅 설정
 logging.basicConfig(
@@ -31,6 +34,10 @@ app = App(token=RescueConfig.SLACK_BOT_TOKEN, logger=logger)
 _thread_locks: dict[str, threading.Lock] = {}
 _locks_lock = threading.Lock()
 
+# 스레드별 세션 ID 저장 (in-memory)
+_sessions: dict[str, str] = {}
+_sessions_lock = threading.Lock()
+
 
 def _get_thread_lock(thread_ts: str) -> threading.Lock:
     """스레드별 락을 가져오거나 생성"""
@@ -38,6 +45,18 @@ def _get_thread_lock(thread_ts: str) -> threading.Lock:
         if thread_ts not in _thread_locks:
             _thread_locks[thread_ts] = threading.Lock()
         return _thread_locks[thread_ts]
+
+
+def _get_session_id(thread_ts: str) -> str | None:
+    """스레드의 세션 ID를 조회"""
+    with _sessions_lock:
+        return _sessions.get(thread_ts)
+
+
+def _set_session_id(thread_ts: str, session_id: str) -> None:
+    """스레드의 세션 ID를 저장"""
+    with _sessions_lock:
+        _sessions[thread_ts] = session_id
 
 
 def _strip_mention(text: str, bot_user_id: str | None) -> str:
@@ -49,26 +68,19 @@ def _strip_mention(text: str, bot_user_id: str | None) -> str:
     return text.strip()
 
 
-@app.event("app_mention")
-def handle_mention(event, say, client):
-    """멘션 이벤트 핸들러
+def _contains_bot_mention(text: str) -> bool:
+    """텍스트에 봇 멘션이 포함되어 있는지 확인"""
+    if not RescueConfig.BOT_USER_ID:
+        return "<@" in text
+    return f"<@{RescueConfig.BOT_USER_ID}>" in text
 
-    멘션을 받으면 Claude Code SDK를 호출하고 결과를 스레드에 응답합니다.
+
+def _process_message(prompt: str, thread_ts: str, channel: str, say, client):
+    """공통 메시지 처리 로직
+
+    멘션/메시지 핸들러에서 공유합니다.
+    세션이 있으면 이어서 실행하고, 결과의 session_id를 저장합니다.
     """
-    channel = event.get("channel", "")
-    user = event.get("user", "")
-    text = event.get("text", "")
-    ts = event.get("ts", "")
-    thread_ts = event.get("thread_ts", ts)
-
-    prompt = _strip_mention(text, RescueConfig.BOT_USER_ID)
-    if not prompt:
-        say(text="말씀해 주세요.", thread_ts=thread_ts)
-        return
-
-    logger.info(f"멘션 수신: user={user}, channel={channel}, prompt={prompt[:80]}")
-
-    # 스레드별 동시 실행 방지
     lock = _get_thread_lock(thread_ts)
     if not lock.acquire(blocking=False):
         say(text="이전 요청을 처리 중입니다. 잠시 기다려 주세요.", thread_ts=thread_ts)
@@ -83,12 +95,18 @@ def handle_mention(event, say, client):
         )
         thinking_ts = thinking_msg["ts"]
 
-        # Claude Code SDK 호출 (동기 래퍼)
-        result = asyncio.run(run_claude(prompt))
+        # 기존 세션 조회
+        session_id = _get_session_id(thread_ts)
+
+        # Claude Code SDK 호출 (공유 이벤트 루프 사용)
+        result = run_sync(run_claude(prompt, session_id=session_id))
+
+        # 세션 ID 저장
+        if result.session_id:
+            _set_session_id(thread_ts, result.session_id)
 
         if result.success and result.output:
             response = result.output
-            # 사고 과정 메시지를 결과로 교체
             if len(response) <= 3900:
                 client.chat_update(
                     channel=channel,
@@ -96,13 +114,11 @@ def handle_mention(event, say, client):
                     text=response,
                 )
             else:
-                # 긴 응답: 사고 과정을 첫 부분으로 교체, 나머지는 추가 메시지
                 client.chat_update(
                     channel=channel,
                     ts=thinking_ts,
                     text=response[:3900] + "...",
                 )
-                # 나머지를 청크로 분할하여 전송
                 remaining = response[3900:]
                 while remaining:
                     chunk = remaining[:3900]
@@ -121,10 +137,75 @@ def handle_mention(event, say, client):
                 text="(rescue-bot) 응답이 비어 있습니다.",
             )
     except Exception as e:
-        logger.exception(f"멘션 처리 오류: {e}")
+        logger.exception(f"메시지 처리 오류: {e}")
         say(text=f"(rescue-bot) 내부 오류: {e}", thread_ts=thread_ts)
     finally:
         lock.release()
+
+
+@app.event("app_mention")
+def handle_mention(event, say, client):
+    """멘션 이벤트 핸들러
+
+    멘션을 받으면 Claude Code SDK를 호출하고 결과를 스레드에 응답합니다.
+    기존 세션이 있으면 이어서 실행합니다.
+    """
+    channel = event.get("channel", "")
+    user = event.get("user", "")
+    text = event.get("text", "")
+    ts = event.get("ts", "")
+    thread_ts = event.get("thread_ts", ts)
+
+    # 봇 자신의 메시지는 무시
+    if event.get("bot_id") or event.get("subtype") == "bot_message":
+        return
+
+    prompt = _strip_mention(text, RescueConfig.BOT_USER_ID)
+    if not prompt:
+        say(text="말씀해 주세요.", thread_ts=thread_ts)
+        return
+
+    logger.info(f"멘션 수신: user={user}, channel={channel}, prompt={prompt[:80]}")
+
+    _process_message(prompt, thread_ts, channel, say, client)
+
+
+@app.event("message")
+def handle_message(event, say, client):
+    """스레드 메시지 핸들러
+
+    세션이 있는 스레드 내 일반 메시지(멘션 없이)를 처리합니다.
+    """
+    # 봇 자신의 메시지는 무시
+    if event.get("bot_id"):
+        return
+
+    text = event.get("text", "")
+
+    # 봇 멘션이 포함된 경우 handle_mention에서 처리 (중복 방지)
+    if _contains_bot_mention(text):
+        return
+
+    # 스레드 메시지인 경우만 처리
+    thread_ts = event.get("thread_ts")
+    if not thread_ts:
+        return
+
+    # 세션이 있는 스레드만 처리
+    session_id = _get_session_id(thread_ts)
+    if not session_id:
+        return
+
+    channel = event.get("channel", "")
+    user = event.get("user", "")
+
+    prompt = _strip_mention(text, RescueConfig.BOT_USER_ID)
+    if not prompt:
+        return
+
+    logger.info(f"스레드 메시지: user={user}, channel={channel}, prompt={prompt[:80]}")
+
+    _process_message(prompt, thread_ts, channel, say, client)
 
 
 def main():

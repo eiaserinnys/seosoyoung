@@ -73,7 +73,7 @@
 - [`rescue/__main__.py`](modules/rescue___main__.md): python -m seosoyoung.rescue.main 실행 지원
 - [`rescue/config.py`](modules/rescue_config.md): rescue-bot 환경변수 설정
 - [`rescue/main.py`](modules/rescue_main.md): rescue-bot 메인 모듈
-- [`rescue/runner.py`](modules/rescue_runner.md): Claude Code SDK 경량 실행기
+- [`rescue/runner.py`](modules/rescue_runner.md): Claude Code SDK 실행기 (세션 재개 지원)
 - [`seosoyoung/restart.py`](modules/seosoyoung_restart.md): 재시작 관리
 - [`search/build.py`](modules/search_build.md): 통합 빌드 스크립트 — Whoosh + 임베딩 인덱스를 한 번에 빌드.
 - [`search/embedding_cache.py`](modules/search_embedding_cache.md): OpenAI 임베딩 캐시.
@@ -201,7 +201,7 @@
 - `RecallResult` (seosoyoung/recall/recall.py:30): Recall 결과
 - `Recall` (seosoyoung/recall/recall.py:106): Recall - 도구 선택 사전 분석 파이프라인
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
-- `RescueResult` (seosoyoung/rescue/runner.py:43): 실행 결과
+- `RescueResult` (seosoyoung/rescue/runner.py:45): 실행 결과
 - `RestartType` (seosoyoung/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
@@ -378,9 +378,11 @@
 - `build_evaluation_prompt()` (seosoyoung/recall/evaluator.py:28): 도구 평가를 위한 프롬프트 생성.
 - `parse_evaluation_response()` (seosoyoung/recall/evaluator.py:90): 평가 응답 파싱.
 - `parse_frontmatter()` (seosoyoung/recall/loader.py:19): YAML frontmatter와 본문을 분리하여 파싱.
-- `handle_mention()` (seosoyoung/rescue/main.py:53): 멘션 이벤트 핸들러
-- `main()` (seosoyoung/rescue/main.py:130): rescue-bot 진입점
-- `async run_claude()` (seosoyoung/rescue/runner.py:51): Claude Code SDK를 호출하고 결과를 반환합니다.
+- `handle_mention()` (seosoyoung/rescue/main.py:147): 멘션 이벤트 핸들러
+- `handle_message()` (seosoyoung/rescue/main.py:174): 스레드 메시지 핸들러
+- `main()` (seosoyoung/rescue/main.py:211): rescue-bot 진입점
+- `run_sync()` (seosoyoung/rescue/runner.py:81): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
+- `async run_claude()` (seosoyoung/rescue/runner.py:91): Claude Code SDK를 호출하고 결과를 반환합니다.
 - `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
 - `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
 - `build_all()` (seosoyoung/search/build.py:84): Whoosh + 임베딩 인덱스 통합 빌드.

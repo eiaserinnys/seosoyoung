@@ -66,42 +66,82 @@ class TestRescueConfig:
 
 
 class TestRescueRunner:
-    """runner.run_claude 테스트"""
+    """runner.run_claude 테스트 (ClaudeSDKClient 기반)"""
 
     def test_run_claude_success(self):
-        """정상 실행 시 성공 결과 반환"""
-        from seosoyoung.rescue.runner import RescueResult
+        """정상 실행 시 성공 결과 반환 + session_id 포함"""
+        from claude_code_sdk.types import ResultMessage, SystemMessage
 
-        mock_result_msg = MagicMock()
-        mock_result_msg.result = "테스트 응답"
-        type(mock_result_msg).__name__ = "ResultMessage"
+        mock_system = MagicMock(spec=SystemMessage)
+        mock_system.session_id = "test-session-123"
 
-        async def mock_query(**kwargs):
-            # ResultMessage만 yield
-            from claude_code_sdk.types import ResultMessage
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "테스트 응답"
+        mock_result.session_id = "test-session-123"
+        mock_result.is_error = False
 
-            msg = MagicMock(spec=ResultMessage)
-            msg.result = "테스트 응답"
-            msg.is_error = False
-            yield msg
+        async def mock_receive():
+            yield mock_system
+            yield mock_result
 
-        with patch("seosoyoung.rescue.runner.query", side_effect=mock_query):
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.receive_response = mock_receive
+        mock_client.disconnect = AsyncMock()
+
+        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
             from seosoyoung.rescue.runner import run_claude
 
             result = asyncio.run(run_claude("테스트 프롬프트"))
             assert result.success is True
             assert result.output == "테스트 응답"
+            assert result.session_id == "test-session-123"
             assert result.error is None
+
+    def test_run_claude_with_resume(self):
+        """세션 재개 시 resume 옵션 전달 확인"""
+        from claude_code_sdk.types import ResultMessage, SystemMessage
+
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "이어진 응답"
+        mock_result.session_id = "test-session-123"
+
+        async def mock_receive():
+            yield mock_result
+
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.receive_response = mock_receive
+        mock_client.disconnect = AsyncMock()
+
+        captured_options = {}
+
+        def capture_client(options=None):
+            captured_options["options"] = options
+            return mock_client
+
+        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", side_effect=capture_client):
+            from seosoyoung.rescue.runner import run_claude
+
+            result = asyncio.run(run_claude("후속 질문", session_id="test-session-123"))
+            assert result.success is True
+            assert result.output == "이어진 응답"
+            # resume 옵션이 전달되었는지 확인
+            assert captured_options["options"].resume == "test-session-123"
 
     def test_run_claude_process_error(self):
         """ProcessError 발생 시 실패 결과 반환"""
         from claude_code_sdk._errors import ProcessError
 
-        async def mock_query(**kwargs):
-            raise ProcessError(message="test error", exit_code=1, stderr="test error")
-            yield  # make it a generator  # noqa: E275
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock(
+            side_effect=ProcessError(message="test error", exit_code=1, stderr="test error")
+        )
+        mock_client.disconnect = AsyncMock()
 
-        with patch("seosoyoung.rescue.runner.query", side_effect=mock_query):
+        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
             from seosoyoung.rescue.runner import run_claude
 
             result = asyncio.run(run_claude("테스트"))
@@ -110,17 +150,39 @@ class TestRescueRunner:
 
     def test_run_claude_generic_exception(self):
         """일반 예외 발생 시 실패 결과 반환"""
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock(side_effect=RuntimeError("unexpected"))
+        mock_client.disconnect = AsyncMock()
 
-        async def mock_query(**kwargs):
-            raise RuntimeError("unexpected")
-            yield  # noqa: E275
-
-        with patch("seosoyoung.rescue.runner.query", side_effect=mock_query):
+        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
             from seosoyoung.rescue.runner import run_claude
 
             result = asyncio.run(run_claude("테스트"))
             assert result.success is False
             assert "unexpected" in result.error
+
+    def test_run_claude_disconnect_on_success(self):
+        """성공 후 disconnect가 호출되는지 확인"""
+        from claude_code_sdk.types import ResultMessage
+
+        mock_result = MagicMock(spec=ResultMessage)
+        mock_result.result = "응답"
+        mock_result.session_id = None
+
+        async def mock_receive():
+            yield mock_result
+
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.receive_response = mock_receive
+        mock_client.disconnect = AsyncMock()
+
+        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
+            from seosoyoung.rescue.runner import run_claude
+
+            asyncio.run(run_claude("테스트"))
+            mock_client.disconnect.assert_awaited_once()
 
 
 class TestRescueMain:
@@ -140,6 +202,28 @@ class TestRescueMain:
         from seosoyoung.rescue.main import _strip_mention
 
         assert _strip_mention("<@U12345> 테스트", None) == "테스트"
+
+    def test_contains_bot_mention(self):
+        """봇 멘션 감지"""
+        from seosoyoung.rescue.config import RescueConfig
+        from seosoyoung.rescue.main import _contains_bot_mention
+
+        original_id = RescueConfig.BOT_USER_ID
+        try:
+            RescueConfig.BOT_USER_ID = "U_RESCUE"
+            assert _contains_bot_mention("<@U_RESCUE> 안녕") is True
+            assert _contains_bot_mention("안녕하세요") is False
+            assert _contains_bot_mention("<@UOTHER> 안녕") is False
+        finally:
+            RescueConfig.BOT_USER_ID = original_id
+
+    def test_session_management(self):
+        """세션 ID 저장/조회"""
+        from seosoyoung.rescue.main import _get_session_id, _set_session_id
+
+        assert _get_session_id("thread_999") is None
+        _set_session_id("thread_999", "session-abc")
+        assert _get_session_id("thread_999") == "session-abc"
 
     def test_handle_mention_empty_prompt(self):
         """빈 프롬프트일 때 안내 메시지"""
@@ -165,10 +249,13 @@ class TestRescueMain:
         finally:
             RescueConfig.BOT_USER_ID = original_id
 
-    def test_handle_mention_success(self):
-        """정상 멘션 처리"""
+    def test_handle_mention_success_saves_session(self):
+        """정상 멘션 처리 후 session_id가 저장되는지 확인"""
         from seosoyoung.rescue.config import RescueConfig
-        from seosoyoung.rescue.main import handle_mention
+        from seosoyoung.rescue.main import (
+            _get_session_id,
+            handle_mention,
+        )
         from seosoyoung.rescue.runner import RescueResult
 
         original_id = RescueConfig.BOT_USER_ID
@@ -179,27 +266,156 @@ class TestRescueMain:
                 "channel": "C123",
                 "user": "U456",
                 "text": "<@U_RESCUE> 안녕",
-                "ts": "1234.5678",
+                "ts": "5555.6666",
             }
             say = MagicMock()
             client = MagicMock()
             client.chat_postMessage.return_value = {"ts": "9999.0000"}
 
-            mock_result = RescueResult(success=True, output="안녕하세요!")
+            mock_result = RescueResult(
+                success=True, output="안녕하세요!", session_id="new-session-id"
+            )
 
             with patch(
-                "seosoyoung.rescue.main.run_claude",
+                "seosoyoung.rescue.main.run_sync",
                 return_value=mock_result,
-            ) as mock_run:
-                with patch("seosoyoung.rescue.main.asyncio") as mock_asyncio:
-                    mock_asyncio.run.return_value = mock_result
-                    handle_mention(event, say, client)
+            ):
+                handle_mention(event, say, client)
 
-            # 사고 과정 메시지가 전송되어야 함
-            client.chat_postMessage.assert_called_once()
+            # 세션 ID가 저장되어야 함
+            assert _get_session_id("5555.6666") == "new-session-id"
             # 결과로 업데이트되어야 함
             client.chat_update.assert_called_once()
             update_call = client.chat_update.call_args
             assert update_call[1]["text"] == "안녕하세요!"
         finally:
             RescueConfig.BOT_USER_ID = original_id
+
+    def test_handle_message_no_session(self):
+        """세션이 없는 스레드 메시지는 무시"""
+        from seosoyoung.rescue.main import handle_message
+
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "후속 질문",
+            "ts": "2000.0001",
+            "thread_ts": "nonexistent_thread",
+        }
+        say = MagicMock()
+        client = MagicMock()
+
+        handle_message(event, say, client)
+        # 세션이 없으므로 아무 반응 없어야 함
+        say.assert_not_called()
+        client.chat_postMessage.assert_not_called()
+
+    def test_handle_message_with_session(self):
+        """세션이 있는 스레드 메시지는 처리"""
+        from seosoyoung.rescue.config import RescueConfig
+        from seosoyoung.rescue.main import (
+            _set_session_id,
+            handle_message,
+        )
+        from seosoyoung.rescue.runner import RescueResult
+
+        original_id = RescueConfig.BOT_USER_ID
+        try:
+            RescueConfig.BOT_USER_ID = "U_RESCUE"
+
+            # 세션 미리 설정
+            _set_session_id("thread_100", "existing-session")
+
+            event = {
+                "channel": "C123",
+                "user": "U456",
+                "text": "후속 질문입니다",
+                "ts": "2000.0001",
+                "thread_ts": "thread_100",
+            }
+            say = MagicMock()
+            client = MagicMock()
+            client.chat_postMessage.return_value = {"ts": "9999.0000"}
+
+            mock_result = RescueResult(
+                success=True, output="후속 답변", session_id="existing-session"
+            )
+
+            with patch(
+                "seosoyoung.rescue.main.run_sync",
+                return_value=mock_result,
+            ):
+                handle_message(event, say, client)
+
+            # 처리되어야 함
+            client.chat_postMessage.assert_called_once()
+            client.chat_update.assert_called_once()
+        finally:
+            RescueConfig.BOT_USER_ID = original_id
+
+    def test_handle_message_ignores_bot_mention(self):
+        """봇 멘션이 포함된 스레드 메시지는 handle_mention에서 처리하므로 무시"""
+        from seosoyoung.rescue.config import RescueConfig
+        from seosoyoung.rescue.main import (
+            _set_session_id,
+            handle_message,
+        )
+
+        original_id = RescueConfig.BOT_USER_ID
+        try:
+            RescueConfig.BOT_USER_ID = "U_RESCUE"
+
+            _set_session_id("thread_200", "some-session")
+
+            event = {
+                "channel": "C123",
+                "user": "U456",
+                "text": "<@U_RESCUE> 멘션 포함 메시지",
+                "ts": "2000.0002",
+                "thread_ts": "thread_200",
+            }
+            say = MagicMock()
+            client = MagicMock()
+
+            handle_message(event, say, client)
+            # 멘션 포함이므로 무시 (handle_mention에서 처리)
+            say.assert_not_called()
+            client.chat_postMessage.assert_not_called()
+        finally:
+            RescueConfig.BOT_USER_ID = original_id
+
+    def test_handle_message_ignores_channel_message(self):
+        """스레드가 아닌 채널 메시지는 무시"""
+        from seosoyoung.rescue.main import handle_message
+
+        event = {
+            "channel": "C123",
+            "user": "U456",
+            "text": "채널에 직접 보낸 메시지",
+            "ts": "2000.0003",
+            # thread_ts가 없음
+        }
+        say = MagicMock()
+        client = MagicMock()
+
+        handle_message(event, say, client)
+        say.assert_not_called()
+
+    def test_handle_message_ignores_bot_message(self):
+        """봇 자신의 메시지는 무시"""
+        from seosoyoung.rescue.main import _set_session_id, handle_message
+
+        _set_session_id("thread_300", "some-session")
+
+        event = {
+            "channel": "C123",
+            "bot_id": "B123",
+            "text": "봇의 메시지",
+            "ts": "2000.0004",
+            "thread_ts": "thread_300",
+        }
+        say = MagicMock()
+        client = MagicMock()
+
+        handle_message(event, say, client)
+        say.assert_not_called()
