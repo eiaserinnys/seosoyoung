@@ -21,7 +21,7 @@ from seosoyoung.rescue.runner import run_claude_sync
 
 # 로깅 설정
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
@@ -97,13 +97,17 @@ def _process_message(prompt: str, thread_ts: str, channel: str, say, client):
 
         # 기존 세션 조회
         session_id = _get_session_id(thread_ts)
+        logger.info(f"세션 조회: thread_ts={thread_ts}, session_id={session_id}")
 
         # Claude Code SDK 호출 (asyncio.run으로 매 호출마다 새 루프 생성)
         result = run_claude_sync(prompt, session_id=session_id)
 
+        logger.info(f"SDK 결과: success={result.success}, session_id={result.session_id}, error={result.error}")
+
         # 세션 ID 저장
         if result.session_id:
             _set_session_id(thread_ts, result.session_id)
+            logger.info(f"세션 저장: thread_ts={thread_ts} → session_id={result.session_id}")
 
         if result.success and result.output:
             response = result.output
@@ -165,7 +169,7 @@ def handle_mention(event, say, client):
         say(text="말씀해 주세요.", thread_ts=thread_ts)
         return
 
-    logger.info(f"멘션 수신: user={user}, channel={channel}, prompt={prompt[:80]}")
+    logger.info(f"멘션 수신: user={user}, channel={channel}, thread_ts={thread_ts}, prompt={prompt[:80]}")
 
     _process_message(prompt, thread_ts, channel, say, client)
 
@@ -178,6 +182,10 @@ def handle_message(event, say, client):
     """
     # 봇 자신의 메시지는 무시
     if event.get("bot_id"):
+        return
+
+    # subtype이 있는 메시지는 무시 (메시지 수정, 삭제 등)
+    if event.get("subtype"):
         return
 
     text = event.get("text", "")
@@ -194,6 +202,7 @@ def handle_message(event, say, client):
     # 세션이 있는 스레드만 처리
     session_id = _get_session_id(thread_ts)
     if not session_id:
+        logger.debug(f"세션 없음: thread_ts={thread_ts}, 현재 세션={list(_sessions.keys())}")
         return
 
     channel = event.get("channel", "")
@@ -203,7 +212,7 @@ def handle_message(event, say, client):
     if not prompt:
         return
 
-    logger.info(f"스레드 메시지: user={user}, channel={channel}, prompt={prompt[:80]}")
+    logger.info(f"스레드 메시지: user={user}, channel={channel}, thread_ts={thread_ts}, prompt={prompt[:80]}")
 
     _process_message(prompt, thread_ts, channel, say, client)
 

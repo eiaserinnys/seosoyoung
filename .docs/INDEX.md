@@ -378,9 +378,9 @@
 - `build_evaluation_prompt()` (seosoyoung/recall/evaluator.py:28): 도구 평가를 위한 프롬프트 생성.
 - `parse_evaluation_response()` (seosoyoung/recall/evaluator.py:90): 평가 응답 파싱.
 - `parse_frontmatter()` (seosoyoung/recall/loader.py:19): YAML frontmatter와 본문을 분리하여 파싱.
-- `handle_mention()` (seosoyoung/rescue/main.py:147): 멘션 이벤트 핸들러
-- `handle_message()` (seosoyoung/rescue/main.py:174): 스레드 메시지 핸들러
-- `main()` (seosoyoung/rescue/main.py:211): rescue-bot 진입점
+- `handle_mention()` (seosoyoung/rescue/main.py:151): 멘션 이벤트 핸들러
+- `handle_message()` (seosoyoung/rescue/main.py:178): 스레드 메시지 핸들러
+- `main()` (seosoyoung/rescue/main.py:220): rescue-bot 진입점
 - `run_claude_sync()` (seosoyoung/rescue/runner.py:53): 동기 컨텍스트에서 Claude Code SDK를 호출합니다.
 - `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
 - `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
