@@ -141,7 +141,7 @@ def build_process_configs() -> list[ProcessConfig]:
         name="mcp-seosoyoung",
         command=str(paths["mcp_venv_python"]),
         args=["-m", "seosoyoung.mcp", "--transport=sse", "--port=3104"],
-        cwd=str(paths["root"].resolve()),
+        cwd=str(paths["workspace"].resolve()),
         env={
             "PYTHONUTF8": "1",
             "PYTHONPATH": str(paths["workspace"] / "seosoyoung" / "src"),
