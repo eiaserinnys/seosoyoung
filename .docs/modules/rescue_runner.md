@@ -6,40 +6,36 @@
 
 Claude Code SDK 실행기 (세션 재개 지원)
 
-메인 봇의 agent_runner.py에서 OM, 인터벤션, 스트리밍 콜백 등을
-제거한 최소 구현입니다. ClaudeSDKClient 기반으로 세션 재개를 지원합니다.
+메인 봇의 ClaudeAgentRunner와 동일한 공유 이벤트 루프 패턴을 사용합니다.
+ClaudeSDKClient 기반으로 세션 재개를 지원합니다.
 
 ## 클래스
 
 ### `RescueResult`
-- 위치: 줄 44
+- 위치: 줄 45
 - 설명: 실행 결과
+
+### `RescueRunner`
+- 위치: 줄 54
+- 설명: Claude Code SDK 실행기 (공유 이벤트 루프 기반)
+
+메인 봇의 ClaudeAgentRunner와 동일한 패턴:
+- 클래스 레벨 공유 이벤트 루프 (데몬 스레드)
+- run_coroutine_threadsafe로 동기→비동기 브릿지
+- 매 실행마다 ClaudeSDKClient connect → query → receive → disconnect
+
+#### 메서드
+
+- `_ensure_loop(cls)` (줄 69): 공유 이벤트 루프가 없거나 닫혀있으면 데몬 스레드에서 새로 생성
+- `run_sync(self, coro)` (줄 87): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
+- `run_claude_sync(self, prompt, session_id)` (줄 97): 동기 컨텍스트에서 Claude Code SDK를 호출합니다.
+- `async _run_claude(self, prompt, session_id)` (줄 108): Claude Code SDK를 호출하고 결과를 반환합니다.
 
 ## 함수
 
 ### `run_claude_sync(prompt, session_id)`
-- 위치: 줄 53
-- 설명: 동기 컨텍스트에서 Claude Code SDK를 호출합니다.
-
-Slack 이벤트 핸들러(동기)에서 직접 호출할 수 있습니다.
-내부적으로 asyncio.run()을 사용하여 매 호출마다 새 이벤트 루프를 생성합니다.
-
-resume 실패 시 새 세션으로 자동 폴백합니다.
-
-### `async _run_claude(prompt, session_id)`
-- 위치: 줄 74
-- 설명: Claude Code SDK를 호출하고 결과를 반환합니다.
-
-ClaudeSDKClient 기반으로 세션 재개를 지원합니다:
-- session_id가 None이면 새 세션을 시작합니다.
-- session_id가 있으면 해당 세션을 이어서 실행합니다.
-
-Args:
-    prompt: 실행할 프롬프트
-    session_id: 이어갈 세션 ID (선택)
-
-Returns:
-    RescueResult (session_id 포함)
+- 위치: 줄 212
+- 설명: 모듈 레벨 래퍼 — main.py 호환용
 
 ## 내부 의존성
 

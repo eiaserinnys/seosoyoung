@@ -66,11 +66,13 @@ class TestRescueConfig:
 
 
 class TestRescueRunner:
-    """runner.run_claude 테스트 (ClaudeSDKClient 기반)"""
+    """runner.RescueRunner 테스트 (ClaudeSDKClient 기반)"""
 
     def test_run_claude_success(self):
         """정상 실행 시 성공 결과 반환 + session_id 포함"""
         from claude_code_sdk.types import ResultMessage, SystemMessage
+
+        from seosoyoung.rescue.runner import RescueRunner
 
         mock_system = MagicMock(spec=SystemMessage)
         mock_system.session_id = "test-session-123"
@@ -90,10 +92,9 @@ class TestRescueRunner:
         mock_client.receive_response = mock_receive
         mock_client.disconnect = AsyncMock()
 
+        runner = RescueRunner()
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            from seosoyoung.rescue.runner import _run_claude
-
-            result = asyncio.run(_run_claude("테스트 프롬프트"))
+            result = asyncio.run(runner._run_claude("테스트 프롬프트"))
             assert result.success is True
             assert result.output == "테스트 응답"
             assert result.session_id == "test-session-123"
@@ -101,7 +102,9 @@ class TestRescueRunner:
 
     def test_run_claude_with_resume(self):
         """세션 재개 시 resume 옵션 전달 확인"""
-        from claude_code_sdk.types import ResultMessage, SystemMessage
+        from claude_code_sdk.types import ResultMessage
+
+        from seosoyoung.rescue.runner import RescueRunner
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "이어진 응답"
@@ -122,10 +125,9 @@ class TestRescueRunner:
             captured_options["options"] = options
             return mock_client
 
+        runner = RescueRunner()
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", side_effect=capture_client):
-            from seosoyoung.rescue.runner import _run_claude
-
-            result = asyncio.run(_run_claude("후속 질문", session_id="test-session-123"))
+            result = asyncio.run(runner._run_claude("후속 질문", session_id="test-session-123"))
             assert result.success is True
             assert result.output == "이어진 응답"
             # resume 옵션이 전달되었는지 확인
@@ -135,35 +137,39 @@ class TestRescueRunner:
         """ProcessError 발생 시 실패 결과 반환"""
         from claude_code_sdk._errors import ProcessError
 
+        from seosoyoung.rescue.runner import RescueRunner
+
         mock_client = MagicMock()
         mock_client.connect = AsyncMock(
             side_effect=ProcessError(message="test error", exit_code=1, stderr="test error")
         )
         mock_client.disconnect = AsyncMock()
 
+        runner = RescueRunner()
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            from seosoyoung.rescue.runner import _run_claude
-
-            result = asyncio.run(_run_claude("테스트"))
+            result = asyncio.run(runner._run_claude("테스트"))
             assert result.success is False
             assert "exit code: 1" in result.error
 
     def test_run_claude_generic_exception(self):
         """일반 예외 발생 시 실패 결과 반환"""
+        from seosoyoung.rescue.runner import RescueRunner
+
         mock_client = MagicMock()
         mock_client.connect = AsyncMock(side_effect=RuntimeError("unexpected"))
         mock_client.disconnect = AsyncMock()
 
+        runner = RescueRunner()
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            from seosoyoung.rescue.runner import _run_claude
-
-            result = asyncio.run(_run_claude("테스트"))
+            result = asyncio.run(runner._run_claude("테스트"))
             assert result.success is False
             assert "unexpected" in result.error
 
     def test_run_claude_disconnect_on_success(self):
         """성공 후 disconnect가 호출되는지 확인"""
         from claude_code_sdk.types import ResultMessage
+
+        from seosoyoung.rescue.runner import RescueRunner
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "응답"
@@ -178,42 +184,10 @@ class TestRescueRunner:
         mock_client.receive_response = mock_receive
         mock_client.disconnect = AsyncMock()
 
+        runner = RescueRunner()
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            from seosoyoung.rescue.runner import _run_claude
-
-            asyncio.run(_run_claude("테스트"))
+            asyncio.run(runner._run_claude("테스트"))
             mock_client.disconnect.assert_awaited_once()
-
-
-    def test_run_claude_sync_resume_fallback(self):
-        """resume 실패 시 새 세션으로 폴백"""
-        from seosoyoung.rescue.runner import RescueResult, run_claude_sync
-
-        call_count = 0
-
-        async def mock_run_claude(prompt, session_id=None):
-            nonlocal call_count
-            call_count += 1
-            if session_id:
-                return RescueResult(
-                    success=False,
-                    output="",
-                    session_id=None,
-                    error="Control request timeout: initialize",
-                )
-            else:
-                return RescueResult(
-                    success=True,
-                    output="새 세션 응답",
-                    session_id="new-session-456",
-                )
-
-        with patch("seosoyoung.rescue.runner._run_claude", side_effect=mock_run_claude):
-            result = run_claude_sync("테스트", session_id="old-session-123")
-            assert result.success is True
-            assert result.output == "새 세션 응답"
-            assert result.session_id == "new-session-456"
-            assert call_count == 2  # resume 1회 + 새 세션 1회
 
 
 class TestRescueMain:
