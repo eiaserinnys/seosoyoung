@@ -102,14 +102,17 @@ class TestBuildProcessConfigs:
             for p in patches:
                 p.stop()
 
-    def test_returns_five_configs(self):
+    def test_returns_six_configs(self):
         configs = self._build()
-        assert len(configs) == 5
+        assert len(configs) == 6
 
     def test_all_process_names(self):
         configs = self._build()
         names = {c.name for c in configs}
-        assert names == {"bot", "mcp-seosoyoung", "mcp-outline", "mcp-slack", "mcp-trello"}
+        assert names == {
+            "bot", "mcp-seosoyoung", "seosoyoung-soul",
+            "mcp-outline", "mcp-slack", "mcp-trello",
+        }
 
     def test_bot_config(self):
         configs = self._build()
@@ -154,6 +157,22 @@ class TestBuildProcessConfigs:
         assert "3102" in trello.args
         assert trello.restart_policy.auto_restart is True
         assert trello.log_dir is not None
+
+    def test_seosoyoung_soul_config(self):
+        configs = self._build()
+        soul = next(c for c in configs if c.name == "seosoyoung-soul")
+        assert "-m" in soul.args
+        assert "uvicorn" in soul.args
+        assert "seosoyoung.mcp.soul.main:app" in soul.args
+        assert "--port" in soul.args
+        assert "3105" in soul.args
+        assert "--host" in soul.args
+        assert "127.0.0.1" in soul.args
+        assert soul.port == 3105
+        assert soul.restart_policy.use_exit_codes is False
+        assert soul.restart_policy.auto_restart is True
+        assert soul.env.get("PYTHONUTF8") == "1"
+        assert soul.log_dir is not None
 
     def test_all_configs_have_log_dir(self):
         configs = self._build()
