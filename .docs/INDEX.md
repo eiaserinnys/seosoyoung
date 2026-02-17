@@ -10,6 +10,8 @@
 - [`claude/executor.py`](modules/claude_executor.md): Claude Code 실행 로직
 - [`claude/message_formatter.py`](modules/claude_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티
 - [`claude/security.py`](modules/claude_security.md): 보안 레이어
+- [`claude/service_adapter.py`](modules/claude_service_adapter.md): Claude Soul Service Adapter
+- [`claude/service_client.py`](modules/claude_service_client.md): Claude Soul Service HTTP + SSE 클라이언트
 - [`claude/session.py`](modules/claude_session.md): Claude Code 세션 관리
 - [`claude/session_context.py`](modules/claude_session_context.md): 세션 컨텍스트 주입
 - [`seosoyoung/config.py`](modules/seosoyoung_config.md): 설정 관리
@@ -97,9 +99,20 @@
 
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:94): Claude Code 실행 결과
 - `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:109): Claude Code SDK 기반 실행기
-- `PendingPrompt` (seosoyoung/claude/executor.py:54): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:70): Claude Code 실행기
+- `PendingPrompt` (seosoyoung/claude/executor.py:63): 인터벤션 대기 중인 프롬프트 정보
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:79): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
+- `ClaudeServiceAdapter` (seosoyoung/claude/service_adapter.py:26): 원격 soul 서버 어댑터
+- `SSEEvent` (seosoyoung/claude/service_client.py:32): Server-Sent Event 데이터
+- `ExecuteResult` (seosoyoung/claude/service_client.py:39): soul 서버 실행 결과
+- `SoulServiceError` (seosoyoung/claude/service_client.py:49): Soul Service 클라이언트 오류
+- `TaskConflictError` (seosoyoung/claude/service_client.py:54): 태스크 충돌 오류 (이미 실행 중인 태스크 존재)
+- `TaskNotFoundError` (seosoyoung/claude/service_client.py:59): 태스크를 찾을 수 없음
+- `TaskNotRunningError` (seosoyoung/claude/service_client.py:64): 태스크가 실행 중이 아님
+- `RateLimitError` (seosoyoung/claude/service_client.py:69): 동시 실행 제한 초과
+- `ConnectionLostError` (seosoyoung/claude/service_client.py:74): SSE 연결 끊김 (재시도 실패)
+- `ExponentialBackoff` (seosoyoung/claude/service_client.py:81): 지수 백오프 유틸리티
+- `SoulServiceClient` (seosoyoung/claude/service_client.py:111): seosoyoung-soul 서버 HTTP + SSE 클라이언트
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:43): 세션 매니저
 - `SessionRuntime` (seosoyoung/claude/session.py:223): 세션 실행 상태 관리자
@@ -224,7 +237,7 @@
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
 - `async main()` (seosoyoung/claude/agent_runner.py:887): 
-- `get_runner_for_role()` (seosoyoung/claude/executor.py:38): 역할에 맞는 ClaudeAgentRunner 반환
+- `get_runner_for_role()` (seosoyoung/claude/executor.py:47): 역할에 맞는 ClaudeAgentRunner 반환
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:15): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:50): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:69): 응답에서 요약과 상세 내용을 파싱
