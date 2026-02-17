@@ -185,6 +185,37 @@ class TestRescueRunner:
             mock_client.disconnect.assert_awaited_once()
 
 
+    def test_run_claude_sync_resume_fallback(self):
+        """resume 실패 시 새 세션으로 폴백"""
+        from seosoyoung.rescue.runner import RescueResult, run_claude_sync
+
+        call_count = 0
+
+        async def mock_run_claude(prompt, session_id=None):
+            nonlocal call_count
+            call_count += 1
+            if session_id:
+                return RescueResult(
+                    success=False,
+                    output="",
+                    session_id=None,
+                    error="Control request timeout: initialize",
+                )
+            else:
+                return RescueResult(
+                    success=True,
+                    output="새 세션 응답",
+                    session_id="new-session-456",
+                )
+
+        with patch("seosoyoung.rescue.runner._run_claude", side_effect=mock_run_claude):
+            result = run_claude_sync("테스트", session_id="old-session-123")
+            assert result.success is True
+            assert result.output == "새 세션 응답"
+            assert result.session_id == "new-session-456"
+            assert call_count == 2  # resume 1회 + 새 세션 1회
+
+
 class TestRescueMain:
     """main.py 핸들러 테스트"""
 

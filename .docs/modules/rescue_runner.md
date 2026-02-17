@@ -24,8 +24,10 @@ Claude Code SDK 실행기 (세션 재개 지원)
 Slack 이벤트 핸들러(동기)에서 직접 호출할 수 있습니다.
 내부적으로 asyncio.run()을 사용하여 매 호출마다 새 이벤트 루프를 생성합니다.
 
+resume 실패 시 새 세션으로 자동 폴백합니다.
+
 ### `async _run_claude(prompt, session_id)`
-- 위치: 줄 65
+- 위치: 줄 74
 - 설명: Claude Code SDK를 호출하고 결과를 반환합니다.
 
 ClaudeSDKClient 기반으로 세션 재개를 지원합니다:

@@ -58,8 +58,17 @@ def run_claude_sync(
 
     Slack 이벤트 핸들러(동기)에서 직접 호출할 수 있습니다.
     내부적으로 asyncio.run()을 사용하여 매 호출마다 새 이벤트 루프를 생성합니다.
+
+    resume 실패 시 새 세션으로 자동 폴백합니다.
     """
-    return asyncio.run(_run_claude(prompt, session_id=session_id))
+    result = asyncio.run(_run_claude(prompt, session_id=session_id))
+
+    # resume 실패 시 새 세션으로 재시도
+    if not result.success and session_id:
+        logger.warning(f"세션 재개 실패 ({result.error}), 새 세션으로 재시도")
+        result = asyncio.run(_run_claude(prompt, session_id=None))
+
+    return result
 
 
 async def _run_claude(

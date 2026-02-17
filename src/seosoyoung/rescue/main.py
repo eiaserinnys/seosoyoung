@@ -21,7 +21,7 @@ from seosoyoung.rescue.runner import run_claude_sync
 
 # 로깅 설정
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
