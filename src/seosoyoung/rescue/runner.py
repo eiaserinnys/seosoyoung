@@ -6,8 +6,11 @@ ClaudeSDKClient 기반으로 세션 재개를 지원합니다.
 
 import asyncio
 import logging
+import sys
 import threading
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient
@@ -118,11 +121,24 @@ class RescueRunner:
         """
         working_dir = RescueConfig.get_working_dir()
 
+        # CLI stderr를 파일에 캡처 (디버깅용)
+        _runtime_dir = Path(__file__).resolve().parents[3]  # rescue/runner.py -> seosoyoung_runtime
+        _stderr_log_path = _runtime_dir / "logs" / "rescue_cli_stderr.log"
+        try:
+            _stderr_file = open(_stderr_log_path, "a", encoding="utf-8")
+            _stderr_file.write(f"\n--- rescue CLI stderr: {datetime.now(timezone.utc).isoformat()} resume={session_id} ---\n")
+            _stderr_file.flush()
+        except Exception as _e:
+            logger.warning(f"stderr 캡처 파일 열기 실패: {_e}")
+            _stderr_file = sys.stderr
+
         options = ClaudeCodeOptions(
             allowed_tools=ALLOWED_TOOLS,
             disallowed_tools=DISALLOWED_TOOLS,
             permission_mode="bypassPermissions",
             cwd=working_dir,
+            extra_args={"debug-to-stderr": None},
+            debug_stderr=_stderr_file,
         )
 
         if session_id:
@@ -203,6 +219,12 @@ class RescueRunner:
                     await client.disconnect()
                 except Exception as e:
                     logger.warning(f"ClaudeSDKClient disconnect 오류 (무시): {e}")
+            # stderr 파일 닫기
+            if _stderr_file is not sys.stderr:
+                try:
+                    _stderr_file.close()
+                except Exception:
+                    pass
 
 
 # 모듈 레벨 싱글턴 (main.py에서 사용)
