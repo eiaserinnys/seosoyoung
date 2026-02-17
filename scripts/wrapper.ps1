@@ -135,6 +135,18 @@ while ($true) {
                     Write-Host "wrapper: 의존성 설치 실패 (계속 진행)" -ForegroundColor Yellow
                 }
             }
+            # MCP 의존성 설치 (mcp_requirements.txt 변경 대응)
+            $mcpPipExe = Join-Path $runtimeDir "mcp_venv\Scripts\pip.exe"
+            $mcpRequirementsFile = Join-Path $runtimeDir "mcp_requirements.txt"
+            if ((Test-Path $mcpPipExe) -and (Test-Path $mcpRequirementsFile)) {
+                Write-Host "wrapper: MCP 의존성 설치 중..." -ForegroundColor Cyan
+                & $mcpPipExe install -r $mcpRequirementsFile --quiet
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "wrapper: MCP 의존성 설치 완료" -ForegroundColor Green
+                } else {
+                    Write-Host "wrapper: MCP 의존성 설치 실패 (계속 진행)" -ForegroundColor Yellow
+                }
+            }
             Pop-Location
             Sync-DevSeosoyoung  # 개발 소스 동기화
             Write-Host "wrapper: 업데이트 완료, 재시작..." -ForegroundColor Cyan

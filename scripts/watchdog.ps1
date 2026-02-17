@@ -259,6 +259,13 @@ Claude Code 비상 복구 모드를 시작합니다.
     & $pip install -r (Join-Path $runtimeDir "requirements.txt") --quiet 2>&1 | Out-File -Append $pipLog
     if ($LASTEXITCODE -ne 0) { Write-Log "pip install 실패, 로그: $pipLog" }
 
+    $mcpPip = Join-Path $runtimeDir "mcp_venv\Scripts\pip.exe"
+    $mcpReq = Join-Path $runtimeDir "mcp_requirements.txt"
+    if ((Test-Path $mcpPip) -and (Test-Path $mcpReq)) {
+        & $mcpPip install -r $mcpReq --quiet 2>&1 | Out-File -Append $pipLog
+        if ($LASTEXITCODE -ne 0) { Write-Log "mcp pip install 실패, 로그: $pipLog" }
+    }
+
     # devClone 롤백
     git -C $devCloneDir reset --hard $state.knownGoodCommit.devClone
     $devCloneOk = ($LASTEXITCODE -eq 0)
@@ -396,6 +403,13 @@ while ($true) {
         $pipLog = Join-Path $logsDir "pip_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
         & $pip install -r (Join-Path $runtimeDir "requirements.txt") --quiet 2>&1 | Out-File -Append $pipLog
         if ($LASTEXITCODE -ne 0) { Write-Log "pip install 실패, 로그: $pipLog" }
+
+        $mcpPip = Join-Path $runtimeDir "mcp_venv\Scripts\pip.exe"
+        $mcpReq = Join-Path $runtimeDir "mcp_requirements.txt"
+        if ((Test-Path $mcpPip) -and (Test-Path $mcpReq)) {
+            & $mcpPip install -r $mcpReq --quiet 2>&1 | Out-File -Append $pipLog
+            if ($LASTEXITCODE -ne 0) { Write-Log "mcp pip install 실패, 로그: $pipLog" }
+        }
 
         git -C $devCloneDir pull origin main
         if ($LASTEXITCODE -ne 0) {

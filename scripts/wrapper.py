@@ -27,6 +27,8 @@ LOGS_DIR = RUNTIME_DIR / "logs"
 VENV_PYTHON = RUNTIME_DIR / "venv" / "Scripts" / "python.exe"
 VENV_PIP = RUNTIME_DIR / "venv" / "Scripts" / "pip.exe"
 REQUIREMENTS_FILE = RUNTIME_DIR / "requirements.txt"
+MCP_VENV_PIP = RUNTIME_DIR / "mcp_venv" / "Scripts" / "pip.exe"
+MCP_REQUIREMENTS_FILE = RUNTIME_DIR / "mcp_requirements.txt"
 DEV_SEOSOYOUNG = WORKSPACE_DIR / "seosoyoung"
 REPO_URL = "https://github.com/eias/seosoyoung"
 
@@ -98,6 +100,17 @@ def do_update() -> None:
             log("의존성 설치 완료")
         else:
             log("의존성 설치 실패 (계속 진행)", "WARN")
+
+    if MCP_VENV_PIP.exists() and MCP_REQUIREMENTS_FILE.exists():
+        log("MCP 의존성 설치 중...")
+        exit_code = run_command(
+            [str(MCP_VENV_PIP), "install", "-r", str(MCP_REQUIREMENTS_FILE), "--quiet"],
+            cwd=RUNTIME_DIR
+        )
+        if exit_code == 0:
+            log("MCP 의존성 설치 완료")
+        else:
+            log("MCP 의존성 설치 실패 (계속 진행)", "WARN")
 
     # 개발 소스 동기화
     sync_dev_seosoyoung()
