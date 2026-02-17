@@ -102,17 +102,20 @@ class TestBuildProcessConfigs:
             for p in patches:
                 p.stop()
 
-    def test_returns_six_configs(self):
+    def test_returns_at_least_six_configs(self):
         configs = self._build()
-        assert len(configs) == 6
+        assert len(configs) >= 6
 
     def test_all_process_names(self):
         configs = self._build()
         names = {c.name for c in configs}
-        assert names == {
+        required = {
             "bot", "mcp-seosoyoung", "seosoyoung-soul",
             "mcp-outline", "mcp-slack", "mcp-trello",
         }
+        assert required.issubset(names)
+        # rescue-bot은 RESCUE_SLACK_*_TOKEN 환경변수 유무에 따라 선택적
+        assert names - required <= {"rescue-bot"}
 
     def test_bot_config(self):
         configs = self._build()

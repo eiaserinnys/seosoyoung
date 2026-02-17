@@ -148,6 +148,7 @@ def main() -> None:
 
     # 메인 루프
     EXIT_CODE_SUPERVISOR_RESTART = 42
+    EXIT_CODE_SUPERVISOR_PLAIN_RESTART = 43
     last_git_check = 0.0
 
     try:
@@ -187,6 +188,16 @@ def main() -> None:
                     deployer.notify_change()
                     deployer.tick()
                 elif action == ExitAction.RESTART:
+                    # use_exit_codes=True인 프로세스(봇)가 exit 43을 보내면
+                    # supervisor 전체를 재시작하여 .env 재로드 + 프로세스 재등록
+                    if policy.use_exit_codes:
+                        logger.info(
+                            "%s: exit 43 재시작 요청 → supervisor 전체 재시작",
+                            name,
+                        )
+                        pm.stop_all()
+                        job_object.close_job_object()
+                        sys.exit(EXIT_CODE_SUPERVISOR_PLAIN_RESTART)
                     pm.restart(name)
                 elif action == ExitAction.RESTART_DELAY:
                     delay = policy.restart_delay or RESTART_DELAY_SECONDS
