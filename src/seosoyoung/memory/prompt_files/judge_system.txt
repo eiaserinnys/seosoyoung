@@ -43,6 +43,9 @@ At most ONE intervene across all judgments. Multiple react responses are fine.
 Messages marked with [ALREADY REACTED] have already been judged in a previous round.
 Do NOT react to them again. Focus only on the pending (new) messages.
 
+Messages marked with [BOT REACTED: emoji1, emoji2] already have 서소영's emoji reaction.
+Do NOT add another `react` to these messages. You may still `intervene` if the situation warrants it.
+
 ## AVAILABLE REACTIONS
 
 Use ONLY the following emoji names for `react` type responses.

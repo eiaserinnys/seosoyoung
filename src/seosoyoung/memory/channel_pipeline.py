@@ -183,6 +183,50 @@ def _get_max_importance_item(judge_result: JudgeResult) -> JudgeItem | None:
     return max(judge_result.items, key=lambda item: item.importance)
 
 
+def _filter_already_reacted(
+    actions: list[InterventionAction],
+    pending_messages: list[dict],
+    bot_user_id: str | None,
+) -> list[InterventionAction]:
+    """봇이 이미 리액션한 메시지에 대한 react 액션을 필터링합니다.
+
+    pending_messages의 reactions 필드에 봇이 같은 이모지로 이미 리액션한 경우 스킵합니다.
+
+    Args:
+        actions: react 타입 InterventionAction 리스트
+        pending_messages: pending 메시지 리스트 (reactions 필드 포함 가능)
+        bot_user_id: 봇의 사용자 ID
+
+    Returns:
+        중복이 아닌 액션만 남긴 리스트
+    """
+    if not bot_user_id or not actions:
+        return actions
+
+    # ts → reactions 인덱스 빌드
+    reactions_by_ts: dict[str, list[dict]] = {}
+    for msg in pending_messages:
+        ts = msg.get("ts", "")
+        reactions = msg.get("reactions")
+        if ts and reactions:
+            reactions_by_ts[ts] = reactions
+
+    filtered = []
+    for action in actions:
+        reactions = reactions_by_ts.get(action.target, [])
+        already = any(
+            r.get("name") == action.content and bot_user_id in r.get("users", [])
+            for r in reactions
+        )
+        if already:
+            logger.debug(
+                f"react 스킵 (이미 리액션함): ts={action.target} emoji={action.content}"
+            )
+        else:
+            filtered.append(action)
+    return filtered
+
+
 async def run_channel_pipeline(
     store: ChannelStore,
     observer: ChannelObserver,
@@ -378,6 +422,11 @@ async def _handle_multi_judge(
     react_actions = [a for a in actions if a.type == "react"]
     message_actions = [a for a in actions if a.type == "message"]
 
+    # 봇이 이미 리액션한 메시지 필터링
+    react_actions = _filter_already_reacted(
+        react_actions, pending_messages, bot_user_id,
+    )
+
     # 이모지 리액션 일괄 실행
     if react_actions:
         await execute_interventions(slack_client, channel_id, react_actions)
@@ -510,6 +559,11 @@ async def _handle_single_judge(
     else:
         react_actions = [a for a in actions if a.type == "react"]
         message_actions = [a for a in actions if a.type == "message"]
+
+        # 봇이 이미 리액션한 메시지 필터링
+        react_actions = _filter_already_reacted(
+            react_actions, pending_messages, bot_user_id,
+        )
 
         if react_actions:
             await execute_interventions(slack_client, channel_id, react_actions)

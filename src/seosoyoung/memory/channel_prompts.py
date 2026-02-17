@@ -270,7 +270,16 @@ def _format_pending_messages(
             tag = " [ALREADY REACTED]"
         files_str = _format_files(msg.get("files", []))
         reactions_str = _format_reactions(msg.get("reactions", []))
-        lines.append(f"[{ts}] {sender}: {text}{files_str}{tag}{reactions_str}")
+        # 봇이 이미 리액션한 이모지 표시
+        bot_reacted_str = ""
+        if bot_user_id:
+            bot_emojis = [
+                r["name"] for r in msg.get("reactions", [])
+                if bot_user_id in r.get("users", [])
+            ]
+            if bot_emojis:
+                bot_reacted_str = " [BOT REACTED: " + ", ".join(bot_emojis) + "]"
+        lines.append(f"[{ts}] {sender}: {text}{files_str}{tag}{bot_reacted_str}{reactions_str}")
     return "\n".join(lines)
 
 

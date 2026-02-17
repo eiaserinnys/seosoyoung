@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from seosoyoung.claude.session import SessionManager
-from seosoyoung.memory.channel_intervention import InterventionHistory
+from seosoyoung.memory.channel_intervention import InterventionAction, InterventionHistory
 from seosoyoung.memory.channel_observer import (
     DigestCompressorResult,
     DigestResult,
@@ -18,6 +18,7 @@ from seosoyoung.memory.channel_observer import (
 )
 from seosoyoung.memory.channel_pipeline import (
     _apply_importance_modifiers,
+    _filter_already_reacted,
     _validate_linked_messages,
     run_channel_pipeline,
 )
@@ -1202,3 +1203,128 @@ class TestInterventionSessionCreation:
 
             # channel 대상 개입은 세션 생성 안 함
             assert session_mgr.get("9999.000") is None
+
+
+# ── _filter_already_reacted 테스트 ──────────────────────
+
+class TestFilterAlreadyReacted:
+    """봇이 이미 리액션한 메시지에 대한 react 중복 방지 테스트"""
+
+    def test_filters_out_already_reacted(self):
+        """봇이 이미 리액션한 메시지는 필터링됨"""
+        actions = [
+            InterventionAction(type="react", target="1.1", content="laughing"),
+        ]
+        pending = [{
+            "ts": "1.1", "user": "U1", "text": "hi",
+            "reactions": [{"name": "laughing", "users": ["BOT_U1"], "count": 1}],
+        }]
+        result = _filter_already_reacted(actions, pending, bot_user_id="BOT_U1")
+        assert len(result) == 0
+
+    def test_keeps_different_emoji(self):
+        """봇이 다른 이모지로 리액션한 경우는 유지"""
+        actions = [
+            InterventionAction(type="react", target="1.1", content="fire"),
+        ]
+        pending = [{
+            "ts": "1.1", "user": "U1", "text": "hi",
+            "reactions": [{"name": "laughing", "users": ["BOT_U1"], "count": 1}],
+        }]
+        result = _filter_already_reacted(actions, pending, bot_user_id="BOT_U1")
+        assert len(result) == 1
+
+    def test_keeps_reaction_by_other_user(self):
+        """다른 사용자의 리액션은 봇 리액션으로 취급하지 않음"""
+        actions = [
+            InterventionAction(type="react", target="1.1", content="laughing"),
+        ]
+        pending = [{
+            "ts": "1.1", "user": "U1", "text": "hi",
+            "reactions": [{"name": "laughing", "users": ["U2"], "count": 1}],
+        }]
+        result = _filter_already_reacted(actions, pending, bot_user_id="BOT_U1")
+        assert len(result) == 1
+
+    def test_no_bot_user_id_passes_all(self):
+        """bot_user_id가 None이면 필터링 없이 모두 통과"""
+        actions = [
+            InterventionAction(type="react", target="1.1", content="laughing"),
+        ]
+        pending = [{
+            "ts": "1.1", "user": "U1", "text": "hi",
+            "reactions": [{"name": "laughing", "users": ["BOT_U1"], "count": 1}],
+        }]
+        result = _filter_already_reacted(actions, pending, bot_user_id=None)
+        assert len(result) == 1
+
+    def test_no_reactions_field_passes(self):
+        """reactions 필드가 없는 메시지는 필터링 안 됨"""
+        actions = [
+            InterventionAction(type="react", target="1.1", content="laughing"),
+        ]
+        pending = [{"ts": "1.1", "user": "U1", "text": "hi"}]
+        result = _filter_already_reacted(actions, pending, bot_user_id="BOT_U1")
+        assert len(result) == 1
+
+    def test_mixed_actions_partial_filter(self):
+        """일부만 중복인 경우 중복만 필터링"""
+        actions = [
+            InterventionAction(type="react", target="1.1", content="laughing"),
+            InterventionAction(type="react", target="2.2", content="eyes"),
+        ]
+        pending = [
+            {
+                "ts": "1.1", "user": "U1", "text": "hi",
+                "reactions": [{"name": "laughing", "users": ["BOT_U1"], "count": 1}],
+            },
+            {"ts": "2.2", "user": "U2", "text": "hello"},
+        ]
+        result = _filter_already_reacted(actions, pending, bot_user_id="BOT_U1")
+        assert len(result) == 1
+        assert result[0].target == "2.2"
+
+    @pytest.mark.asyncio
+    async def test_pipeline_skips_already_reacted(self, store, channel_id):
+        """파이프라인에서 봇이 이미 리액션한 메시지에 대해 중복 리액션하지 않음"""
+        # pending에 봇 리액션이 이미 기록된 메시지 추가
+        for i in range(5):
+            msg = {
+                "ts": f"100{i}.000",
+                "user": f"U{i}",
+                "text": f"테스트 메시지 {i}번 - " + "내용 " * 20,
+            }
+            if i == 1:
+                msg["reactions"] = [
+                    {"name": "laughing", "users": ["BOT_U1"], "count": 1}
+                ]
+            store.append_pending(channel_id, msg)
+
+        # judge가 이미 리액션한 메시지에 또 react를 판단
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=5, reaction_type="react",
+                          reaction_target="1001.000", reaction_content="laughing"),
+                JudgeItem(ts="1003.000", importance=4, reaction_type="react",
+                          reaction_target="1003.000", reaction_content="eyes"),
+            ],
+        ))
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            bot_user_id="BOT_U1",
+        )
+
+        # 1001.000은 이미 laughing 리액션 있으므로 스킵, 1003.000만 실행
+        assert client.reactions_add.call_count == 1
+        call_kwargs = client.reactions_add.call_args[1]
+        assert call_kwargs["timestamp"] == "1003.000"
+        assert call_kwargs["name"] == "eyes"

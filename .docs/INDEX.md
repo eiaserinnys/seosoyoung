@@ -247,7 +247,7 @@
 - `send_multi_judge_debug_log()` (seosoyoung/memory/channel_intervention.py:452): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:104): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_judge_output()` (seosoyoung/memory/channel_observer.py:130): Judge 응답에서 XML 태그를 파싱합니다.
-- `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:186): 소화/판단 분리 파이프라인을 실행합니다.
+- `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:230): 소화/판단 분리 파이프라인을 실행합니다.
 - `build_channel_observer_system_prompt()` (seosoyoung/memory/channel_prompts.py:65): 채널 관찰 시스템 프롬프트를 반환합니다.
 - `build_channel_observer_user_prompt()` (seosoyoung/memory/channel_prompts.py:70): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/memory/channel_prompts.py:104): digest 압축 시스템 프롬프트를 반환합니다.

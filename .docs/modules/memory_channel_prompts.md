@@ -86,11 +86,11 @@
 봇이 보낸 멘션은 채널 모니터가 처리해야 하므로 태그하지 않음.
 
 ### `_format_channel_messages(messages, resolver)`
-- 위치: 줄 277
+- 위치: 줄 286
 - 설명: 채널 루트 메시지를 텍스트로 변환
 
 ### `_format_thread_messages(thread_buffers, resolver)`
-- 위치: 줄 296
+- 위치: 줄 305
 - 설명: 스레드 메시지를 텍스트로 변환
 
 ## 내부 의존성
