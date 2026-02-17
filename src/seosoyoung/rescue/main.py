@@ -17,7 +17,7 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from seosoyoung.rescue.config import RescueConfig
-from seosoyoung.rescue.runner import run_claude, run_sync
+from seosoyoung.rescue.runner import run_claude_sync
 
 # 로깅 설정
 logging.basicConfig(
@@ -98,8 +98,8 @@ def _process_message(prompt: str, thread_ts: str, channel: str, say, client):
         # 기존 세션 조회
         session_id = _get_session_id(thread_ts)
 
-        # Claude Code SDK 호출 (공유 이벤트 루프 사용)
-        result = run_sync(run_claude(prompt, session_id=session_id))
+        # Claude Code SDK 호출 (asyncio.run으로 매 호출마다 새 루프 생성)
+        result = run_claude_sync(prompt, session_id=session_id)
 
         # 세션 ID 저장
         if result.session_id:

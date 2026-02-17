@@ -6,7 +6,6 @@
 
 import asyncio
 import logging
-import threading
 from dataclasses import dataclass
 from typing import Optional
 
@@ -51,44 +50,19 @@ class RescueResult:
     error: Optional[str] = None
 
 
-# 공유 이벤트 루프 (Slack 이벤트 핸들러 동기→비동기 브릿지용)
-_shared_loop: Optional[asyncio.AbstractEventLoop] = None
-_loop_thread: Optional[threading.Thread] = None
-_loop_lock = threading.Lock()
+def run_claude_sync(
+    prompt: str,
+    session_id: Optional[str] = None,
+) -> RescueResult:
+    """동기 컨텍스트에서 Claude Code SDK를 호출합니다.
 
-
-def _ensure_loop() -> asyncio.AbstractEventLoop:
-    """공유 이벤트 루프가 없으면 데몬 스레드에서 생성"""
-    global _shared_loop, _loop_thread
-    with _loop_lock:
-        if _shared_loop is not None and _shared_loop.is_running():
-            return _shared_loop
-
-        loop = asyncio.new_event_loop()
-        thread = threading.Thread(
-            target=loop.run_forever,
-            daemon=True,
-            name="rescue-shared-loop",
-        )
-        thread.start()
-
-        _shared_loop = loop
-        _loop_thread = thread
-        logger.info("공유 이벤트 루프 생성됨")
-        return _shared_loop
-
-
-def run_sync(coro):
-    """동기 컨텍스트에서 코루틴을 실행하는 브릿지
-
-    Slack 이벤트 핸들러(동기)에서 async 함수를 호출할 때 사용합니다.
+    Slack 이벤트 핸들러(동기)에서 직접 호출할 수 있습니다.
+    내부적으로 asyncio.run()을 사용하여 매 호출마다 새 이벤트 루프를 생성합니다.
     """
-    loop = _ensure_loop()
-    future = asyncio.run_coroutine_threadsafe(coro, loop)
-    return future.result()
+    return asyncio.run(_run_claude(prompt, session_id=session_id))
 
 
-async def run_claude(
+async def _run_claude(
     prompt: str,
     session_id: Optional[str] = None,
 ) -> RescueResult:

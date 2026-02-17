@@ -64,5 +64,4 @@ soul 서버를 경유하지 않는 독립 경량 봇입니다.
 ## 내부 의존성
 
 - `seosoyoung.rescue.config.RescueConfig`
-- `seosoyoung.rescue.runner.run_claude`
-- `seosoyoung.rescue.runner.run_sync`
+- `seosoyoung.rescue.runner.run_claude_sync`

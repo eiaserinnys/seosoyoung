@@ -12,23 +12,20 @@ Claude Code SDK 실행기 (세션 재개 지원)
 ## 클래스
 
 ### `RescueResult`
-- 위치: 줄 45
+- 위치: 줄 44
 - 설명: 실행 결과
 
 ## 함수
 
-### `_ensure_loop()`
-- 위치: 줄 60
-- 설명: 공유 이벤트 루프가 없으면 데몬 스레드에서 생성
+### `run_claude_sync(prompt, session_id)`
+- 위치: 줄 53
+- 설명: 동기 컨텍스트에서 Claude Code SDK를 호출합니다.
 
-### `run_sync(coro)`
-- 위치: 줄 81
-- 설명: 동기 컨텍스트에서 코루틴을 실행하는 브릿지
+Slack 이벤트 핸들러(동기)에서 직접 호출할 수 있습니다.
+내부적으로 asyncio.run()을 사용하여 매 호출마다 새 이벤트 루프를 생성합니다.
 
-Slack 이벤트 핸들러(동기)에서 async 함수를 호출할 때 사용합니다.
-
-### `async run_claude(prompt, session_id)`
-- 위치: 줄 91
+### `async _run_claude(prompt, session_id)`
+- 위치: 줄 65
 - 설명: Claude Code SDK를 호출하고 결과를 반환합니다.
 
 ClaudeSDKClient 기반으로 세션 재개를 지원합니다:

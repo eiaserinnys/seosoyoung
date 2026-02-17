@@ -91,9 +91,9 @@ class TestRescueRunner:
         mock_client.disconnect = AsyncMock()
 
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            from seosoyoung.rescue.runner import run_claude
+            from seosoyoung.rescue.runner import _run_claude
 
-            result = asyncio.run(run_claude("테스트 프롬프트"))
+            result = asyncio.run(_run_claude("테스트 프롬프트"))
             assert result.success is True
             assert result.output == "테스트 응답"
             assert result.session_id == "test-session-123"
@@ -123,9 +123,9 @@ class TestRescueRunner:
             return mock_client
 
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", side_effect=capture_client):
-            from seosoyoung.rescue.runner import run_claude
+            from seosoyoung.rescue.runner import _run_claude
 
-            result = asyncio.run(run_claude("후속 질문", session_id="test-session-123"))
+            result = asyncio.run(_run_claude("후속 질문", session_id="test-session-123"))
             assert result.success is True
             assert result.output == "이어진 응답"
             # resume 옵션이 전달되었는지 확인
@@ -142,9 +142,9 @@ class TestRescueRunner:
         mock_client.disconnect = AsyncMock()
 
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            from seosoyoung.rescue.runner import run_claude
+            from seosoyoung.rescue.runner import _run_claude
 
-            result = asyncio.run(run_claude("테스트"))
+            result = asyncio.run(_run_claude("테스트"))
             assert result.success is False
             assert "exit code: 1" in result.error
 
@@ -155,9 +155,9 @@ class TestRescueRunner:
         mock_client.disconnect = AsyncMock()
 
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            from seosoyoung.rescue.runner import run_claude
+            from seosoyoung.rescue.runner import _run_claude
 
-            result = asyncio.run(run_claude("테스트"))
+            result = asyncio.run(_run_claude("테스트"))
             assert result.success is False
             assert "unexpected" in result.error
 
@@ -179,9 +179,9 @@ class TestRescueRunner:
         mock_client.disconnect = AsyncMock()
 
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            from seosoyoung.rescue.runner import run_claude
+            from seosoyoung.rescue.runner import _run_claude
 
-            asyncio.run(run_claude("테스트"))
+            asyncio.run(_run_claude("테스트"))
             mock_client.disconnect.assert_awaited_once()
 
 
@@ -277,7 +277,7 @@ class TestRescueMain:
             )
 
             with patch(
-                "seosoyoung.rescue.main.run_sync",
+                "seosoyoung.rescue.main.run_claude_sync",
                 return_value=mock_result,
             ):
                 handle_mention(event, say, client)
@@ -342,7 +342,7 @@ class TestRescueMain:
             )
 
             with patch(
-                "seosoyoung.rescue.main.run_sync",
+                "seosoyoung.rescue.main.run_claude_sync",
                 return_value=mock_result,
             ):
                 handle_message(event, say, client)
