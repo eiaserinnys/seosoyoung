@@ -10,6 +10,8 @@
 - [`claude/executor.py`](modules/claude_executor.md): Claude Code 실행 로직
 - [`claude/message_formatter.py`](modules/claude_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티
 - [`claude/security.py`](modules/claude_security.md): 보안 레이어
+- [`claude/service_adapter.py`](modules/claude_service_adapter.md): Claude Soul Service Adapter
+- [`claude/service_client.py`](modules/claude_service_client.md): Claude Soul Service HTTP + SSE 클라이언트
 - [`claude/session.py`](modules/claude_session.md): Claude Code 세션 관리
 - [`claude/session_context.py`](modules/claude_session_context.md): 세션 컨텍스트 주입
 - [`seosoyoung/config.py`](modules/seosoyoung_config.md): 설정 관리
@@ -23,6 +25,24 @@
 - [`mcp/__main__.py`](modules/mcp___main__.md): MCP 서버 실행 진입점
 - [`mcp/config.py`](modules/mcp_config.md): MCP 서버 설정
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
+- [`api/attachments.py`](modules/api_attachments.md): Attachments API - 첨부 파일 관리 엔드포인트
+- [`api/auth.py`](modules/api_auth.md): Authentication - Bearer 토큰 인증
+- [`api/tasks.py`](modules/api_tasks.md): Tasks API - 태스크 기반 API 엔드포인트
+- [`soul/config.py`](modules/soul_config.md): Seosoyoung Soul - Configuration
+- [`soul/constants.py`](modules/soul_constants.md): Seosoyoung Soul - 공통 상수 정의
+- [`soul/main.py`](modules/soul_main.md): Seosoyoung Soul - FastAPI Application
+- [`models/schemas.py`](modules/models_schemas.md): Pydantic 모델 - Request/Response 스키마
+- [`service/attachment_extractor.py`](modules/service_attachment_extractor.md): 첨부 파일 추출 모듈
+- [`service/claude_runner.py`](modules/service_claude_runner.md): ClaudeCodeRunner - Claude Code CLI 실행
+- [`service/file_manager.py`](modules/service_file_manager.md): FileManager - 첨부 파일 관리
+- [`service/output_sanitizer.py`](modules/service_output_sanitizer.md): 출력 민감 정보 마스킹 모듈
+- [`service/resource_manager.py`](modules/service_resource_manager.md): ResourceManager - 동시 실행 제한 관리
+- [`service/session_validator.py`](modules/service_session_validator.md): 세션 검증 모듈
+- [`service/task_executor.py`](modules/service_task_executor.md): Task Executor - 백그라운드 태스크 실행 관리
+- [`service/task_listener.py`](modules/service_task_listener.md): Task Listener - SSE 리스너 관리
+- [`service/task_manager.py`](modules/service_task_manager.md): TaskManager - 태스크 라이프사이클 관리
+- [`service/task_models.py`](modules/service_task_models.md): Task Models - 태스크 관련 데이터 모델 및 예외
+- [`service/task_storage.py`](modules/service_task_storage.md): Task Storage - 태스크 영속화 관리
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
 - [`tools/image_gen.py`](modules/tools_image_gen.md): 이미지 생성 및 슬랙 업로드 MCP 도구
 - [`tools/lore_search.py`](modules/tools_lore_search.md): A-RAG 로어 검색 MCP 도구 — keyword_search, semantic_search, chunk_read.
@@ -79,15 +99,62 @@
 
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:94): Claude Code 실행 결과
 - `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:109): Claude Code SDK 기반 실행기
-- `PendingPrompt` (seosoyoung/claude/executor.py:54): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:70): Claude Code 실행기
+- `PendingPrompt` (seosoyoung/claude/executor.py:63): 인터벤션 대기 중인 프롬프트 정보
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:79): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
+- `ClaudeServiceAdapter` (seosoyoung/claude/service_adapter.py:26): 원격 soul 서버 어댑터
+- `SSEEvent` (seosoyoung/claude/service_client.py:32): Server-Sent Event 데이터
+- `ExecuteResult` (seosoyoung/claude/service_client.py:39): soul 서버 실행 결과
+- `SoulServiceError` (seosoyoung/claude/service_client.py:49): Soul Service 클라이언트 오류
+- `TaskConflictError` (seosoyoung/claude/service_client.py:54): 태스크 충돌 오류 (이미 실행 중인 태스크 존재)
+- `TaskNotFoundError` (seosoyoung/claude/service_client.py:59): 태스크를 찾을 수 없음
+- `TaskNotRunningError` (seosoyoung/claude/service_client.py:64): 태스크가 실행 중이 아님
+- `RateLimitError` (seosoyoung/claude/service_client.py:69): 동시 실행 제한 초과
+- `ConnectionLostError` (seosoyoung/claude/service_client.py:74): SSE 연결 끊김 (재시도 실패)
+- `ExponentialBackoff` (seosoyoung/claude/service_client.py:81): 지수 백오프 유틸리티
+- `SoulServiceClient` (seosoyoung/claude/service_client.py:111): seosoyoung-soul 서버 HTTP + SSE 클라이언트
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:43): 세션 매니저
 - `SessionRuntime` (seosoyoung/claude/session.py:223): 세션 실행 상태 관리자
 - `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
+- `Settings` (seosoyoung/mcp/soul/config.py:35): 애플리케이션 설정
+- `SSEEventType` (seosoyoung/mcp/soul/models/schemas.py:13): SSE 이벤트 타입
+- `InterveneRequest` (seosoyoung/mcp/soul/models/schemas.py:24): 개입 메시지 요청 (Task API 호환)
+- `InterveneResponse` (seosoyoung/mcp/soul/models/schemas.py:33): 개입 메시지 응답
+- `AttachmentUploadResponse` (seosoyoung/mcp/soul/models/schemas.py:39): 첨부 파일 업로드 응답
+- `AttachmentCleanupResponse` (seosoyoung/mcp/soul/models/schemas.py:47): 첨부 파일 정리 응답
+- `HealthResponse` (seosoyoung/mcp/soul/models/schemas.py:53): 헬스 체크 응답
+- `ErrorDetail` (seosoyoung/mcp/soul/models/schemas.py:63): 에러 상세 정보
+- `ErrorResponse` (seosoyoung/mcp/soul/models/schemas.py:70): 에러 응답
+- `ProgressEvent` (seosoyoung/mcp/soul/models/schemas.py:77): 진행 상황 이벤트
+- `MemoryEvent` (seosoyoung/mcp/soul/models/schemas.py:83): 메모리 사용량 이벤트
+- `InterventionSentEvent` (seosoyoung/mcp/soul/models/schemas.py:91): 개입 메시지 전송 확인 이벤트
+- `CompleteEvent` (seosoyoung/mcp/soul/models/schemas.py:98): 실행 완료 이벤트
+- `ErrorEvent` (seosoyoung/mcp/soul/models/schemas.py:106): 오류 이벤트
+- `ContextUsageEvent` (seosoyoung/mcp/soul/models/schemas.py:113): 컨텍스트 사용량 이벤트
+- `CompactEvent` (seosoyoung/mcp/soul/models/schemas.py:121): 컴팩트 실행 이벤트
+- `TaskStatus` (seosoyoung/mcp/soul/models/schemas.py:130): 태스크 상태
+- `ExecuteRequest` (seosoyoung/mcp/soul/models/schemas.py:137): 실행 요청
+- `TaskResponse` (seosoyoung/mcp/soul/models/schemas.py:146): 태스크 정보 응답
+- `TaskListResponse` (seosoyoung/mcp/soul/models/schemas.py:159): 태스크 목록 응답
+- `TaskInterveneRequest` (seosoyoung/mcp/soul/models/schemas.py:164): 개입 메시지 요청
+- `AttachmentExtractor` (seosoyoung/mcp/soul/service/attachment_extractor.py:15): 첨부 파일 추출기
+- `InterventionMessage` (seosoyoung/mcp/soul/service/claude_runner.py:66): 개입 메시지 데이터
+- `ClaudeCodeRunner` (seosoyoung/mcp/soul/service/claude_runner.py:73): Claude Code CLI 실행기
+- `AttachmentError` (seosoyoung/mcp/soul/service/file_manager.py:23): 첨부 파일 처리 오류
+- `FileManager` (seosoyoung/mcp/soul/service/file_manager.py:28): 첨부 파일 관리자
+- `ResourceManager` (seosoyoung/mcp/soul/service/resource_manager.py:18): 동시 실행 제한 관리자
+- `TaskExecutor` (seosoyoung/mcp/soul/service/task_executor.py:19): 백그라운드 태스크 실행 관리자
+- `TaskListenerManager` (seosoyoung/mcp/soul/service/task_listener.py:16): SSE 리스너 관리자
+- `TaskManager` (seosoyoung/mcp/soul/service/task_manager.py:52): 태스크 라이프사이클 관리자
+- `TaskStatus` (seosoyoung/mcp/soul/service/task_models.py:14): 태스크 상태
+- `TaskConflictError` (seosoyoung/mcp/soul/service/task_models.py:21): 태스크 충돌 오류 (같은 키로 running 태스크 존재)
+- `TaskNotFoundError` (seosoyoung/mcp/soul/service/task_models.py:26): 태스크 없음 오류
+- `TaskNotRunningError` (seosoyoung/mcp/soul/service/task_models.py:31): 태스크가 running 상태가 아님
+- `Task` (seosoyoung/mcp/soul/service/task_models.py:52): 태스크 데이터
+- `TaskStorage` (seosoyoung/mcp/soul/service/task_storage.py:23): 태스크 영속화 관리자
 - `GeneratedImage` (seosoyoung/mcp/tools/image_gen.py:32): 생성된 이미지 결과
 - `CharacterLoader` (seosoyoung/mcp/tools/npc_chat.py:30): eb_lore 캐릭터 YAML 파일을 로드하고 필드를 추출한다.
 - `PromptBuilder` (seosoyoung/mcp/tools/npc_chat.py:126): 캐릭터 데이터를 프롬프트 템플릿에 채워 시스템 프롬프트를 생성한다.
@@ -170,7 +237,7 @@
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
 - `async main()` (seosoyoung/claude/agent_runner.py:887): 
-- `get_runner_for_role()` (seosoyoung/claude/executor.py:38): 역할에 맞는 ClaudeAgentRunner 반환
+- `get_runner_for_role()` (seosoyoung/claude/executor.py:47): 역할에 맞는 ClaudeAgentRunner 반환
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:15): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:50): 텍스트 내 모든 백틱을 이스케이프
 - `parse_summary_details()` (seosoyoung/claude/message_formatter.py:69): 응답에서 요약과 상세 내용을 파싱
@@ -217,6 +284,32 @@
 - `lore_semantic_search()` (seosoyoung/mcp/server.py:307): 의미 기반 로어/대사 검색.
 - `lore_chunk_read()` (seosoyoung/mcp/server.py:329): chunk_id로 전체 텍스트를 읽습니다.
 - `lore_index_status()` (seosoyoung/mcp/server.py:360): 로어/대사 검색 인덱스의 상태를 반환합니다.
+- `async upload_attachment()` (seosoyoung/mcp/soul/api/attachments.py:27): 첨부 파일 업로드
+- `async cleanup_attachments()` (seosoyoung/mcp/soul/api/attachments.py:83): 스레드의 첨부 파일 정리
+- `async verify_token()` (seosoyoung/mcp/soul/api/auth.py:20): Bearer 토큰 검증
+- `task_to_response()` (seosoyoung/mcp/soul/api/tasks.py:38): Task를 TaskResponse로 변환
+- `async execute_task()` (seosoyoung/mcp/soul/api/tasks.py:61): Claude Code 실행 (SSE 스트리밍)
+- `async get_tasks()` (seosoyoung/mcp/soul/api/tasks.py:149): 클라이언트의 태스크 목록 조회
+- `async get_task()` (seosoyoung/mcp/soul/api/tasks.py:171): 특정 태스크 조회
+- `async reconnect_stream()` (seosoyoung/mcp/soul/api/tasks.py:201): 태스크 SSE 스트림에 재연결
+- `async ack_task()` (seosoyoung/mcp/soul/api/tasks.py:288): 결과 수신 확인
+- `async intervene_task()` (seosoyoung/mcp/soul/api/tasks.py:326): 실행 중인 태스크에 개입 메시지 전송
+- `get_settings()` (seosoyoung/mcp/soul/config.py:106): 설정 싱글톤 반환
+- `setup_logging()` (seosoyoung/mcp/soul/config.py:111): 로깅 설정
+- `async periodic_cleanup()` (seosoyoung/mcp/soul/main.py:37): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
+- `async lifespan()` (seosoyoung/mcp/soul/main.py:53): 애플리케이션 라이프사이클 관리
+- `async health_check()` (seosoyoung/mcp/soul/main.py:137): 헬스 체크 엔드포인트
+- `async get_status()` (seosoyoung/mcp/soul/main.py:148): 서비스 상태 조회
+- `async global_exception_handler()` (seosoyoung/mcp/soul/main.py:180): 전역 예외 핸들러
+- `sanitize_output()` (seosoyoung/mcp/soul/service/output_sanitizer.py:32): 출력에서 민감 정보를 마스킹합니다.
+- `find_session_file()` (seosoyoung/mcp/soul/service/session_validator.py:16): 세션 파일을 찾습니다.
+- `validate_session()` (seosoyoung/mcp/soul/service/session_validator.py:44): 세션 ID가 유효한지 검증합니다.
+- `get_task_manager()` (seosoyoung/mcp/soul/service/task_manager.py:486): TaskManager 싱글톤 반환
+- `init_task_manager()` (seosoyoung/mcp/soul/service/task_manager.py:494): TaskManager 초기화
+- `set_task_manager()` (seosoyoung/mcp/soul/service/task_manager.py:501): TaskManager 인스턴스 설정 (테스트용)
+- `utc_now()` (seosoyoung/mcp/soul/service/task_models.py:36): 현재 UTC 시간 반환
+- `datetime_to_str()` (seosoyoung/mcp/soul/service/task_models.py:41): datetime을 ISO 문자열로 변환
+- `str_to_datetime()` (seosoyoung/mcp/soul/service/task_models.py:46): ISO 문자열을 datetime으로 변환
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:57): Gemini API로 이미지를 생성하고 임시 파일로 저장

@@ -224,6 +224,14 @@ class Config:
     )
 
     # ========================================
+    # Claude 실행 모드 설정
+    # ========================================
+    CLAUDE_EXECUTION_MODE = os.getenv("CLAUDE_EXECUTION_MODE", "local")  # "local" | "remote"
+    SEOSOYOUNG_SOUL_URL = os.getenv("SEOSOYOUNG_SOUL_URL", "http://localhost:3105")
+    SEOSOYOUNG_SOUL_TOKEN = os.getenv("SEOSOYOUNG_SOUL_TOKEN", "")
+    SEOSOYOUNG_SOUL_CLIENT_ID = os.getenv("SEOSOYOUNG_SOUL_CLIENT_ID", "seosoyoung_bot")
+
+    # ========================================
     # 컨텍스트 사용량 표시 설정
     # ========================================
     SHOW_CONTEXT_USAGE = _parse_bool(os.getenv("SHOW_CONTEXT_USAGE"), False)

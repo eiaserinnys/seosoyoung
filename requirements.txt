@@ -33,6 +33,11 @@ psutil>=5.9.0
 fastapi>=0.115.0
 uvicorn>=0.32.0
 
+# Soul (Claude Code execution service)
+sse-starlette>=1.6.0
+aiofiles>=23.0.0
+aiohttp>=3.9.0
+
 # Testing
 pytest>=8.0.0
 pytest-asyncio>=0.23.0

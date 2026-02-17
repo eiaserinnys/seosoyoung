@@ -155,6 +155,36 @@ def build_process_configs() -> list[ProcessConfig]:
         port=3104,
     ))
 
+    # --- 필수: seosoyoung-soul ---
+    # Claude Code 실행 서비스 (FastAPI + uvicorn)
+    # venv_python으로 실행 - seosoyoung 패키지 의존
+    soul_env: dict[str, str] = {
+        "PYTHONUTF8": "1",
+        "PYTHONPATH": str(paths["runtime"] / "src"),
+    }
+    if claude_cli_dir:
+        soul_env["PATH"] = claude_cli_dir
+
+    configs.append(ProcessConfig(
+        name="seosoyoung-soul",
+        command=str(paths["venv_python"]),
+        args=[
+            "-m", "uvicorn",
+            "seosoyoung.mcp.soul.main:app",
+            "--host", "127.0.0.1",
+            "--port", "3105",
+        ],
+        cwd=str(paths["workspace"].resolve()),
+        env=soul_env,
+        restart_policy=RestartPolicy(
+            use_exit_codes=False,
+            auto_restart=True,
+            restart_delay=3.0,
+        ),
+        log_dir=str(paths["logs"]),
+        port=3105,
+    ))
+
     # --- 선택적: mcp-outline ---
     try:
         mcp_outline_exe = _find_mcp_outline_exe()

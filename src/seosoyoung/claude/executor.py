@@ -3,6 +3,10 @@
 _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 인터벤션(intervention) 기능을 지원하여, 실행 중 새 메시지가 도착하면
 현재 실행을 중단하고 새 프롬프트로 이어서 실행합니다.
+
+실행 모드 (CLAUDE_EXECUTION_MODE):
+- local: 기존 방식. ClaudeAgentRunner를 직접 사용하여 로컬에서 실행.
+- remote: seosoyoung-soul 서버에 HTTP/SSE로 위임하여 실행.
 """
 
 import asyncio
@@ -27,6 +31,11 @@ from seosoyoung.trello.watcher import TrackedCard
 from seosoyoung.restart import RestartType
 
 logger = logging.getLogger(__name__)
+
+
+def _is_remote_mode() -> bool:
+    """현재 실행 모드가 remote인지 확인"""
+    return Config.CLAUDE_EXECUTION_MODE == "remote"
 
 
 def _get_mcp_config_path() -> Optional[Path]:
@@ -106,6 +115,12 @@ class ClaudeExecutor:
         # 인터벤션: 실행 중인 runner 추적 (interrupt 전송용)
         self._active_runners: dict[str, object] = {}
         self._runners_lock = threading.Lock()
+
+        # Remote 모드: ClaudeServiceAdapter (lazy 초기화)
+        self._service_adapter: Optional[object] = None
+        self._adapter_lock = threading.Lock()
+        # Remote 모드: 실행 중인 request_id 추적 (인터벤션용)
+        self._active_remote_requests: dict[str, str] = {}  # thread_ts -> request_id
 
     def run(
         self,
@@ -214,17 +229,40 @@ class ClaudeExecutor:
         with self._pending_lock:
             self._pending_prompts[thread_ts] = pending
 
-        # interrupt fire-and-forget (실행 중인 runner에게 전송)
-        with self._runners_lock:
-            runner = self._active_runners.get(thread_ts)
-        if runner:
-            try:
-                runner.run_sync(runner.interrupt(thread_ts))
-                logger.info(f"인터럽트 전송 완료: thread={thread_ts}")
-            except Exception as e:
-                logger.warning(f"인터럽트 전송 실패 (무시): thread={thread_ts}, {e}")
+        # interrupt fire-and-forget
+        if _is_remote_mode():
+            # Remote 모드: soul 서버에 HTTP intervene 요청
+            request_id = self._active_remote_requests.get(thread_ts)
+            if request_id and self._service_adapter:
+                try:
+                    from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+                    ClaudeAgentRunner._ensure_loop()
+                    future = asyncio.run_coroutine_threadsafe(
+                        self._service_adapter.intervene(
+                            request_id=request_id,
+                            text=prompt,
+                            user="intervention",
+                        ),
+                        ClaudeAgentRunner._shared_loop,
+                    )
+                    future.result(timeout=10)
+                    logger.info(f"[Remote] 인터벤션 전송 완료: thread={thread_ts}")
+                except Exception as e:
+                    logger.warning(f"[Remote] 인터벤션 전송 실패 (무시): thread={thread_ts}, {e}")
+            else:
+                logger.warning(f"[Remote] 인터벤션 전송 불가: request_id 없음 (thread={thread_ts})")
         else:
-            logger.warning(f"인터럽트 전송 불가: 실행 중인 runner 없음 (thread={thread_ts})")
+            # Local 모드: 실행 중인 runner에게 interrupt 전송
+            with self._runners_lock:
+                runner = self._active_runners.get(thread_ts)
+            if runner:
+                try:
+                    runner.run_sync(runner.interrupt(thread_ts))
+                    logger.info(f"인터럽트 전송 완료: thread={thread_ts}")
+                except Exception as e:
+                    logger.warning(f"인터럽트 전송 실패 (무시): thread={thread_ts}, {e}")
+            else:
+                logger.warning(f"인터럽트 전송 불가: 실행 중인 runner 없음 (thread={thread_ts})")
 
     def _pop_pending(self, thread_ts: str) -> Optional[PendingPrompt]:
         """pending 프롬프트를 꺼내고 제거"""
@@ -443,44 +481,43 @@ class ClaudeExecutor:
             except Exception as e:
                 logger.warning(f"컴팩션 알림 전송 실패: {e}")
 
-        # 역할에 맞는 runner 생성 및 등록
-        # original_thread_ts: session.thread_ts (변경 전) — _active_runners 키로 사용
         original_thread_ts = session.thread_ts
-        runner = get_runner_for_role(effective_role)
-        with self._runners_lock:
-            self._active_runners[original_thread_ts] = runner
-        logger.info(f"Claude 실행: thread={thread_ts}, role={effective_role}")
 
-        # Claude Code 실행
-        try:
-            result = runner.run_sync(runner.run(
-                prompt=prompt,
-                session_id=session.session_id,
-                on_progress=on_progress,
-                on_compact=on_compact,
-                user_id=session.user_id,
-                thread_ts=thread_ts,
-                channel=channel,
+        if _is_remote_mode():
+            # === Remote 모드: soul 서버에 위임 ===
+            logger.info(f"Claude 실행 (remote): thread={thread_ts}, role={effective_role}")
+            self._execute_remote(
+                session, prompt, thread_ts, original_thread_ts,
+                on_progress, on_compact,
+                last_msg_ts, main_msg_ts, msg_ts,
+                is_trello_mode, trello_card,
+                effective_role, is_thread_reply,
+                channel, say, client,
+                dm_channel_id=dm_channel_id,
+                dm_thread_ts=dm_thread_ts,
+                dm_last_reply_ts=dm_last_reply_ts,
                 user_message=user_message,
-            ))
+            )
+        else:
+            # === Local 모드: 기존 방식 ===
+            runner = get_runner_for_role(effective_role)
+            with self._runners_lock:
+                self._active_runners[original_thread_ts] = runner
+            logger.info(f"Claude 실행 (local): thread={thread_ts}, role={effective_role}")
 
-            # 세션 ID 업데이트
-            if result.session_id and result.session_id != session.session_id:
-                self.session_manager.update_session_id(thread_ts, result.session_id)
+            try:
+                result = runner.run_sync(runner.run(
+                    prompt=prompt,
+                    session_id=session.session_id,
+                    on_progress=on_progress,
+                    on_compact=on_compact,
+                    user_id=session.user_id,
+                    thread_ts=thread_ts,
+                    channel=channel,
+                    user_message=user_message,
+                ))
 
-            # 메시지 카운트 증가
-            self.session_manager.increment_message_count(thread_ts)
-
-            if result.interrupted:
-                # 인터럽트로 중단됨: 사고 과정 메시지를 "(중단됨)"으로 업데이트
-                self._handle_interrupted(
-                    last_msg_ts, main_msg_ts, is_trello_mode, trello_card,
-                    session, channel, client,
-                    dm_channel_id=dm_channel_id,
-                    dm_last_reply_ts=dm_last_reply_ts,
-                )
-            elif result.success:
-                self._handle_success(
+                self._process_result(
                     result, session, effective_role, is_trello_mode, trello_card,
                     channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client,
                     is_thread_reply=is_thread_reply,
@@ -488,17 +525,96 @@ class ClaudeExecutor:
                     dm_thread_ts=dm_thread_ts,
                     dm_last_reply_ts=dm_last_reply_ts,
                 )
-            else:
-                self._handle_error(
-                    result.error, is_trello_mode, trello_card, session,
-                    channel, msg_ts, last_msg_ts, main_msg_ts, say, client,
+
+            except Exception as e:
+                logger.exception(f"Claude 실행 오류: {e}")
+                self._handle_exception(
+                    e, is_trello_mode, trello_card, session,
+                    channel, msg_ts, thread_ts, last_msg_ts, main_msg_ts, say, client,
                     is_thread_reply=is_thread_reply,
                     dm_channel_id=dm_channel_id,
                     dm_last_reply_ts=dm_last_reply_ts,
                 )
+            finally:
+                with self._runners_lock:
+                    self._active_runners.pop(original_thread_ts, None)
+
+        return last_msg_ts, thread_ts
+
+    def _get_service_adapter(self):
+        """Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환"""
+        if self._service_adapter is None:
+            with self._adapter_lock:
+                if self._service_adapter is None:
+                    from seosoyoung.claude.service_client import SoulServiceClient
+                    from seosoyoung.claude.service_adapter import ClaudeServiceAdapter
+                    client = SoulServiceClient(
+                        base_url=Config.SEOSOYOUNG_SOUL_URL,
+                        token=Config.SEOSOYOUNG_SOUL_TOKEN,
+                    )
+                    self._service_adapter = ClaudeServiceAdapter(
+                        client=client,
+                        client_id=Config.SEOSOYOUNG_SOUL_CLIENT_ID,
+                    )
+        return self._service_adapter
+
+    def _execute_remote(
+        self,
+        session: Session,
+        prompt: str,
+        thread_ts: str,
+        original_thread_ts: str,
+        on_progress,
+        on_compact,
+        last_msg_ts,
+        main_msg_ts,
+        msg_ts,
+        is_trello_mode,
+        trello_card,
+        effective_role,
+        is_thread_reply,
+        channel,
+        say,
+        client,
+        dm_channel_id=None,
+        dm_thread_ts=None,
+        dm_last_reply_ts=None,
+        user_message=None,
+    ):
+        """Remote 모드: soul 서버에 실행을 위임"""
+        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+
+        adapter = self._get_service_adapter()
+        request_id = original_thread_ts  # thread_ts를 request_id로 사용
+
+        # 실행 중인 request_id 추적 (인터벤션용)
+        self._active_remote_requests[original_thread_ts] = request_id
+
+        try:
+            ClaudeAgentRunner._ensure_loop()
+            future = asyncio.run_coroutine_threadsafe(
+                adapter.execute(
+                    prompt=prompt,
+                    request_id=request_id,
+                    resume_session_id=session.session_id,
+                    on_progress=on_progress,
+                    on_compact=on_compact,
+                ),
+                ClaudeAgentRunner._shared_loop,
+            )
+            result = future.result()
+
+            self._process_result(
+                result, session, effective_role, is_trello_mode, trello_card,
+                channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client,
+                is_thread_reply=is_thread_reply,
+                dm_channel_id=dm_channel_id,
+                dm_thread_ts=dm_thread_ts,
+                dm_last_reply_ts=dm_last_reply_ts,
+            )
 
         except Exception as e:
-            logger.exception(f"Claude 실행 오류: {e}")
+            logger.exception(f"[Remote] Claude 실행 오류: {e}")
             self._handle_exception(
                 e, is_trello_mode, trello_card, session,
                 channel, msg_ts, thread_ts, last_msg_ts, main_msg_ts, say, client,
@@ -507,10 +623,59 @@ class ClaudeExecutor:
                 dm_last_reply_ts=dm_last_reply_ts,
             )
         finally:
-            with self._runners_lock:
-                self._active_runners.pop(original_thread_ts, None)
+            self._active_remote_requests.pop(original_thread_ts, None)
 
-        return last_msg_ts, thread_ts
+    def _process_result(
+        self,
+        result,
+        session,
+        effective_role,
+        is_trello_mode,
+        trello_card,
+        channel,
+        thread_ts,
+        msg_ts,
+        last_msg_ts,
+        main_msg_ts,
+        say,
+        client,
+        is_thread_reply=False,
+        dm_channel_id=None,
+        dm_thread_ts=None,
+        dm_last_reply_ts=None,
+    ):
+        """실행 결과 처리 (local/remote 공통)"""
+        # 세션 ID 업데이트
+        if result.session_id and result.session_id != session.session_id:
+            self.session_manager.update_session_id(thread_ts, result.session_id)
+
+        # 메시지 카운트 증가
+        self.session_manager.increment_message_count(thread_ts)
+
+        if result.interrupted:
+            self._handle_interrupted(
+                last_msg_ts, main_msg_ts, is_trello_mode, trello_card,
+                session, channel, client,
+                dm_channel_id=dm_channel_id,
+                dm_last_reply_ts=dm_last_reply_ts,
+            )
+        elif result.success:
+            self._handle_success(
+                result, session, effective_role, is_trello_mode, trello_card,
+                channel, thread_ts, msg_ts, last_msg_ts, main_msg_ts, say, client,
+                is_thread_reply=is_thread_reply,
+                dm_channel_id=dm_channel_id,
+                dm_thread_ts=dm_thread_ts,
+                dm_last_reply_ts=dm_last_reply_ts,
+            )
+        else:
+            self._handle_error(
+                result.error, is_trello_mode, trello_card, session,
+                channel, msg_ts, last_msg_ts, main_msg_ts, say, client,
+                is_thread_reply=is_thread_reply,
+                dm_channel_id=dm_channel_id,
+                dm_last_reply_ts=dm_last_reply_ts,
+            )
 
     def _replace_thinking_message(
         self, client, channel: str, old_msg_ts: str,
