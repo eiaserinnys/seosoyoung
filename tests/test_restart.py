@@ -13,6 +13,7 @@ class TestRestartType:
         """exit code 값 확인"""
         assert RestartType.UPDATE.value == 42
         assert RestartType.RESTART.value == 43
+        assert RestartType.RESTART_SUPERVISOR.value == 44
 
 
 class TestRestartRequest:

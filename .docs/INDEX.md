@@ -210,8 +210,8 @@
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
 - `RestartType` (seosoyoung/restart.py:15): 재시작 유형
-- `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
-- `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
+- `RestartRequest` (seosoyoung/restart.py:23): 재시작 요청 정보
+- `RestartManager` (seosoyoung/restart.py:31): 재시작 관리자
 - `EmbeddingCache` (seosoyoung/search/embedding_cache.py:14): OpenAI text-embedding-3-small 임베딩 + 로컬 JSON 캐시.
 - `EmbeddingIndexBuilder` (seosoyoung/search/embedding_index.py:45): dlglist 대사와 eb_lore 텍스트를 문장 단위 임베딩 인덱스로 빌드.
 - `BuildLock` (seosoyoung/search/git_watcher.py:26): 파일 기반 빌드 lock — pre-commit hook과 동시 빌드 방지.

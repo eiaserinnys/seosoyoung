@@ -147,8 +147,9 @@ def main() -> None:
         signal.signal(signal.SIGBREAK, _on_shutdown)
 
     # 메인 루프
-    EXIT_CODE_SUPERVISOR_RESTART = 42
-    EXIT_CODE_SUPERVISOR_PLAIN_RESTART = 43
+    EXIT_CODE_SUPERVISOR_RESTART = 42      # git pull 후 재시작 (watchdog이 처리)
+    EXIT_CODE_SUPERVISOR_PLAIN_RESTART = 44  # supervisor 전체 재시작 (watchdog이 처리)
+    exiting_intentionally = False  # sys.exit() 호출 시 finally 중복 방지
     last_git_check = 0.0
 
     try:
@@ -188,17 +189,19 @@ def main() -> None:
                     deployer.notify_change()
                     deployer.tick()
                 elif action == ExitAction.RESTART:
-                    # use_exit_codes=True인 프로세스(봇)가 exit 43을 보내면
-                    # supervisor 전체를 재시작하여 .env 재로드 + 프로세스 재등록
-                    if policy.use_exit_codes:
-                        logger.info(
-                            "%s: exit 43 재시작 요청 → supervisor 전체 재시작",
-                            name,
-                        )
-                        pm.stop_all()
-                        job_object.close_job_object()
-                        sys.exit(EXIT_CODE_SUPERVISOR_PLAIN_RESTART)
+                    # exit code 43: 해당 프로세스만 재시작
+                    logger.info("%s: exit 43 → 프로세스만 재시작", name)
                     pm.restart(name)
+                elif action == ExitAction.RESTART_SUPERVISOR:
+                    # exit code 44: supervisor 전체 재시작 (watchdog으로 위임)
+                    logger.info(
+                        "%s: exit 44 → supervisor 전체 재시작",
+                        name,
+                    )
+                    exiting_intentionally = True
+                    pm.stop_all()
+                    job_object.close_job_object()
+                    sys.exit(EXIT_CODE_SUPERVISOR_PLAIN_RESTART)
                 elif action == ExitAction.RESTART_DELAY:
                     delay = policy.restart_delay or RESTART_DELAY_SECONDS
                     logger.info("%s: %.1f초 후 재시작", name, delay)
@@ -217,6 +220,7 @@ def main() -> None:
 
     except SupervisorRestartRequired:
         logger.info("supervisor 자체 코드 변경 감지 → exit %d", EXIT_CODE_SUPERVISOR_RESTART)
+        exiting_intentionally = True
         pm.stop_all()
         job_object.close_job_object()
         sys.exit(EXIT_CODE_SUPERVISOR_RESTART)
@@ -224,11 +228,10 @@ def main() -> None:
         # 비정상 종료(unhandled exception) 시에도 자식 프로세스 정리 시도.
         # Job Object의 KILL_ON_JOB_CLOSE가 최종 안전장치 역할을 하지만,
         # 가능하면 graceful shutdown을 시도한다.
-        if not shutting_down:
+        if not shutting_down and not exiting_intentionally:
             logger.warning("예기치 않은 종료, 자식 프로세스 정리 중")
             pm.stop_all()
-        # Job Object는 항상 닫는다 (멱등 함수이므로 중복 호출 안전)
-        job_object.close_job_object()
+            job_object.close_job_object()
 
 
 if __name__ == "__main__":

@@ -19,7 +19,8 @@ class ExitAction(enum.Enum):
     """exit code에 따른 동작"""
     SHUTDOWN = "shutdown"       # 정상 종료 (exit 0)
     UPDATE = "update"           # 업데이트 후 재시작 (exit 42)
-    RESTART = "restart"         # 즉시 재시작 (exit 43)
+    RESTART = "restart"         # 해당 프로세스만 즉시 재시작 (exit 43)
+    RESTART_SUPERVISOR = "restart_supervisor"  # supervisor 전체 재시작 (exit 44)
     RESTART_DELAY = "restart_delay"  # 지연 후 재시작 (기타)
 
 
@@ -28,6 +29,7 @@ EXIT_CODE_ACTIONS: dict[int, ExitAction] = {
     0: ExitAction.SHUTDOWN,
     42: ExitAction.UPDATE,
     43: ExitAction.RESTART,
+    44: ExitAction.RESTART_SUPERVISOR,
 }
 
 DEFAULT_EXIT_ACTION = ExitAction.RESTART_DELAY

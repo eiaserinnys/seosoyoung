@@ -431,9 +431,11 @@ while ($true) {
         continue
     }
 
-    # --- Exit 43: 재시작 요청 ---
-    if ($exitCode -eq 43) {
-        Write-Log "재시작 요청 수신, 즉시 재시작"
+    # --- Exit 43/44: supervisor 전체 재시작 요청 ---
+    # exit 44: supervisor 전체 재시작 (봇이 exit 44로 요청 → supervisor가 그대로 전달)
+    # exit 43: 하위 호환용 (이전 버전에서 사용하던 코드, 안전장치로 유지)
+    if ($exitCode -eq 44 -or $exitCode -eq 43) {
+        Write-Log "supervisor 전체 재시작 요청 수신 (exit=$exitCode), 즉시 재시작"
         $state.consecutiveFailures = 0
         Save-WatchdogState $state
         continue

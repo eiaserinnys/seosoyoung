@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 
 class RestartType(Enum):
     """재시작 유형"""
-    UPDATE = 42   # git pull 후 재시작
-    RESTART = 43  # 단순 재시작
+    UPDATE = 42   # git pull 후 재시작 (supervisor exit → watchdog이 git pull)
+    RESTART = 43  # 봇 프로세스만 재시작 (supervisor가 pm.restart)
+    RESTART_SUPERVISOR = 44  # supervisor 전체 재시작 (supervisor exit → watchdog이 재시작)
 
 
 @dataclass
