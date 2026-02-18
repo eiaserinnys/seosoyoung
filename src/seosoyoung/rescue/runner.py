@@ -1,7 +1,9 @@
 """Claude Code SDK 실행기 (세션 재개 지원)
 
-메인 봇의 ClaudeAgentRunner와 동일한 공유 이벤트 루프 패턴을 사용합니다.
-ClaudeSDKClient 기반으로 세션 재개를 지원합니다.
+메인 봇의 ClaudeAgentRunner와 동일한 패턴을 사용합니다:
+- 클래스 레벨 공유 이벤트 루프 (데몬 스레드)
+- _get_or_create_client / _remove_client로 클라이언트 생명주기 관리
+- finally에서 _remove_client로 disconnect (transport 내부 접근 없음)
 """
 
 import asyncio
@@ -60,13 +62,17 @@ class RescueRunner:
     메인 봇의 ClaudeAgentRunner와 동일한 패턴:
     - 클래스 레벨 공유 이벤트 루프 (데몬 스레드)
     - run_coroutine_threadsafe로 동기→비동기 브릿지
-    - 매 실행마다 ClaudeSDKClient connect → query → receive → disconnect
+    - _get_or_create_client / _remove_client로 클라이언트 생명주기 관리
     """
 
     # 클래스 레벨 공유 이벤트 루프 (메인 봇과 동일한 패턴)
     _shared_loop: Optional[asyncio.AbstractEventLoop] = None
     _loop_thread: Optional[threading.Thread] = None
     _loop_lock = threading.Lock()
+
+    def __init__(self):
+        self._lock = asyncio.Lock()
+        self._active_clients: dict[str, ClaudeSDKClient] = {}
 
     @classmethod
     def _ensure_loop(cls) -> None:
@@ -101,28 +107,69 @@ class RescueRunner:
         self,
         prompt: str,
         session_id: Optional[str] = None,
+        thread_ts: Optional[str] = None,
     ) -> RescueResult:
         """동기 컨텍스트에서 Claude Code SDK를 호출합니다.
 
         공유 이벤트 루프를 통해 실행하여 세션 재개가 정상 작동합니다.
         """
-        return self.run_sync(self._run_claude(prompt, session_id=session_id))
+        return self.run_sync(self._execute(prompt, session_id=session_id, thread_ts=thread_ts))
 
-    async def _run_claude(
+    async def _get_or_create_client(
+        self,
+        client_key: str,
+        options: ClaudeCodeOptions,
+    ) -> ClaudeSDKClient:
+        """클라이언트를 가져오거나 새로 생성 (메인 봇 동일 패턴)
+
+        Args:
+            client_key: 클라이언트 키 (thread_ts)
+            options: ClaudeCodeOptions
+        """
+        if client_key in self._active_clients:
+            logger.info(f"기존 클라이언트 재사용: key={client_key}")
+            return self._active_clients[client_key]
+
+        logger.info(f"새 ClaudeSDKClient 생성: key={client_key}")
+        client = ClaudeSDKClient(options=options)
+        try:
+            await client.connect()
+            logger.info(f"ClaudeSDKClient connect 성공: key={client_key}")
+        except Exception as e:
+            logger.error(f"ClaudeSDKClient connect 실패: key={client_key}, error={e}")
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            raise
+        self._active_clients[client_key] = client
+        return client
+
+    async def _remove_client(self, client_key: str) -> None:
+        """클라이언트를 정리 (메인 봇 동일 패턴)
+
+        disconnect 후 딕셔너리에서 제거합니다.
+        """
+        client = self._active_clients.pop(client_key, None)
+        if client is None:
+            return
+        try:
+            await client.disconnect()
+        except Exception as e:
+            logger.warning(f"ClaudeSDKClient disconnect 오류 (무시): key={client_key}, {e}")
+        logger.info(f"ClaudeSDKClient 제거: key={client_key}")
+
+    async def _execute(
         self,
         prompt: str,
         session_id: Optional[str] = None,
+        thread_ts: Optional[str] = None,
     ) -> RescueResult:
-        """Claude Code SDK를 호출하고 결과를 반환합니다.
-
-        ClaudeSDKClient 기반으로 세션 재개를 지원합니다:
-        - session_id가 None이면 새 세션을 시작합니다.
-        - session_id가 있으면 해당 세션을 이어서 실행합니다.
-        """
+        """실제 실행 로직 (메인 봇 _execute와 동일한 구조)"""
         working_dir = RescueConfig.get_working_dir()
 
         # CLI stderr를 파일에 캡처 (디버깅용)
-        _runtime_dir = Path(__file__).resolve().parents[3]  # rescue/runner.py -> seosoyoung_runtime
+        _runtime_dir = Path(__file__).resolve().parents[3]
         _stderr_log_path = _runtime_dir / "logs" / "rescue_cli_stderr.log"
         try:
             _stderr_file = open(_stderr_log_path, "a", encoding="utf-8")
@@ -146,15 +193,16 @@ class RescueRunner:
 
         logger.info(f"Claude Code SDK 실행 (cwd={working_dir}, resume={session_id})")
 
+        # 클라이언트 키: thread_ts가 없으면 임시 키
+        client_key = thread_ts or f"_ephemeral_{id(asyncio.current_task())}"
+
         result_session_id = None
         current_text = ""
         result_text = ""
         idle_timeout = RescueConfig.CLAUDE_TIMEOUT
 
-        client: Optional[ClaudeSDKClient] = None
         try:
-            client = ClaudeSDKClient(options=options)
-            await client.connect()
+            client = await self._get_or_create_client(client_key, options=options)
             await client.query(prompt)
 
             aiter = client.receive_response().__aiter__()
@@ -162,18 +210,17 @@ class RescueRunner:
             while True:
                 try:
                     message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
-                    rate_limit_count = 0  # 정상 메시지 수신 시 카운터 리셋
+                    rate_limit_count = 0
                 except StopAsyncIteration:
                     break
                 except MessageParseError as e:
-                    # rate_limit_event: SDK가 아직 지원하지 않는 메시지 타입
                     if e.data and e.data.get("type") == "rate_limit_event":
                         rate_limit_count += 1
                         wait_seconds = min(2 ** rate_limit_count, 30)
                         logger.warning(f"rate_limit_event 수신 ({rate_limit_count}회), {wait_seconds}초 대기")
                         await asyncio.sleep(wait_seconds)
                         continue
-                    raise  # 다른 파싱 에러는 그대로 전파
+                    raise
 
                 if isinstance(message, SystemMessage):
                     if hasattr(message, "session_id"):
@@ -209,7 +256,7 @@ class RescueRunner:
                 error=f"타임아웃: {idle_timeout}초 초과",
             )
         except ProcessError as e:
-            logger.error(f"Claude Code CLI 프로세스 오류: exit_code={e.exit_code}")
+            logger.error(f"Claude Code CLI 프로세스 오류: exit_code={e.exit_code}, stderr={e.stderr}")
             return RescueResult(
                 success=False,
                 output=current_text,
@@ -241,27 +288,8 @@ class RescueRunner:
                 error=str(e),
             )
         finally:
-            if client is not None:
-                # CLI가 세션 데이터를 디스크에 저장할 시간을 허용
-                # ResultMessage 수신 후 즉시 disconnect하면 terminate()로 인해
-                # 세션 파일이 불완전하게 저장되어 resume가 실패합니다.
-                try:
-                    transport = getattr(client, "_transport", None)
-                    if transport is not None:
-                        process = getattr(transport, "_process", None)
-                        if process is not None and process.returncode is None:
-                            # CLI 프로세스가 자연 종료되기를 최대 5초 대기
-                            try:
-                                await asyncio.wait_for(process.wait(), timeout=5.0)
-                                logger.info(f"CLI 프로세스 자연 종료 (returncode={process.returncode})")
-                            except asyncio.TimeoutError:
-                                logger.warning("CLI 프로세스 5초 내 자연 종료 실패, terminate 진행")
-                except Exception as e:
-                    logger.warning(f"CLI 프로세스 대기 오류 (무시): {e}")
-                try:
-                    await client.disconnect()
-                except Exception as e:
-                    logger.warning(f"ClaudeSDKClient disconnect 오류 (무시): {e}")
+            # 메인 봇과 동일: _remove_client로 정리 (transport 내부 접근 없음)
+            await self._remove_client(client_key)
             # stderr 파일 닫기
             if _stderr_file is not sys.stderr:
                 try:
@@ -277,6 +305,7 @@ _runner = RescueRunner()
 def run_claude_sync(
     prompt: str,
     session_id: Optional[str] = None,
+    thread_ts: Optional[str] = None,
 ) -> RescueResult:
     """모듈 레벨 래퍼 — main.py 호환용"""
-    return _runner.run_claude_sync(prompt, session_id=session_id)
+    return _runner.run_claude_sync(prompt, session_id=session_id, thread_ts=thread_ts)

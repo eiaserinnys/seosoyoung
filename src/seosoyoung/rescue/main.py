@@ -99,8 +99,8 @@ def _process_message(prompt: str, thread_ts: str, channel: str, say, client):
         session_id = _get_session_id(thread_ts)
         logger.info(f"세션 조회: thread_ts={thread_ts}, session_id={session_id}")
 
-        # Claude Code SDK 호출 (asyncio.run으로 매 호출마다 새 루프 생성)
-        result = run_claude_sync(prompt, session_id=session_id)
+        # Claude Code SDK 호출 (공유 이벤트 루프 기반)
+        result = run_claude_sync(prompt, session_id=session_id, thread_ts=thread_ts)
 
         logger.info(f"SDK 결과: success={result.success}, session_id={result.session_id}, error={result.error}")
 
