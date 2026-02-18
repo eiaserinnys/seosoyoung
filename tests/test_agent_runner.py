@@ -545,74 +545,151 @@ class TestProcessErrorHandling:
 
 @pytest.mark.asyncio
 class TestRateLimitEventHandling:
-    """rate_limit_event (MessageParseError) 처리 테스트"""
+    """rate_limit_event (MessageParseError) 처리 테스트 — 외부 retry loop 방식"""
 
-    async def test_rate_limit_event_retries_and_continues(self):
-        """rate_limit_event 1회 후 정상 종료되면 success"""
+    async def test_rate_limit_creates_new_client_on_retry(self):
+        """rate_limit_event 발생 시 기존 client를 정리하고 새 client를 생성하여 재시도"""
         runner = ClaudeAgentRunner()
 
-        mock_client = AsyncMock()
+        # 첫 번째 client: rate_limit_event 발생
+        mock_client_1 = AsyncMock()
+        mock_client_1.connect = AsyncMock()
+        mock_client_1.query = AsyncMock()
+        mock_client_1.disconnect = AsyncMock()
 
-        class MockAsyncIter:
-            """rate_limit_event 1회 → 정상 종료"""
-            def __init__(self):
-                self.raised = False
-
+        class RateLimitIter:
             def __aiter__(self):
                 return self
-
-            async def __anext__(self):
-                if not self.raised:
-                    self.raised = True
-                    raise MessageParseError(
-                        "Unknown message type: rate_limit_event",
-                        {"type": "rate_limit_event"}
-                    )
-                raise StopAsyncIteration
-
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.receive_response = MagicMock(return_value=MockAsyncIter())
-        mock_client.disconnect = AsyncMock()
-
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-                result = await runner.run("테스트")
-
-        assert result.success is True
-        # 1초 대기 확인 (첫 번째 재시도)
-        mock_sleep.assert_called_with(1)
-
-    async def test_rate_limit_event_max_retries_exceeded(self):
-        """rate_limit_event 3회 초과 시 친화적 에러 반환"""
-        runner = ClaudeAgentRunner()
-
-        mock_client = AsyncMock()
-
-        class MockAsyncIterAlwaysRateLimit:
-            """항상 rate_limit_event를 던짐"""
-            def __aiter__(self):
-                return self
-
             async def __anext__(self):
                 raise MessageParseError(
                     "Unknown message type: rate_limit_event",
                     {"type": "rate_limit_event"}
                 )
 
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.receive_response = MagicMock(return_value=MockAsyncIterAlwaysRateLimit())
-        mock_client.disconnect = AsyncMock()
+        mock_client_1.receive_response = MagicMock(return_value=RateLimitIter())
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        # 두 번째 client: 정상 응답
+        mock_client_2 = _make_mock_client(
+            MockResultMessage(result="성공", session_id="retry-session"),
+        )
+        mock_client_2.connect = AsyncMock()
+        mock_client_2.query = AsyncMock()
+        mock_client_2.disconnect = AsyncMock()
+
+        clients = [mock_client_1, mock_client_2]
+        client_idx = [0]
+
+        def get_next_client(*args, **kwargs):
+            c = clients[client_idx[0]]
+            client_idx[0] += 1
+            return c
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", side_effect=get_next_client):
+            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                    result = await runner.run("테스트")
+
+        assert result.success is True
+        assert "성공" in result.output
+        # 새 client가 생성되었는지 확인 (2번 호출)
+        assert client_idx[0] == 2
+        # 첫 번째 client가 disconnect 되었는지 확인
+        mock_client_1.disconnect.assert_called()
+        # 1초 대기 확인 (첫 번째 재시도)
+        mock_sleep.assert_called_with(1)
+
+    async def test_rate_limit_max_retries_exceeded(self):
+        """rate_limit_event 3회 초과 시 모든 재시도에서 새 client 생성 후 실패"""
+        runner = ClaudeAgentRunner()
+
+        def make_rate_limit_client():
+            mock_client = AsyncMock()
+            mock_client.connect = AsyncMock()
+            mock_client.query = AsyncMock()
+            mock_client.disconnect = AsyncMock()
+
+            class AlwaysRateLimit:
+                def __aiter__(self):
+                    return self
+                async def __anext__(self):
+                    raise MessageParseError(
+                        "Unknown message type: rate_limit_event",
+                        {"type": "rate_limit_event"}
+                    )
+
+            mock_client.receive_response = MagicMock(return_value=AlwaysRateLimit())
+            return mock_client
+
+        created_clients = []
+
+        def client_factory(*args, **kwargs):
+            c = make_rate_limit_client()
+            created_clients.append(c)
+            return c
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", side_effect=client_factory):
             with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
                 result = await runner.run("테스트")
 
         assert result.success is False
         assert "사용량 제한" in result.error
-        # 3회 재시도 (1초, 3초, 5초)
+        # 최초 1회 + 재시도 3회 = 총 4개의 client 생성
+        assert len(created_clients) == 4
+        # 3회 재시도 대기 (1초, 3초, 5초)
         assert mock_sleep.call_count == 3
+        sleep_calls = [call.args[0] for call in mock_sleep.call_args_list]
+        assert sleep_calls == [1, 3, 5]
+
+    async def test_rate_limit_progress_callback_on_retry(self):
+        """rate_limit_event 재시도 시 on_progress 콜백으로 사용자에게 알림"""
+        runner = ClaudeAgentRunner()
+        progress_calls = []
+
+        async def on_progress(text):
+            progress_calls.append(text)
+
+        # 첫 번째 client: rate_limit_event
+        mock_client_1 = AsyncMock()
+        mock_client_1.connect = AsyncMock()
+        mock_client_1.query = AsyncMock()
+        mock_client_1.disconnect = AsyncMock()
+
+        class RateLimitIter:
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                raise MessageParseError(
+                    "Unknown message type: rate_limit_event",
+                    {"type": "rate_limit_event"}
+                )
+
+        mock_client_1.receive_response = MagicMock(return_value=RateLimitIter())
+
+        # 두 번째 client: 정상
+        mock_client_2 = _make_mock_client(
+            MockResultMessage(result="완료", session_id="test"),
+        )
+        mock_client_2.connect = AsyncMock()
+        mock_client_2.query = AsyncMock()
+        mock_client_2.disconnect = AsyncMock()
+
+        clients = [mock_client_1, mock_client_2]
+        client_idx = [0]
+
+        def get_next_client(*args, **kwargs):
+            c = clients[client_idx[0]]
+            client_idx[0] += 1
+            return c
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", side_effect=get_next_client):
+            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                with patch("asyncio.sleep", new_callable=AsyncMock):
+                    result = await runner.run("테스트", on_progress=on_progress)
+
+        assert result.success is True
+        # on_progress가 재시도 알림을 포함하는지 확인
+        rate_limit_msgs = [m for m in progress_calls if "사용량 제한" in m or "재시도" in m]
+        assert len(rate_limit_msgs) >= 1
 
     async def test_rate_limit_event_returns_friendly_error(self):
         """rate_limit_event가 외부 except에서 잡힐 때 친화적 메시지 반환"""
