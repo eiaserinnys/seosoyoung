@@ -201,8 +201,8 @@
 - `RecallResult` (seosoyoung/recall/recall.py:30): Recall 결과
 - `Recall` (seosoyoung/recall/recall.py:106): Recall - 도구 선택 사전 분석 파이프라인
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
-- `RescueResult` (seosoyoung/rescue/runner.py:50): 실행 결과
-- `RescueRunner` (seosoyoung/rescue/runner.py:59): Claude Code SDK 실행기 (공유 이벤트 루프 기반)
+- `RescueResult` (seosoyoung/rescue/runner.py:79): 실행 결과
+- `RescueRunner` (seosoyoung/rescue/runner.py:88): Claude Code SDK 실행기 (공유 이벤트 루프 기반)
 - `RestartType` (seosoyoung/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
@@ -382,7 +382,7 @@
 - `handle_mention()` (seosoyoung/rescue/main.py:151): 멘션 이벤트 핸들러
 - `handle_message()` (seosoyoung/rescue/main.py:178): 스레드 메시지 핸들러
 - `main()` (seosoyoung/rescue/main.py:220): rescue-bot 진입점
-- `run_claude_sync()` (seosoyoung/rescue/runner.py:309): 모듈 레벨 래퍼 — main.py 호환용
+- `run_claude_sync()` (seosoyoung/rescue/runner.py:376): 모듈 레벨 래퍼 — main.py 호환용
 - `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
 - `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
 - `build_all()` (seosoyoung/search/build.py:84): Whoosh + 임베딩 인덱스 통합 빌드.
