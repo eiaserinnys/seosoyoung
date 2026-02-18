@@ -95,19 +95,19 @@ section.fields는 최대 10개이므로, 5쌍(=10 fields)씩 section 블록을 �
 - 설명: 디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식).
 
 ### `send_collect_debug_log(client, debug_channel, source_channel, buffer_tokens, threshold, message_text, user, is_thread)`
-- 위치: 줄 331
+- 위치: 줄 339
 - 설명: 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
 
 ### `send_digest_skip_debug_log(client, debug_channel, source_channel, buffer_tokens, threshold)`
-- 위치: 줄 376
+- 위치: 줄 384
 - 설명: 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
 
 ### `send_intervention_probability_debug_log(client, debug_channel, source_channel, importance, time_factor, freq_factor, probability, final_score, threshold, passed)`
-- 위치: 줄 407
+- 위치: 줄 415
 - 설명: 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
 
 ### `send_multi_judge_debug_log(client, debug_channel, source_channel, items, react_actions, message_actions_executed, pending_count, pending_messages, slack_client)`
-- 위치: 줄 452
+- 위치: 줄 460
 - 설명: 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
 
 ## 내부 의존성

@@ -290,6 +290,14 @@ async def send_debug_log(
     if not debug_channel:
         return
 
+    # 실질적인 반응이 없으면 로그 스킵 (중요도 0 + none + 액션 없음)
+    if (
+        observer_result.importance == 0
+        and observer_result.reaction_type == "none"
+        and not actions_filtered
+    ):
+        return
+
     skipped = len(actions) - len(actions_filtered)
     action_summary = ", ".join(
         f"{a.type}→{a.target}" for a in actions_filtered
@@ -462,6 +470,10 @@ def send_multi_judge_debug_log(
 ) -> None:
     """복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다."""
     if not debug_channel:
+        return
+
+    # 실질적인 반응이 없으면 로그 스킵 (react/intervene 모두 0건)
+    if not react_actions and not message_actions_executed:
         return
 
     resolver = DisplayNameResolver(slack_client) if slack_client else None

@@ -1005,12 +1005,14 @@ class TestSendMultiJudgeDebugLog:
                       emotion="관심", reasoning="흥미로운 주제"),
         ]
 
+        react_actions = [InterventionAction(type="react", target="1001.000", content="laughing")]
+
         send_multi_judge_debug_log(
             client=client,
             debug_channel="C_DEBUG",
             source_channel="C123",
             items=items,
-            react_actions=[],
+            react_actions=react_actions,
             message_actions_executed=[],
         )
 
@@ -1025,13 +1027,39 @@ class TestSendMultiJudgeDebugLog:
         assert "관심" in blocks_str
 
     def test_header_shows_message_count(self):
-        """헤더에 메시지 개수 표시"""
+        """헤더에 메시지 개수 표시 (react/intervene이 있을 때)"""
         client = MagicMock()
 
         items = [
-            JudgeItem(ts="1001.000", importance=3, reaction_type="none"),
+            JudgeItem(ts="1001.000", importance=3, reaction_type="react",
+                      reaction_content="thumbsup", reaction_target="1001.000"),
             JudgeItem(ts="1002.000", importance=2, reaction_type="none"),
             JudgeItem(ts="1003.000", importance=4, reaction_type="none"),
+        ]
+
+        react_actions = [InterventionAction(type="react", target="1001.000", content="thumbsup")]
+
+        send_multi_judge_debug_log(
+            client=client,
+            debug_channel="C_DEBUG",
+            source_channel="C123",
+            items=items,
+            react_actions=react_actions,
+            message_actions_executed=[],
+        )
+
+        call_kwargs = client.chat_postMessage.call_args[1]
+        blocks = call_kwargs["blocks"]
+        header_text = blocks[0]["text"]["text"]
+        assert "3 messages" in header_text
+
+    def test_skips_when_no_actions(self):
+        """react/intervene 모두 0건이면 전송 안 함"""
+        client = MagicMock()
+
+        items = [
+            JudgeItem(ts="1001.000", importance=0, reaction_type="none"),
+            JudgeItem(ts="1002.000", importance=0, reaction_type="none"),
         ]
 
         send_multi_judge_debug_log(
@@ -1043,10 +1071,7 @@ class TestSendMultiJudgeDebugLog:
             message_actions_executed=[],
         )
 
-        call_kwargs = client.chat_postMessage.call_args[1]
-        blocks = call_kwargs["blocks"]
-        header_text = blocks[0]["text"]["text"]
-        assert "3 messages" in header_text
+        client.chat_postMessage.assert_not_called()
 
     def test_skips_when_no_debug_channel(self):
         """디버그 채널 미설정이면 전송 안 함"""

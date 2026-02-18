@@ -347,10 +347,10 @@
 - `async execute_interventions()` (seosoyoung/memory/channel_intervention.py:80): InterventionAction 리스트를 슬랙 API로 발송합니다.
 - `intervention_probability()` (seosoyoung/memory/channel_intervention.py:132): 시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.
 - `async send_debug_log()` (seosoyoung/memory/channel_intervention.py:277): 디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식).
-- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:331): 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
-- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:376): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
-- `send_intervention_probability_debug_log()` (seosoyoung/memory/channel_intervention.py:407): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
-- `send_multi_judge_debug_log()` (seosoyoung/memory/channel_intervention.py:452): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
+- `send_collect_debug_log()` (seosoyoung/memory/channel_intervention.py:339): 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
+- `send_digest_skip_debug_log()` (seosoyoung/memory/channel_intervention.py:384): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
+- `send_intervention_probability_debug_log()` (seosoyoung/memory/channel_intervention.py:415): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
+- `send_multi_judge_debug_log()` (seosoyoung/memory/channel_intervention.py:460): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
 - `parse_channel_observer_output()` (seosoyoung/memory/channel_observer.py:104): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_judge_output()` (seosoyoung/memory/channel_observer.py:130): Judge 응답에서 XML 태그를 파싱합니다.
 - `async run_channel_pipeline()` (seosoyoung/memory/channel_pipeline.py:230): 소화/판단 분리 파이프라인을 실행합니다.
