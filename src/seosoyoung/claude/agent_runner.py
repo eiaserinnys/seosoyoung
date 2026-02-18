@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
 from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient, HookMatcher, HookContext
-from claude_code_sdk._errors import ProcessError
+from claude_code_sdk._errors import MessageParseError, ProcessError
 from claude_code_sdk.types import (
     AssistantMessage,
     HookJSONOutput,
@@ -697,11 +697,22 @@ class ClaudeAgentRunner:
             await client.query(effective_prompt)
 
             aiter = client.receive_response().__aiter__()
+            rate_limit_count = 0
             while True:
                 try:
                     message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
+                    rate_limit_count = 0  # 정상 메시지 수신 시 카운터 리셋
                 except StopAsyncIteration:
                     break
+                except MessageParseError as e:
+                    # rate_limit_event: SDK가 아직 지원하지 않는 메시지 타입
+                    if e.data and e.data.get("type") == "rate_limit_event":
+                        rate_limit_count += 1
+                        wait_seconds = min(2 ** rate_limit_count, 30)
+                        logger.warning(f"rate_limit_event 수신 ({rate_limit_count}회), {wait_seconds}초 대기")
+                        await asyncio.sleep(wait_seconds)
+                        continue
+                    raise  # 다른 파싱 에러는 그대로 전파
                 # SystemMessage에서 세션 ID 추출
                 if isinstance(message, SystemMessage):
                     if hasattr(message, 'session_id'):
@@ -841,6 +852,23 @@ class ClaudeAgentRunner:
                 output=current_text,
                 session_id=result_session_id,
                 error=friendly_msg,
+            )
+        except MessageParseError as e:
+            # rate_limit_event가 루프 밖에서 잡힌 경우 (반복 초과 등)
+            if e.data and e.data.get("type") == "rate_limit_event":
+                logger.warning(f"rate_limit_event로 실행 실패: {e}")
+                return ClaudeResult(
+                    success=False,
+                    output=current_text,
+                    session_id=result_session_id,
+                    error="사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요.",
+                )
+            logger.exception(f"SDK 메시지 파싱 오류: {e}")
+            return ClaudeResult(
+                success=False,
+                output=current_text,
+                session_id=result_session_id,
+                error="Claude 응답 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
             )
         except Exception as e:
             logger.exception(f"Claude Code SDK 실행 오류: {e}")

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient
-from claude_code_sdk._errors import ProcessError
+from claude_code_sdk._errors import MessageParseError, ProcessError
 from claude_code_sdk.types import (
     AssistantMessage,
     ResultMessage,
@@ -158,11 +158,22 @@ class RescueRunner:
             await client.query(prompt)
 
             aiter = client.receive_response().__aiter__()
+            rate_limit_count = 0
             while True:
                 try:
                     message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
+                    rate_limit_count = 0  # 정상 메시지 수신 시 카운터 리셋
                 except StopAsyncIteration:
                     break
+                except MessageParseError as e:
+                    # rate_limit_event: SDK가 아직 지원하지 않는 메시지 타입
+                    if e.data and e.data.get("type") == "rate_limit_event":
+                        rate_limit_count += 1
+                        wait_seconds = min(2 ** rate_limit_count, 30)
+                        logger.warning(f"rate_limit_event 수신 ({rate_limit_count}회), {wait_seconds}초 대기")
+                        await asyncio.sleep(wait_seconds)
+                        continue
+                    raise  # 다른 파싱 에러는 그대로 전파
 
                 if isinstance(message, SystemMessage):
                     if hasattr(message, "session_id"):
@@ -205,6 +216,22 @@ class RescueRunner:
                 session_id=result_session_id,
                 error=f"Claude Code 프로세스 오류 (exit code: {e.exit_code})",
             )
+        except MessageParseError as e:
+            if e.data and e.data.get("type") == "rate_limit_event":
+                logger.warning(f"rate_limit_event로 실행 실패: {e}")
+                return RescueResult(
+                    success=False,
+                    output=current_text,
+                    session_id=result_session_id,
+                    error="사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요.",
+                )
+            logger.exception(f"SDK 메시지 파싱 오류: {e}")
+            return RescueResult(
+                success=False,
+                output=current_text,
+                session_id=result_session_id,
+                error="Claude 응답 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+            )
         except Exception as e:
             logger.exception(f"Claude Code SDK 실행 오류: {e}")
             return RescueResult(
@@ -215,6 +242,22 @@ class RescueRunner:
             )
         finally:
             if client is not None:
+                # CLI가 세션 데이터를 디스크에 저장할 시간을 허용
+                # ResultMessage 수신 후 즉시 disconnect하면 terminate()로 인해
+                # 세션 파일이 불완전하게 저장되어 resume가 실패합니다.
+                try:
+                    transport = getattr(client, "_transport", None)
+                    if transport is not None:
+                        process = getattr(transport, "_process", None)
+                        if process is not None and process.returncode is None:
+                            # CLI 프로세스가 자연 종료되기를 최대 5초 대기
+                            try:
+                                await asyncio.wait_for(process.wait(), timeout=5.0)
+                                logger.info(f"CLI 프로세스 자연 종료 (returncode={process.returncode})")
+                            except asyncio.TimeoutError:
+                                logger.warning("CLI 프로세스 5초 내 자연 종료 실패, terminate 진행")
+                except Exception as e:
+                    logger.warning(f"CLI 프로세스 대기 오류 (무시): {e}")
                 try:
                     await client.disconnect()
                 except Exception as e:

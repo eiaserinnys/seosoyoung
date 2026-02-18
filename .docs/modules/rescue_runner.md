@@ -34,7 +34,7 @@ ClaudeSDKClient 기반으로 세션 재개를 지원합니다.
 ## 함수
 
 ### `run_claude_sync(prompt, session_id)`
-- 위치: 줄 234
+- 위치: 줄 277
 - 설명: 모듈 레벨 래퍼 — main.py 호환용
 
 ## 내부 의존성
