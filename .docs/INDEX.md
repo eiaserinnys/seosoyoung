@@ -243,7 +243,7 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `async main()` (seosoyoung/claude/agent_runner.py:915): 
+- `async main()` (seosoyoung/claude/agent_runner.py:923): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:47): 역할에 맞는 ClaudeAgentRunner 반환
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:15): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:50): 텍스트 내 모든 백틱을 이스케이프
@@ -382,7 +382,7 @@
 - `handle_mention()` (seosoyoung/rescue/main.py:151): 멘션 이벤트 핸들러
 - `handle_message()` (seosoyoung/rescue/main.py:178): 스레드 메시지 핸들러
 - `main()` (seosoyoung/rescue/main.py:220): rescue-bot 진입점
-- `run_claude_sync()` (seosoyoung/rescue/runner.py:305): 모듈 레벨 래퍼 — main.py 호환용
+- `run_claude_sync()` (seosoyoung/rescue/runner.py:309): 모듈 레벨 래퍼 — main.py 호환용
 - `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
 - `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
 - `build_all()` (seosoyoung/search/build.py:84): Whoosh + 임베딩 인덱스 통합 빌드.

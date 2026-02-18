@@ -39,7 +39,7 @@ Claude Code SDK 실행기 (세션 재개 지원)
 ## 함수
 
 ### `run_claude_sync(prompt, session_id, thread_ts)`
-- 위치: 줄 305
+- 위치: 줄 309
 - 설명: 모듈 레벨 래퍼 — main.py 호환용
 
 ## 내부 의존성

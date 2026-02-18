@@ -207,6 +207,7 @@ class RescueRunner:
 
             aiter = client.receive_response().__aiter__()
             rate_limit_count = 0
+            rate_limit_delays = [1, 3, 5]  # 재시도 대기 시간 (초)
             while True:
                 try:
                     message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
@@ -216,8 +217,11 @@ class RescueRunner:
                 except MessageParseError as e:
                     if e.data and e.data.get("type") == "rate_limit_event":
                         rate_limit_count += 1
-                        wait_seconds = min(2 ** rate_limit_count, 30)
-                        logger.warning(f"rate_limit_event 수신 ({rate_limit_count}회), {wait_seconds}초 대기")
+                        if rate_limit_count > len(rate_limit_delays):
+                            logger.error(f"rate_limit_event {rate_limit_count}회 초과, 재시도 중단")
+                            raise
+                        wait_seconds = rate_limit_delays[rate_limit_count - 1]
+                        logger.warning(f"rate_limit_event 수신 ({rate_limit_count}/{len(rate_limit_delays)}회), {wait_seconds}초 후 재시도")
                         await asyncio.sleep(wait_seconds)
                         continue
                     raise
