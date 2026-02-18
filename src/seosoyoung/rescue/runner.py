@@ -1,11 +1,14 @@
-"""Claude Code SDK 실행기 (세션 재개 지원)
+"""Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
 
-메인 봇의 ClaudeAgentRunner에서 핵심 로직을 복제한 경량 버전:
+메인 봇의 ClaudeAgentRunner에서 핵심 로직을 복제한 버전:
 - _classify_process_error: ProcessError를 사용자 친화적 메시지로 변환
-- _build_options: ClaudeCodeOptions 생성 (OM, hooks, compact 제외)
+- _build_options: ClaudeCodeOptions 생성 (env 주입, PreCompact 훅, stderr 캡처)
 - _get_or_create_client / _remove_client: 클라이언트 생명주기 관리
-- _execute: 실제 실행 로직 (메인 봇과 동일한 구조)
+- _execute: on_progress 콜백, on_compact, rate_limit 처리
+- interrupt / compact_session: 세션 제어
 - run / run_sync: async/sync 인터페이스
+
+제외: OM, Recall, 트렐로 연동, 번역, 채널 관찰, 프로필, 정주행, NPC, Remote 모드
 """
 
 import asyncio
@@ -15,12 +18,13 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable, Awaitable
 
-from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient
+from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient, HookMatcher, HookContext
 from claude_code_sdk._errors import MessageParseError, ProcessError
 from claude_code_sdk.types import (
     AssistantMessage,
+    HookJSONOutput,
     ResultMessage,
     SystemMessage,
     TextBlock,
@@ -30,7 +34,7 @@ from seosoyoung.rescue.config import RescueConfig
 
 logger = logging.getLogger(__name__)
 
-# 최소한의 도구만 허용
+# 허용 도구: 기본 도구 + 슬랙 MCP 도구 (NPC 제외)
 ALLOWED_TOOLS = [
     "Read",
     "Write",
@@ -39,6 +43,11 @@ ALLOWED_TOOLS = [
     "Grep",
     "Bash",
     "TodoWrite",
+    "mcp__seosoyoung-attach__slack_attach_file",
+    "mcp__seosoyoung-attach__slack_get_context",
+    "mcp__seosoyoung-attach__slack_post_message",
+    "mcp__seosoyoung-attach__slack_download_thread_files",
+    "mcp__seosoyoung-attach__slack_generate_image",
 ]
 
 DISALLOWED_TOOLS = [
@@ -49,10 +58,7 @@ DISALLOWED_TOOLS = [
 
 
 def _classify_process_error(e: ProcessError) -> str:
-    """ProcessError를 사용자 친화적 메시지로 변환.
-
-    메인 봇의 _classify_process_error와 동일한 로직입니다.
-    """
+    """ProcessError를 사용자 친화적 메시지로 변환."""
     error_str = str(e).lower()
     stderr = (e.stderr or "").lower()
     combined = f"{error_str} {stderr}"
@@ -83,18 +89,21 @@ class RescueResult:
     output: str
     session_id: Optional[str] = None
     error: Optional[str] = None
+    interrupted: bool = False
+    usage: Optional[dict] = None
 
 
 class RescueRunner:
-    """Claude Code SDK 실행기 (공유 이벤트 루프 기반)
+    """Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 
     메인 봇의 ClaudeAgentRunner와 동일한 패턴:
     - 클래스 레벨 공유 이벤트 루프 (데몬 스레드)
     - run_coroutine_threadsafe로 동기→비동기 브릿지
     - _get_or_create_client / _remove_client로 클라이언트 생명주기 관리
+    - on_progress / on_compact 콜백
+    - interrupt / compact_session
     """
 
-    # 클래스 레벨 공유 이벤트 루프 (메인 봇과 동일한 패턴)
     _shared_loop: Optional[asyncio.AbstractEventLoop] = None
     _loop_thread: Optional[threading.Thread] = None
     _loop_lock = threading.Lock()
@@ -134,74 +143,97 @@ class RescueRunner:
             cls._loop_thread = None
 
     def run_sync(self, coro):
-        """동기 컨텍스트에서 코루틴을 실행하는 브릿지
-
-        Slack 이벤트 핸들러(동기)에서 async 함수를 호출할 때 사용.
-        공유 이벤트 루프에 코루틴을 제출하고 결과를 기다립니다.
-        """
+        """동기 컨텍스트에서 코루틴을 실행하는 브릿지"""
         self._ensure_loop()
         future = asyncio.run_coroutine_threadsafe(coro, self._shared_loop)
         return future.result()
 
-    def run_claude_sync(
-        self,
-        prompt: str,
-        session_id: Optional[str] = None,
-        thread_ts: Optional[str] = None,
-    ) -> RescueResult:
-        """동기 컨텍스트에서 Claude Code SDK를 호출합니다.
-
-        공유 이벤트 루프를 통해 실행하여 세션 재개가 정상 작동합니다.
-        """
-        return self.run_sync(self.run(prompt, session_id=session_id, thread_ts=thread_ts))
-
     def _build_options(
         self,
         session_id: Optional[str] = None,
-    ) -> ClaudeCodeOptions:
+        channel: Optional[str] = None,
+        thread_ts: Optional[str] = None,
+        compact_events: Optional[list] = None,
+    ) -> tuple[ClaudeCodeOptions, Optional[object]]:
         """ClaudeCodeOptions를 생성합니다.
 
-        메인 봇의 _build_options에서 OM, hooks, compact, 슬랙 컨텍스트 등을
-        제거한 경량 버전입니다.
+        Args:
+            session_id: 세션 재개용 ID
+            channel: 슬랙 채널 ID (MCP 서버 env 주입용)
+            thread_ts: 스레드 타임스탬프 (MCP 서버 env 주입용)
+            compact_events: PreCompact 훅 이벤트 수집 리스트
+
+        Returns:
+            (options, stderr_file): stderr_file은 호출자가 닫아야 함 (sys.stderr이면 None)
         """
         working_dir = RescueConfig.get_working_dir()
+
+        # PreCompact 훅 설정
+        hooks = None
+        if compact_events is not None:
+            async def on_pre_compact(
+                hook_input: dict,
+                tool_use_id: Optional[str],
+                context: HookContext,
+            ) -> HookJSONOutput:
+                trigger = hook_input.get("trigger", "auto")
+                logger.info(f"PreCompact 훅 트리거: trigger={trigger}")
+                compact_events.append({
+                    "trigger": trigger,
+                    "message": f"컨텍스트 컴팩트 실행됨 (트리거: {trigger})",
+                })
+                return HookJSONOutput()
+
+            hooks = {
+                "PreCompact": [
+                    HookMatcher(matcher=None, hooks=[on_pre_compact])
+                ]
+            }
+
+        # env: 슬랙 컨텍스트 주입 (MCP 서버용)
+        env: dict[str, str] = {}
+        if channel and thread_ts:
+            env["SLACK_CHANNEL"] = channel
+            env["SLACK_THREAD_TS"] = thread_ts
 
         # CLI stderr를 파일에 캡처 (디버깅용)
         _runtime_dir = Path(__file__).resolve().parents[3]
         _stderr_log_path = _runtime_dir / "logs" / "rescue_cli_stderr.log"
+        _stderr_file = None
+        _stderr_target = sys.stderr
         try:
             _stderr_file = open(_stderr_log_path, "a", encoding="utf-8")
             _stderr_file.write(f"\n--- rescue CLI stderr: {datetime.now(timezone.utc).isoformat()} resume={session_id} ---\n")
             _stderr_file.flush()
+            _stderr_target = _stderr_file
         except Exception as _e:
             logger.warning(f"stderr 캡처 파일 열기 실패: {_e}")
-            _stderr_file = sys.stderr
+            if _stderr_file:
+                _stderr_file.close()
+            _stderr_file = None
 
         options = ClaudeCodeOptions(
             allowed_tools=ALLOWED_TOOLS,
             disallowed_tools=DISALLOWED_TOOLS,
             permission_mode="bypassPermissions",
             cwd=working_dir,
+            hooks=hooks,
+            env=env,
             extra_args={"debug-to-stderr": None},
-            debug_stderr=_stderr_file,
+            debug_stderr=_stderr_target,
         )
 
         if session_id:
             options.resume = session_id
 
-        return options
+        return options, _stderr_file
 
     async def _get_or_create_client(
         self,
         client_key: str,
         options: Optional[ClaudeCodeOptions] = None,
     ) -> ClaudeSDKClient:
-        """클라이언트를 가져오거나 새로 생성 (메인 봇 동일 패턴)
-
-        Args:
-            client_key: 클라이언트 키 (thread_ts)
-            options: ClaudeCodeOptions (새 클라이언트 생성 시 사용)
-        """
+        """클라이언트를 가져오거나 새로 생성"""
         if client_key in self._active_clients:
             logger.info(f"기존 클라이언트 재사용: key={client_key}")
             return self._active_clients[client_key]
@@ -222,10 +254,7 @@ class RescueRunner:
         return client
 
     async def _remove_client(self, client_key: str) -> None:
-        """클라이언트를 정리 (메인 봇 동일 패턴)
-
-        disconnect 후 딕셔너리에서 제거합니다.
-        """
+        """클라이언트를 정리 (disconnect 후 딕셔너리에서 제거)"""
         client = self._active_clients.pop(client_key, None)
         if client is None:
             return
@@ -235,27 +264,90 @@ class RescueRunner:
             logger.warning(f"ClaudeSDKClient disconnect 오류 (무시): key={client_key}, {e}")
         logger.info(f"ClaudeSDKClient 제거: key={client_key}")
 
+    async def interrupt(self, thread_ts: str) -> bool:
+        """실행 중인 스레드에 인터럽트 전송
+
+        Args:
+            thread_ts: 스레드 타임스탬프
+
+        Returns:
+            True: 인터럽트 성공, False: 해당 스레드에 클라이언트 없음 또는 실패
+        """
+        client = self._active_clients.get(thread_ts)
+        if client is None:
+            return False
+        try:
+            await client.interrupt()
+            logger.info(f"인터럽트 전송: thread={thread_ts}")
+            return True
+        except Exception as e:
+            logger.warning(f"인터럽트 실패: thread={thread_ts}, {e}")
+            return False
+
+    async def compact_session(self, session_id: str) -> RescueResult:
+        """세션 컴팩트 처리
+
+        Args:
+            session_id: 컴팩트할 세션 ID
+
+        Returns:
+            RescueResult (compact 결과)
+        """
+        if not session_id:
+            return RescueResult(
+                success=False,
+                output="",
+                error="세션 ID가 없습니다.",
+            )
+
+        logger.info(f"세션 컴팩트 시작: {session_id}")
+        result = await self._execute("/compact", session_id=session_id)
+
+        if result.success:
+            logger.info(f"세션 컴팩트 완료: {session_id}")
+        else:
+            logger.error(f"세션 컴팩트 실패: {session_id}, {result.error}")
+
+        return result
+
     async def run(
         self,
         prompt: str,
         session_id: Optional[str] = None,
         thread_ts: Optional[str] = None,
+        channel: Optional[str] = None,
+        on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> RescueResult:
-        """Claude Code 실행 (async, lock 포함)
-
-        메인 봇의 run()에서 OM 관련 로직을 제거한 버전입니다.
-        """
+        """Claude Code 실행 (async, lock 포함)"""
         async with self._lock:
-            return await self._execute(prompt, session_id=session_id, thread_ts=thread_ts)
+            return await self._execute(
+                prompt,
+                session_id=session_id,
+                thread_ts=thread_ts,
+                channel=channel,
+                on_progress=on_progress,
+                on_compact=on_compact,
+            )
 
     async def _execute(
         self,
         prompt: str,
         session_id: Optional[str] = None,
         thread_ts: Optional[str] = None,
+        channel: Optional[str] = None,
+        on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> RescueResult:
         """실제 실행 로직 (메인 봇 _execute와 동일한 구조)"""
-        options = self._build_options(session_id=session_id)
+        compact_events: list[dict] = []
+        compact_notified_count = 0
+        options, stderr_file = self._build_options(
+            session_id=session_id,
+            channel=channel,
+            thread_ts=thread_ts,
+            compact_events=compact_events,
+        )
 
         logger.info(f"Claude Code SDK 실행 (cwd={options.cwd}, resume={session_id})")
 
@@ -265,6 +357,10 @@ class RescueRunner:
         result_session_id = None
         current_text = ""
         result_text = ""
+        result_is_error = False
+        result_usage: Optional[dict] = None
+        last_progress_time = asyncio.get_event_loop().time()
+        progress_interval = 2.0
         idle_timeout = RescueConfig.CLAUDE_TIMEOUT
 
         try:
@@ -288,6 +384,11 @@ class RescueRunner:
                             raise
                         wait_seconds = rate_limit_delays[rate_limit_count - 1]
                         logger.warning(f"rate_limit_event 수신 ({rate_limit_count}/{len(rate_limit_delays)}회), {wait_seconds}초 후 재시도")
+                        if on_progress:
+                            try:
+                                await on_progress(f"사용량 제한 감지, {wait_seconds}초 후 재시도합니다 ({rate_limit_count}/{len(rate_limit_delays)})")
+                            except Exception:
+                                pass
                         await asyncio.sleep(wait_seconds)
                         continue
                     raise
@@ -303,11 +404,37 @@ class RescueRunner:
                             if isinstance(block, TextBlock):
                                 current_text = block.text
 
+                                # 진행 상황 콜백 (2초 간격)
+                                if on_progress:
+                                    current_time = asyncio.get_event_loop().time()
+                                    if current_time - last_progress_time >= progress_interval:
+                                        try:
+                                            display_text = current_text
+                                            if len(display_text) > 1000:
+                                                display_text = "...\n" + display_text[-1000:]
+                                            await on_progress(display_text)
+                                            last_progress_time = current_time
+                                        except Exception as e:
+                                            logger.warning(f"진행 상황 콜백 오류: {e}")
+
                 elif isinstance(message, ResultMessage):
+                    if hasattr(message, "is_error"):
+                        result_is_error = message.is_error
                     if hasattr(message, "result"):
                         result_text = message.result
                     if hasattr(message, "session_id") and message.session_id:
                         result_session_id = message.session_id
+                    if hasattr(message, "usage") and message.usage:
+                        result_usage = message.usage
+
+                # 컴팩션 이벤트 확인
+                if on_compact and len(compact_events) > compact_notified_count:
+                    for event in compact_events[compact_notified_count:]:
+                        try:
+                            await on_compact(event["trigger"], event["message"])
+                        except Exception as e:
+                            logger.warning(f"컴팩션 콜백 오류: {e}")
+                    compact_notified_count = len(compact_events)
 
             output = result_text or current_text
 
@@ -315,6 +442,8 @@ class RescueRunner:
                 success=True,
                 output=output,
                 session_id=result_session_id,
+                interrupted=result_is_error,
+                usage=result_usage,
             )
 
         except asyncio.TimeoutError:
@@ -367,16 +496,17 @@ class RescueRunner:
             )
         finally:
             await self._remove_client(client_key)
+            if stderr_file is not None:
+                try:
+                    stderr_file.close()
+                except Exception:
+                    pass
 
 
-# 모듈 레벨 싱글턴 (main.py에서 사용)
+# 모듈 레벨 싱글턴
 _runner = RescueRunner()
 
 
-def run_claude_sync(
-    prompt: str,
-    session_id: Optional[str] = None,
-    thread_ts: Optional[str] = None,
-) -> RescueResult:
-    """모듈 레벨 래퍼 — main.py 호환용"""
-    return _runner.run_claude_sync(prompt, session_id=session_id, thread_ts=thread_ts)
+def get_runner() -> RescueRunner:
+    """모듈 레벨 RescueRunner 인스턴스를 반환"""
+    return _runner

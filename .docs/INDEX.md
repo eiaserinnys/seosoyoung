@@ -72,8 +72,10 @@
 - [`recall/recall.py`](modules/recall_recall.md): Recall - 도구 선택 사전 분석 파이프라인
 - [`rescue/__main__.py`](modules/rescue___main__.md): python -m seosoyoung.rescue.main 실행 지원
 - [`rescue/config.py`](modules/rescue_config.md): rescue-bot 환경변수 설정
-- [`rescue/main.py`](modules/rescue_main.md): rescue-bot 메인 모듈
-- [`rescue/runner.py`](modules/rescue_runner.md): Claude Code SDK 실행기 (세션 재개 지원)
+- [`rescue/main.py`](modules/rescue_main.md): rescue-bot 메인 모듈 (메인 봇 기본 대화 기능 완전 복제)
+- [`rescue/message_formatter.py`](modules/rescue_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티 (rescue-bot 경량 버전)
+- [`rescue/runner.py`](modules/rescue_runner.md): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
+- [`rescue/session.py`](modules/rescue_session.md): rescue-bot 세션 관리 (경량 in-memory 버전)
 - [`seosoyoung/restart.py`](modules/seosoyoung_restart.md): 재시작 관리
 - [`search/build.py`](modules/search_build.md): 통합 빌드 스크립트 — Whoosh + 임베딩 인덱스를 한 번에 빌드.
 - [`search/embedding_cache.py`](modules/search_embedding_cache.md): OpenAI 임베딩 캐시.
@@ -201,8 +203,12 @@
 - `RecallResult` (seosoyoung/recall/recall.py:30): Recall 결과
 - `Recall` (seosoyoung/recall/recall.py:106): Recall - 도구 선택 사전 분석 파이프라인
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
-- `RescueResult` (seosoyoung/rescue/runner.py:79): 실행 결과
-- `RescueRunner` (seosoyoung/rescue/runner.py:88): Claude Code SDK 실행기 (공유 이벤트 루프 기반)
+- `PendingPrompt` (seosoyoung/rescue/main.py:52): 인터벤션 대기 중인 프롬프트 정보
+- `RescueBotApp` (seosoyoung/rescue/main.py:61): rescue-bot 애플리케이션
+- `RescueResult` (seosoyoung/rescue/runner.py:85): 실행 결과
+- `RescueRunner` (seosoyoung/rescue/runner.py:96): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
+- `Session` (seosoyoung/rescue/session.py:14): 세션 정보
+- `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
 - `RestartType` (seosoyoung/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/restart.py:22): 재시작 요청 정보
 - `RestartManager` (seosoyoung/restart.py:30): 재시작 관리자
@@ -379,10 +385,12 @@
 - `build_evaluation_prompt()` (seosoyoung/recall/evaluator.py:28): 도구 평가를 위한 프롬프트 생성.
 - `parse_evaluation_response()` (seosoyoung/recall/evaluator.py:90): 평가 응답 파싱.
 - `parse_frontmatter()` (seosoyoung/recall/loader.py:19): YAML frontmatter와 본문을 분리하여 파싱.
-- `handle_mention()` (seosoyoung/rescue/main.py:151): 멘션 이벤트 핸들러
-- `handle_message()` (seosoyoung/rescue/main.py:178): 스레드 메시지 핸들러
-- `main()` (seosoyoung/rescue/main.py:220): rescue-bot 진입점
-- `run_claude_sync()` (seosoyoung/rescue/runner.py:376): 모듈 레벨 래퍼 — main.py 호환용
+- `main()` (seosoyoung/rescue/main.py:678): rescue-bot 진입점
+- `build_context_usage_bar()` (seosoyoung/rescue/message_formatter.py:13): usage dict에서 컨텍스트 사용량 바를 생성
+- `escape_backticks()` (seosoyoung/rescue/message_formatter.py:42): 텍스트 내 모든 백틱을 이스케이프
+- `parse_summary_details()` (seosoyoung/rescue/message_formatter.py:52): 응답에서 요약과 상세 내용을 파싱
+- `strip_summary_details_markers()` (seosoyoung/rescue/message_formatter.py:86): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
+- `get_runner()` (seosoyoung/rescue/runner.py:510): 모듈 레벨 RescueRunner 인스턴스를 반환
 - `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
 - `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
 - `build_all()` (seosoyoung/search/build.py:84): Whoosh + 임베딩 인덱스 통합 빌드.
