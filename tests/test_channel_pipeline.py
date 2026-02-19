@@ -1328,3 +1328,265 @@ class TestFilterAlreadyReacted:
         call_kwargs = client.reactions_add.call_args[1]
         assert call_kwargs["timestamp"] == "1003.000"
         assert call_kwargs["name"] == "eyes"
+
+
+# ── Bug A: move_snapshot_to_judged가 예외 시에도 실행되는지 ──
+
+class TestBugA_MoveSnapshotInFinally:
+    """Bug A: _handle_multi_judge 예외 시에도 pending이 judged로 이동되는지 확인"""
+
+    @pytest.mark.asyncio
+    async def test_pending_moved_even_on_exception(self, store, channel_id):
+        """_handle_multi_judge에서 예외 발생해도 pending→judged 이동됨"""
+        _fill_pending(store, channel_id, n=5)
+        # judge가 items를 반환하여 _handle_multi_judge 경로 진입
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=8, reaction_type="intervene",
+                          reaction_target="1001.000",
+                          reaction_content="개입"),
+            ],
+        ))
+        client = MagicMock()
+        # reactions_add에서 예외 발생 → _handle_multi_judge 내부 예외
+        client.reactions_add = MagicMock(side_effect=RuntimeError("Event loop is closed"))
+        client.chat_postMessage = MagicMock(side_effect=RuntimeError("Event loop is closed"))
+        history = InterventionHistory(base_dir=store.base_dir)
+
+        # 예외가 전파되더라도 finally에서 move_snapshot_to_judged가 실행되어야 함
+        try:
+            await run_channel_pipeline(
+                store=store,
+                observer=observer,
+                channel_id=channel_id,
+                slack_client=client,
+                cooldown=history,
+                threshold_a=1,
+                intervention_threshold=0.0,
+            )
+        except RuntimeError:
+            pass
+
+        # 핵심: 예외 발생에도 불구하고 pending이 judged로 이동되어야 함
+        assert len(store.load_pending(channel_id)) == 0
+        assert len(store.load_judged(channel_id)) == 5
+
+
+# ── Bug B: _validate_linked_messages에서 thread_buffers ts 인식 ──
+
+class TestBugB_ValidateLinkedWithThreadBuffers:
+    """Bug B: thread_buffers 메시지에 대한 링크가 환각으로 오판되지 않아야 함"""
+
+    def test_link_to_thread_buffer_message_preserved(self):
+        """thread_buffers에 존재하는 ts에 대한 링크는 유지"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="2.2", linked_message_ts="9001.000", link_reason="스레드 답변 참조"),
+        ])
+        judged = []
+        pending = [{"ts": "2.2", "user": "U2", "text": "reply"}]
+        thread_buffers = {
+            "root_ts": [{"ts": "9001.000", "user": "U99", "text": "스레드 내용"}],
+        }
+        _validate_linked_messages(result, judged, pending, thread_buffers)
+        assert result.items[0].linked_message_ts == "9001.000"
+        assert result.items[0].link_reason == "스레드 답변 참조"
+
+    def test_link_to_nonexistent_ts_still_removed(self):
+        """thread_buffers에도 없는 ts 링크는 여전히 제거"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="2.2", linked_message_ts="999.999", link_reason="환각"),
+        ])
+        judged = [{"ts": "1.1", "user": "U1", "text": "hello"}]
+        pending = [{"ts": "2.2", "user": "U2", "text": "reply"}]
+        thread_buffers = {
+            "root_ts": [{"ts": "9001.000", "user": "U99", "text": "스레드 내용"}],
+        }
+        _validate_linked_messages(result, judged, pending, thread_buffers)
+        assert result.items[0].linked_message_ts is None
+
+    def test_no_thread_buffers_backward_compatible(self):
+        """thread_buffers=None일 때도 기존처럼 동작"""
+        result = JudgeResult(items=[
+            JudgeItem(ts="2.2", linked_message_ts="1.1", link_reason="답변"),
+        ])
+        judged = [{"ts": "1.1", "user": "U1", "text": "hello"}]
+        pending = [{"ts": "2.2", "user": "U2", "text": "reply"}]
+        _validate_linked_messages(result, judged, pending, thread_buffers=None)
+        assert result.items[0].linked_message_ts == "1.1"
+
+
+# ── Bug C: _execute_intervene에서 엉뚱한 메시지 폴백 방지 ──
+
+class TestBugC_InterveneFallbackPrevention:
+    """Bug C: target_ts를 pending에서 못 찾으면 thread_buffers/judged 검색, 실패 시 스킵"""
+
+    @pytest.mark.asyncio
+    async def test_intervene_skipped_when_target_not_found(self, store, channel_id):
+        """target_ts가 어디에도 없으면 intervention 자체를 스킵"""
+        _fill_pending(store, channel_id)
+        # target이 pending에 없는 ts
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=9, reaction_type="intervene",
+                          reaction_target="NONEXISTENT.000",
+                          reaction_content="엉뚱한 메시지 타겟"),
+            ],
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="응답")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
+            llm_call=mock_llm,
+        )
+
+        # target을 찾지 못했으므로 LLM 호출과 메시지 발송이 없어야 함
+        mock_llm.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_intervene_finds_target_in_thread_buffers(self, store, channel_id):
+        """target_ts가 thread_buffers에 있으면 해당 메시지로 응답 생성"""
+        _fill_pending(store, channel_id)
+        store.append_thread_message(channel_id, "root_ts", {
+            "ts": "THREAD.001", "user": "U99", "text": "스레드 메시지입니다",
+        })
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=8, reaction_type="intervene",
+                          reaction_target="THREAD.001",
+                          reaction_content="스레드 대화에 개입"),
+            ],
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="스레드 응답")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
+            llm_call=mock_llm,
+        )
+
+        # thread_buffers에서 찾았으므로 LLM이 호출되어야 함
+        mock_llm.assert_called_once()
+        client.chat_postMessage.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_intervene_finds_target_in_judged(self, store, channel_id):
+        """target_ts가 judged에 있으면 해당 메시지로 응답 생성"""
+        _fill_pending(store, channel_id)
+        _fill_judged(store, channel_id, n=3)
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=8, reaction_type="intervene",
+                          reaction_target="2001.000",
+                          reaction_content="judged 메시지에 개입"),
+            ],
+        ))
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="judged 대상 응답")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
+            llm_call=mock_llm,
+        )
+
+        # judged에서 찾았으므로 LLM이 호출되어야 함
+        mock_llm.assert_called_once()
+
+
+# ── Bug D: non-pending JudgeItem 필터링 ──
+
+class TestBugD_FilterNonPendingJudgeItems:
+    """Bug D: AI가 THREAD CONVERSATIONS 메시지에 대해 생성한 JudgeItem 필터링"""
+
+    @pytest.mark.asyncio
+    async def test_non_pending_items_filtered_out(self, store, channel_id):
+        """pending ts에 없는 JudgeItem은 필터링되어 react/intervene 실행 안 됨"""
+        _fill_pending(store, channel_id, n=3)  # ts: 1000.000 ~ 1002.000
+        store.append_thread_message(channel_id, "root_ts", {
+            "ts": "THREAD.999", "user": "U99", "text": "스레드 메시지",
+        })
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=5, reaction_type="react",
+                          reaction_target="1001.000", reaction_content="eyes"),
+                # AI가 잘못 생성한 thread 메시지 판단
+                JudgeItem(ts="THREAD.999", importance=8, reaction_type="intervene",
+                          reaction_target="THREAD.999",
+                          reaction_content="스레드에 개입"),
+            ],
+        ))
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+        mock_llm = AsyncMock(return_value="응답")
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.0,
+            llm_call=mock_llm,
+        )
+
+        # pending에 있는 1001.000 react만 실행됨
+        assert client.reactions_add.call_count == 1
+        call_kwargs = client.reactions_add.call_args[1]
+        assert call_kwargs["timestamp"] == "1001.000"
+        # THREAD.999 intervene은 필터링되어 LLM 호출 없음
+        mock_llm.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_all_pending_items_preserved(self, store, channel_id):
+        """모든 items가 pending ts에 있으면 전부 유지"""
+        _fill_pending(store, channel_id, n=5)
+        observer = FakeObserver(judge_result=JudgeResult(
+            items=[
+                JudgeItem(ts="1001.000", importance=3, reaction_type="react",
+                          reaction_target="1001.000", reaction_content="eyes"),
+                JudgeItem(ts="1003.000", importance=4, reaction_type="react",
+                          reaction_target="1003.000", reaction_content="fire"),
+            ],
+        ))
+        client = MagicMock()
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        history = InterventionHistory(base_dir=store.base_dir)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+        )
+
+        # 둘 다 pending에 있으므로 모두 실행
+        assert client.reactions_add.call_count == 2

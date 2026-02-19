@@ -149,6 +149,7 @@ def _validate_linked_messages(
     judge_result: JudgeResult,
     judged_messages: list[dict],
     pending_messages: list[dict],
+    thread_buffers: dict[str, list[dict]] | None = None,
 ) -> None:
     """linked_message_ts가 실제 존재하는 ts인지 검증하고, 환각된 ts를 제거합니다.
 
@@ -163,6 +164,13 @@ def _validate_linked_messages(
         ts = msg.get("ts", "")
         if ts:
             known_ts.add(ts)
+    # Bug B: thread_buffers 메시지 ts도 known_ts에 포함
+    if thread_buffers:
+        for msgs in thread_buffers.values():
+            for msg in msgs:
+                ts = msg.get("ts", "")
+                if ts:
+                    known_ts.add(ts)
 
     for item in judge_result.items:
         if item.linked_message_ts is None:
@@ -352,52 +360,68 @@ async def run_channel_pipeline(
         logger.warning(f"judge가 None 반환 ({channel_id})")
         return
 
-    # d-0a) linked_message_ts 환각 검증
-    _validate_linked_messages(judge_result, judged_messages, pending_messages)
+    # d-0a) Bug D: pending ts에 없는 JudgeItem 필터링
+    #   AI가 THREAD CONVERSATIONS 섹션 메시지에 대해서도 판단을 생성할 수 있음
+    if judge_result.items:
+        pending_ts = {m.get("ts", "") for m in pending_messages if m.get("ts")}
+        filtered_items = [item for item in judge_result.items if item.ts in pending_ts]
+        if len(filtered_items) < len(judge_result.items):
+            removed = len(judge_result.items) - len(filtered_items)
+            logger.info(
+                f"non-pending JudgeItem {removed}건 필터링 ({channel_id}): "
+                f"pending_ts={len(pending_ts)}건"
+            )
+        judge_result.items = filtered_items
 
-    # d-0b) 가중치 적용: related_to_me, addressed_to_me 강제 반응
+    # d-0b) linked_message_ts 환각 검증
+    _validate_linked_messages(judge_result, judged_messages, pending_messages, thread_buffers)
+
+    # d-0c) 가중치 적용: related_to_me, addressed_to_me 강제 반응
     _apply_importance_modifiers(judge_result, pending_messages)
 
     # d) 리액션 처리
-    if judge_result.items:
-        # 복수 판단 경로
-        await _handle_multi_judge(
-            judge_result=judge_result,
-            store=store,
-            channel_id=channel_id,
-            slack_client=slack_client,
-            cooldown=cooldown,
-            pending_messages=pending_messages,
-            current_digest=current_digest,
-            debug_channel=debug_channel,
-            intervention_threshold=intervention_threshold,
-            llm_call=llm_call,
-            claude_runner=claude_runner,
-            bot_user_id=bot_user_id,
-            session_manager=kwargs.get("session_manager"),
-            thread_buffers=thread_buffers,
-        )
-    else:
-        # 하위호환: 단일 판단 경로
-        await _handle_single_judge(
-            judge_result=judge_result,
-            store=store,
-            channel_id=channel_id,
-            slack_client=slack_client,
-            cooldown=cooldown,
-            pending_messages=pending_messages,
-            current_digest=current_digest,
-            debug_channel=debug_channel,
-            intervention_threshold=intervention_threshold,
-            llm_call=llm_call,
-            claude_runner=claude_runner,
-            bot_user_id=bot_user_id,
-            session_manager=kwargs.get("session_manager"),
-            thread_buffers=thread_buffers,
-        )
-
-    # e) 스냅샷에 포함된 메시지만 judged로 이동 (파이프라인 중 새로 도착한 메시지는 pending에 잔류)
-    store.move_snapshot_to_judged(channel_id, snapshot_ts, snapshot_thread_ts)
+    # e) 스냅샷 메시지는 예외 발생 여부와 무관하게 반드시 judged로 이동해야 함
+    #    (이동하지 않으면 pending에 영원히 남아 중복 응답 발생 — Bug A)
+    try:
+        if judge_result.items:
+            # 복수 판단 경로
+            await _handle_multi_judge(
+                judge_result=judge_result,
+                store=store,
+                channel_id=channel_id,
+                slack_client=slack_client,
+                cooldown=cooldown,
+                pending_messages=pending_messages,
+                current_digest=current_digest,
+                debug_channel=debug_channel,
+                intervention_threshold=intervention_threshold,
+                llm_call=llm_call,
+                claude_runner=claude_runner,
+                bot_user_id=bot_user_id,
+                session_manager=kwargs.get("session_manager"),
+                thread_buffers=thread_buffers,
+            )
+        else:
+            # 하위호환: 단일 판단 경로
+            await _handle_single_judge(
+                judge_result=judge_result,
+                store=store,
+                channel_id=channel_id,
+                slack_client=slack_client,
+                cooldown=cooldown,
+                pending_messages=pending_messages,
+                current_digest=current_digest,
+                debug_channel=debug_channel,
+                intervention_threshold=intervention_threshold,
+                llm_call=llm_call,
+                claude_runner=claude_runner,
+                bot_user_id=bot_user_id,
+                session_manager=kwargs.get("session_manager"),
+                thread_buffers=thread_buffers,
+            )
+    finally:
+        # 스냅샷에 포함된 메시지만 judged로 이동 (파이프라인 중 새로 도착한 메시지는 pending에 잔류)
+        store.move_snapshot_to_judged(channel_id, snapshot_ts, snapshot_thread_ts)
 
 
 async def _handle_multi_judge(
@@ -666,6 +690,7 @@ async def _execute_intervene(
     recent_messages = []
 
     if target_ts and target_ts != "channel":
+        # pending에서 먼저 검색
         for i, msg in enumerate(pending_messages):
             if msg.get("ts") == target_ts:
                 trigger_message = msg
@@ -673,7 +698,37 @@ async def _execute_intervene(
                 recent_messages = pending_messages[start:i]
                 break
 
+        # Bug C: pending에 없으면 thread_buffers에서 검색
+        if trigger_message is None and thread_buffers:
+            for thread_msgs in thread_buffers.values():
+                for msg in thread_msgs:
+                    if msg.get("ts") == target_ts:
+                        trigger_message = msg
+                        recent_messages = pending_messages[-5:]
+                        break
+                if trigger_message is not None:
+                    break
+
+        # Bug C: thread_buffers에도 없으면 judged에서 검색
+        if trigger_message is None:
+            judged_messages = store.load_judged(channel_id)
+            for msg in judged_messages:
+                if msg.get("ts") == target_ts:
+                    trigger_message = msg
+                    recent_messages = pending_messages[-5:]
+                    break
+
+        # Bug C: 어디에서도 못 찾으면 intervention 스킵 (엉뚱한 메시지 폴백 방지)
+        if trigger_message is None:
+            logger.warning(
+                f"intervene 스킵: target_ts={target_ts}를 "
+                f"pending/thread_buffers/judged 어디에서도 찾을 수 없음 ({channel_id})"
+            )
+            _remove_thinking_reaction(slack_client, channel_id, reaction_ts)
+            return
+
     if trigger_message is None and pending_messages:
+        # target이 "channel"인 경우에만 여기에 도달
         trigger_message = pending_messages[-1]
         recent_messages = pending_messages[-6:-1]
 
