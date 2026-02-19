@@ -21,6 +21,60 @@ from seosoyoung.memory.store import MemoryRecord, MemoryStore
 from seosoyoung.memory.token_counter import TokenCounter
 
 
+def _make_obs_items(items_data):
+    """테스트 헬퍼: 관찰 항목 리스트 생성.
+
+    items_data: [(priority, content), ...] 또는 [(priority, content, session_date), ...]
+    """
+    result = []
+    for i, item in enumerate(items_data):
+        if len(item) == 3:
+            priority, content, session_date = item
+        else:
+            priority, content = item
+            session_date = "2026-02-10"
+        result.append({
+            "id": f"obs_20260210_{i:03d}",
+            "priority": priority,
+            "content": content,
+            "session_date": session_date,
+            "created_at": "2026-02-10T00:00:00+00:00",
+            "source": "observer",
+        })
+    return result
+
+
+def _make_ltm_items(items_data):
+    """테스트 헬퍼: 장기 기억 항목 리스트 생성.
+
+    items_data: [(priority, content), ...]
+    """
+    result = []
+    for i, (priority, content) in enumerate(items_data):
+        result.append({
+            "id": f"ltm_20260210_{i:03d}",
+            "priority": priority,
+            "content": content,
+            "promoted_at": "2026-02-10T00:00:00+00:00",
+        })
+    return result
+
+
+def _make_candidate_items(items_data):
+    """테스트 헬퍼: 후보 항목 리스트 생성.
+
+    items_data: [(priority, content), ...]
+    """
+    result = []
+    for i, (priority, content) in enumerate(items_data):
+        result.append({
+            "ts": "t",
+            "priority": priority,
+            "content": content,
+        })
+    return result
+
+
 @pytest.fixture
 def store(tmp_path):
     return MemoryStore(base_dir=tmp_path)
@@ -85,8 +139,10 @@ class TestE2EFullPipeline:
         # -- 1단계: 여러 턴에 걸쳐 Observer가 후보를 수집 --
         # 턴 1: 후보 생성
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Session Observations\n\n🔴 캐릭터 정보 조회 중",
-            candidates="🔴 사용자는 커밋 메시지를 한국어로 작성하는 것을 선호한다",
+            observations=_make_obs_items([("🔴", "캐릭터 정보 조회 중")]),
+            candidates=[
+                {"priority": "🔴", "content": "사용자는 커밋 메시지를 한국어로 작성하는 것을 선호한다"},
+            ],
         )
 
         result = await observe_conversation(
@@ -107,8 +163,11 @@ class TestE2EFullPipeline:
 
         # 턴 2: 추가 후보 생성
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Session Observations\n\n🔴 캐릭터 정보 조회 완료",
-            candidates="🟡 트렐로 카드 작업 시 체크리스트를 먼저 확인하는 패턴\n🟢 eb_lore 폴더를 자주 참조",
+            observations=_make_obs_items([("🔴", "캐릭터 정보 조회 완료")]),
+            candidates=[
+                {"priority": "🟡", "content": "트렐로 카드 작업 시 체크리스트를 먼저 확인하는 패턴"},
+                {"priority": "🟢", "content": "eb_lore 폴더를 자주 참조"},
+            ],
         )
 
         result = await observe_conversation(
@@ -128,8 +187,10 @@ class TestE2EFullPipeline:
 
         # 다른 세션에서도 후보 생성
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Session B",
-            candidates="🔴 테스트 실행 전 항상 lint를 먼저 실행하는 패턴",
+            observations=_make_obs_items([("🔴", "Session B 관찰")]),
+            candidates=[
+                {"priority": "🔴", "content": "테스트 실행 전 항상 lint를 먼저 실행하는 패턴"},
+            ],
         )
 
         result = await observe_conversation(
@@ -148,10 +209,14 @@ class TestE2EFullPipeline:
         assert len(all_candidates) == 4
 
         # -- 2단계: Promoter가 후보를 검토하여 승격 --
+        promoted_items = _make_ltm_items([
+            ("🔴", "사용자는 커밋 메시지를 한국어로 작성하는 것을 선호한다"),
+            ("🔴", "테스트 실행 전 항상 lint를 먼저 실행하는 패턴"),
+        ])
         mock_promoter.promote = AsyncMock(
             return_value=PromoterResult(
-                promoted="🔴 사용자는 커밋 메시지를 한국어로 작성하는 것을 선호한다\n🔴 테스트 실행 전 항상 lint를 먼저 실행하는 패턴",
-                rejected="- eb_lore 폴더 참조 (세션 한정 맥락)",
+                promoted=promoted_items,
+                rejected=[{"priority": "🟢", "content": "eb_lore 폴더 참조 (세션 한정 맥락)"}],
                 promoted_count=2,
                 rejected_count=1,
                 priority_counts={"🔴": 2},
@@ -160,8 +225,8 @@ class TestE2EFullPipeline:
 
         # 이번에는 promoter를 넘겨서 승격까지 수행
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Session C",
-            candidates="",  # 이번 턴에는 후보 없음
+            observations=_make_obs_items([("🔴", "Session C 관찰")]),
+            candidates=[],  # 이번 턴에는 후보 없음
         )
 
         result = await observe_conversation(
@@ -179,8 +244,8 @@ class TestE2EFullPipeline:
         # 장기 기억이 저장되었는지 확인
         persistent = store.get_persistent()
         assert persistent is not None
-        assert "커밋 메시지를 한국어로" in persistent["content"]
-        assert "lint를 먼저 실행" in persistent["content"]
+        assert any("커밋 메시지를 한국어로" in item["content"] for item in persistent["content"])
+        assert any("lint를 먼저 실행" in item["content"] for item in persistent["content"])
 
         # 후보 버퍼가 비워졌는지 확인
         assert store.load_all_candidates() == []
@@ -222,23 +287,27 @@ class TestE2EFullPipeline:
         thread_ts = "ts_compact_001"
 
         # 기존에 큰 장기 기억이 있는 상태
+        big_persistent = _make_ltm_items([
+            ("🔴", "기존 장기 기억 " * 500),
+        ])
         store.save_persistent(
-            content="기존 장기 기억 " * 500,
+            content=big_persistent,
             meta={"token_count": 10000},
         )
 
         # 후보 누적
-        big_entries = [
-            {"ts": "t", "priority": "🔴", "content": f"후보 {i} " + "긴 내용 " * 50}
+        big_entries = _make_candidate_items([
+            ("🔴", f"후보 {i} " + "긴 내용 " * 50)
             for i in range(20)
-        ]
+        ])
         store.append_candidates("ts_old_session", big_entries)
 
         # Promoter가 큰 승격 결과를 반환
+        promoted = _make_ltm_items([("🔴", "새로운 핵심 기억 " * 500)])
         mock_promoter.promote = AsyncMock(
             return_value=PromoterResult(
-                promoted="🔴 " + "새로운 핵심 기억 " * 500,
-                rejected="",
+                promoted=promoted,
+                rejected=[],
                 promoted_count=1,
                 rejected_count=0,
                 priority_counts={"🔴": 1},
@@ -246,16 +315,17 @@ class TestE2EFullPipeline:
         )
 
         # Compactor가 압축 결과를 반환
+        compacted = _make_ltm_items([("🔴", "압축된 핵심 장기 기억")])
         mock_compactor.compact = AsyncMock(
             return_value=CompactorResult(
-                compacted="🔴 압축된 핵심 장기 기억",
+                compacted=compacted,
                 token_count=100,
             )
         )
 
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Session",
-            candidates="",
+            observations=_make_obs_items([("🔴", "Session 관찰")]),
+            candidates=[],
         )
 
         result = await observe_conversation(
@@ -279,11 +349,11 @@ class TestE2EFullPipeline:
         # 최종 장기 기억은 압축된 결과
         persistent = store.get_persistent()
         assert persistent is not None
-        assert "압축된 핵심 장기 기억" in persistent["content"]
+        assert any("압축된 핵심 장기 기억" in item["content"] for item in persistent["content"])
 
         # archive에 백업이 생겼는지 확인
         archive_dir = store._persistent_archive_dir()
-        archive_files = list(archive_dir.glob("*.md"))
+        archive_files = list(archive_dir.glob("*.json"))
         assert len(archive_files) >= 1
 
     @pytest.mark.asyncio
@@ -295,8 +365,10 @@ class TestE2EFullPipeline:
 
         for i, session in enumerate(sessions):
             mock_observer.observe.return_value = ObserverResult(
-                observations=f"## [2026-02-10] Session {i}",
-                candidates=f"🔴 세션 {i}의 핵심 관찰",
+                observations=_make_obs_items([(f"🔴", f"Session {i} 관찰")]),
+                candidates=[
+                    {"priority": "🔴", "content": f"세션 {i}의 핵심 관찰"},
+                ],
             )
 
             await observe_conversation(
@@ -314,10 +386,15 @@ class TestE2EFullPipeline:
         assert len(all_candidates) == 3
 
         # Promoter 호출 시 모든 세션의 후보가 전달됨
+        promoted = _make_ltm_items([
+            ("🔴", "세션 0의 핵심 관찰"),
+            ("🔴", "세션 1의 핵심 관찰"),
+            ("🔴", "세션 2의 핵심 관찰"),
+        ])
         mock_promoter.promote = AsyncMock(
             return_value=PromoterResult(
-                promoted="🔴 세션 0의 핵심 관찰\n🔴 세션 1의 핵심 관찰\n🔴 세션 2의 핵심 관찰",
-                rejected="",
+                promoted=promoted,
+                rejected=[],
                 promoted_count=3,
                 rejected_count=0,
                 priority_counts={"🔴": 3},
@@ -325,8 +402,8 @@ class TestE2EFullPipeline:
         )
 
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Trigger session",
-            candidates="",
+            observations=_make_obs_items([("🔴", "Trigger session 관찰")]),
+            candidates=[],
         )
 
         await observe_conversation(
@@ -351,30 +428,37 @@ class TestE2EFullPipeline:
     ):
         """Reflector(세션 관찰 압축)와 Promoter(장기 기억 승격) 동시 동작"""
         # 후보를 미리 쌓아둠
-        entries = [
-            {"ts": "t", "priority": "🔴", "content": f"후보 {i} " + "내용 " * 50}
+        entries = _make_candidate_items([
+            ("🔴", f"후보 {i} " + "내용 " * 50)
             for i in range(10)
-        ]
+        ])
         store.append_candidates("ts_old", entries)
 
         # Observer가 매우 긴 관찰과 후보를 반환
-        long_observations = "관찰 내용 " * 500
+        long_observations = _make_obs_items([
+            ("🟢", f"관찰 내용 {i} " + "상세 " * 100)
+            for i in range(50)
+        ])
         mock_observer.observe.return_value = ObserverResult(
             observations=long_observations,
-            candidates="🔴 새 후보 항목",
+            candidates=[
+                {"priority": "🔴", "content": "새 후보 항목"},
+            ],
         )
 
+        compressed_obs = _make_obs_items([("🔴", "압축된 관찰")])
         mock_reflector.reflect = AsyncMock(
             return_value=ReflectorResult(
-                observations="압축된 관찰",
+                observations=compressed_obs,
                 token_count=100,
             )
         )
 
+        promoted = _make_ltm_items([("🔴", "승격된 기억")])
         mock_promoter.promote = AsyncMock(
             return_value=PromoterResult(
-                promoted="🔴 승격된 기억",
-                rejected="",
+                promoted=promoted,
+                rejected=[],
                 promoted_count=1,
                 rejected_count=0,
                 priority_counts={"🔴": 1},
@@ -401,7 +485,7 @@ class TestE2EFullPipeline:
 
         # 세션 관찰이 압축되었는지
         record = store.get_record("ts_both")
-        assert record.observations == "압축된 관찰"
+        assert record.observations == compressed_obs
         assert record.reflection_count == 1
 
         # Promoter도 호출되었는지
@@ -410,7 +494,7 @@ class TestE2EFullPipeline:
         # 장기 기억 저장 확인
         persistent = store.get_persistent()
         assert persistent is not None
-        assert "승격된 기억" in persistent["content"]
+        assert any("승격된 기억" in item["content"] for item in persistent["content"])
 
 
 class TestEdgeCases:
@@ -420,8 +504,8 @@ class TestEdgeCases:
     async def test_no_candidates_ever(self, store, mock_observer, mock_promoter, long_messages):
         """후보가 한 번도 생성되지 않은 경우"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Session\n\n🔴 관찰만 있음",
-            candidates="",  # 후보 없음
+            observations=_make_obs_items([("🔴", "관찰만 있음")]),
+            candidates=[],  # 후보 없음
         )
 
         for i in range(5):
@@ -446,24 +530,24 @@ class TestEdgeCases:
     async def test_promoter_rejects_all(self, store, mock_observer, mock_promoter, long_messages):
         """Promoter가 모든 후보를 기각하는 경우"""
         # 후보 쌓기
-        entries = [
-            {"ts": "t", "priority": "🟢", "content": f"사소한 후보 {i} " + "내용 " * 50}
+        entries = _make_candidate_items([
+            ("🟢", f"사소한 후보 {i} " + "내용 " * 50)
             for i in range(15)
-        ]
+        ])
         store.append_candidates("ts_some", entries)
 
         mock_promoter.promote = AsyncMock(
             return_value=PromoterResult(
-                promoted="",
-                rejected="- 모든 항목이 일시적 맥락으로 판단됨",
+                promoted=[],
+                rejected=[{"priority": "🟢", "content": "모든 항목이 일시적 맥락으로 판단됨"}],
                 promoted_count=0,
                 rejected_count=15,
             )
         )
 
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Session",
-            candidates="",
+            observations=_make_obs_items([("🔴", "Session 관찰")]),
+            candidates=[],
         )
 
         await observe_conversation(
@@ -486,16 +570,17 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_compaction_not_needed(self, store, mock_observer, mock_promoter, mock_compactor, long_messages):
         """승격 후 장기 기억이 compaction 임계치 미만인 경우 Compactor 미호출"""
-        entries = [
-            {"ts": "t", "priority": "🔴", "content": f"후보 {i} " + "내용 " * 50}
+        entries = _make_candidate_items([
+            ("🔴", f"후보 {i} " + "내용 " * 50)
             for i in range(10)
-        ]
+        ])
         store.append_candidates("ts_small", entries)
 
+        promoted = _make_ltm_items([("🔴", "작은 기억")])
         mock_promoter.promote = AsyncMock(
             return_value=PromoterResult(
-                promoted="🔴 작은 기억",
-                rejected="",
+                promoted=promoted,
+                rejected=[],
                 promoted_count=1,
                 rejected_count=0,
                 priority_counts={"🔴": 1},
@@ -503,8 +588,8 @@ class TestEdgeCases:
         )
 
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Session",
-            candidates="",
+            observations=_make_obs_items([("🔴", "Session 관찰")]),
+            candidates=[],
         )
 
         await observe_conversation(
@@ -527,7 +612,7 @@ class TestEdgeCases:
         # 장기 기억은 승격 결과 그대로
         persistent = store.get_persistent()
         assert persistent is not None
-        assert "작은 기억" in persistent["content"]
+        assert any("작은 기억" in item["content"] for item in persistent["content"])
 
     @pytest.mark.asyncio
     async def test_no_persistent_memory_for_user(self, store, long_messages):
@@ -571,15 +656,18 @@ class TestEdgeCases:
     ):
         """Promoter 오류가 발생해도 관찰 자체는 성공"""
         # 후보를 미리 쌓아둠
-        entries = [
-            {"ts": "t", "priority": "🔴", "content": f"후보 {i} " + "내용 " * 50}
+        entries = _make_candidate_items([
+            ("🔴", f"후보 {i} " + "내용 " * 50)
             for i in range(10)
-        ]
+        ])
         store.append_candidates("ts_old", entries)
 
+        obs_items = _make_obs_items([("🔴", "관찰 성공")])
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] 관찰 성공",
-            candidates="🔴 새 후보",
+            observations=obs_items,
+            candidates=[
+                {"priority": "🔴", "content": "새 후보"},
+            ],
         )
 
         mock_promoter.promote = AsyncMock(side_effect=Exception("Promoter API 오류"))
@@ -599,11 +687,11 @@ class TestEdgeCases:
         assert result is True
         record = store.get_record("ts_promoter_fail")
         assert record is not None
-        assert "관찰 성공" in record.observations
+        assert any("관찰 성공" in item["content"] for item in record.observations)
 
 
 class TestInjectionIntegration:
-    """주입 통합 테스트 — ContextBuilder와 Store의 연동"""
+    """주입 통합 테스트 - ContextBuilder와 Store의 연동"""
 
     @pytest.fixture
     def store(self, tmp_path):
@@ -616,7 +704,10 @@ class TestInjectionIntegration:
     def test_injection_persistent_only(self, builder, store):
         """장기 기억만 있을 때 주입"""
         store.save_persistent(
-            content="🔴 사용자는 한국어 커밋 메시지를 선호\n🟡 트렐로 체크리스트 먼저 확인",
+            content=_make_ltm_items([
+                ("🔴", "사용자는 한국어 커밋 메시지를 선호"),
+                ("🟡", "트렐로 체크리스트 먼저 확인"),
+            ]),
             meta={"token_count": 100},
         )
 
@@ -636,7 +727,7 @@ class TestInjectionIntegration:
         store.save_record(MemoryRecord(
             thread_ts="ts_session",
             user_id="U_TEST",
-            observations="## [2026-02-10] Session\n\n🔴 이번 세션 관찰",
+            observations=_make_obs_items([("🔴", "이번 세션 관찰")]),
         ))
 
         injection = builder.build_memory_prompt(
@@ -652,13 +743,13 @@ class TestInjectionIntegration:
     def test_injection_both_layers(self, builder, store):
         """장기 기억 + 세션 관찰 모두 주입"""
         store.save_persistent(
-            content="🔴 장기 기억 내용",
+            content=_make_ltm_items([("🔴", "장기 기억 내용")]),
             meta={"token_count": 50},
         )
         store.save_record(MemoryRecord(
             thread_ts="ts_both",
             user_id="U_TEST",
-            observations="## [2026-02-10] Session\n\n🟡 세션 관찰 내용",
+            observations=_make_obs_items([("🟡", "세션 관찰 내용")]),
         ))
 
         injection = builder.build_memory_prompt(
@@ -679,11 +770,14 @@ class TestInjectionIntegration:
 
     def test_injection_respects_include_flags(self, builder, store):
         """include_persistent / include_session 플래그가 정확히 동작"""
-        store.save_persistent(content="🔴 장기 기억", meta={})
+        store.save_persistent(
+            content=_make_ltm_items([("🔴", "장기 기억")]),
+            meta={},
+        )
         store.save_record(MemoryRecord(
             thread_ts="ts_flags",
             user_id="U_TEST",
-            observations="## [2026-02-10] Session\n\n🟡 세션 관찰",
+            observations=_make_obs_items([("🟡", "세션 관찰")]),
         ))
 
         # persistent=False, session=True
