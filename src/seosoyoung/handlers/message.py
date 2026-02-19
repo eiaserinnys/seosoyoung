@@ -155,6 +155,7 @@ def register_message_handlers(app, dependencies: dict):
     channel_observer = dependencies.get("channel_observer")
     channel_compressor = dependencies.get("channel_compressor")
     channel_cooldown = dependencies.get("channel_cooldown")
+    mention_tracker = dependencies.get("mention_tracker")
 
     @app.event("message")
     def handle_message(event, say, client):
@@ -179,6 +180,7 @@ def register_message_handlers(app, dependencies: dict):
                         channel_store, channel_observer,
                         channel_compressor, channel_cooldown,
                         force=force,
+                        mention_tracker=mention_tracker,
                     )
             except Exception as e:
                 logger.error(f"채널 메시지 수집 실패: {e}")
@@ -422,7 +424,7 @@ def _contains_trigger_word(text: str) -> bool:
 
 def _maybe_trigger_digest(
     channel_id, client, store, observer, compressor, cooldown,
-    *, force=False,
+    *, force=False, mention_tracker=None,
 ):
     """pending 토큰이 threshold_A 이상이면 별도 스레드에서 파이프라인을 실행합니다.
 
@@ -465,6 +467,7 @@ def _maybe_trigger_digest(
                     intervention_threshold=Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD,
                     claude_runner=runner,
                     bot_user_id=Config.BOT_USER_ID,
+                    mention_tracker=mention_tracker,
                 )
             )
         except Exception as e:

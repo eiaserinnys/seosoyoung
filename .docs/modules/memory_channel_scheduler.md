@@ -22,12 +22,12 @@ threading.Timer를 사용하여 interval_sec 간격으로 실행합니다.
 #### 메서드
 
 - `__init__(self)` (줄 26): 
-- `start(self)` (줄 59): 스케줄러를 시작합니다.
-- `stop(self)` (줄 70): 스케줄러를 중지합니다.
-- `_schedule_next(self)` (줄 78): 다음 실행을 예약합니다.
-- `_tick(self)` (줄 86): 주기적 실행: 각 채널의 버퍼를 체크하고 소화를 트리거합니다.
-- `_check_and_digest(self)` (줄 95): 모든 관찰 채널의 pending 버퍼를 체크하여 파이프라인을 트리거합니다.
-- `_run_pipeline(self, channel_id)` (줄 117): 소화/판단 파이프라인을 실행합니다.
+- `start(self)` (줄 61): 스케줄러를 시작합니다.
+- `stop(self)` (줄 72): 스케줄러를 중지합니다.
+- `_schedule_next(self)` (줄 80): 다음 실행을 예약합니다.
+- `_tick(self)` (줄 88): 주기적 실행: 각 채널의 버퍼를 체크하고 소화를 트리거합니다.
+- `_check_and_digest(self)` (줄 97): 모든 관찰 채널의 pending 버퍼를 체크하여 파이프라인을 트리거합니다.
+- `_run_pipeline(self, channel_id)` (줄 119): 소화/판단 파이프라인을 실행합니다.
 
 ## 내부 의존성
 

@@ -19,6 +19,7 @@ from seosoyoung.restart import RestartManager, RestartType
 from seosoyoung.trello.watcher import TrelloWatcher
 from seosoyoung.trello.list_runner import ListRunner
 from seosoyoung.handlers.channel_collector import ChannelMessageCollector
+from seosoyoung.handlers.mention_tracker import MentionTracker
 from seosoyoung.memory.channel_store import ChannelStore
 from seosoyoung.memory.channel_intervention import InterventionHistory
 from seosoyoung.memory.channel_observer import ChannelObserver, DigestCompressor
@@ -78,6 +79,9 @@ executor = ClaudeExecutor(
     list_runner_ref=lambda: list_runner,
 )
 
+# 멘션 트래커 (채널 관찰자-멘션 핸들러 통합용)
+_mention_tracker = MentionTracker()
+
 # 채널 관찰 시스템 초기화
 _channel_store: ChannelStore | None = None
 _channel_collector: ChannelMessageCollector | None = None
@@ -91,6 +95,7 @@ if Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS:
     _channel_collector = ChannelMessageCollector(
         store=_channel_store,
         target_channels=Config.CHANNEL_OBSERVER_CHANNELS,
+        mention_tracker=_mention_tracker,
     )
     _channel_cooldown = InterventionHistory(
         base_dir=Config.get_memory_path(),
@@ -118,6 +123,7 @@ if Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS:
             digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
             debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
             intervention_threshold=Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD,
+            mention_tracker=_mention_tracker,
         )
     logger.info(
         f"채널 관찰 시스템 초기화: channels={Config.CHANNEL_OBSERVER_CHANNELS}, "
@@ -142,6 +148,7 @@ dependencies = {
     "channel_observer": _channel_observer,
     "channel_compressor": _channel_compressor,
     "channel_cooldown": _channel_cooldown,
+    "mention_tracker": _mention_tracker,
 }
 
 # 핸들러 등록

@@ -38,6 +38,7 @@ class ChannelDigestScheduler:
         digest_target_tokens: int = 5000,
         debug_channel: str = "",
         intervention_threshold: float = 0.3,
+        mention_tracker=None,
         **kwargs,
     ):
         self.store = store
@@ -52,6 +53,7 @@ class ChannelDigestScheduler:
         self.digest_target_tokens = digest_target_tokens
         self.debug_channel = debug_channel
         self.intervention_threshold = intervention_threshold
+        self.mention_tracker = mention_tracker
 
         self._timer: threading.Timer | None = None
         self._running = False
@@ -139,6 +141,7 @@ class ChannelDigestScheduler:
                     intervention_threshold=self.intervention_threshold,
                     claude_runner=runner,
                     bot_user_id=Config.BOT_USER_ID,
+                    mention_tracker=self.mention_tracker,
                 )
             )
         except Exception as e:

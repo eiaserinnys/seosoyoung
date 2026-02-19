@@ -251,6 +251,7 @@ async def run_channel_pipeline(
     llm_call: Optional[Callable] = None,
     claude_runner: Optional["ClaudeAgentRunner"] = None,
     bot_user_id: str | None = None,
+    mention_tracker=None,
     **kwargs,
 ) -> None:
     """소화/판단 분리 파이프라인을 실행합니다.
@@ -334,6 +335,26 @@ async def run_channel_pipeline(
     judged_messages = store.load_judged(channel_id)
     pending_messages = store.load_pending(channel_id)
     thread_buffers = store.load_all_thread_buffers(channel_id)
+
+    # 멘션 스레드 필터링: mention_tracker가 있으면 멘션으로 처리 중인 스레드 메시지를 제거
+    if mention_tracker:
+        pre_filter_count = len(pending_messages)
+        pending_messages = [
+            m for m in pending_messages
+            if not mention_tracker.is_handled(m.get("thread_ts", ""))
+               and not mention_tracker.is_handled(m.get("ts", ""))
+        ]
+        if thread_buffers:
+            thread_buffers = {
+                ts: msgs for ts, msgs in thread_buffers.items()
+                if not mention_tracker.is_handled(ts)
+            }
+        filtered_count = pre_filter_count - len(pending_messages)
+        if filtered_count > 0:
+            logger.info(
+                f"멘션 스레드 필터링 ({channel_id}): "
+                f"pending {filtered_count}건 제거"
+            )
 
     # 스냅샷 ts 기록
     snapshot_ts = {m.get("ts", "") for m in pending_messages if m.get("ts")}

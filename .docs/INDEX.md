@@ -18,6 +18,7 @@
 - [`handlers/actions.py`](modules/handlers_actions.md): 재시작 버튼 액션 핸들러
 - [`handlers/channel_collector.py`](modules/handlers_channel_collector.md): 채널 메시지 수집기
 - [`handlers/mention.py`](modules/handlers_mention.md): @seosoyoung 멘션 핸들러
+- [`handlers/mention_tracker.py`](modules/handlers_mention_tracker.md): 멘션으로 처리 중인 스레드를 추적
 - [`handlers/message.py`](modules/handlers_message.md): 스레드 메시지 핸들러
 - [`handlers/translate.py`](modules/handlers_translate.md): 번역 핸들러
 - [`seosoyoung/logging_config.py`](modules/seosoyoung_logging_config.md): 로깅 설정 모듈
@@ -124,7 +125,8 @@
 - `SessionRuntime` (seosoyoung/claude/session.py:223): 세션 실행 상태 관리자
 - `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
 - `Config` (seosoyoung/config.py:58): 애플리케이션 설정
-- `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:13): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
+- `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
+- `MentionTracker` (seosoyoung/handlers/mention_tracker.py:13): 멘션으로 처리 중인 스레드를 추적
 - `Settings` (seosoyoung/mcp/soul/config.py:35): 애플리케이션 설정
 - `SSEEventType` (seosoyoung/mcp/soul/models/schemas.py:13): SSE 이벤트 타입
 - `InterveneRequest` (seosoyoung/mcp/soul/models/schemas.py:24): 개입 메시지 요청 (Task API 호환)
@@ -270,11 +272,11 @@
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/main.py:151): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/main.py:162): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/main.py:173): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/main.py:193): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/main.py:203): 봇 사용자 ID 초기화
+- `notify_startup()` (seosoyoung/main.py:158): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/main.py:169): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/main.py:180): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/main.py:200): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/main.py:210): 봇 사용자 ID 초기화
 - `start_git_watcher()` (seosoyoung/mcp/server.py:46): Git watcher 백그라운드 스레드 시작.
 - `stop_git_watcher()` (seosoyoung/mcp/server.py:72): Git watcher 정지.
 - `slack_attach_file()` (seosoyoung/mcp/server.py:81): 슬랙에 파일을 첨부합니다.

@@ -192,6 +192,7 @@ def register_mention_handlers(app, dependencies: dict):
     send_restart_confirmation = dependencies["send_restart_confirmation"]
     list_runner_ref = dependencies.get("list_runner_ref", lambda: None)
     channel_store = dependencies.get("channel_store")
+    mention_tracker = dependencies.get("mention_tracker")
 
     @app.event("app_mention")
     def handle_mention(event, say, client):
@@ -265,6 +266,10 @@ def register_mention_handlers(app, dependencies: dict):
                     )
                     session = session_manager.get(thread_ts)
                     logger.info(f"개입 세션 승격: thread_ts={thread_ts}, user={user_id}, role={role}")
+
+                # 멘션 스레드를 채널 관찰자 대상에서 제외
+                if mention_tracker:
+                    mention_tracker.mark(thread_ts)
 
                 if restart_manager.is_pending:
                     say(
@@ -527,6 +532,10 @@ def register_mention_handlers(app, dependencies: dict):
             source_type=initial_ctx["source_type"],
             last_seen_ts=initial_ctx["last_seen_ts"],
         )
+
+        # 멘션 스레드를 채널 관찰자 대상에서 제외
+        if mention_tracker:
+            mention_tracker.mark(session_thread_ts)
 
         # 멘션 텍스트에서 질문 추출 (멘션 제거)
         clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()

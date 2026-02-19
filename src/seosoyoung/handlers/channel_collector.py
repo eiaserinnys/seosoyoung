@@ -3,9 +3,15 @@
 관찰 대상 채널의 메시지를 ChannelStore 버퍼에 저장합니다.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from seosoyoung.memory.channel_store import ChannelStore
+
+if TYPE_CHECKING:
+    from seosoyoung.handlers.mention_tracker import MentionTracker
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +30,55 @@ class ChannelMessageCollector:
         "pinned_item", "unpinned_item",
     }
 
-    def __init__(self, store: ChannelStore, target_channels: list[str]):
+    def __init__(
+        self,
+        store: ChannelStore,
+        target_channels: list[str],
+        mention_tracker: MentionTracker | None = None,
+        bot_user_id: str | None = None,
+    ):
         self.store = store
         self.target_channels = set(target_channels)
+        self.mention_tracker = mention_tracker
+        self._bot_user_id = bot_user_id
+
+    @property
+    def bot_user_id(self) -> str | None:
+        """봇 사용자 ID (런타임에 설정될 수 있으므로 프로퍼티로 제공)"""
+        if self._bot_user_id:
+            return self._bot_user_id
+        # Config에서 런타임에 설정된 BOT_USER_ID를 참조
+        try:
+            from seosoyoung.config import Config
+            return Config.BOT_USER_ID
+        except Exception:
+            return None
+
+    def _detect_and_mark_mention(self, text: str, ts: str, thread_ts: str | None) -> bool:
+        """메시지 텍스트에 봇 멘션이 포함되어 있으면 mention_tracker에 마킹.
+
+        Returns:
+            True: 봇 멘션이 포함된 메시지 (멘션 스레드), False: 일반 메시지
+        """
+        if not self.mention_tracker:
+            return False
+
+        bot_id = self.bot_user_id
+        if not bot_id:
+            return False
+
+        mention_tag = f"<@{bot_id}>"
+        if mention_tag not in text:
+            return False
+
+        # 봇 멘션이 포함된 메시지: 해당 스레드를 마킹
+        if thread_ts:
+            self.mention_tracker.mark(thread_ts)
+        else:
+            # 채널 루트 메시지에서 멘션: ts 자체가 스레드 루트가 됨
+            self.mention_tracker.mark(ts)
+
+        return True
 
     def collect(self, event: dict) -> bool:
         """이벤트에서 메시지를 추출하여 버퍼에 저장.
@@ -63,6 +115,20 @@ class ChannelMessageCollector:
             return False
 
         ts = source.get("ts", "") or event.get("ts", "")
+        thread_ts = source.get("thread_ts") or event.get("thread_ts")
+
+        # 봇 멘션 자동 감지 및 마킹 (Step 6: 이중 안전망)
+        self._detect_and_mark_mention(text, ts, thread_ts)
+
+        # 멘션으로 이미 처리 중인 스레드의 메시지는 수집 스킵
+        if self.mention_tracker:
+            check_ts = thread_ts or ts
+            if self.mention_tracker.is_handled(check_ts):
+                logger.debug(
+                    f"멘션 스레드 수집 스킵: channel={channel}, ts={ts}, thread_ts={thread_ts}"
+                )
+                return False
+
         bot_id = source.get("bot_id") or event.get("bot_id") or ""
         msg = {"ts": ts, "user": user, "text": text}
         if bot_id:
@@ -73,7 +139,6 @@ class ChannelMessageCollector:
                 for f in files
             ]
 
-        thread_ts = source.get("thread_ts") or event.get("thread_ts")
         # message_changed(unfurl 등)는 기존 메시지를 교체(upsert)하여 중복 방지
         is_update = subtype == "message_changed"
         if thread_ts:
