@@ -22,8 +22,6 @@ from seosoyoung.claude import get_claude_runner
 from seosoyoung.claude.session import Session, SessionManager
 from seosoyoung.claude.message_formatter import (
     escape_backticks,
-    parse_summary_details,
-    strip_summary_details_markers,
     build_trello_header,
     build_context_usage_bar,
 )
@@ -845,80 +843,34 @@ class ClaudeExecutor:
         if usage_bar:
             continuation_hint = f"{usage_bar}\n{continuation_hint}"
 
-        # 요약/상세 분리 파싱 (멘션과 동일하게 처리)
-        summary, details, remainder = parse_summary_details(response)
-        logger.info(f"[Trello] 파싱 결과 - summary: {summary is not None}, details: {details is not None}, response 길이: {len(response)}")
-        if summary:
-            logger.debug(f"[Trello] summary 내용: {summary[:100]}...")
-
-        if summary:
-            # 요약/상세 마커가 있는 경우: 메인 메시지에 요약, 스레드에 상세
-            max_summary_len = 3900 - len(header) - len(continuation_hint) - 20
-            if len(summary) <= max_summary_len:
-                final_text = f"{header}\n\n{summary}\n\n{continuation_hint}"
-            else:
-                truncated = summary[:max_summary_len]
-                final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
-
-            final_blocks = [{
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": final_text}
-            }]
-
-            if is_list_run:
-                # LIST_RUN: 삭제하면 트렐로 워처가 깨지므로 항상 chat_update만 사용
-                client.chat_update(
-                    channel=channel,
-                    ts=main_msg_ts,
-                    text=final_text,
-                    blocks=final_blocks,
-                )
-            else:
-                # 트렐로 메시지는 채널 루트이므로 thread_ts=None
-                self._replace_thinking_message(
-                    client, channel, main_msg_ts,
-                    final_text, final_blocks, thread_ts=None,
-                )
-
-            # 스레드에 상세 내용 전송 (remainder가 있으면 앞에 붙여서)
-            if details:
-                if remainder:
-                    thread_content = f"{remainder}\n\n{details}"
-                else:
-                    thread_content = details
-                self.send_long_message(say, thread_content, thread_ts)
-            elif remainder:
-                self.send_long_message(say, remainder, thread_ts)
+        max_response_len = 3900 - len(header) - len(continuation_hint) - 20
+        if len(response) <= max_response_len:
+            final_text = f"{header}\n\n{response}\n\n{continuation_hint}"
         else:
-            # 기존 로직: 마커가 없는 경우
-            max_response_len = 3900 - len(header) - len(continuation_hint) - 20
-            if len(response) <= max_response_len:
-                final_text = f"{header}\n\n{response}\n\n{continuation_hint}"
-            else:
-                truncated = response[:max_response_len]
-                final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
+            truncated = response[:max_response_len]
+            final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
 
-            final_blocks = [{
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": final_text}
-            }]
+        final_blocks = [{
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": final_text}
+        }]
 
-            if is_list_run:
-                # LIST_RUN: 삭제 방지
-                client.chat_update(
-                    channel=channel,
-                    ts=main_msg_ts,
-                    text=final_text,
-                    blocks=final_blocks,
-                )
-            else:
-                self._replace_thinking_message(
-                    client, channel, main_msg_ts,
-                    final_text, final_blocks, thread_ts=None,
-                )
+        if is_list_run:
+            # LIST_RUN: 삭제 방지
+            client.chat_update(
+                channel=channel,
+                ts=main_msg_ts,
+                text=final_text,
+                blocks=final_blocks,
+            )
+        else:
+            self._replace_thinking_message(
+                client, channel, main_msg_ts,
+                final_text, final_blocks, thread_ts=None,
+            )
 
-            if len(response) > max_response_len:
-                self.send_long_message(say, response, thread_ts)
+        if len(response) > max_response_len:
+            self.send_long_message(say, response, thread_ts)
 
     def _handle_normal_success(
         self, result, response, channel, thread_ts, msg_ts, last_msg_ts, say, client,
@@ -931,30 +883,24 @@ class ClaudeExecutor:
         if usage_bar:
             continuation_hint = f"{usage_bar}\n{continuation_hint}"
 
-        # 요약/상세 분리 파싱
-        summary, details, remainder = parse_summary_details(response)
-
         # P(사고 과정)는 항상 스레드 내에 있으므로 thread_ts를 전달
         reply_thread_ts = thread_ts
 
         if not is_thread_reply:
-            # 채널 최초 응답: P(스레드 내)를 요약으로 교체, 전문도 스레드에
+            # 채널 최초 응답: P(스레드 내)를 미리보기로 교체, 전문은 스레드에
             try:
-                if summary:
-                    channel_text = summary
-                else:
-                    # SUMMARY 마커가 없는 경우: 3줄 이내 미리보기
-                    lines = response.strip().split("\n")
-                    preview_lines = []
-                    for line in lines:
-                        preview_lines.append(line)
-                        if len(preview_lines) >= 3:
-                            break
-                    channel_text = "\n".join(preview_lines)
-                    if len(lines) > 3:
-                        channel_text += "\n..."
+                # 3줄 이내 미리보기
+                lines = response.strip().split("\n")
+                preview_lines = []
+                for line in lines:
+                    preview_lines.append(line)
+                    if len(preview_lines) >= 3:
+                        break
+                channel_text = "\n".join(preview_lines)
+                if len(lines) > 3:
+                    channel_text += "\n..."
 
-                # 스레드 내 P를 요약으로 교체
+                # 스레드 내 P를 미리보기로 교체
                 final_text = f"{channel_text}\n\n{continuation_hint}"
                 final_blocks = [{
                     "type": "section",
@@ -975,21 +921,13 @@ class ClaudeExecutor:
                     )
 
                 # 전문을 스레드에 전송
-                if summary and details:
-                    if remainder:
-                        thread_content = f"{remainder}\n\n{details}"
-                    else:
-                        thread_content = details
-                    self.send_long_message(say, thread_content, thread_ts)
-                else:
-                    full_response = strip_summary_details_markers(response)
-                    self.send_long_message(say, full_response, thread_ts)
+                self.send_long_message(say, response, thread_ts)
 
             except Exception:
                 self.send_long_message(say, response, thread_ts)
         else:
-            # 스레드 내 후속 대화: 마커가 있으면 태그만 제거하고 스레드에 응답
-            display_response = strip_summary_details_markers(response) if (summary or details) else response
+            # 스레드 내 후속 대화
+            display_response = response
             if usage_bar:
                 display_response = f"{display_response}\n\n{usage_bar}"
 

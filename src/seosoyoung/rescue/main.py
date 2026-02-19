@@ -5,7 +5,6 @@ soul 서버를 경유하지 않는 독립 경량 봇입니다.
 
 메인 봇에서 복제한 기능:
 - SessionManager 기반 세션 관리
-- SUMMARY/DETAILS 마커 파싱
 - 인터벤션 (interrupt → pending prompt → while loop)
 - on_progress 사고 과정 표시
 - on_compact 컴팩션 알림
@@ -32,8 +31,6 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from seosoyoung.rescue.config import RescueConfig
 from seosoyoung.rescue.message_formatter import (
     escape_backticks,
-    parse_summary_details,
-    strip_summary_details_markers,
     build_context_usage_bar,
 )
 from seosoyoung.rescue.runner import get_runner, RescueResult
@@ -413,29 +410,23 @@ class RescueBotApp:
         # 컨텍스트 사용량 바
         usage_bar = build_context_usage_bar(result.usage)
 
-        # 요약/상세 분리 파싱
-        summary, details, remainder = parse_summary_details(response)
-
         continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
         if usage_bar:
             continuation_hint = f"{usage_bar}\n{continuation_hint}"
 
         if not is_thread_reply:
-            # 채널 최초 응답: P(사고 과정)를 요약으로 교체, 전문은 스레드에
+            # 채널 최초 응답: P(사고 과정)를 미리보기로 교체, 전문은 스레드에
             try:
-                if summary:
-                    channel_text = summary
-                else:
-                    # SUMMARY 마커가 없는 경우: 3줄 이내 미리보기
-                    lines = response.strip().split("\n")
-                    preview_lines = []
-                    for line in lines:
-                        preview_lines.append(line)
-                        if len(preview_lines) >= 3:
-                            break
-                    channel_text = "\n".join(preview_lines)
-                    if len(lines) > 3:
-                        channel_text += "\n..."
+                # 3줄 이내 미리보기
+                lines = response.strip().split("\n")
+                preview_lines = []
+                for line in lines:
+                    preview_lines.append(line)
+                    if len(preview_lines) >= 3:
+                        break
+                channel_text = "\n".join(preview_lines)
+                if len(lines) > 3:
+                    channel_text += "\n..."
 
                 final_text = f"{channel_text}\n\n{continuation_hint}"
                 final_blocks = [{
@@ -450,18 +441,13 @@ class RescueBotApp:
                 )
 
                 # 전문을 스레드에 전송
-                if summary and details:
-                    thread_content = f"{remainder}\n\n{details}" if remainder else details
-                    self._send_long_message(say, thread_content, thread_ts)
-                else:
-                    full_response = strip_summary_details_markers(response)
-                    self._send_long_message(say, full_response, thread_ts)
+                self._send_long_message(say, response, thread_ts)
 
             except Exception:
                 self._send_long_message(say, response, thread_ts)
         else:
-            # 스레드 내 후속 대화: 마커가 있으면 태그만 제거
-            display_response = strip_summary_details_markers(response) if (summary or details) else response
+            # 스레드 내 후속 대화
+            display_response = response
             if usage_bar:
                 display_response = f"{display_response}\n\n{usage_bar}"
 
