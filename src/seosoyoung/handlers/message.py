@@ -1,4 +1,4 @@
-"""스레드 메시지 핸들러"""
+"""스레드 메시지 핸들러 + DM 채널 핸들러"""
 
 import re
 import logging
@@ -139,6 +139,78 @@ def _contains_bot_mention(text: str) -> bool:
     return f"<@{Config.BOT_USER_ID}>" in text
 
 
+def _handle_dm_message(event, say, client, dependencies):
+    """DM 채널 메시지 처리
+
+    앱 DM에서 보낸 메시지를 일반 채널 멘션과 동일하게 처리합니다.
+    - 첫 메시지 (thread_ts 없음): 명령어 처리 또는 세션 생성 + Claude 실행
+    - 스레드 메시지 (thread_ts 있음): 기존 세션에서 후속 처리
+    """
+    from seosoyoung.handlers.mention import (
+        extract_command,
+        try_handle_command,
+        create_session_and_run_claude,
+    )
+
+    session_manager = dependencies["session_manager"]
+    restart_manager = dependencies["restart_manager"]
+    run_claude_in_session = dependencies["run_claude_in_session"]
+    get_user_role = dependencies["get_user_role"]
+    channel_store = dependencies.get("channel_store")
+
+    # subtype이 있으면 무시 (message_changed, message_deleted 등)
+    if event.get("subtype"):
+        return
+
+    text = event.get("text", "")
+    thread_ts = event.get("thread_ts")
+    ts = event["ts"]
+    channel = event["channel"]
+    user_id = event["user"]
+
+    # 스레드 메시지: 기존 세션에서 후속 처리
+    if thread_ts:
+        session = session_manager.get(thread_ts)
+        if not session:
+            return
+
+        if restart_manager.is_pending:
+            say(
+                text="재시작을 대기하는 중입니다.\n재시작이 완료되면 다시 대화를 요청해주세요.",
+                thread_ts=thread_ts
+            )
+            return
+
+        process_thread_message(
+            event, text, thread_ts, ts, channel, session, say, client,
+            get_user_role, run_claude_in_session, log_prefix="DM 메시지",
+            channel_store=channel_store, session_manager=session_manager,
+        )
+        return
+
+    # 첫 메시지: 명령어 또는 질문
+    clean_text = text.strip()
+    if not clean_text and not event.get("files"):
+        return
+
+    command = clean_text.lower()
+
+    logger.info(f"DM 수신: user={user_id}, text={clean_text[:50]}")
+
+    # 명령어 처리 (공유 함수)
+    if try_handle_command(
+        command, text, channel, ts, None, user_id,
+        say, client, dependencies,
+    ):
+        return
+
+    # 일반 질문: 세션 생성 + Claude 실행 (공유 함수)
+    create_session_and_run_claude(
+        event, clean_text, channel, ts, None, user_id,
+        say, client, dependencies,
+    )
+
+
 def register_message_handlers(app, dependencies: dict):
     """메시지 핸들러 등록
 
@@ -159,10 +231,10 @@ def register_message_handlers(app, dependencies: dict):
 
     @app.event("message")
     def handle_message(event, say, client):
-        """스레드 메시지 처리
+        """스레드 메시지 + DM 메시지 처리
 
-        세션이 있는 스레드 내 일반 메시지를 처리합니다.
-        (멘션 없이 스레드에 작성된 메시지)
+        - 채널 스레드: 세션이 있는 스레드 내 일반 메시지를 처리
+        - DM 채널: 앱 DM에서 보낸 메시지를 멘션과 동일하게 처리
         """
         # 채널 관찰 수집 (봇 메시지 포함이므로 bot_id 체크보다 먼저)
         if channel_collector:
@@ -191,6 +263,12 @@ def register_message_handlers(app, dependencies: dict):
 
         channel = event.get("channel")
         text = event.get("text", "")
+
+        # DM 채널 메시지 → 전용 핸들러로 라우팅
+        channel_type = event.get("channel_type", "")
+        if channel_type == "im":
+            _handle_dm_message(event, say, client, dependencies)
+            return
 
         # 번역 채널인 경우: 멘션이 없으면 번역, 멘션이 있으면 기존 로직 (handle_mention에서 처리)
         if channel in Config.TRANSLATE_CHANNELS:

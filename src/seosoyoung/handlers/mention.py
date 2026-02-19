@@ -1,4 +1,7 @@
-"""@seosoyoung 멘션 핸들러"""
+"""@seosoyoung 멘션 핸들러
+
+멘션 이벤트 처리 및 DM 채널에서 공유하는 명령어/세션 생성 함수를 제공합니다.
+"""
 
 import asyncio
 import os
@@ -176,6 +179,392 @@ def get_channel_history(client, channel: str, limit: int = 20) -> str:
     return _format_context_messages(_get_channel_messages(client, channel, limit))
 
 
+def try_handle_command(
+    command: str,
+    text: str,
+    channel: str,
+    ts: str,
+    thread_ts: str | None,
+    user_id: str,
+    say,
+    client,
+    deps: dict,
+) -> bool:
+    """명령어 라우팅. 처리했으면 True, 아니면 False 반환.
+
+    handle_mention과 DM 핸들러에서 공유합니다.
+
+    Args:
+        command: 소문자로 정규화된 명령어 문자열
+        text: 원본 텍스트 (번역용)
+        channel: 채널 ID
+        ts: 메시지 타임스탬프
+        thread_ts: 스레드 타임스탬프 (없으면 None)
+        user_id: 사용자 ID
+        say: 응답 함수
+        client: Slack 클라이언트
+        deps: 의존성 딕셔너리
+    """
+    session_manager = deps["session_manager"]
+    restart_manager = deps["restart_manager"]
+    check_permission = deps["check_permission"]
+    get_running_session_count = deps["get_running_session_count"]
+    send_restart_confirmation = deps["send_restart_confirmation"]
+    list_runner_ref = deps.get("list_runner_ref", lambda: None)
+
+    admin_commands = ["help", "status", "update", "restart", "compact", "profile"]
+    is_admin_command = command in admin_commands or command.startswith("profile ")
+
+    # 정주행 재개 명령어
+    if _is_resume_list_run_command(command):
+        list_runner = list_runner_ref()
+        if not list_runner:
+            say(text="리스트 러너가 초기화되지 않았습니다.", thread_ts=ts)
+            return True
+        paused_sessions = list_runner.get_paused_sessions()
+        if not paused_sessions:
+            say(text="현재 중단된 정주행 세션이 없습니다.", thread_ts=ts)
+            return True
+        session_to_resume = paused_sessions[-1]
+        if list_runner.resume_run(session_to_resume.session_id):
+            say(
+                text=(
+                    f"✅ *정주행 재개*\n"
+                    f"• 리스트: {session_to_resume.list_name}\n"
+                    f"• 세션 ID: {session_to_resume.session_id}\n"
+                    f"• 진행률: {session_to_resume.current_index}/{len(session_to_resume.card_ids)} 카드"
+                ),
+                thread_ts=ts
+            )
+        else:
+            say(text="정주행 재개에 실패했습니다.", thread_ts=ts)
+        return True
+
+    # 재시작 대기 중이면 관리자 명령어 외에는 안내 메시지
+    if restart_manager.is_pending and not is_admin_command:
+        say(
+            text="재시작을 대기하는 중입니다.\n재시작이 완료되면 다시 대화를 요청해주세요.",
+            thread_ts=ts
+        )
+        return True
+
+    if command == "help":
+        say(
+            text=(
+                "📖 *사용법*\n"
+                "• `@seosoyoung <질문>` - 질문하기 (세션 생성 + 응답)\n"
+                "• `@seosoyoung 번역 <텍스트>` - 번역 테스트\n"
+                "• `@seosoyoung help` - 도움말\n"
+                "• `@seosoyoung status` - 상태 확인\n"
+                "• `@seosoyoung compact` - 스레드 세션 컴팩트\n"
+                "• `@seosoyoung profile` - 인증 프로필 관리 (관리자)\n"
+                "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
+                "• `@seosoyoung restart` - 봇 재시작 (관리자)"
+            ),
+            thread_ts=ts
+        )
+        return True
+
+    if command == "status":
+        say(
+            text=(
+                f"📊 *상태*\n"
+                f"• 작업 폴더: `{Path.cwd()}`\n"
+                f"• 관리자: {', '.join(Config.ADMIN_USERS)}\n"
+                f"• 활성 세션: {session_manager.count()}개\n"
+                f"• 디버그 모드: {Config.DEBUG}"
+            )
+        )
+        return True
+
+    # 번역 테스트 명령어
+    if command.startswith("번역 ") or command.startswith("번역\n"):
+        translate_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+        translate_text = re.sub(r"^번역[\s\n]+", "", translate_text, flags=re.IGNORECASE).strip()
+        if not translate_text:
+            say(text="번역할 텍스트를 입력해주세요.\n예: `@seosoyoung 번역 Hello, world!`", thread_ts=ts)
+            return True
+        try:
+            client.reactions_add(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
+            source_lang = detect_language(translate_text)
+            translated, cost, glossary_terms, _ = translate(translate_text, source_lang)
+            target_lang = "영어" if source_lang.value == "ko" else "한국어"
+            lines = [
+                f"*번역 결과* ({source_lang.value} → {target_lang})",
+                f"```{translated}```",
+                f"`💵 ${cost:.4f}`"
+            ]
+            if glossary_terms:
+                terms_str = ", ".join(f"{s}→{t}" for s, t in glossary_terms[:5])
+                if len(glossary_terms) > 5:
+                    terms_str += f" 외 {len(glossary_terms) - 5}개"
+                lines.append(f"`📖 {terms_str}`")
+            say(text="\n".join(lines), thread_ts=ts)
+            client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
+            client.reactions_add(channel=channel, timestamp=ts, name=Config.EMOJI_TRANSLATE_DONE)
+        except Exception as e:
+            logger.exception(f"번역 테스트 실패: {e}")
+            try:
+                client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
+            except Exception:
+                pass
+            say(text=f"번역 실패: `{e}`", thread_ts=ts)
+        return True
+
+    if command in ["update", "restart"]:
+        if not check_permission(user_id, client):
+            logger.warning(f"권한 없음: user={user_id}")
+            say(text="관리자 권한이 필요합니다.", thread_ts=ts)
+            return True
+        restart_type = RestartType.UPDATE if command == "update" else RestartType.RESTART
+        running_count = get_running_session_count()
+        if running_count > 0:
+            send_restart_confirmation(
+                client=client,
+                channel=Config.TRELLO_NOTIFY_CHANNEL,
+                restart_type=restart_type,
+                running_count=running_count,
+                user_id=user_id,
+                original_thread_ts=ts
+            )
+            return True
+        type_name = "업데이트" if command == "update" else "재시작"
+        logger.info(f"{type_name} 요청 - 프로세스 종료")
+        restart_manager.force_restart(restart_type)
+        return True
+
+    if command == "compact":
+        if not thread_ts:
+            say(text="스레드에서 사용해주세요.", thread_ts=ts)
+            return True
+        session = session_manager.get(thread_ts)
+        if not session or not session.session_id:
+            say(text="활성 세션이 없습니다.", thread_ts=thread_ts)
+            return True
+        say(text="컴팩트 중입니다...", thread_ts=thread_ts)
+        try:
+            from seosoyoung.claude import get_claude_runner
+            runner = get_claude_runner()
+            compact_result = asyncio.run(runner.compact_session(session.session_id))
+            if compact_result.success:
+                if compact_result.session_id:
+                    session_manager.update_session_id(thread_ts, compact_result.session_id)
+                say(text="컴팩트가 완료됐습니다.", thread_ts=thread_ts)
+            else:
+                say(text=f"컴팩트에 실패했습니다: {compact_result.error}", thread_ts=thread_ts)
+        except Exception as e:
+            logger.exception(f"compact 명령어 오류: {e}")
+            say(text=f"컴팩트 중 오류가 발생했습니다: {e}", thread_ts=thread_ts)
+        return True
+
+    if command.startswith("profile"):
+        if not check_permission(user_id, client):
+            logger.warning(f"profile 권한 없음: user={user_id}")
+            say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts)
+            return True
+        from seosoyoung.profile.manager import ProfileManager
+        profiles_dir = Path.cwd() / ".local" / "claude_profiles"
+        claude_config_dir = Path.home() / ".claude"
+        manager = ProfileManager(profiles_dir=profiles_dir)
+        parts = command.split()
+        subcmd = parts[1] if len(parts) > 1 else None
+        arg = parts[2] if len(parts) > 2 else None
+        reply_ts = thread_ts
+        try:
+            if subcmd == "list":
+                profiles = manager.list_profiles()
+                if not profiles:
+                    say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
+                else:
+                    lines = ["*📋 프로필 목록*"]
+                    for p in profiles:
+                        marker = "✅ " if p.is_active else "• "
+                        lines.append(f"{marker}`{p.name}`")
+                    say(text="\n".join(lines), thread_ts=reply_ts)
+            elif subcmd == "save":
+                if not arg:
+                    say(text="저장할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile save work`", thread_ts=reply_ts)
+                else:
+                    result = manager.save_profile(arg, claude_config_dir)
+                    say(text=f"✅ {result}", thread_ts=reply_ts)
+            elif subcmd == "change":
+                if not arg:
+                    say(text="전환할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile change work`", thread_ts=reply_ts)
+                else:
+                    result = manager.change_profile(arg)
+                    say(text=f"🔄 {result}", thread_ts=reply_ts)
+            elif subcmd == "delete":
+                if not arg:
+                    say(text="삭제할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile delete work`", thread_ts=reply_ts)
+                else:
+                    result = manager.delete_profile(arg)
+                    say(text=f"🗑️ {result}", thread_ts=reply_ts)
+            else:
+                say(
+                    text=(
+                        "📁 *profile 명령어 사용법*\n"
+                        "• `profile list` - 저장된 프로필 목록\n"
+                        "• `profile save <이름>` - 현재 인증을 프로필로 저장\n"
+                        "• `profile change <이름>` - 프로필로 전환 (재시작 후 적용)\n"
+                        "• `profile delete <이름>` - 프로필 삭제"
+                    ),
+                    thread_ts=reply_ts
+                )
+        except (ValueError, FileNotFoundError, FileExistsError) as e:
+            say(text=f"❌ {e}", thread_ts=reply_ts)
+        except Exception as e:
+            logger.exception(f"profile 명령어 오류: {e}")
+            say(text=f"❌ 오류가 발생했습니다: {e}", thread_ts=reply_ts)
+        return True
+
+    return False
+
+
+def create_session_and_run_claude(
+    event: dict,
+    clean_text: str,
+    channel: str,
+    ts: str,
+    thread_ts: str | None,
+    user_id: str,
+    say,
+    client,
+    deps: dict,
+) -> None:
+    """세션 생성 + 컨텍스트 빌드 + Claude 실행.
+
+    handle_mention과 DM 핸들러에서 공유합니다.
+
+    Args:
+        event: Slack 이벤트 딕셔너리
+        clean_text: 멘션이 제거된 깨끗한 텍스트
+        channel: 채널 ID
+        ts: 메시지 타임스탬프
+        thread_ts: 스레드 타임스탬프 (없으면 None)
+        user_id: 사용자 ID
+        say: 응답 함수
+        client: Slack 클라이언트
+        deps: 의존성 딕셔너리
+    """
+    session_manager = deps["session_manager"]
+    run_claude_in_session = deps["run_claude_in_session"]
+    get_user_role = deps["get_user_role"]
+    channel_store = deps.get("channel_store")
+    mention_tracker = deps.get("mention_tracker")
+
+    user_info = get_user_role(user_id, client)
+    if not user_info:
+        say(text="사용자 정보를 확인할 수 없습니다.", thread_ts=thread_ts or ts)
+        return
+
+    session_thread_ts = thread_ts or ts
+    is_existing_thread = thread_ts is not None
+
+    # 채널 컨텍스트 구성
+    slack_messages = _get_channel_messages(client, channel, limit=20)
+    initial_ctx = build_initial_context(
+        channel_id=channel,
+        slack_messages=slack_messages,
+        monitored_channels=Config.CHANNEL_OBSERVER_CHANNELS,
+        channel_store=channel_store,
+    )
+
+    # 세션 생성
+    session = session_manager.create(
+        thread_ts=session_thread_ts,
+        channel_id=channel,
+        user_id=user_id,
+        username=user_info["username"],
+        role=user_info["role"],
+        source_type=initial_ctx["source_type"],
+        last_seen_ts=initial_ctx["last_seen_ts"],
+    )
+
+    # 멘션 스레드를 채널 관찰자 대상에서 제외
+    if mention_tracker:
+        mention_tracker.mark(session_thread_ts)
+
+    # 첨부 파일 처리
+    file_context = ""
+    if event.get("files"):
+        try:
+            downloaded_files = download_files_sync(event, session_thread_ts)
+            if downloaded_files:
+                file_context = build_file_context(downloaded_files)
+                logger.info(f"파일 {len(downloaded_files)}개 다운로드 완료")
+        except Exception as e:
+            logger.error(f"파일 다운로드 실패: {e}")
+
+    if not clean_text and not file_context:
+        logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")
+        return
+
+    # 초기 메시지 표시
+    initial_text = "> 소영이 생각합니다..."
+    initial_msg = client.chat_postMessage(
+        channel=channel,
+        thread_ts=session_thread_ts,
+        text=initial_text,
+        blocks=[{
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": initial_text}
+        }]
+    )
+    initial_msg_ts = initial_msg["ts"]
+
+    # Recall 실행
+    recall_result = None
+    if Config.RECALL_ENABLED and clean_text:
+        recall_result = _run_recall(clean_text)
+        if recall_result and recall_result.suitable_tools:
+            recall_debug_lines = ["*🔍 Recall 결과*", ""]
+            for tool_info in recall_result.suitable_tools:
+                recall_debug_lines.append(f"*{tool_info['name']}* ({tool_info['type']}) - {tool_info['score']}점")
+                if tool_info.get('approach'):
+                    recall_debug_lines.append(f"> {tool_info['approach']}")
+                if tool_info.get('reason'):
+                    for line in tool_info['reason'].split('\n'):
+                        if line.strip():
+                            recall_debug_lines.append(f"> {line}")
+                recall_debug_lines.append("")
+            recall_debug_lines.append(f"`⏱️ {recall_result.evaluation_time_ms:.0f}ms`")
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=session_thread_ts,
+                text="\n".join(recall_debug_lines),
+            )
+
+    # 채널 컨텍스트 포맷팅
+    context = format_hybrid_context(
+        initial_ctx["messages"], initial_ctx["source_type"]
+    )
+
+    # 슬랙 컨텍스트 생성
+    slack_ctx = build_slack_context(
+        channel=channel,
+        user_id=user_id,
+        thread_ts=ts,
+        parent_thread_ts=thread_ts,
+    )
+
+    # 프롬프트 구성
+    prompt = build_prompt_with_recall(
+        context=context,
+        question=clean_text,
+        file_context=file_context,
+        recall_result=recall_result,
+        slack_context=slack_ctx,
+    )
+
+    # Claude 실행
+    run_claude_in_session(
+        session, prompt, ts, channel, say, client,
+        is_existing_thread=is_existing_thread,
+        initial_msg_ts=initial_msg_ts,
+        user_message=clean_text,
+    )
+
+
 def register_mention_handlers(app, dependencies: dict):
     """멘션 핸들러 등록
 
@@ -222,34 +611,6 @@ def register_mention_handlers(app, dependencies: dict):
         admin_commands = ["help", "status", "update", "restart", "compact", "profile"]
         is_admin_command = command in admin_commands or command.startswith("profile ")
 
-        # 정주행 재개 명령어 처리
-        if _is_resume_list_run_command(command):
-            list_runner = list_runner_ref()
-            if not list_runner:
-                say(text="리스트 러너가 초기화되지 않았습니다.", thread_ts=ts)
-                return
-
-            paused_sessions = list_runner.get_paused_sessions()
-            if not paused_sessions:
-                say(text="현재 중단된 정주행 세션이 없습니다.", thread_ts=ts)
-                return
-
-            # 가장 최근 중단된 세션 재개
-            session_to_resume = paused_sessions[-1]
-            if list_runner.resume_run(session_to_resume.session_id):
-                say(
-                    text=(
-                        f"✅ *정주행 재개*\n"
-                        f"• 리스트: {session_to_resume.list_name}\n"
-                        f"• 세션 ID: {session_to_resume.session_id}\n"
-                        f"• 진행률: {session_to_resume.current_index}/{len(session_to_resume.card_ids)} 카드"
-                    ),
-                    thread_ts=ts
-                )
-            else:
-                say(text="정주행 재개에 실패했습니다.", thread_ts=ts)
-            return
-
         # 스레드에서 멘션된 경우 (관리자 명령어가 아닐 때만 세션 체크)
         if thread_ts and not is_admin_command:
             session = session_manager.get(thread_ts)
@@ -288,354 +649,16 @@ def register_mention_handlers(app, dependencies: dict):
 
         logger.info(f"명령어 처리: command={command}")
 
-        # 재시작 대기 중이면 안내 메시지 (관리자 명령어 제외)
-        if restart_manager.is_pending and not is_admin_command:
-            say(
-                text="재시작을 대기하는 중입니다.\n재시작이 완료되면 다시 대화를 요청해주세요.",
-                thread_ts=ts
-            )
+        # 명령어 처리 (공유 함수 사용)
+        if try_handle_command(
+            command, text, channel, ts, thread_ts, user_id,
+            say, client, dependencies,
+        ):
             return
 
-        # 관리자 명령어 처리
-        if command == "help":
-            say(
-                text=(
-                    "📖 *사용법*\n"
-                    "• `@seosoyoung <질문>` - 질문하기 (세션 생성 + 응답)\n"
-                    "• `@seosoyoung 번역 <텍스트>` - 번역 테스트\n"
-                    "• `@seosoyoung help` - 도움말\n"
-                    "• `@seosoyoung status` - 상태 확인\n"
-                    "• `@seosoyoung compact` - 스레드 세션 컴팩트\n"
-                    "• `@seosoyoung profile` - 인증 프로필 관리 (관리자)\n"
-                    "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
-                    "• `@seosoyoung restart` - 봇 재시작 (관리자)"
-                ),
-                thread_ts=ts
-            )
-            return
-
-        if command == "status":
-            say(
-                text=(
-                    f"📊 *상태*\n"
-                    f"• 작업 폴더: `{Path.cwd()}`\n"
-                    f"• 관리자: {', '.join(Config.ADMIN_USERS)}\n"
-                    f"• 활성 세션: {session_manager.count()}개\n"
-                    f"• 디버그 모드: {Config.DEBUG}"
-                )
-            )
-            return
-
-        # 번역 테스트 명령어
-        if command.startswith("번역 ") or command.startswith("번역\n"):
-            translate_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
-            # "번역 " 또는 "번역\n" 제거
-            translate_text = re.sub(r"^번역[\s\n]+", "", translate_text, flags=re.IGNORECASE).strip()
-
-            if not translate_text:
-                say(text="번역할 텍스트를 입력해주세요.\n예: `@seosoyoung 번역 Hello, world!`", thread_ts=ts)
-                return
-
-            try:
-                # 번역 진행 중 리액션
-                client.reactions_add(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
-
-                source_lang = detect_language(translate_text)
-                translated, cost, glossary_terms, _ = translate(translate_text, source_lang)
-
-                target_lang = "영어" if source_lang.value == "ko" else "한국어"
-
-                # 응답 구성
-                lines = [
-                    f"*번역 결과* ({source_lang.value} → {target_lang})",
-                    f"```{translated}```",
-                    f"`💵 ${cost:.4f}`"
-                ]
-                if glossary_terms:
-                    terms_str = ", ".join(f"{s}→{t}" for s, t in glossary_terms[:5])
-                    if len(glossary_terms) > 5:
-                        terms_str += f" 외 {len(glossary_terms) - 5}개"
-                    lines.append(f"`📖 {terms_str}`")
-
-                say(text="\n".join(lines), thread_ts=ts)
-
-                # 완료 리액션
-                client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
-                client.reactions_add(channel=channel, timestamp=ts, name=Config.EMOJI_TRANSLATE_DONE)
-
-            except Exception as e:
-                logger.exception(f"번역 테스트 실패: {e}")
-                try:
-                    client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
-                except Exception:
-                    pass
-                say(text=f"번역 실패: `{e}`", thread_ts=ts)
-            return
-
-        if command in ["update", "restart"]:
-            if not check_permission(user_id, client):
-                logger.warning(f"권한 없음: user={user_id}")
-                say(text="관리자 권한이 필요합니다.", thread_ts=ts)
-                return
-
-            restart_type = RestartType.UPDATE if command == "update" else RestartType.RESTART
-
-            # 실행 중인 세션이 있으면 확인 프로세스
-            running_count = get_running_session_count()
-            if running_count > 0:
-                send_restart_confirmation(
-                    client=client,
-                    channel=Config.TRELLO_NOTIFY_CHANNEL,
-                    restart_type=restart_type,
-                    running_count=running_count,
-                    user_id=user_id,
-                    original_thread_ts=ts
-                )
-                return
-
-            # 실행 중인 세션이 없으면 즉시 재시작
-            type_name = "업데이트" if command == "update" else "재시작"
-            logger.info(f"{type_name} 요청 - 프로세스 종료")
-            restart_manager.force_restart(restart_type)
-            return
-
-        # compact 명령어 처리
-        if command == "compact":
-            if not thread_ts:
-                say(text="스레드에서 사용해주세요.", thread_ts=ts)
-                return
-
-            session = session_manager.get(thread_ts)
-            if not session or not session.session_id:
-                say(text="활성 세션이 없습니다.", thread_ts=thread_ts)
-                return
-
-            say(text="컴팩트 중입니다...", thread_ts=thread_ts)
-
-            try:
-                from seosoyoung.claude import get_claude_runner
-
-                runner = get_claude_runner()
-                compact_result = asyncio.run(runner.compact_session(session.session_id))
-
-                if compact_result.success:
-                    if compact_result.session_id:
-                        session_manager.update_session_id(thread_ts, compact_result.session_id)
-                    say(text="컴팩트가 완료됐습니다.", thread_ts=thread_ts)
-                else:
-                    say(text=f"컴팩트에 실패했습니다: {compact_result.error}", thread_ts=thread_ts)
-            except Exception as e:
-                logger.exception(f"compact 명령어 오류: {e}")
-                say(text=f"컴팩트 중 오류가 발생했습니다: {e}", thread_ts=thread_ts)
-            return
-
-        # profile 명령어 처리
-        if command.startswith("profile"):
-            if not check_permission(user_id, client):
-                logger.warning(f"profile 권한 없음: user={user_id}")
-                say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts)
-                return
-
-            from seosoyoung.profile.manager import ProfileManager
-
-            # 프로필 경로 설정 (CLAUDE_CONFIG_DIR + Junction 방식)
-            profiles_dir = Path.cwd() / ".local" / "claude_profiles"
-            claude_config_dir = Path.home() / ".claude"
-            manager = ProfileManager(profiles_dir=profiles_dir)
-
-            # 서브커맨드 파싱
-            parts = command.split()
-            subcmd = parts[1] if len(parts) > 1 else None
-            arg = parts[2] if len(parts) > 2 else None
-
-            # 응답 위치: 스레드에서 호출했으면 스레드, 채널에서 호출했으면 채널
-            reply_ts = thread_ts
-
-            try:
-                if subcmd == "list":
-                    profiles = manager.list_profiles()
-                    if not profiles:
-                        say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
-                    else:
-                        lines = ["*📋 프로필 목록*"]
-                        for p in profiles:
-                            marker = "✅ " if p.is_active else "• "
-                            lines.append(f"{marker}`{p.name}`")
-                        say(text="\n".join(lines), thread_ts=reply_ts)
-
-                elif subcmd == "save":
-                    if not arg:
-                        say(text="저장할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile save work`", thread_ts=reply_ts)
-                    else:
-                        result = manager.save_profile(arg, claude_config_dir)
-                        say(text=f"✅ {result}", thread_ts=reply_ts)
-
-                elif subcmd == "change":
-                    if not arg:
-                        say(text="전환할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile change work`", thread_ts=reply_ts)
-                    else:
-                        result = manager.change_profile(arg)
-                        say(text=f"🔄 {result}", thread_ts=reply_ts)
-
-                elif subcmd == "delete":
-                    if not arg:
-                        say(text="삭제할 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile delete work`", thread_ts=reply_ts)
-                    else:
-                        result = manager.delete_profile(arg)
-                        say(text=f"🗑️ {result}", thread_ts=reply_ts)
-
-                else:
-                    say(
-                        text=(
-                            "📁 *profile 명령어 사용법*\n"
-                            "• `profile list` - 저장된 프로필 목록\n"
-                            "• `profile save <이름>` - 현재 인증을 프로필로 저장\n"
-                            "• `profile change <이름>` - 프로필로 전환 (재시작 후 적용)\n"
-                            "• `profile delete <이름>` - 프로필 삭제"
-                        ),
-                        thread_ts=reply_ts
-                    )
-
-            except (ValueError, FileNotFoundError, FileExistsError) as e:
-                say(text=f"❌ {e}", thread_ts=reply_ts)
-            except Exception as e:
-                logger.exception(f"profile 명령어 오류: {e}")
-                say(text=f"❌ 오류가 발생했습니다: {e}", thread_ts=reply_ts)
-            return
-
-        # 일반 질문: 세션 생성 + Claude 실행
-        user_info = get_user_role(user_id, client)
-        if not user_info:
-            say(text="사용자 정보를 확인할 수 없습니다.", thread_ts=thread_ts or ts)
-            return
-
-        # 세션 생성 위치 결정
-        session_thread_ts = thread_ts or ts
-        is_existing_thread = thread_ts is not None  # 기존 스레드에서 호출됨
-
-        # 채널 컨텍스트 구성 (세션 생성 전)
-        slack_messages = _get_channel_messages(client, channel, limit=20)
-        initial_ctx = build_initial_context(
-            channel_id=channel,
-            slack_messages=slack_messages,
-            monitored_channels=Config.CHANNEL_OBSERVER_CHANNELS,
-            channel_store=channel_store,
-        )
-
-        # 세션 생성 (역할 + 컨텍스트 정보 포함)
-        session = session_manager.create(
-            thread_ts=session_thread_ts,
-            channel_id=channel,
-            user_id=user_id,
-            username=user_info["username"],
-            role=user_info["role"],
-            source_type=initial_ctx["source_type"],
-            last_seen_ts=initial_ctx["last_seen_ts"],
-        )
-
-        # 멘션 스레드를 채널 관찰자 대상에서 제외
-        if mention_tracker:
-            mention_tracker.mark(session_thread_ts)
-
-        # 멘션 텍스트에서 질문 추출 (멘션 제거)
+        # 일반 질문: 세션 생성 + Claude 실행 (공유 함수 사용)
         clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
-
-        # 첨부 파일 처리
-        file_context = ""
-        if event.get("files"):
-            try:
-                downloaded_files = download_files_sync(event, session_thread_ts)
-                if downloaded_files:
-                    file_context = build_file_context(downloaded_files)
-                    logger.info(f"파일 {len(downloaded_files)}개 다운로드 완료")
-            except Exception as e:
-                logger.error(f"파일 다운로드 실패: {e}")
-
-        if not clean_text and not file_context:
-            logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")
-            return
-
-        # 초기 메시지 표시 (리콜 시작 전) - blockquote 형태
-        initial_text = "> 소영이 생각합니다..."
-        if is_existing_thread:
-            # 스레드 내 후속 대화: 해당 스레드에 응답
-            initial_msg = client.chat_postMessage(
-                channel=channel,
-                thread_ts=session_thread_ts,
-                text=initial_text,
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": initial_text}
-                }]
-            )
-            initial_msg_ts = initial_msg["ts"]
-        else:
-            # 채널에서 최초 멘션: M(멘션 메시지)의 스레드에 답글
-            initial_msg = client.chat_postMessage(
-                channel=channel,
-                thread_ts=session_thread_ts,
-                text=initial_text,
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": initial_text}
-                }]
-            )
-            initial_msg_ts = initial_msg["ts"]
-
-        # Recall 실행 (활성화된 경우)
-        recall_result = None
-        if Config.RECALL_ENABLED and clean_text:
-            recall_result = _run_recall(clean_text)
-
-            # 디버깅용: Recall 결과를 M(멘션 메시지)의 스레드에 답글
-            # P(사고 과정)에 스레드를 달지 않기 위해 session_thread_ts(=M의 ts)를 사용
-            if recall_result and recall_result.suitable_tools:
-                recall_debug_lines = ["*🔍 Recall 결과*", ""]
-                for tool_info in recall_result.suitable_tools:
-                    recall_debug_lines.append(f"*{tool_info['name']}* ({tool_info['type']}) - {tool_info['score']}점")
-                    if tool_info.get('approach'):
-                        recall_debug_lines.append(f"> {tool_info['approach']}")
-                    if tool_info.get('reason'):
-                        # reason의 각 줄을 blockquote로
-                        for line in tool_info['reason'].split('\n'):
-                            if line.strip():
-                                recall_debug_lines.append(f"> {line}")
-                    recall_debug_lines.append("")
-
-                recall_debug_lines.append(f"`⏱️ {recall_result.evaluation_time_ms:.0f}ms`")
-
-                client.chat_postMessage(
-                    channel=channel,
-                    thread_ts=session_thread_ts,
-                    text="\n".join(recall_debug_lines),
-                )
-
-        # 채널 컨텍스트 포맷팅 (hybrid 세션이면 출처 명시 헤더 포함)
-        context = format_hybrid_context(
-            initial_ctx["messages"], initial_ctx["source_type"]
-        )
-
-        # 슬랙 컨텍스트 생성
-        slack_ctx = build_slack_context(
-            channel=channel,
-            user_id=user_id,
-            thread_ts=ts,
-            parent_thread_ts=thread_ts,
-        )
-
-        # 프롬프트 구성 (Recall 결과 + 슬랙 컨텍스트 포함)
-        prompt = build_prompt_with_recall(
-            context=context,
-            question=clean_text,
-            file_context=file_context,
-            recall_result=recall_result,
-            slack_context=slack_ctx,
-        )
-
-        # Claude 실행 (스레드 락으로 동시 실행 방지)
-        run_claude_in_session(
-            session, prompt, ts, channel, say, client,
-            is_existing_thread=is_existing_thread,
-            initial_msg_ts=initial_msg_ts,
-            user_message=clean_text,
+        create_session_and_run_claude(
+            event, clean_text, channel, ts, thread_ts, user_id,
+            say, client, dependencies,
         )
