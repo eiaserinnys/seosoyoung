@@ -232,6 +232,82 @@ class TestTrelloWatcherTrackedCardLookup:
         assert "기능 구현 작업" in prompt
         assert "card123" in prompt
         assert "https://trello.com/c/abc123" in prompt
+        assert "이미 워처에 의해 🔨 In Progress로 이동되었습니다" in prompt
+
+
+class TestAutoMoveNoticeInPrompts:
+    """프롬프트에 카드 자동 이동 안내가 포함되는지 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_to_go_execute_prompt_has_auto_move_notice(self, mock_config, mock_trello_client):
+        """실행 모드 프롬프트에 자동 이동 안내 포함"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_DRAFT_LIST_ID = None
+        mock_config.TRELLO_BACKLOG_LIST_ID = None
+        mock_config.TRELLO_BLOCKED_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock()
+        )
+
+        card = TrelloCard(
+            id="card123",
+            name="테스트 태스크",
+            desc="태스크 본문",
+            url="https://trello.com/c/abc123",
+            list_id="list123",
+            labels=[],
+        )
+
+        prompt = watcher._build_to_go_prompt(card, has_execute=True)
+        assert "이미 워처에 의해 🔨 In Progress로 이동되었습니다" in prompt
+        assert "In Progress로 이동하지 마세요" in prompt
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_to_go_plan_prompt_has_auto_move_notice(self, mock_config, mock_trello_client):
+        """계획 모드 프롬프트에 자동 이동 안내 포함"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_DRAFT_LIST_ID = None
+        mock_config.TRELLO_BACKLOG_LIST_ID = None
+        mock_config.TRELLO_BLOCKED_LIST_ID = None
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock()
+        )
+
+        card = TrelloCard(
+            id="card456",
+            name="계획 태스크",
+            desc="태스크 본문",
+            url="https://trello.com/c/def456",
+            list_id="list123",
+            labels=[],
+        )
+
+        prompt = watcher._build_to_go_prompt(card, has_execute=False)
+        assert "이미 워처에 의해 🔨 In Progress로 이동되었습니다" in prompt
+        assert "In Progress로 이동하지 마세요" in prompt
+        assert "📦 Backlog로 이동하세요" in prompt
 
 
 class TestListRunSaySignature:

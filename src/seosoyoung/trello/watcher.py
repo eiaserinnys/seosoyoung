@@ -702,9 +702,14 @@ class TrelloWatcher:
         # 카드 컨텍스트 (체크리스트, 코멘트, 리스트 ID) 조회
         card_context = self._build_card_context(card.id, card.desc)
 
+        # 워처가 카드를 자동으로 In Progress로 이동시킨 상태임을 안내
+        auto_move_notice = "**카드는 이미 워처에 의해 🔨 In Progress로 이동되었습니다. 카드를 In Progress로 이동하지 마세요.**"
+
         if has_execute:
             # 실행 모드: 계획 수립 후 바로 실행
             prompt = f"""🚀 To Go 리스트에 들어온 '{card.name}' 태스크를 실행해주세요.
+
+{auto_move_notice}
 
 카드 ID: {card.id}
 카드 URL: {card.url}
@@ -714,6 +719,7 @@ class TrelloWatcher:
             # 계획 모드: 계획 수립만 하고 Backlog로 이동
             prompt = f"""📋 To Go 리스트에 들어온 '{card.name}' 태스크의 계획을 수립해주세요.
 
+{auto_move_notice}
 **Execute 레이블이 없으므로 계획 수립만 진행합니다.**
 
 1. 카드를 분석하고 계획을 수립하세요
@@ -747,6 +753,8 @@ class TrelloWatcher:
         card_context = self._build_card_context(info.card_id, desc)
 
         prompt = f"""🚀 리액션으로 실행이 요청된 '{info.card_name}' 태스크를 실행해주세요.
+
+**카드는 이미 워처에 의해 🔨 In Progress로 이동되었습니다. 카드를 In Progress로 이동하지 마세요.**
 
 이전에 계획 수립이 완료된 태스크입니다.
 체크리스트와 코멘트를 확인하고 계획에 따라 작업을 수행하세요.
