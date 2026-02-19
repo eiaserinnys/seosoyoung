@@ -15,6 +15,34 @@ from seosoyoung.memory.context_builder import (
 from seosoyoung.memory.store import MemoryRecord, MemoryStore
 
 
+def _make_obs_items(items_data, session_date="2026-02-10"):
+    """테스트 헬퍼: 관찰 항목 리스트 생성"""
+    result = []
+    for i, (priority, content) in enumerate(items_data):
+        result.append({
+            "id": f"obs_{session_date.replace('-', '')}_{i:03d}",
+            "priority": priority,
+            "content": content,
+            "session_date": session_date,
+            "created_at": f"{session_date}T00:00:00+00:00",
+            "source": "observer",
+        })
+    return result
+
+
+def _make_ltm_items(items_data):
+    """테스트 헬퍼: 장기 기억 항목 리스트 생성"""
+    result = []
+    for i, (priority, content) in enumerate(items_data):
+        result.append({
+            "id": f"ltm_20260210_{i:03d}",
+            "priority": priority,
+            "content": content,
+            "promoted_at": "2026-02-10T00:00:00+00:00",
+        })
+    return result
+
+
 class TestAddRelativeTime:
     def test_today(self):
         observations = "## [2026-02-10] Session Observations"
@@ -78,16 +106,13 @@ class TestOptimizeForContext:
         text = "\n".join(sections)
 
         result = optimize_for_context(text, max_tokens=500)
-        # 결과는 원본보다 짧아야 함
         assert len(result) < len(text)
-        # 최신 섹션이 포함되어야 함
         assert "Session 99" in result or len(result) > 0
 
     def test_single_large_section(self):
         """단일 섹션이 max_tokens를 초과할 때"""
         text = "x" * 100000
         result = optimize_for_context(text, max_tokens=100)
-        # 결과가 원본보다 짧아야 함
         assert len(result) < len(text)
 
 
@@ -107,13 +132,7 @@ class TestContextBuilder:
         assert result.session_tokens == 0
 
     def test_empty_observations_returns_none_prompt(self, builder, store):
-        record = MemoryRecord(thread_ts="ts_1", user_id="U12345", observations="")
-        store.save_record(record)
-        result = builder.build_memory_prompt("ts_1", include_session=True)
-        assert result.prompt is None
-
-    def test_whitespace_only_returns_none_prompt(self, builder, store):
-        record = MemoryRecord(thread_ts="ts_1", user_id="U12345", observations="   \n  ")
+        record = MemoryRecord(thread_ts="ts_1", user_id="U12345", observations=[])
         store.save_record(record)
         result = builder.build_memory_prompt("ts_1", include_session=True)
         assert result.prompt is None
@@ -122,7 +141,7 @@ class TestContextBuilder:
         record = MemoryRecord(
             thread_ts="ts_1",
             user_id="U12345",
-            observations="## [2026-02-10] Session Observations\n\n🔴 Important finding",
+            observations=_make_obs_items([("🔴", "Important finding")]),
         )
         store.save_record(record)
 
@@ -135,11 +154,11 @@ class TestContextBuilder:
         assert "최근 대화에서 관찰한 내용" in result.prompt
         assert result.session_tokens > 0
 
-    def test_includes_relative_time(self, builder, store):
+    def test_includes_session_date(self, builder, store):
         record = MemoryRecord(
             thread_ts="ts_1",
             user_id="U12345",
-            observations="## [2026-02-10] Session Observations\n\n🔴 Finding",
+            observations=_make_obs_items([("🔴", "Finding")]),
         )
         store.save_record(record)
 
@@ -152,12 +171,12 @@ class TestContextBuilder:
         store.save_record(MemoryRecord(
             thread_ts="ts_1",
             user_id="U12345",
-            observations="## [2026-02-10] Session 1\n\n🔴 First session finding",
+            observations=_make_obs_items([("🔴", "First session finding")]),
         ))
         store.save_record(MemoryRecord(
             thread_ts="ts_2",
             user_id="U12345",
-            observations="## [2026-02-11] Session 2\n\n🔴 Second session finding",
+            observations=_make_obs_items([("🔴", "Second session finding")], session_date="2026-02-11"),
         ))
 
         result_1 = builder.build_memory_prompt("ts_1", include_session=True)
@@ -183,7 +202,7 @@ class TestContextBuilderPersistent:
     def test_persistent_only(self, builder, store):
         """장기 기억만 주입 (세션 관찰 없음)"""
         store.save_persistent(
-            content="🔴 사용자는 한국어 커밋 메시지를 선호합니다",
+            content=_make_ltm_items([("🔴", "사용자는 한국어 커밋 메시지를 선호합니다")]),
             meta={"token_count": 100},
         )
 
@@ -202,13 +221,13 @@ class TestContextBuilderPersistent:
     def test_persistent_plus_session(self, builder, store):
         """장기 기억 + 세션 관찰 모두 주입"""
         store.save_persistent(
-            content="🔴 장기 기억 내용",
+            content=_make_ltm_items([("🔴", "장기 기억 내용")]),
             meta={"token_count": 50},
         )
         store.save_record(MemoryRecord(
             thread_ts="ts_1",
             user_id="U12345",
-            observations="## [2026-02-10] Session\n\n🟡 세션 관찰 내용",
+            observations=_make_obs_items([("🟡", "세션 관찰 내용")]),
         ))
 
         result = builder.build_memory_prompt(
@@ -234,7 +253,7 @@ class TestContextBuilderPersistent:
 
     def test_empty_persistent_not_injected(self, builder, store):
         """빈 장기 기억은 주입하지 않음"""
-        store.save_persistent(content="  \n  ", meta={})
+        store.save_persistent(content=[], meta={})
 
         result = builder.build_memory_prompt(
             "ts_1", include_persistent=True, include_session=False,
@@ -245,13 +264,13 @@ class TestContextBuilderPersistent:
     def test_persistent_always_session_flag(self, builder, store):
         """장기 기억은 include_persistent=True면 항상, 세션은 include_session에 따라"""
         store.save_persistent(
-            content="🔴 장기 기억",
+            content=_make_ltm_items([("🔴", "장기 기억")]),
             meta={"token_count": 50},
         )
         store.save_record(MemoryRecord(
             thread_ts="ts_1",
             user_id="U12345",
-            observations="## [2026-02-10] Session\n\n🟡 세션 관찰",
+            observations=_make_obs_items([("🟡", "세션 관찰")]),
         ))
 
         # include_session=False → 장기 기억만
@@ -349,7 +368,6 @@ class TestContextBuilderChannelObservation:
             "user": "U_CCC", "text": "이 스레드 내용이에요", "ts": "1000.010",
         })
 
-        # build_memory_prompt의 첫 번째 인자가 thread_ts (세션 키)
         result = builder.build_memory_prompt(
             "ts_1",
             include_channel_observation=True,
@@ -367,21 +385,19 @@ class TestContextBuilderChannelObservation:
             "user": "U_DDD", "text": "다른 스레드 내용", "ts": "1000.020",
         })
 
-        # thread_ts="ts_1" → ts_other 스레드는 포함되지 않아야 함
         result = builder.build_memory_prompt(
             "ts_1",
             include_channel_observation=True,
             channel_id="C_TEST",
         )
 
-        # 다른 스레드 내용은 포함되지 않아야 함
         if result.prompt:
             assert "다른 스레드 내용" not in result.prompt
 
     def test_channel_observation_after_om(self, builder, store, channel_store):
         """OM 장기기억 뒤에 채널 관찰이 이어서 주입됨"""
         store.save_persistent(
-            content="🔴 장기 기억 내용",
+            content=_make_ltm_items([("🔴", "장기 기억 내용")]),
             meta={"token_count": 50},
         )
         channel_store.save_digest(
@@ -398,7 +414,6 @@ class TestContextBuilderChannelObservation:
         )
 
         assert result.prompt is not None
-        # 장기 기억이 채널 관찰보다 먼저 나와야 함
         ltm_pos = result.prompt.index("<long-term-memory>")
         ch_pos = result.prompt.index("<channel-observation")
         assert ltm_pos < ch_pos
@@ -458,8 +473,11 @@ class TestContextBuilderNewObservations:
         return ContextBuilder(store)
 
     def test_new_observations_injected_from_current_session(self, builder, store):
-        """현재 세션의 .new.md가 있으면 주입됨"""
-        store.save_new_observations("ts_session", "🔴 사용자가 한국어 커밋을 선호")
+        """현재 세션의 새 관찰 항목이 있으면 주입됨"""
+        store.save_new_observations(
+            "ts_session",
+            _make_obs_items([("🔴", "사용자가 한국어 커밋을 선호")]),
+        )
 
         result = builder.build_memory_prompt(
             "ts_session",
@@ -474,23 +492,24 @@ class TestContextBuilderNewObservations:
         assert result.new_observation_tokens > 0
 
     def test_new_observations_cleared_after_injection(self, builder, store):
-        """주입 후 .new.md가 클리어되어 다음 턴에 재주입되지 않음"""
-        store.save_new_observations("ts_session", "🔴 한 번만 주입되어야 하는 관찰")
+        """주입 후 새 관찰이 클리어되어 다음 턴에 재주입되지 않음"""
+        store.save_new_observations(
+            "ts_session",
+            _make_obs_items([("🔴", "한 번만 주입되어야 하는 관찰")]),
+        )
 
-        # 첫 번째 호출: 주입됨
         result1 = builder.build_memory_prompt(
             "ts_session", include_new_observations=True,
         )
         assert result1.new_observation_tokens > 0
 
-        # 두 번째 호출: .new.md가 클리어되었으므로 주입 없음
         result2 = builder.build_memory_prompt(
             "ts_session", include_new_observations=True,
         )
         assert result2.new_observation_tokens == 0
 
-    def test_no_new_md_no_injection(self, builder, store):
-        """현재 세션의 .new.md가 없으면 주입 없음"""
+    def test_no_new_observations_no_injection(self, builder, store):
+        """새 관찰이 없으면 주입 없음"""
         result = builder.build_memory_prompt(
             "ts_session",
             include_persistent=False,
@@ -502,9 +521,12 @@ class TestContextBuilderNewObservations:
         if result.prompt:
             assert "<new-observations>" not in result.prompt
 
-    def test_other_session_new_md_not_injected(self, builder, store):
-        """다른 세션의 .new.md는 주입되지 않음"""
-        store.save_new_observations("ts_other", "🔴 다른 세션의 관찰")
+    def test_other_session_new_observations_not_injected(self, builder, store):
+        """다른 세션의 새 관찰은 주입되지 않음"""
+        store.save_new_observations(
+            "ts_other",
+            _make_obs_items([("🔴", "다른 세션의 관찰")]),
+        )
 
         result = builder.build_memory_prompt(
             "ts_current",
@@ -515,7 +537,10 @@ class TestContextBuilderNewObservations:
 
     def test_new_observations_not_injected_when_disabled(self, builder, store):
         """include_new_observations=False면 주입되지 않음"""
-        store.save_new_observations("ts_session", "🔴 관찰")
+        store.save_new_observations(
+            "ts_session",
+            _make_obs_items([("🔴", "관찰")]),
+        )
 
         result = builder.build_memory_prompt(
             "ts_session",
@@ -528,8 +553,14 @@ class TestContextBuilderNewObservations:
 
     def test_new_observations_combined_with_persistent(self, builder, store):
         """장기 기억 + 새 관찰이 함께 주입됨"""
-        store.save_persistent(content="🔴 장기 기억", meta={})
-        store.save_new_observations("ts_session", "🟡 이번 턴 새 관찰")
+        store.save_persistent(
+            content=_make_ltm_items([("🔴", "장기 기억")]),
+            meta={},
+        )
+        store.save_new_observations(
+            "ts_session",
+            _make_obs_items([("🟡", "이번 턴 새 관찰")]),
+        )
 
         result = builder.build_memory_prompt(
             "ts_session",
@@ -540,7 +571,6 @@ class TestContextBuilderNewObservations:
         assert result.prompt is not None
         assert "<long-term-memory>" in result.prompt
         assert "<new-observations>" in result.prompt
-        # 장기 기억이 새 관찰보다 먼저
         ltm_pos = result.prompt.index("<long-term-memory>")
         new_obs_pos = result.prompt.index("<new-observations>")
         assert ltm_pos < new_obs_pos

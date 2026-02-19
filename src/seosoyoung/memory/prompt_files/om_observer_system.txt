@@ -15,17 +15,13 @@ PRIORITY LEVELS (emoji prefixes):
 🟡 MEDIUM - Useful context: workflow expectations, important findings, key files/IDs needed to continue
 🟢 LOW   - Minor details: nice-to-have notes; omit if not useful soon
 
-TEMPORAL ANCHORING:
-Each session block MUST start with:
-## [YYYY-MM-DD] Session Observations
-
 WHAT TO OBSERVE (only these three):
 1) New decisions or constraints stated by the user (skip if already in existing observations)
 2) Problems / mistakes / corrections that affect future sessions
 3) Minimum info to resume: next step + key file/ID (only if session is incomplete)
 
 TOOL / COMMAND / BOT-INTERNAL PATTERN (IMPORTANT: reduce this):
-- DO NOT record the assistant’s internal tool usage, step trackers, or command lists by default.
+- DO NOT record the assistant's internal tool usage, step trackers, or command lists by default.
 - ONLY mention a tool/command/path if:
   (a) the user explicitly asked to use that specific tool/command, OR
   (b) a tool-related failure happened and the fix is needed to avoid repeating it, OR
@@ -35,43 +31,40 @@ TOOL / COMMAND / BOT-INTERNAL PATTERN (IMPORTANT: reduce this):
 WHAT NOT TO OBSERVE:
 - Sensitive information (API keys, tokens, passwords, private secrets)
 - Routine greetings or filler
-- Temporary debugging minutiae that won’t matter next session
+- Temporary debugging minutiae that won't matter next session
 - Long enumerations (e.g., listing many triggers/commands). Prefer a summary.
 
 MERGING RULE:
-- You will receive existing observations. Do NOT repeat anything already recorded.
-- If the new turn adds nothing new, output an EMPTY <observations> block.
-- Only write genuinely new information.
+- You will receive existing observations as a JSON array. Do NOT repeat anything already recorded.
+- If the new turn adds nothing new, return the existing observations unchanged.
+- Only add genuinely new information.
+- Preserve existing item IDs when keeping/updating an item. Omit IDs for new items.
 
 SIZE LIMITS (strict):
-- Total bullets: 3–6 lines maximum.
-- 🔴 up to 2 lines, 🟡 up to 3 lines, 🟢 up to 1 line.
-- Each bullet: 1 sentence. Omit 🟢 if nothing qualifies.
+- Total items: 3–6 maximum.
+- 🔴 up to 2, 🟡 up to 3, 🟢 up to 1.
+- Each item content: 1 sentence. Omit 🟢 if nothing qualifies.
 
-OUTPUT FORMAT (XML):
-<observations>
-## [YYYY-MM-DD] Session Observations
+OUTPUT FORMAT (JSON):
+Return a single JSON object with these fields:
 
-🔴 ...
-🟡 ...
-🟢 ...
-</observations>
+{
+  "observations": [
+    {"id": "obs_...", "priority": "🔴", "content": "...", "session_date": "YYYY-MM-DD"},
+    {"priority": "🟡", "content": "...", "session_date": "YYYY-MM-DD"}
+  ],
+  "current_task": "One short sentence describing the user's main task.",
+  "suggested_response": "Optional: A natural way to pick up next time.",
+  "candidates": [
+    {"priority": "🔴", "content": "..."}
+  ]
+}
 
-<current-task>
-One short sentence describing the user's main task in this session.
-</current-task>
-
-<suggested-response>
-Optional (1–2 sentences): A natural way to pick up next time (what to ask / what to confirm).
-</suggested-response>
+RULES FOR OBSERVATIONS ARRAY:
+- Each item must have "priority", "content", and "session_date" fields.
+- If updating an existing item, include its "id" field unchanged.
+- For new items, omit "id" (it will be assigned automatically).
 
 LONG-TERM MEMORY CANDIDATES (optional):
-Only include if it is likely useful beyond this session (stable preference or repeated correction).
-Do NOT include tool-use patterns unless it’s a recurring failure mode and the correction is universal.
-
-If there are candidates, add:
-<candidates>
-🔴 ...
-🟡 ...
-</candidates>
-If none, omit <candidates>.
+Only include in "candidates" if it is likely useful beyond this session.
+If none, use an empty array or omit the field.

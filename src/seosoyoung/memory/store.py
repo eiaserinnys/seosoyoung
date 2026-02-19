@@ -5,7 +5,7 @@
 저장 구조:
     memory/
     ├── observations/
-    │   ├── {thread_ts}.md          # 세션별 관찰 로그 (마크다운)
+    │   ├── {thread_ts}.json         # 세션별 관찰 로그 (JSON 항목 배열)
     │   ├── {thread_ts}.meta.json   # 메타데이터 (user_id 포함)
     │   └── {thread_ts}.inject      # OM 주입 플래그 (존재하면 다음 요청에 주입)
     ├── pending/
@@ -15,14 +15,15 @@
     ├── candidates/
     │   └── {thread_ts}.jsonl       # 장기 기억 후보 (세션 단위 누적)
     └── persistent/
-        ├── recent.md               # 활성 장기 기억
+        ├── recent.json              # 활성 장기 기억 (JSON 항목 배열)
         ├── recent.meta.json        # 메타데이터
         └── archive/                # 컴팩션 시 이전 버전 보존
-            └── recent_{timestamp}.md
+            └── recent_{timestamp}.json
 """
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,207 @@ from pathlib import Path
 from filelock import FileLock
 
 logger = logging.getLogger(__name__)
+
+
+# ── 항목 모델 ────────────────────────────────────────────────
+
+
+@dataclass
+class ObservationItem:
+    """세션 관찰 항목"""
+
+    id: str  # "obs_{YYYYMMDD}_{seq:03d}"
+    priority: str  # "🔴" | "🟡" | "🟢"
+    content: str
+    session_date: str  # "YYYY-MM-DD"
+    created_at: str  # ISO 8601
+    source: str = "observer"  # "observer" | "reflector" | "migrated"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "priority": self.priority,
+            "content": self.content,
+            "session_date": self.session_date,
+            "created_at": self.created_at,
+            "source": self.source,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ObservationItem":
+        return cls(
+            id=d["id"],
+            priority=d.get("priority", "🟢"),
+            content=d.get("content", ""),
+            session_date=d.get("session_date", ""),
+            created_at=d.get("created_at", ""),
+            source=d.get("source", "observer"),
+        )
+
+
+@dataclass
+class PersistentItem:
+    """장기 기억 항목"""
+
+    id: str  # "ltm_{YYYYMMDD}_{seq:03d}"
+    priority: str  # "🔴" | "🟡" | "🟢"
+    content: str
+    promoted_at: str  # ISO 8601
+    source_obs_ids: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        d = {
+            "id": self.id,
+            "priority": self.priority,
+            "content": self.content,
+            "promoted_at": self.promoted_at,
+        }
+        if self.source_obs_ids:
+            d["source_obs_ids"] = self.source_obs_ids
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PersistentItem":
+        return cls(
+            id=d["id"],
+            priority=d.get("priority", "🟢"),
+            content=d.get("content", ""),
+            promoted_at=d.get("promoted_at", ""),
+            source_obs_ids=d.get("source_obs_ids", []),
+        )
+
+
+# ── ID 생성 ──────────────────────────────────────────────────
+
+
+def _next_seq(items: list[dict], prefix: str, date_str: str) -> int:
+    """기존 항목에서 같은 날짜의 최대 시퀀스 번호 + 1을 반환."""
+    date_part = date_str.replace("-", "")
+    pattern = f"{prefix}_{date_part}_"
+    max_seq = -1
+    for item in items:
+        item_id = item.get("id", "")
+        if item_id.startswith(pattern):
+            try:
+                seq = int(item_id[len(pattern):])
+                max_seq = max(max_seq, seq)
+            except ValueError:
+                pass
+    return max_seq + 1
+
+
+def generate_obs_id(existing_items: list[dict], date_str: str | None = None) -> str:
+    """관찰 항목 ID를 생성합니다."""
+    if date_str is None:
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_part = date_str.replace("-", "")
+    seq = _next_seq(existing_items, "obs", date_str)
+    return f"obs_{date_part}_{seq:03d}"
+
+
+def generate_ltm_id(existing_items: list[dict], date_str: str | None = None) -> str:
+    """장기 기억 항목 ID를 생성합니다."""
+    if date_str is None:
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_part = date_str.replace("-", "")
+    seq = _next_seq(existing_items, "ltm", date_str)
+    return f"ltm_{date_part}_{seq:03d}"
+
+
+# ── 마크다운 → JSON 마이그레이션 ─────────────────────────────
+
+
+def parse_md_observations(md_text: str) -> list[dict]:
+    """마크다운 관찰 로그를 항목 리스트로 파싱합니다.
+
+    ## [YYYY-MM-DD] ... 헤더로 세션 날짜를 결정하고,
+    이모지(🔴🟡🟢)로 시작하는 줄을 항목으로 추출합니다.
+    """
+    if not md_text or not md_text.strip():
+        return []
+
+    items: list[dict] = []
+    current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for line in md_text.strip().splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        date_match = re.match(r"^##\s*\[(\d{4}-\d{2}-\d{2})\]", stripped)
+        if date_match:
+            current_date = date_match.group(1)
+            continue
+
+        priority = None
+        content = ""
+        for emoji in ("🔴", "🟡", "🟢"):
+            if stripped.startswith(emoji):
+                priority = emoji
+                content = stripped[len(emoji):].strip()
+                content = re.sub(
+                    r"^(HIGH|MEDIUM|LOW)\s*[-–—]?\s*", "", content
+                ).strip()
+                break
+
+        if priority and content:
+            item_id = generate_obs_id(items, current_date)
+            items.append({
+                "id": item_id,
+                "priority": priority,
+                "content": content,
+                "session_date": current_date,
+                "created_at": now_iso,
+                "source": "migrated",
+            })
+
+    return items
+
+
+def parse_md_persistent(md_text: str) -> list[dict]:
+    """마크다운 장기 기억을 항목 리스트로 파싱합니다."""
+    if not md_text or not md_text.strip():
+        return []
+
+    items: list[dict] = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for line in md_text.strip().splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        priority = None
+        content = ""
+        for emoji in ("🔴", "🟡", "🟢"):
+            if stripped.startswith(emoji):
+                priority = emoji
+                content = stripped[len(emoji):].strip()
+                content = re.sub(
+                    r"^(HIGH|MEDIUM|LOW)\s*[-–—]?\s*", "", content
+                ).strip()
+                break
+
+        if not priority:
+            if stripped.startswith("#") or stripped.startswith("---"):
+                continue
+            priority = "🟡"
+            content = stripped
+
+        if content:
+            item_id = generate_ltm_id(items)
+            items.append({
+                "id": item_id,
+                "priority": priority,
+                "content": content,
+                "promoted_at": now_iso,
+            })
+
+    return items
+
+
+# ── 메모리 레코드 ────────────────────────────────────────────
 
 
 @dataclass
@@ -42,7 +244,7 @@ class MemoryRecord:
     thread_ts: str
     user_id: str = ""
     username: str = ""
-    observations: str = ""
+    observations: list[dict] = field(default_factory=list)
     observation_tokens: int = 0
     last_observed_at: datetime | None = None
     total_sessions_observed: int = 0
@@ -69,7 +271,9 @@ class MemoryRecord:
         return d
 
     @classmethod
-    def from_meta_dict(cls, data: dict, observations: str = "") -> "MemoryRecord":
+    def from_meta_dict(
+        cls, data: dict, observations: list[dict] | None = None
+    ) -> "MemoryRecord":
         """dict에서 MemoryRecord를 복원"""
         last_observed = data.get("last_observed_at")
         created = data.get("created_at")
@@ -77,7 +281,7 @@ class MemoryRecord:
             thread_ts=data.get("thread_ts", ""),
             user_id=data.get("user_id", ""),
             username=data.get("username", ""),
-            observations=observations,
+            observations=observations or [],
             observation_tokens=data.get("observation_tokens", 0),
             last_observed_at=(
                 datetime.fromisoformat(last_observed) if last_observed else None
@@ -116,6 +320,10 @@ class MemoryStore:
         self.persistent_dir.mkdir(parents=True, exist_ok=True)
 
     def _obs_path(self, thread_ts: str) -> Path:
+        return self.observations_dir / f"{thread_ts}.json"
+
+    def _obs_md_path(self, thread_ts: str) -> Path:
+        """레거시 .md 경로 (마이그레이션용)"""
         return self.observations_dir / f"{thread_ts}.md"
 
     def _meta_path(self, thread_ts: str) -> Path:
@@ -137,10 +345,24 @@ class MemoryStore:
         with lock:
             meta_data = json.loads(meta_path.read_text(encoding="utf-8"))
 
+            observations: list[dict] = []
             obs_path = self._obs_path(thread_ts)
-            observations = ""
+            obs_md_path = self._obs_md_path(thread_ts)
+
             if obs_path.exists():
-                observations = obs_path.read_text(encoding="utf-8")
+                observations = json.loads(obs_path.read_text(encoding="utf-8"))
+            elif obs_md_path.exists():
+                # 레거시 .md → .json 자동 마이그레이션
+                md_text = obs_md_path.read_text(encoding="utf-8")
+                observations = parse_md_observations(md_text)
+                obs_path.write_text(
+                    json.dumps(observations, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                obs_md_path.unlink()
+                logger.info(
+                    f"관찰 로그 마이그레이션 완료: {thread_ts} (.md → .json)"
+                )
 
             return MemoryRecord.from_meta_dict(meta_data, observations)
 
@@ -150,9 +372,10 @@ class MemoryStore:
 
         lock = FileLock(str(self._lock_path(record.thread_ts)), timeout=5)
         with lock:
-            # 관찰 로그 (마크다운)
+            # 관찰 로그 (JSON 배열)
             self._obs_path(record.thread_ts).write_text(
-                record.observations, encoding="utf-8"
+                json.dumps(record.observations, ensure_ascii=False, indent=2),
+                encoding="utf-8",
             )
 
             # 메타데이터 (JSON)
@@ -202,25 +425,43 @@ class MemoryStore:
                 pending_path.unlink()
 
     def _new_obs_path(self, thread_ts: str) -> Path:
+        return self.observations_dir / f"{thread_ts}.new.json"
+
+    def _new_obs_md_path(self, thread_ts: str) -> Path:
+        """레거시 .new.md 경로 (마이그레이션용)"""
         return self.observations_dir / f"{thread_ts}.new.md"
 
-    def save_new_observations(self, thread_ts: str, content: str) -> None:
+    def save_new_observations(self, thread_ts: str, content: list[dict]) -> None:
         """이번 턴에서 새로 추가된 관찰만 별도 저장합니다."""
         self._ensure_dirs()
-        self._new_obs_path(thread_ts).write_text(content, encoding="utf-8")
+        self._new_obs_path(thread_ts).write_text(
+            json.dumps(content, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
-    def get_new_observations(self, thread_ts: str) -> str:
-        """저장된 새 관찰을 반환합니다. 없으면 빈 문자열."""
+    def get_new_observations(self, thread_ts: str) -> list[dict]:
+        """저장된 새 관찰을 반환합니다. 없으면 빈 리스트."""
         path = self._new_obs_path(thread_ts)
         if path.exists():
-            return path.read_text(encoding="utf-8")
-        return ""
+            return json.loads(path.read_text(encoding="utf-8"))
+        # 레거시 .md 마이그레이션
+        md_path = self._new_obs_md_path(thread_ts)
+        if md_path.exists():
+            md_text = md_path.read_text(encoding="utf-8")
+            items = parse_md_observations(md_text)
+            md_path.unlink()
+            return items
+        return []
 
     def clear_new_observations(self, thread_ts: str) -> None:
         """주입 완료된 새 관찰을 클리어합니다."""
         path = self._new_obs_path(thread_ts)
         if path.exists():
             path.unlink()
+        # 레거시도 정리
+        md_path = self._new_obs_md_path(thread_ts)
+        if md_path.exists():
+            md_path.unlink()
 
     def _inject_flag_path(self, thread_ts: str) -> Path:
         return self.observations_dir / f"{thread_ts}.inject"
@@ -340,6 +581,10 @@ class MemoryStore:
     # ── persistent (장기 기억) ──────────────────────────────────
 
     def _persistent_content_path(self) -> Path:
+        return self.persistent_dir / "recent.json"
+
+    def _persistent_md_path(self) -> Path:
+        """레거시 .md 경로 (마이그레이션용)"""
         return self.persistent_dir / "recent.md"
 
     def _persistent_meta_path(self) -> Path:
@@ -355,28 +600,46 @@ class MemoryStore:
         """장기 기억을 로드합니다. 없으면 None.
 
         Returns:
-            {"content": str, "meta": dict} 또는 None
+            {"content": list[dict], "meta": dict} 또는 None
         """
         content_path = self._persistent_content_path()
-        if not content_path.exists():
+        md_path = self._persistent_md_path()
+
+        if not content_path.exists() and not md_path.exists():
             return None
 
         lock = FileLock(str(self._persistent_lock_path()), timeout=5)
         with lock:
-            content = content_path.read_text(encoding="utf-8")
+            content: list[dict] = []
+            if content_path.exists():
+                content = json.loads(content_path.read_text(encoding="utf-8"))
+            elif md_path.exists():
+                # 레거시 .md → .json 자동 마이그레이션
+                md_text = md_path.read_text(encoding="utf-8")
+                content = parse_md_persistent(md_text)
+                content_path.write_text(
+                    json.dumps(content, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                md_path.unlink()
+                logger.info("장기 기억 마이그레이션 완료 (.md → .json)")
+
             meta = {}
             meta_path = self._persistent_meta_path()
             if meta_path.exists():
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
             return {"content": content, "meta": meta}
 
-    def save_persistent(self, content: str, meta: dict) -> None:
+    def save_persistent(self, content: list[dict], meta: dict) -> None:
         """장기 기억을 저장합니다."""
         self._ensure_dirs()
 
         lock = FileLock(str(self._persistent_lock_path()), timeout=5)
         with lock:
-            self._persistent_content_path().write_text(content, encoding="utf-8")
+            self._persistent_content_path().write_text(
+                json.dumps(content, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
             self._persistent_meta_path().write_text(
                 json.dumps(meta, ensure_ascii=False, indent=2),
                 encoding="utf-8",
@@ -399,6 +662,6 @@ class MemoryStore:
         with lock:
             content = content_path.read_text(encoding="utf-8")
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S%f")
-            archive_path = archive_dir / f"recent_{timestamp}.md"
+            archive_path = archive_dir / f"recent_{timestamp}.json"
             archive_path.write_text(content, encoding="utf-8")
             return archive_path

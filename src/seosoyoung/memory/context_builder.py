@@ -4,8 +4,8 @@
 OM의 processInputStep에 해당하는 부분입니다.
 
 주입 계층:
-- 장기 기억 (persistent/recent.md): 매 세션 시작 시 항상 주입
-- 세션 관찰 (observations/{thread_ts}.md): inject 플래그 있을 때만 주입
+- 장기 기억 (persistent/recent.json): 매 세션 시작 시 항상 주입
+- 세션 관찰 (observations/{thread_ts}.json): inject 플래그 있을 때만 주입
 - 채널 관찰 (channel/{channel_id}/): 관찰 대상 채널에서 멘션될 때 주입
 """
 
@@ -42,45 +42,138 @@ class InjectionResult:
     new_observation_content: str = ""
 
 
+# ── 항목 렌더링 ──────────────────────────────────────────────
+
+
+def render_observation_items(items: list[dict], now: datetime | None = None) -> str:
+    """관찰 항목 리스트를 사람이 읽을 수 있는 텍스트로 렌더링합니다."""
+    if not items:
+        return ""
+
+    if now is None:
+        now = datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+
+    lines: list[str] = []
+    current_date = None
+
+    for item in items:
+        session_date = item.get("session_date", "")
+        if session_date != current_date:
+            current_date = session_date
+            relative = _relative_time_str(session_date, now) if session_date else ""
+            if lines:
+                lines.append("")  # 섹션 사이 빈 줄
+            if relative:
+                lines.append(f"## [{session_date}] ({relative})")
+            elif session_date:
+                lines.append(f"## [{session_date}]")
+            lines.append("")
+
+        priority = item.get("priority", "🟢")
+        content = item.get("content", "")
+        lines.append(f"{priority} {content}")
+
+    return "\n".join(lines)
+
+
+def render_persistent_items(items: list[dict]) -> str:
+    """장기 기억 항목 리스트를 텍스트로 렌더링합니다."""
+    if not items:
+        return ""
+    lines = []
+    for item in items:
+        priority = item.get("priority", "🟢")
+        content = item.get("content", "")
+        lines.append(f"{priority} {content}")
+    return "\n".join(lines)
+
+
+def _relative_time_str(date_str: str, now: datetime) -> str:
+    """날짜 문자열에 대한 상대 시간 문자열을 반환합니다."""
+    try:
+        obs_date = datetime.strptime(date_str, "%Y-%m-%d").replace(
+            tzinfo=timezone.utc
+        )
+        delta = now - obs_date
+        days = delta.days
+
+        if days == 0:
+            return "오늘"
+        elif days == 1:
+            return "어제"
+        elif days < 7:
+            return f"{days}일 전"
+        elif days < 30:
+            return f"{days // 7}주 전"
+        elif days < 365:
+            return f"{days // 30}개월 전"
+        else:
+            return f"{days // 365}년 전"
+    except ValueError:
+        return ""
+
+
+# ── 항목 최적화 ──────────────────────────────────────────────
+
+
+def optimize_items_for_context(
+    items: list[dict], max_tokens: int = 30000
+) -> list[dict]:
+    """관찰 항목을 컨텍스트 주입에 최적화합니다.
+
+    토큰 수 초과 시 오래된 낮은 우선순위 항목부터 제거합니다.
+    """
+    counter = TokenCounter()
+    rendered = render_observation_items(items)
+    token_count = counter.count_string(rendered)
+
+    if token_count <= max_tokens:
+        return items
+
+    # 우선순위 가중치 (낮을수록 먼저 제거)
+    priority_weight = {"🟢": 0, "🟡": 1, "🔴": 2}
+
+    # 제거 순서: 낮은 우선순위 + 오래된 것부터
+    sorted_items = sorted(
+        enumerate(items),
+        key=lambda x: (
+            priority_weight.get(x[1].get("priority", "🟢"), 0),
+            x[1].get("session_date", ""),
+        ),
+    )
+
+    remove_indices: set[int] = set()
+    for idx, _item in sorted_items:
+        remove_indices.add(idx)
+        remaining = [it for i, it in enumerate(items) if i not in remove_indices]
+        rendered = render_observation_items(remaining)
+        if counter.count_string(rendered) <= max_tokens:
+            return remaining
+
+    return []
+
+
+# ── 하위 호환 함수 ───────────────────────────────────────────
+
+
 def add_relative_time(observations: str, now: datetime | None = None) -> str:
-    """관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
+    """[하위 호환] 텍스트 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 
     ## [2026-02-10] → ## [2026-02-10] (3일 전)
     """
     if now is None:
         now = datetime.now(timezone.utc)
-
-    # timezone-aware로 통일
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
 
     def replace_date_header(match: re.Match) -> str:
         date_str = match.group(1)
-        try:
-            obs_date = datetime.strptime(date_str, "%Y-%m-%d").replace(
-                tzinfo=timezone.utc
-            )
-            delta = now - obs_date
-            days = delta.days
-
-            if days == 0:
-                relative = "오늘"
-            elif days == 1:
-                relative = "어제"
-            elif days < 7:
-                relative = f"{days}일 전"
-            elif days < 30:
-                weeks = days // 7
-                relative = f"{weeks}주 전"
-            elif days < 365:
-                months = days // 30
-                relative = f"{months}개월 전"
-            else:
-                relative = f"{days // 365}년 전"
-
+        relative = _relative_time_str(date_str, now)
+        if relative:
             return f"## [{date_str}] ({relative})"
-        except ValueError:
-            return match.group(0)
+        return match.group(0)
 
     return re.sub(r"## \[(\d{4}-\d{2}-\d{2})\]", replace_date_header, observations)
 
@@ -88,10 +181,7 @@ def add_relative_time(observations: str, now: datetime | None = None) -> str:
 def optimize_for_context(
     observations: str, max_tokens: int = 30000
 ) -> str:
-    """관찰 로그를 컨텍스트 주입에 최적화합니다.
-
-    - 토큰 수 초과 시 truncate (오래된 내용부터 제거)
-    """
+    """[하위 호환] 텍스트 관찰 로그를 컨텍스트 주입에 최적화합니다."""
     counter = TokenCounter()
     token_count = counter.count_string(observations)
 
@@ -113,11 +203,9 @@ def optimize_for_context(
         current_tokens += section_tokens
 
     if not result_sections:
-        # 단일 섹션도 너무 큰 경우: 이진 탐색으로 적정 길이를 찾아 자름
         low, high = 0, len(observations)
         while low < high:
             mid = (low + high + 1) // 2
-            # 뒤에서 mid 글자를 잘라서 토큰 수 확인
             if counter.count_string(observations[-mid:]) <= max_tokens:
                 low = mid
             else:
@@ -125,6 +213,9 @@ def optimize_for_context(
         return observations[-low:] if low > 0 else observations[:1000]
 
     return "".join(result_sections)
+
+
+# ── 컨텍스트 빌더 ────────────────────────────────────────────
 
 
 class ContextBuilder:
@@ -173,7 +264,9 @@ class ContextBuilder:
 
         # thread buffer (현재 스레드만)
         if thread_ts:
-            thread_messages = self.channel_store.load_thread_buffer(channel_id, thread_ts)
+            thread_messages = self.channel_store.load_thread_buffer(
+                channel_id, thread_ts
+            )
             if thread_messages:
                 lines = [json.dumps(m, ensure_ascii=False) for m in thread_messages]
                 buf_text = "\n".join(lines)
@@ -202,18 +295,6 @@ class ContextBuilder:
         """장기 기억, 세션 관찰, 채널 관찰, 새 관찰을 합쳐서 시스템 프롬프트로 변환합니다.
 
         주입 순서: 장기 기억 → 새 관찰 → 세션 관찰 → 채널 관찰
-
-        Args:
-            thread_ts: 세션(스레드) 타임스탬프
-            max_tokens: 세션 관찰 최대 토큰 수
-            include_persistent: 장기 기억을 포함할지 여부
-            include_session: 세션 관찰을 포함할지 여부
-            include_channel_observation: 채널 관찰 컨텍스트를 포함할지 여부
-            channel_id: 채널 ID (채널 관찰 시 필요)
-            include_new_observations: 현재 세션의 새 관찰(이전 턴 diff)을 포함할지 여부
-
-        Returns:
-            InjectionResult
         """
         parts = []
         persistent_tokens = 0
@@ -225,56 +306,64 @@ class ContextBuilder:
         new_observation_tokens = 0
         new_observation_content = ""
 
-        # 1. 장기 기억 (persistent/recent.md)
+        # 1. 장기 기억 (persistent/recent.json)
         if include_persistent:
             persistent_data = self.store.get_persistent()
-            if persistent_data and persistent_data["content"].strip():
-                content = persistent_data["content"]
-                persistent_tokens = self._counter.count_string(content)
-                persistent_content = content
-                parts.append(
-                    "<long-term-memory>\n"
-                    "다음은 과거 대화들에서 축적한 장기 기억입니다.\n"
-                    "응답할 때 이 기억을 자연스럽게 활용하세요.\n\n"
-                    f"{content}\n"
-                    "</long-term-memory>"
-                )
+            if persistent_data and persistent_data["content"]:
+                items = persistent_data["content"]
+                content = render_persistent_items(items)
+                if content.strip():
+                    persistent_tokens = self._counter.count_string(content)
+                    persistent_content = content
+                    parts.append(
+                        "<long-term-memory>\n"
+                        "다음은 과거 대화들에서 축적한 장기 기억입니다.\n"
+                        "응답할 때 이 기억을 자연스럽게 활용하세요.\n\n"
+                        f"{content}\n"
+                        "</long-term-memory>"
+                    )
 
         # 2. 새 관찰 (현재 세션의 이전 턴에서 새로 추가된 관찰 diff)
-        #    주입 후 클리어하여 다음 턴에 재주입 방지
         if include_new_observations:
-            new_obs = self.store.get_new_observations(thread_ts)
-            if new_obs and new_obs.strip():
-                observations = add_relative_time(new_obs)
-                new_observation_tokens = self._counter.count_string(observations)
-                new_observation_content = observations
-                parts.append(
-                    "<new-observations>\n"
-                    "이전 턴의 대화에서 새롭게 관찰된 사실입니다.\n\n"
-                    f"{observations}\n"
-                    "</new-observations>"
-                )
-                self.store.clear_new_observations(thread_ts)
+            new_obs_items = self.store.get_new_observations(thread_ts)
+            if new_obs_items:
+                observations_text = render_observation_items(new_obs_items)
+                if observations_text.strip():
+                    new_observation_tokens = self._counter.count_string(
+                        observations_text
+                    )
+                    new_observation_content = observations_text
+                    parts.append(
+                        "<new-observations>\n"
+                        "이전 턴의 대화에서 새롭게 관찰된 사실입니다.\n\n"
+                        f"{observations_text}\n"
+                        "</new-observations>"
+                    )
+                    self.store.clear_new_observations(thread_ts)
 
-        # 3. 세션 관찰 (observations/{thread_ts}.md)
+        # 3. 세션 관찰 (observations/{thread_ts}.json)
         if include_session:
             record = self.store.get_record(thread_ts)
-            if record and record.observations.strip():
-                observations = add_relative_time(record.observations)
-                optimized = optimize_for_context(observations, max_tokens)
-                session_tokens = self._counter.count_string(optimized)
-                session_content = optimized
-                parts.append(
-                    "<observational-memory>\n"
-                    "다음은 이 세션의 최근 대화에서 관찰한 내용입니다.\n\n"
-                    f"{optimized}\n"
-                    "</observational-memory>"
+            if record and record.observations:
+                optimized_items = optimize_items_for_context(
+                    record.observations, max_tokens
                 )
+                observations_text = render_observation_items(optimized_items)
+                if observations_text.strip():
+                    session_tokens = self._counter.count_string(observations_text)
+                    session_content = observations_text
+                    parts.append(
+                        "<observational-memory>\n"
+                        "다음은 이 세션의 최근 대화에서 관찰한 내용입니다.\n\n"
+                        f"{observations_text}\n"
+                        "</observational-memory>"
+                    )
 
         # 4. 채널 관찰 (channel/{channel_id}/)
         if include_channel_observation and channel_id:
             ch_xml, ch_digest_tok, ch_buf_tok = self._build_channel_observation(
-                channel_id, thread_ts=thread_ts,
+                channel_id,
+                thread_ts=thread_ts,
             )
             if ch_xml:
                 channel_digest_tokens = ch_digest_tok

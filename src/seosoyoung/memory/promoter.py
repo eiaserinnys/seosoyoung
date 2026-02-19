@@ -4,13 +4,15 @@
 장기 기억이 임계치를 넘으면 압축(Compactor)합니다.
 """
 
+import json
 import logging
-import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import openai
 
 from seosoyoung.memory.prompts import build_compactor_prompt, build_promoter_prompt
+from seosoyoung.memory.store import generate_ltm_id
 from seosoyoung.memory.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
@@ -20,8 +22,8 @@ logger = logging.getLogger(__name__)
 class PromoterResult:
     """Promoter 출력 결과"""
 
-    promoted: str = ""
-    rejected: str = ""
+    promoted: list[dict] = field(default_factory=list)
+    rejected: list[dict] = field(default_factory=list)
     promoted_count: int = 0
     rejected_count: int = 0
     priority_counts: dict = None
@@ -35,69 +37,145 @@ class PromoterResult:
 class CompactorResult:
     """Compactor 출력 결과"""
 
-    compacted: str = ""
+    compacted: list[dict] = field(default_factory=list)
     token_count: int = 0
 
 
-def _extract_tag(text: str, tag_name: str) -> str:
-    """XML 태그 내용을 추출합니다. 없으면 빈 문자열."""
-    pattern = rf"<{tag_name}>(.*?)</{tag_name}>"
-    match = re.search(pattern, text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return ""
+def _extract_json(text: str) -> dict | list:
+    """응답 텍스트에서 JSON을 추출합니다."""
+    text = text.strip()
+
+    if "```json" in text:
+        start = text.index("```json") + 7
+        end = text.index("```", start)
+        text = text[start:end].strip()
+    elif "```" in text:
+        start = text.index("```") + 3
+        end = text.index("```", start)
+        text = text[start:end].strip()
+
+    # 배열 또는 객체
+    bracket_start = text.find("[")
+    brace_start = text.find("{")
+
+    if bracket_start >= 0 and (brace_start < 0 or bracket_start < brace_start):
+        bracket_end = text.rfind("]")
+        if bracket_end > bracket_start:
+            return json.loads(text[bracket_start:bracket_end + 1])
+
+    if brace_start >= 0:
+        brace_end = text.rfind("}")
+        if brace_end > brace_start:
+            return json.loads(text[brace_start:brace_end + 1])
+
+    return json.loads(text)
 
 
-def _count_entries(text: str) -> int:
-    """이모지 프리픽스(🔴🟡🟢) 또는 '-' 로 시작하는 비어있지 않은 줄 수를 카운트."""
-    if not text or not text.strip():
-        return 0
-    count = 0
-    for line in text.strip().split("\n"):
-        line = line.strip()
-        if not line:
+def _assign_ltm_ids(raw_items: list, existing: list[dict]) -> list[dict]:
+    """LTM 항목에 ID를 부여합니다.
+
+    기존 항목과 content+priority가 일치하면 기존 ID를 유지합니다.
+    LLM이 id를 반환한 경우 그 ID를 우선 사용합니다.
+    """
+    existing_map: dict[tuple, str] = {}
+    for item in existing:
+        key = (item.get("content", ""), item.get("priority", ""))
+        existing_map[key] = item.get("id", "")
+
+    result: list[dict] = []
+    all_items = list(existing)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for raw in raw_items:
+        if not isinstance(raw, dict) or not raw.get("content"):
             continue
-        if line[0] in ("🔴", "🟡", "🟢", "-", "•"):
-            count += 1
-        elif len(line) > 1:
-            count += 1
-    return count
+
+        priority = raw.get("priority", "🟢")
+        content = raw["content"]
+
+        # ID 결정: LLM이 반환한 id > content+priority 매칭 > 신규 생성
+        item_id = raw.get("id")
+        if not item_id:
+            key = (content, priority)
+            item_id = existing_map.get(key)
+        if not item_id:
+            item_id = generate_ltm_id(all_items)
+
+        item = {
+            "id": item_id,
+            "priority": priority,
+            "content": content,
+            "promoted_at": raw.get("promoted_at", now_iso),
+        }
+        if raw.get("source_obs_ids"):
+            item["source_obs_ids"] = raw["source_obs_ids"]
+
+        result.append(item)
+        all_items.append(item)
+
+    return result
 
 
-def _count_priority(text: str) -> dict:
-    """승격 텍스트에서 우선순위별 카운트를 추출."""
-    counts = {}
-    if not text:
-        return counts
-    for line in text.strip().split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        for emoji in ("🔴", "🟡", "🟢"):
-            if line.startswith(emoji):
-                counts[emoji] = counts.get(emoji, 0) + 1
-                break
-    return counts
+def parse_promoter_output(
+    text: str, existing_items: list[dict] | None = None
+) -> PromoterResult:
+    """Promoter 응답 JSON에서 promoted와 rejected를 파싱합니다."""
+    existing = existing_items or []
 
+    try:
+        data = _extract_json(text)
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Promoter 응답 JSON 파싱 실패")
+        return PromoterResult()
 
-def parse_promoter_output(text: str) -> PromoterResult:
-    """Promoter 응답에서 <promoted>와 <rejected> 태그를 파싱합니다."""
-    promoted = _extract_tag(text, "promoted")
-    rejected = _extract_tag(text, "rejected")
+    if not isinstance(data, dict):
+        return PromoterResult()
+
+    # promoted
+    raw_promoted = data.get("promoted", [])
+    promoted = (
+        _assign_ltm_ids(raw_promoted, existing) if isinstance(raw_promoted, list) else []
+    )
+
+    # rejected
+    raw_rejected = data.get("rejected", [])
+    rejected = raw_rejected if isinstance(raw_rejected, list) else []
+
+    # 우선순위 카운트
+    priority_counts: dict[str, int] = {}
+    for item in promoted:
+        p = item.get("priority", "🟢")
+        priority_counts[p] = priority_counts.get(p, 0) + 1
 
     return PromoterResult(
         promoted=promoted,
         rejected=rejected,
-        promoted_count=_count_entries(promoted),
-        rejected_count=_count_entries(rejected),
-        priority_counts=_count_priority(promoted),
+        promoted_count=len(promoted),
+        rejected_count=len(rejected),
+        priority_counts=priority_counts,
     )
 
 
-def parse_compactor_output(text: str) -> str:
-    """Compactor 응답에서 <compacted> 태그를 파싱합니다."""
-    compacted = _extract_tag(text, "compacted")
-    return compacted if compacted else text.strip()
+def parse_compactor_output(
+    text: str, existing_items: list[dict] | None = None
+) -> list[dict]:
+    """Compactor 응답에서 JSON 배열을 파싱합니다."""
+    existing = existing_items or []
+
+    try:
+        data = _extract_json(text)
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Compactor 응답 JSON 파싱 실패")
+        return existing  # fallback: 기존 항목 유지
+
+    if isinstance(data, list):
+        raw_items = data
+    elif isinstance(data, dict):
+        raw_items = data.get("compacted", data.get("items", []))
+    else:
+        return existing
+
+    return _assign_ltm_ids(raw_items, existing)
 
 
 class Promoter:
@@ -110,13 +188,13 @@ class Promoter:
     async def promote(
         self,
         candidates: list[dict],
-        existing_persistent: str,
+        existing_persistent: list[dict],
     ) -> PromoterResult:
         """후보 항목들을 검토하여 장기 기억 승격 여부를 판단합니다.
 
         Args:
             candidates: 후보 항목 리스트 [{"ts": ..., "priority": ..., "content": ...}]
-            existing_persistent: 기존 장기 기억 텍스트
+            existing_persistent: 기존 장기 기억 항목 리스트
 
         Returns:
             PromoterResult
@@ -131,7 +209,7 @@ class Promoter:
         )
 
         result_text = response.choices[0].message.content or ""
-        return parse_promoter_output(result_text)
+        return parse_promoter_output(result_text, existing_persistent)
 
     @staticmethod
     def _format_candidates(candidates: list[dict]) -> str:
@@ -145,13 +223,23 @@ class Promoter:
         return "\n".join(lines)
 
     @staticmethod
-    def merge_promoted(existing: str, promoted: str) -> str:
-        """승격된 항목을 기존 장기 기억에 머지합니다."""
-        if not existing or not existing.strip():
-            return promoted
-        if not promoted or not promoted.strip():
-            return existing
-        return f"{existing}\n\n{promoted}"
+    def merge_promoted(existing: list[dict], promoted: list[dict]) -> list[dict]:
+        """승격된 항목을 기존 장기 기억에 머지합니다. ID 기반 중복 제거."""
+        merged = list(existing)
+        existing_ids = {item.get("id") for item in existing if item.get("id")}
+
+        for item in promoted:
+            item_id = item.get("id")
+            if item_id and item_id in existing_ids:
+                # 기존 항목 업데이트
+                for i, ex in enumerate(merged):
+                    if ex.get("id") == item_id:
+                        merged[i] = item
+                        break
+            else:
+                merged.append(item)
+
+        return merged
 
 
 class Compactor:
@@ -164,13 +252,13 @@ class Compactor:
 
     async def compact(
         self,
-        persistent: str,
+        persistent: list[dict],
         target_tokens: int,
     ) -> CompactorResult:
         """장기 기억을 압축합니다.
 
         Args:
-            persistent: 현재 장기 기억 텍스트
+            persistent: 현재 장기 기억 항목 리스트
             target_tokens: 목표 토큰 수
 
         Returns:
@@ -185,7 +273,9 @@ class Compactor:
         )
 
         result_text = response.choices[0].message.content or ""
-        compacted = parse_compactor_output(result_text)
-        token_count = self.token_counter.count_string(compacted)
+        compacted = parse_compactor_output(result_text, persistent)
+        token_count = self.token_counter.count_string(
+            json.dumps(compacted, ensure_ascii=False)
+        )
 
         return CompactorResult(compacted=compacted, token_count=token_count)

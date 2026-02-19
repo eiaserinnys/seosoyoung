@@ -5,8 +5,8 @@ Create a SMALL, high-signal "Global Long-Term Memory" that is safe and useful in
 even if the next session is completely unrelated to Slack bots, tools, or the current project.
 
 GLOBAL MEMORY BUDGET (hard rule):
-- Prefer ≤ 12 total bullets in long-term memory.
-- Each bullet should be ≤ 160 characters (Korean preferred).
+- Prefer ≤ 12 total items in long-term memory.
+- Each item content should be ≤ 160 characters (Korean preferred).
 - Merge aggressively. If unsure, reject.
 
 PROMOTE only if the item is BOTH:
@@ -19,9 +19,9 @@ STRIP & GENERALIZE (required):
   token scopes, and implementation pipeline details unless the user explicitly said it is universal.
 
 PROMOTE (high priority examples):
-- User’s enduring communication preferences (language, concision, evidence style, option-picking format)
-- User’s enduring quality rules (no test skipping, verification habits, validation expectations)
-- Recurring agent failure modes + the user’s correction ("Never do X; always do Y")
+- User's enduring communication preferences (language, concision, evidence style, option-picking format)
+- User's enduring quality rules (no test skipping, verification habits, validation expectations)
+- Recurring agent failure modes + the user's correction ("Never do X; always do Y")
 - Durable output/integrity constraints (e.g., JSON validity, must include final artifacts)
 
 REJECT (explicitly do NOT promote):
@@ -45,17 +45,21 @@ EXISTING LONG-TERM MEMORY:
 CANDIDATE ENTRIES:
 {candidate_entries}
 
-OUTPUT FORMAT:
+OUTPUT FORMAT (JSON):
+Return a JSON object:
 
-<promoted>
-Write the items to promote in long-term memory format.
-Maintain priority emoji prefixes (🔴🟡🟢).
-Merge similar items into concise entries.
-If you are generalizing, write the generalized version only.
-</promoted>
+{{
+  "promoted": [
+    {{"priority": "🔴", "content": "..."}},
+    {{"priority": "🟡", "content": "..."}}
+  ],
+  "rejected": [
+    {{"content": "...", "reason": "..."}}
+  ]
+}}
 
-<rejected>
-List rejected items with brief reasons for rejection.
-If an existing memory item clearly violates the rules or the user asked to forget it,
-include it here prefixed with "REMOVE:" so a human can delete it.
-</rejected>
+RULES FOR PROMOTED ARRAY:
+- Each item must have "priority" and "content" fields.
+- If keeping an existing long-term memory item unchanged, include its "id".
+- For new items, omit "id".
+- Merge similar items into concise entries.

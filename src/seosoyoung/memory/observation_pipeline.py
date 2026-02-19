@@ -5,18 +5,22 @@
 흐름:
 1. pending 버퍼 로드 → 이번 턴 메시지와 합산 → 최소 토큰 미만이면 pending에 누적 후 스킵
 2. Observer 호출 (매턴) → 세션 관찰 로그 갱신 → pending 비우기
-3. <candidates> 태그가 있으면 장기 기억 후보 버퍼에 적재
+3. candidates가 있으면 장기 기억 후보 버퍼에 적재
 4. 관찰 로그가 reflection 임계치를 넘으면 Reflector로 압축
 5. 후보 버퍼 토큰 합산 → promotion 임계치 초과 시 Promoter 호출
 6. 장기 기억 토큰 → compaction 임계치 초과 시 Compactor 호출
 """
 
+import json
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Optional
 
 from seosoyoung.config import Config
+from seosoyoung.memory.context_builder import (
+    render_observation_items,
+    render_persistent_items,
+)
 from seosoyoung.memory.observer import Observer
 from seosoyoung.memory.promoter import Compactor, Promoter
 from seosoyoung.memory.reflector import Reflector
@@ -27,13 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def _send_debug_log(channel: str, text: str, thread_ts: str = "") -> str:
-    """OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환.
-
-    Args:
-        channel: 발송 채널
-        text: 메시지 텍스트
-        thread_ts: 스레드 앵커 ts (있으면 해당 스레드에 답글로 발송)
-    """
+    """OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환."""
     try:
         from seosoyoung.config import Config
         from slack_sdk import WebClient
@@ -80,59 +78,23 @@ def _blockquote(text: str, max_chars: int = 800) -> str:
 
 
 def _extract_new_observations(
-    existing: str | None, updated: str
-) -> str:
-    """기존 관찰과 갱신된 관찰을 비교하여 새로 추가된 줄만 추출합니다.
+    existing: list[dict] | None, updated: list[dict]
+) -> list[dict]:
+    """기존 관찰과 갱신된 관찰을 비교하여 새로 추가된 항목만 추출합니다.
 
-    Observer가 전체를 재작성하므로, 기존 줄 집합에 없는 줄만 반환합니다.
+    ID 기반: 기존에 없는 ID를 가진 항목을 새 항목으로 간주합니다.
     """
-    if not existing or not existing.strip():
+    if not existing:
         return updated
 
-    existing_lines = set(line.strip() for line in existing.strip().splitlines() if line.strip())
-    new_lines = []
-    for line in updated.strip().splitlines():
-        stripped = line.strip()
-        if stripped and stripped not in existing_lines:
-            new_lines.append(line)
+    existing_ids = {item.get("id") for item in existing if item.get("id")}
+    new_items = []
+    for item in updated:
+        item_id = item.get("id")
+        if not item_id or item_id not in existing_ids:
+            new_items.append(item)
 
-    return "\n".join(new_lines) if new_lines else ""
-
-
-def parse_candidate_entries(candidates_text: str) -> list[dict]:
-    """<candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
-
-    각 줄에서 이모지 우선순위(🔴🟡🟢)와 내용을 추출합니다.
-    """
-    if not candidates_text or not candidates_text.strip():
-        return []
-
-    entries = []
-    now = datetime.now(timezone.utc).isoformat()
-
-    for line in candidates_text.strip().split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-
-        # 우선순위 이모지 추출
-        priority = "🟢"  # 기본값
-        for emoji in ("🔴", "🟡", "🟢"):
-            if line.startswith(emoji):
-                priority = emoji
-                line = line[len(emoji):].strip()
-                # "HIGH", "MEDIUM", "LOW" 접두사 제거
-                line = re.sub(r"^(HIGH|MEDIUM|LOW)\s*[-–—]?\s*", "", line).strip()
-                break
-
-        if line:
-            entries.append({
-                "ts": now,
-                "priority": priority,
-                "content": line,
-            })
-
-    return entries
+    return new_items
 
 
 async def observe_conversation(
@@ -193,7 +155,6 @@ async def observe_conversation(
 
         # 최소 토큰 미달 시 pending 버퍼에 누적하고 스킵
         if turn_tokens < min_turn_tokens:
-            # 이번 턴의 새 메시지를 pending에 추가 (기존 pending은 파일에 이미 있음)
             new_messages = messages[len(pending):] if pending else messages
             if new_messages:
                 store.append_pending_messages(thread_ts, new_messages)
@@ -239,7 +200,8 @@ async def observe_conversation(
             return False
 
         # 4. 관찰 로그 갱신
-        new_tokens = token_counter.count_string(result.observations)
+        obs_json = json.dumps(result.observations, ensure_ascii=False)
+        new_tokens = token_counter.count_string(obs_json)
 
         if record is None:
             record = MemoryRecord(thread_ts=thread_ts, user_id=user_id)
@@ -253,20 +215,17 @@ async def observe_conversation(
         candidate_count = 0
         candidate_summary = ""
         if result.candidates:
-            entries = parse_candidate_entries(result.candidates)
-            if entries:
-                store.append_candidates(thread_ts, entries)
-                candidate_count = len(entries)
-                # 우선순위별 카운트
-                counts = {}
-                for e in entries:
-                    p = e["priority"]
-                    counts[p] = counts.get(p, 0) + 1
-                parts = []
-                for emoji in ("🔴", "🟡", "🟢"):
-                    if emoji in counts:
-                        parts.append(f"{emoji}{counts[emoji]}")
-                candidate_summary = " ".join(parts)
+            store.append_candidates(thread_ts, result.candidates)
+            candidate_count = len(result.candidates)
+            counts: dict[str, int] = {}
+            for e in result.candidates:
+                p = e.get("priority", "🟢")
+                counts[p] = counts.get(p, 0) + 1
+            parts = []
+            for emoji in ("🔴", "🟡", "🟢"):
+                if emoji in counts:
+                    parts.append(f"{emoji}{counts[emoji]}")
+            candidate_summary = " ".join(parts)
 
         # 6. Reflector: 임계치 초과 시 압축
         if reflector and new_tokens > reflection_threshold:
@@ -289,7 +248,8 @@ async def observe_conversation(
                 )
                 # 디버그 이벤트 #2: Reflector (별도 send)
                 if debug_channel:
-                    ref_quote = _blockquote(reflection_result.observations)
+                    ref_text = render_observation_items(reflection_result.observations)
+                    ref_quote = _blockquote(ref_text)
                     _send_debug_log(
                         debug_channel,
                         f":recycle: *OM 세션 관찰 압축* `{sid}`\n"
@@ -313,14 +273,16 @@ async def observe_conversation(
             + (f", 후보 +{candidate_count}" if candidate_count else "")
         )
 
-        # 디버그 이벤트 #1 완료 (update) — 이벤트 #3 (후보 정보) 통합
+        # 디버그 이벤트 #1 완료 (update)
         if debug_channel:
             if candidate_count:
                 candidate_part = f" | 후보 +{candidate_count} ({candidate_summary})"
             else:
                 candidate_part = " | 후보 없음"
-            new_obs_lines = len([l for l in new_obs.splitlines() if l.strip()]) if new_obs else 0
-            new_obs_part = f" | 새 관찰 {new_obs_lines}줄" if new_obs_lines else " | 새 관찰 없음"
+            new_obs_count = len(new_obs)
+            new_obs_part = (
+                f" | 새 관찰 {new_obs_count}건" if new_obs_count else " | 새 관찰 없음"
+            )
             _update_debug_log(
                 debug_channel,
                 debug_ts,
@@ -379,7 +341,7 @@ async def _try_promote(
 
         # 기존 장기 기억 로드
         persistent_data = store.get_persistent()
-        existing_persistent = persistent_data["content"] if persistent_data else ""
+        existing_persistent = persistent_data["content"] if persistent_data else []
 
         # 디버그 이벤트 #4: Promoter 시작 (send)
         promoter_debug_ts = ""
@@ -401,9 +363,10 @@ async def _try_promote(
         )
 
         # 승격된 항목이 있으면 장기 기억에 머지
-        if result.promoted and result.promoted.strip():
+        if result.promoted:
             merged = Promoter.merge_promoted(existing_persistent, result.promoted)
-            persistent_tokens = token_counter.count_string(merged)
+            persistent_json = json.dumps(merged, ensure_ascii=False)
+            persistent_tokens = token_counter.count_string(persistent_json)
 
             store.save_persistent(
                 content=merged,
@@ -419,7 +382,7 @@ async def _try_promote(
                 f"장기기억 {persistent_tokens} tok"
             )
 
-            # 디버그 이벤트 #5: Promoter 완료 — 승격 있음 (update #4)
+            # 디버그 이벤트 #5: Promoter 완료 (update #4)
             if debug_channel:
                 priority_parts = []
                 for emoji in ("🔴", "🟡", "🟢"):
@@ -427,7 +390,8 @@ async def _try_promote(
                     if cnt:
                         priority_parts.append(f"{emoji}{cnt}")
                 priority_str = " ".join(priority_parts)
-                promoted_quote = _blockquote(result.promoted)
+                promoted_text = render_persistent_items(result.promoted)
+                promoted_quote = _blockquote(promoted_text)
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
@@ -510,7 +474,8 @@ async def _try_compact(
 
         # 디버그 이벤트 #6: 컴팩션 (별도 send)
         if debug_channel:
-            compact_quote = _blockquote(result.compacted)
+            compact_text = render_persistent_items(result.compacted)
+            compact_quote = _blockquote(compact_text)
             archive_info = f"\n>`archive: {archive_path}`" if archive_path else ""
             _send_debug_log(
                 debug_channel,

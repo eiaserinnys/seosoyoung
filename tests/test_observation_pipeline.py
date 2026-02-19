@@ -9,7 +9,6 @@ import pytest
 from seosoyoung.memory.observation_pipeline import (
     _extract_new_observations,
     observe_conversation,
-    parse_candidate_entries,
 )
 from seosoyoung.memory.observer import ObserverResult
 from seosoyoung.memory.store import MemoryRecord, MemoryStore
@@ -36,78 +35,53 @@ def sample_messages():
     ]
 
 
+def _make_obs_items(items_data):
+    """테스트 헬퍼: 간단한 관찰 항목 리스트 생성"""
+    result = []
+    for i, (priority, content) in enumerate(items_data):
+        result.append({
+            "id": f"obs_20260210_{i:03d}",
+            "priority": priority,
+            "content": content,
+            "session_date": "2026-02-10",
+            "created_at": "2026-02-10T00:00:00+00:00",
+            "source": "observer",
+        })
+    return result
+
+
 class TestExtractNewObservations:
     def test_no_existing_returns_updated(self):
         """기존 관찰이 없으면 (첫 관찰) 전체가 새 관찰"""
-        updated = "🔴 새 관찰 1\n🟡 새 관찰 2"
+        updated = _make_obs_items([("🔴", "새 관찰 1"), ("🟡", "새 관찰 2")])
         assert _extract_new_observations(None, updated) == updated
-        assert _extract_new_observations("", updated) == updated
+        assert _extract_new_observations([], updated) == updated
 
-    def test_extracts_only_new_lines(self):
-        """기존 관찰에 없는 줄만 추출"""
-        existing = "## [2026-02-12] Session Observations\n\n🔴 기존 관찰"
-        updated = "## [2026-02-12] Session Observations\n\n🔴 기존 관찰\n🟡 새 관찰"
+    def test_extracts_only_new_items(self):
+        """기존 관찰에 없는 ID만 추출"""
+        existing = _make_obs_items([("🔴", "기존 관찰")])
+        updated = existing + [
+            {"id": "obs_20260210_100", "priority": "🟡", "content": "새 관찰",
+             "session_date": "2026-02-10", "created_at": "2026-02-10T00:00:00+00:00", "source": "observer"}
+        ]
         result = _extract_new_observations(existing, updated)
-        assert "새 관찰" in result
-        assert "기존 관찰" not in result
+        assert len(result) == 1
+        assert result[0]["content"] == "새 관찰"
 
-    def test_all_lines_same_returns_empty(self):
-        """모든 줄이 동일하면 빈 문자열 반환"""
-        text = "🔴 동일한 관찰"
-        result = _extract_new_observations(text, text)
-        assert result == ""
-
-    def test_header_changes_included(self):
-        """날짜 헤더가 변경되면 새 헤더 포함"""
-        existing = "## [2026-02-11] Session Observations\n\n🔴 기존"
-        updated = "## [2026-02-11] Session Observations\n\n🔴 기존\n## [2026-02-12] Session Observations\n\n🟡 새로운"
-        result = _extract_new_observations(existing, updated)
-        assert "2026-02-12" in result
-        assert "새로운" in result
-
-
-class TestParseCandidateEntries:
-    def test_parse_basic_entries(self):
-        text = "🔴 사용자는 커밋 메시지를 한국어로 작성\n🟡 트렐로 체크리스트 패턴"
-        entries = parse_candidate_entries(text)
-        assert len(entries) == 2
-        assert entries[0]["priority"] == "🔴"
-        assert "커밋 메시지를 한국어로" in entries[0]["content"]
-        assert entries[1]["priority"] == "🟡"
-        assert "ts" in entries[0]
-
-    def test_parse_with_priority_labels(self):
-        text = "🔴 HIGH - 항상 기억해야 하는 선호\n🟡 MEDIUM — 유용한 맥락"
-        entries = parse_candidate_entries(text)
-        assert len(entries) == 2
-        assert "항상 기억해야 하는 선호" in entries[0]["content"]
-        assert "HIGH" not in entries[0]["content"]
-        assert "유용한 맥락" in entries[1]["content"]
-        assert "MEDIUM" not in entries[1]["content"]
-
-    def test_parse_no_emoji_defaults_to_green(self):
-        text = "이모지 없는 관찰"
-        entries = parse_candidate_entries(text)
-        assert len(entries) == 1
-        assert entries[0]["priority"] == "🟢"
-
-    def test_parse_empty_input(self):
-        assert parse_candidate_entries("") == []
-        assert parse_candidate_entries(None) == []
-        assert parse_candidate_entries("   ") == []
-
-    def test_parse_skips_empty_lines(self):
-        text = "🔴 첫째\n\n🟡 둘째\n  \n🟢 셋째"
-        entries = parse_candidate_entries(text)
-        assert len(entries) == 3
+    def test_all_items_same_returns_empty(self):
+        """모든 항목이 동일하면 빈 리스트 반환"""
+        items = _make_obs_items([("🔴", "동일한 관찰")])
+        result = _extract_new_observations(items, items)
+        assert result == []
 
 
 class TestObserveConversation:
     @pytest.mark.asyncio
     async def test_basic_observation(self, store, mock_observer, sample_messages):
         """매턴 관찰이 정상적으로 수행됨"""
+        obs_items = _make_obs_items([("🔴", "캐릭터 정보 조회")])
         mock_observer.observe.return_value = ObserverResult(
-            observations="## [2026-02-10] Session Observations\n\n🔴 캐릭터 정보 조회",
+            observations=obs_items,
             current_task="캐릭터 정보 조회",
         )
 
@@ -123,7 +97,8 @@ class TestObserveConversation:
         assert result is True
         record = store.get_record("ts_1234")
         assert record is not None
-        assert "캐릭터 정보 조회" in record.observations
+        assert len(record.observations) == 1
+        assert record.observations[0]["content"] == "캐릭터 정보 조회"
         assert record.thread_ts == "ts_1234"
         assert record.user_id == "U12345"
         assert record.total_sessions_observed == 1
@@ -159,7 +134,7 @@ class TestObserveConversation:
     ):
         """pending 버퍼 누적이 임계치를 넘으면 관찰 트리거"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="누적 관찰 완료"
+            observations=_make_obs_items([("🟢", "누적 관찰 완료")])
         )
         short_messages = [
             {"role": "user", "content": "hi"},
@@ -205,7 +180,7 @@ class TestObserveConversation:
     ):
         """관찰 성공 후 pending 버퍼가 비워지는지 확인"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 완료"
+            observations=_make_obs_items([("🟢", "관찰 완료")])
         )
         # 먼저 pending에 무언가를 넣어둠
         store.append_pending_messages("ts_1234", [{"role": "user", "content": "이전 데이터"}])
@@ -228,7 +203,7 @@ class TestObserveConversation:
     ):
         """min_turn_tokens=0이면 항상 관찰"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 내용"
+            observations=_make_obs_items([("🟢", "관찰 내용")])
         )
 
         result = await observe_conversation(
@@ -248,15 +223,16 @@ class TestObserveConversation:
         self, store, mock_observer, sample_messages
     ):
         """기존 관찰 로그가 Observer에 전달됨"""
+        existing_items = _make_obs_items([("🔴", "기존 관찰 내용")])
         existing = MemoryRecord(
             thread_ts="ts_1234",
             user_id="U12345",
-            observations="기존 관찰 내용",
+            observations=existing_items,
         )
         store.save_record(existing)
 
         mock_observer.observe.return_value = ObserverResult(
-            observations="갱신된 관찰",
+            observations=existing_items + _make_obs_items([("🟡", "갱신된 관찰")]),
         )
 
         await observe_conversation(
@@ -269,14 +245,16 @@ class TestObserveConversation:
         )
 
         call_kwargs = mock_observer.observe.call_args.kwargs
-        assert call_kwargs["existing_observations"] == "기존 관찰 내용"
+        assert call_kwargs["existing_observations"] == existing_items
 
     @pytest.mark.asyncio
     async def test_no_existing_record_passes_none(
         self, store, mock_observer, sample_messages
     ):
         """기존 레코드 없을 때 None 전달"""
-        mock_observer.observe.return_value = ObserverResult(observations="새 관찰")
+        mock_observer.observe.return_value = ObserverResult(
+            observations=_make_obs_items([("🟢", "새 관찰")])
+        )
 
         await observe_conversation(
             store=store,
@@ -298,13 +276,13 @@ class TestObserveConversation:
         existing = MemoryRecord(
             thread_ts="ts_1234",
             user_id="U12345",
-            observations="이전 관찰",
+            observations=_make_obs_items([("🟢", "이전 관찰")]),
             total_sessions_observed=3,
         )
         store.save_record(existing)
 
         mock_observer.observe.return_value = ObserverResult(
-            observations="갱신된 관찰"
+            observations=_make_obs_items([("🟢", "갱신된 관찰")])
         )
 
         await observe_conversation(
@@ -359,7 +337,7 @@ class TestObserveConversation:
     ):
         """관찰 완료 시 inject 플래그 미설정 (PreCompact 훅에서만 설정)"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 내용"
+            observations=_make_obs_items([("🟢", "관찰 내용")])
         )
 
         result = await observe_conversation(
@@ -394,9 +372,8 @@ class TestObserveConversation:
         self, store, mock_observer, sample_messages
     ):
         """다른 세션은 독립적으로 관찰"""
-        mock_observer.observe.return_value = ObserverResult(
-            observations="세션 A 관찰"
-        )
+        items_a = _make_obs_items([("🟢", "세션 A 관찰")])
+        mock_observer.observe.return_value = ObserverResult(observations=items_a)
 
         await observe_conversation(
             store=store,
@@ -407,9 +384,9 @@ class TestObserveConversation:
             min_turn_tokens=0,
         )
 
-        mock_observer.observe.return_value = ObserverResult(
-            observations="세션 B 관찰"
-        )
+        items_b = [{"id": "obs_20260210_010", "priority": "🟢", "content": "세션 B 관찰",
+                     "session_date": "2026-02-10", "created_at": "2026-02-10T00:00:00+00:00", "source": "observer"}]
+        mock_observer.observe.return_value = ObserverResult(observations=items_b)
 
         await observe_conversation(
             store=store,
@@ -422,8 +399,8 @@ class TestObserveConversation:
 
         record_a = store.get_record("ts_a")
         record_b = store.get_record("ts_b")
-        assert record_a.observations == "세션 A 관찰"
-        assert record_b.observations == "세션 B 관찰"
+        assert record_a.observations[0]["content"] == "세션 A 관찰"
+        assert record_b.observations[0]["content"] == "세션 B 관찰"
 
 
 class TestCandidateCollection:
@@ -431,8 +408,11 @@ class TestCandidateCollection:
     async def test_candidates_stored(self, store, mock_observer, sample_messages):
         """후보가 있으면 store에 적재"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 내용",
-            candidates="🔴 사용자는 한국어 커밋 메시지 선호\n🟡 트렐로 체크리스트 패턴",
+            observations=_make_obs_items([("🟢", "관찰 내용")]),
+            candidates=[
+                {"ts": "2026-02-10T00:00:00+00:00", "priority": "🔴", "content": "사용자는 한국어 커밋 메시지 선호"},
+                {"ts": "2026-02-10T00:00:00+00:00", "priority": "🟡", "content": "트렐로 체크리스트 패턴"},
+            ],
         )
 
         result = await observe_conversation(
@@ -455,8 +435,8 @@ class TestCandidateCollection:
     async def test_no_candidates_no_store(self, store, mock_observer, sample_messages):
         """후보가 없으면 store에 적재하지 않음"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 내용",
-            candidates="",
+            observations=_make_obs_items([("🟢", "관찰 내용")]),
+            candidates=[],
         )
 
         await observe_conversation(
@@ -477,8 +457,8 @@ class TestCandidateCollection:
     ):
         """여러 턴의 후보가 누적"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 1",
-            candidates="🔴 첫 번째 후보",
+            observations=_make_obs_items([("🟢", "관찰 1")]),
+            candidates=[{"ts": "t", "priority": "🔴", "content": "첫 번째 후보"}],
         )
 
         await observe_conversation(
@@ -491,8 +471,8 @@ class TestCandidateCollection:
         )
 
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 2",
-            candidates="🟡 두 번째 후보",
+            observations=_make_obs_items([("🟢", "관찰 2")]),
+            candidates=[{"ts": "t", "priority": "🟡", "content": "두 번째 후보"}],
         )
 
         await observe_conversation(
@@ -514,15 +494,21 @@ class TestReflector:
     @pytest.mark.asyncio
     async def test_reflector_triggered(self, store, mock_observer, sample_messages):
         """관찰 토큰이 임계치를 넘으면 Reflector 호출"""
-        long_observations = "관찰 내용 " * 500
+        long_observations = [
+            {"id": f"obs_20260210_{i:03d}", "priority": "🟢",
+             "content": f"관찰 내용 {i} " + "detail " * 50,
+             "session_date": "2026-02-10", "created_at": "2026-02-10T00:00:00+00:00", "source": "observer"}
+            for i in range(50)
+        ]
         mock_observer.observe.return_value = ObserverResult(
             observations=long_observations,
         )
 
         mock_reflector = AsyncMock()
         from seosoyoung.memory.reflector import ReflectorResult
+        compressed_items = _make_obs_items([("🔴", "압축된 관찰")])
         mock_reflector.reflect.return_value = ReflectorResult(
-            observations="압축된 관찰",
+            observations=compressed_items,
             token_count=100,
         )
 
@@ -539,7 +525,7 @@ class TestReflector:
 
         mock_reflector.reflect.assert_called_once()
         record = store.get_record("ts_1234")
-        assert record.observations == "압축된 관찰"
+        assert record.observations == compressed_items
         assert record.reflection_count == 1
 
 
@@ -817,7 +803,7 @@ class TestObserveConversationAnchorTs:
     async def test_anchor_ts_passed_to_debug_log(self, store, mock_observer, sample_messages):
         """anchor_ts가 _send_debug_log에 전달되는지 확인"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 내용",
+            observations=_make_obs_items([("🟢", "관찰 내용")]),
         )
 
         with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
@@ -842,7 +828,7 @@ class TestObserveConversationAnchorTs:
     async def test_anchor_ts_default_empty(self, store, mock_observer, sample_messages):
         """anchor_ts 미지정 시 빈 문자열이 기본값"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 내용",
+            observations=_make_obs_items([("🟢", "관찰 내용")]),
         )
 
         with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
@@ -926,7 +912,7 @@ class TestObserveConversationSkipsDebugWithoutAnchor:
     async def test_skips_debug_on_observation_when_anchor_ts_empty(self, store, mock_observer, sample_messages):
         """anchor_ts가 빈 문자열이면 observe_conversation에서 디버그 로그를 발송하지 않음"""
         mock_observer.observe.return_value = ObserverResult(
-            observations="관찰 내용",
+            observations=_make_obs_items([("🟢", "관찰 내용")]),
         )
 
         with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
