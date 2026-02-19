@@ -105,8 +105,8 @@
 
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:94): Claude Code 실행 결과
 - `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:109): Claude Code SDK 기반 실행기
-- `PendingPrompt` (seosoyoung/claude/executor.py:63): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:79): Claude Code 실행기
+- `PendingPrompt` (seosoyoung/claude/executor.py:61): 인터벤션 대기 중인 프롬프트 정보
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:77): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `ClaudeServiceAdapter` (seosoyoung/claude/service_adapter.py:26): 원격 soul 서버 어댑터
 - `SSEEvent` (seosoyoung/claude/service_client.py:32): Server-Sent Event 데이터
@@ -203,8 +203,8 @@
 - `RecallResult` (seosoyoung/recall/recall.py:30): Recall 결과
 - `Recall` (seosoyoung/recall/recall.py:106): Recall - 도구 선택 사전 분석 파이프라인
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
-- `PendingPrompt` (seosoyoung/rescue/main.py:52): 인터벤션 대기 중인 프롬프트 정보
-- `RescueBotApp` (seosoyoung/rescue/main.py:61): rescue-bot 애플리케이션
+- `PendingPrompt` (seosoyoung/rescue/main.py:49): 인터벤션 대기 중인 프롬프트 정보
+- `RescueBotApp` (seosoyoung/rescue/main.py:58): rescue-bot 애플리케이션
 - `RescueResult` (seosoyoung/rescue/runner.py:85): 실행 결과
 - `RescueRunner` (seosoyoung/rescue/runner.py:96): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
@@ -250,12 +250,10 @@
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:9): Claude 실행기 인스턴스를 반환하는 팩토리 함수
 - `async main()` (seosoyoung/claude/agent_runner.py:946): 
-- `get_runner_for_role()` (seosoyoung/claude/executor.py:47): 역할에 맞는 ClaudeAgentRunner 반환
-- `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:15): usage dict에서 컨텍스트 사용량 바를 생성
-- `escape_backticks()` (seosoyoung/claude/message_formatter.py:50): 텍스트 내 모든 백틱을 이스케이프
-- `parse_summary_details()` (seosoyoung/claude/message_formatter.py:69): 응답에서 요약과 상세 내용을 파싱
-- `strip_summary_details_markers()` (seosoyoung/claude/message_formatter.py:103): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
-- `build_trello_header()` (seosoyoung/claude/message_formatter.py:127): 트렐로 카드용 슬랙 메시지 헤더 생성
+- `get_runner_for_role()` (seosoyoung/claude/executor.py:45): 역할에 맞는 ClaudeAgentRunner 반환
+- `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:14): usage dict에서 컨텍스트 사용량 바를 생성
+- `escape_backticks()` (seosoyoung/claude/message_formatter.py:49): 텍스트 내 모든 백틱을 이스케이프
+- `build_trello_header()` (seosoyoung/claude/message_formatter.py:68): 트렐로 카드용 슬랙 메시지 헤더 생성
 - `build_initial_context()` (seosoyoung/claude/session_context.py:15): 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
 - `build_followup_context()` (seosoyoung/claude/session_context.py:67): 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
 - `format_hybrid_context()` (seosoyoung/claude/session_context.py:134): hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
@@ -385,11 +383,9 @@
 - `build_evaluation_prompt()` (seosoyoung/recall/evaluator.py:28): 도구 평가를 위한 프롬프트 생성.
 - `parse_evaluation_response()` (seosoyoung/recall/evaluator.py:90): 평가 응답 파싱.
 - `parse_frontmatter()` (seosoyoung/recall/loader.py:19): YAML frontmatter와 본문을 분리하여 파싱.
-- `main()` (seosoyoung/rescue/main.py:678): rescue-bot 진입점
-- `build_context_usage_bar()` (seosoyoung/rescue/message_formatter.py:13): usage dict에서 컨텍스트 사용량 바를 생성
-- `escape_backticks()` (seosoyoung/rescue/message_formatter.py:42): 텍스트 내 모든 백틱을 이스케이프
-- `parse_summary_details()` (seosoyoung/rescue/message_formatter.py:52): 응답에서 요약과 상세 내용을 파싱
-- `strip_summary_details_markers()` (seosoyoung/rescue/message_formatter.py:86): 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
+- `main()` (seosoyoung/rescue/main.py:664): rescue-bot 진입점
+- `build_context_usage_bar()` (seosoyoung/rescue/message_formatter.py:12): usage dict에서 컨텍스트 사용량 바를 생성
+- `escape_backticks()` (seosoyoung/rescue/message_formatter.py:41): 텍스트 내 모든 백틱을 이스케이프
 - `get_runner()` (seosoyoung/rescue/runner.py:510): 모듈 레벨 RescueRunner 인스턴스를 반환
 - `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
 - `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).

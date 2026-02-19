@@ -5,63 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from seosoyoung.rescue.message_formatter import (
-    parse_summary_details,
-    strip_summary_details_markers,
-    escape_backticks,
-    build_context_usage_bar,
-)
-
-
-class TestSummaryDetailsParsing:
-    """SUMMARY/DETAILS 마커 파싱 테스트"""
-
-    def test_summary_details_parsing(self):
-        """SUMMARY/DETAILS 마커가 있으면 분리"""
-        response = (
-            "<!-- SUMMARY -->\n"
-            "• 요약 첫 줄\n"
-            "• 요약 둘째 줄\n"
-            "<!-- /SUMMARY -->\n"
-            "\n"
-            "<!-- DETAILS -->\n"
-            "상세 내용입니다.\n"
-            "여러 줄에 걸쳐 있습니다.\n"
-            "<!-- /DETAILS -->"
-        )
-        summary, details, remainder = parse_summary_details(response)
-
-        assert summary is not None
-        assert "요약 첫 줄" in summary
-        assert "요약 둘째 줄" in summary
-        assert details is not None
-        assert "상세 내용" in details
-
-    def test_no_markers(self):
-        """마커가 없으면 (None, None, response)"""
-        response = "일반 텍스트 응답"
-        summary, details, remainder = parse_summary_details(response)
-
-        assert summary is None
-        assert details is None
-        assert remainder == response
-
-    def test_strip_markers_preserves_content(self):
-        """마커만 제거하고 내용은 유지"""
-        response = (
-            "<!-- SUMMARY -->\n"
-            "요약\n"
-            "<!-- /SUMMARY -->\n"
-            "<!-- DETAILS -->\n"
-            "상세\n"
-            "<!-- /DETAILS -->"
-        )
-        result = strip_summary_details_markers(response)
-        assert "요약" in result
-        assert "상세" in result
-        assert "<!-- SUMMARY -->" not in result
-        assert "<!-- /SUMMARY -->" not in result
-
 
 class TestLongMessageSplit:
     """긴 메시지 분할 테스트"""

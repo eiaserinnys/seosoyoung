@@ -11,7 +11,7 @@ Claude 응답을 슬랙 메시지 형식으로 변환하는 함수들을 제공�
 ## 함수
 
 ### `build_context_usage_bar(usage, bar_length)`
-- 위치: 줄 15
+- 위치: 줄 14
 - 설명: usage dict에서 컨텍스트 사용량 바를 생성
 
 SDK의 ResultMessage.usage 구조:
@@ -28,7 +28,7 @@ Returns:
     "Context | ■■■■■■□□□□□□□□□□□□□□ | 30%" 형태 문자열, 또는 None
 
 ### `escape_backticks(text)`
-- 위치: 줄 50
+- 위치: 줄 49
 - 설명: 텍스트 내 모든 백틱을 이스케이프
 
 슬랙에서 백틱은 인라인 코드(`)나 코드 블록(```)을 만드므로,
@@ -44,32 +44,8 @@ Args:
 Returns:
     백틱이 이스케이프된 텍스트
 
-### `parse_summary_details(response)`
-- 위치: 줄 69
-- 설명: 응답에서 요약과 상세 내용을 파싱
-
-Args:
-    response: Claude 응답 텍스트
-
-Returns:
-    (summary, details, remainder): 요약, 상세, 나머지 텍스트
-    - 마커가 없으면 (None, None, response) 반환
-
-### `strip_summary_details_markers(response)`
-- 위치: 줄 103
-- 설명: 응답에서 SUMMARY/DETAILS 마커만 제거하고 내용은 유지
-
-스레드 내 후속 대화에서 마커 태그를 제거할 때 사용.
-마커 제거 후 빈 줄만 남으면 해당 줄도 삭제.
-
-Args:
-    response: Claude 응답 텍스트
-
-Returns:
-    마커가 제거된 텍스트
-
 ### `build_trello_header(card, session_id)`
-- 위치: 줄 127
+- 위치: 줄 68
 - 설명: 트렐로 카드용 슬랙 메시지 헤더 생성
 
 진행 상태(계획/실행/완료)는 헤더가 아닌 슬랙 이모지 리액션으로 표시합니다.
