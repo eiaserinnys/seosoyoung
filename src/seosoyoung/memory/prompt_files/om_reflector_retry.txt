@@ -3,10 +3,8 @@ target is under {target} tokens).
 
 Please compress further:
 - Aim for 8/10 detail level — keep essential patterns but be more concise
-- Merge similar observations more aggressively
+- Merge similar items more aggressively
 - Remove 🟢 LOW priority items older than 1 week
 - Summarize repeated patterns instead of listing each instance
 
-<observations>
-[more aggressively compressed observation log]
-</observations>
+Return ONLY the JSON array of compressed items.

@@ -5,7 +5,7 @@ Current date/time: {current_time}
 CONVERSATION TO ANALYZE:
 {conversation}
 
-Based on the conversation above, produce updated observations. \
+Based on the conversation above, produce updated observations as JSON. \
 Merge new observations with existing ones where relevant. \
 Remove observations that are no longer accurate. \
-Maintain the priority emoji and temporal anchoring format.
+Return a valid JSON object matching the specified output format.

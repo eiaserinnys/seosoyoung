@@ -178,17 +178,19 @@
 - `ChannelDigestScheduler` (seosoyoung/memory/channel_scheduler.py:18): 주기적으로 채널 버퍼를 체크하여 소화를 트리거하는 스케줄러
 - `ChannelStore` (seosoyoung/memory/channel_store.py:24): 파일 기반 채널 관찰 데이터 저장소
 - `InjectionResult` (seosoyoung/memory/context_builder.py:31): 주입 결과 — 디버그 로그용 정보를 포함
-- `ContextBuilder` (seosoyoung/memory/context_builder.py:130): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
-- `ObserverResult` (seosoyoung/memory/observer.py:22): Observer 출력 결과
-- `Observer` (seosoyoung/memory/observer.py:63): 대화를 관찰하여 구조화된 관찰 로그를 생성
-- `PromoterResult` (seosoyoung/memory/promoter.py:20): Promoter 출력 결과
-- `CompactorResult` (seosoyoung/memory/promoter.py:35): Compactor 출력 결과
-- `Promoter` (seosoyoung/memory/promoter.py:103): 장기 기억 후보를 검토하여 승격
-- `Compactor` (seosoyoung/memory/promoter.py:157): 장기 기억을 압축
-- `ReflectorResult` (seosoyoung/memory/reflector.py:23): Reflector 출력 결과
-- `Reflector` (seosoyoung/memory/reflector.py:38): 관찰 로그를 압축하고 재구조화
-- `MemoryRecord` (seosoyoung/memory/store.py:36): 세션별 관찰 로그 레코드
-- `MemoryStore` (seosoyoung/memory/store.py:96): 파일 기반 관찰 로그 저장소
+- `ContextBuilder` (seosoyoung/memory/context_builder.py:221): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
+- `ObserverResult` (seosoyoung/memory/observer.py:24): Observer 출력 결과
+- `Observer` (seosoyoung/memory/observer.py:145): 대화를 관찰하여 구조화된 관찰 로그를 생성
+- `PromoterResult` (seosoyoung/memory/promoter.py:22): Promoter 출력 결과
+- `CompactorResult` (seosoyoung/memory/promoter.py:37): Compactor 출력 결과
+- `Promoter` (seosoyoung/memory/promoter.py:181): 장기 기억 후보를 검토하여 승격
+- `Compactor` (seosoyoung/memory/promoter.py:245): 장기 기억을 압축
+- `ReflectorResult` (seosoyoung/memory/reflector.py:25): Reflector 출력 결과
+- `Reflector` (seosoyoung/memory/reflector.py:93): 관찰 로그를 압축하고 재구조화
+- `ObservationItem` (seosoyoung/memory/store.py:40): 세션 관찰 항목
+- `PersistentItem` (seosoyoung/memory/store.py:73): 장기 기억 항목
+- `MemoryRecord` (seosoyoung/memory/store.py:238): 세션별 관찰 로그 레코드
+- `MemoryStore` (seosoyoung/memory/store.py:300): 파일 기반 관찰 로그 저장소
 - `TokenCounter` (seosoyoung/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
 - `ProfileInfo` (seosoyoung/profile/manager.py:23): 프로필 정보
 - `ProfileManager` (seosoyoung/profile/manager.py:33): Claude Code 인증 프로필 관리자 (CLAUDE_CONFIG_DIR + Junction)
@@ -362,21 +364,27 @@
 - `build_digest_only_user_prompt()` (seosoyoung/memory/channel_prompts.py:167): 소화 전용 사용자 프롬프트를 구성합니다.
 - `build_judge_system_prompt()` (seosoyoung/memory/channel_prompts.py:198): 리액션 판단 전용 시스템 프롬프트를 반환합니다.
 - `build_judge_user_prompt()` (seosoyoung/memory/channel_prompts.py:203): 리액션 판단 전용 사용자 프롬프트를 구성합니다.
-- `add_relative_time()` (seosoyoung/memory/context_builder.py:45): 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
-- `optimize_for_context()` (seosoyoung/memory/context_builder.py:88): 관찰 로그를 컨텍스트 주입에 최적화합니다.
-- `parse_candidate_entries()` (seosoyoung/memory/observation_pipeline.py:102): <candidates> 태그 내용을 파싱하여 dict 리스트로 변환.
-- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:138): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
-- `parse_observer_output()` (seosoyoung/memory/observer.py:31): Observer 응답에서 XML 태그를 파싱합니다.
-- `parse_promoter_output()` (seosoyoung/memory/promoter.py:83): Promoter 응답에서 <promoted>와 <rejected> 태그를 파싱합니다.
-- `parse_compactor_output()` (seosoyoung/memory/promoter.py:97): Compactor 응답에서 <compacted> 태그를 파싱합니다.
+- `render_observation_items()` (seosoyoung/memory/context_builder.py:48): 관찰 항목 리스트를 사람이 읽을 수 있는 텍스트로 렌더링합니다.
+- `render_persistent_items()` (seosoyoung/memory/context_builder.py:81): 장기 기억 항목 리스트를 텍스트로 렌더링합니다.
+- `optimize_items_for_context()` (seosoyoung/memory/context_builder.py:121): 관찰 항목을 컨텍스트 주입에 최적화합니다.
+- `add_relative_time()` (seosoyoung/memory/context_builder.py:161): [하위 호환] 텍스트 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
+- `optimize_for_context()` (seosoyoung/memory/context_builder.py:181): [하위 호환] 텍스트 관찰 로그를 컨텍스트 주입에 최적화합니다.
+- `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:100): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
+- `parse_observer_output()` (seosoyoung/memory/observer.py:33): Observer 응답 JSON을 파싱합니다.
+- `parse_promoter_output()` (seosoyoung/memory/promoter.py:119): Promoter 응답 JSON에서 promoted와 rejected를 파싱합니다.
+- `parse_compactor_output()` (seosoyoung/memory/promoter.py:159): Compactor 응답에서 JSON 배열을 파싱합니다.
 - `load_prompt()` (seosoyoung/memory/prompt_loader.py:71): 프롬프트 파일을 로드합니다.
 - `load_prompt_cached()` (seosoyoung/memory/prompt_loader.py:90): 프롬프트 파일을 캐시하여 로드합니다.
-- `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:18): Observer 시스템 프롬프트를 반환합니다.
-- `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:23): Observer 사용자 프롬프트를 구성합니다.
-- `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:66): Reflector 시스템 프롬프트를 반환합니다.
-- `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:71): Reflector 재시도 프롬프트를 반환합니다.
-- `build_promoter_prompt()` (seosoyoung/memory/prompts.py:78): Promoter 프롬프트를 구성합니다.
-- `build_compactor_prompt()` (seosoyoung/memory/prompts.py:89): Compactor 프롬프트를 구성합니다.
+- `build_observer_system_prompt()` (seosoyoung/memory/prompts.py:19): Observer 시스템 프롬프트를 반환합니다.
+- `build_observer_user_prompt()` (seosoyoung/memory/prompts.py:24): Observer 사용자 프롬프트를 구성합니다.
+- `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:67): Reflector 시스템 프롬프트를 반환합니다.
+- `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:72): Reflector 재시도 프롬프트를 반환합니다.
+- `build_promoter_prompt()` (seosoyoung/memory/prompts.py:79): Promoter 프롬프트를 구성합니다.
+- `build_compactor_prompt()` (seosoyoung/memory/prompts.py:95): Compactor 프롬프트를 구성합니다.
+- `generate_obs_id()` (seosoyoung/memory/store.py:123): 관찰 항목 ID를 생성합니다.
+- `generate_ltm_id()` (seosoyoung/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
+- `parse_md_observations()` (seosoyoung/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.
+- `parse_md_persistent()` (seosoyoung/memory/store.py:192): 마크다운 장기 기억을 항목 리스트로 파싱합니다.
 - `rank_results()` (seosoyoung/recall/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
 - `select_best_tool()` (seosoyoung/recall/aggregator.py:42): 최적 도구 선택.
 - `build_summary_prompt()` (seosoyoung/recall/aggregator.py:67): 요약 생성 프롬프트.

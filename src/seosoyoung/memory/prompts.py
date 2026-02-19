@@ -5,6 +5,7 @@ Mastra의 Observational Memory 프롬프트를 서소영 컨텍스트에 맞게 
 프롬프트 텍스트는 prompt_files/ 디렉토리의 외부 파일에서 로드됩니다.
 """
 
+import json
 from datetime import datetime, timezone
 
 from seosoyoung.memory.prompt_loader import load_prompt_cached
@@ -21,7 +22,7 @@ def build_observer_system_prompt() -> str:
 
 
 def build_observer_user_prompt(
-    existing_observations: str | None,
+    existing_observations: list[dict] | None,
     messages: list[dict],
     current_time: datetime | None = None,
 ) -> str:
@@ -30,14 +31,14 @@ def build_observer_user_prompt(
         current_time = datetime.now(timezone.utc)
 
     # 기존 관찰 로그 섹션
-    if existing_observations and existing_observations.strip():
+    if existing_observations:
         existing_section = (
-            f"EXISTING OBSERVATIONS (update and merge with new observations):\n"
-            f"{existing_observations}"
+            "EXISTING OBSERVATIONS (update and merge with new observations):\n"
+            + json.dumps(existing_observations, ensure_ascii=False, indent=2)
         )
     else:
         existing_section = (
-            "EXISTING OBSERVATIONS: None (this is the first observation for this user)"
+            "EXISTING OBSERVATIONS: [] (this is the first observation for this user)"
         )
 
     # 대화 내용 포매팅
@@ -76,22 +77,28 @@ def build_reflector_retry_prompt(token_count: int, target: int) -> str:
 
 
 def build_promoter_prompt(
-    existing_persistent: str,
+    existing_persistent: list[dict],
     candidate_entries: str,
 ) -> str:
     """Promoter 프롬프트를 구성합니다."""
+    existing_json = (
+        json.dumps(existing_persistent, ensure_ascii=False, indent=2)
+        if existing_persistent
+        else "[]"
+    )
     return _load("om_promoter_system.txt").format(
-        existing_persistent=existing_persistent or "(empty — no long-term memory yet)",
+        existing_persistent=existing_json,
         candidate_entries=candidate_entries,
     )
 
 
 def build_compactor_prompt(
-    persistent_memory: str,
+    persistent_memory: list[dict],
     target_tokens: int,
 ) -> str:
     """Compactor 프롬프트를 구성합니다."""
+    memory_json = json.dumps(persistent_memory, ensure_ascii=False, indent=2)
     return _load("om_compactor_system.txt").format(
         target_tokens=target_tokens,
-        persistent_memory=persistent_memory,
+        persistent_memory=memory_json,
     )

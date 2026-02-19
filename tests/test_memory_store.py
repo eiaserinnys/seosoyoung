@@ -8,6 +8,34 @@ import pytest
 from seosoyoung.memory.store import MemoryRecord, MemoryStore
 
 
+def _make_obs_items(items_data, session_date="2026-02-10"):
+    """테스트 헬퍼: 관찰 항목 리스트 생성"""
+    result = []
+    for i, (priority, content) in enumerate(items_data):
+        result.append({
+            "id": f"obs_{session_date.replace('-', '')}_{i:03d}",
+            "priority": priority,
+            "content": content,
+            "session_date": session_date,
+            "created_at": f"{session_date}T00:00:00+00:00",
+            "source": "observer",
+        })
+    return result
+
+
+def _make_ltm_items(items_data):
+    """테스트 헬퍼: 장기 기억 항목 리스트 생성"""
+    result = []
+    for i, (priority, content) in enumerate(items_data):
+        result.append({
+            "id": f"ltm_20260210_{i:03d}",
+            "priority": priority,
+            "content": content,
+            "promoted_at": "2026-02-10T00:00:00+00:00",
+        })
+    return result
+
+
 @pytest.fixture
 def store(tmp_path):
     return MemoryStore(base_dir=tmp_path)
@@ -19,7 +47,7 @@ def sample_record():
         thread_ts="1234567890.123456",
         user_id="U08HWT0C6K1",
         username="eias",
-        observations="## [2026-02-10] Session Observations\n\n🔴 사용자는 커밋 메시지를 한글로 작성",
+        observations=_make_obs_items([("🔴", "사용자는 커밋 메시지를 한글로 작성")]),
         observation_tokens=50,
         last_observed_at=datetime(2026, 2, 10, 9, 30, tzinfo=timezone.utc),
         total_sessions_observed=3,
@@ -90,7 +118,7 @@ class TestMemoryStoreGetSave:
         """존재하지 않는 디렉토리도 자동 생성"""
         deep_path = tmp_path / "a" / "b" / "c"
         store = MemoryStore(base_dir=deep_path)
-        record = MemoryRecord(thread_ts="1234.5678", observations="test")
+        record = MemoryRecord(thread_ts="1234.5678", observations=[])
         store.save_record(record)
 
         assert store.observations_dir.exists()
@@ -100,23 +128,25 @@ class TestMemoryStoreGetSave:
         store.save_record(sample_record)
 
         # 관찰 로그 갱신
-        sample_record.observations = "## Updated observations"
+        sample_record.observations = _make_obs_items([("🟡", "Updated observation")])
         sample_record.observation_tokens = 10
         sample_record.total_sessions_observed = 4
         store.save_record(sample_record)
 
         loaded = store.get_record(sample_record.thread_ts)
-        assert loaded.observations == "## Updated observations"
+        assert loaded.observations[0]["content"] == "Updated observation"
         assert loaded.observation_tokens == 10
         assert loaded.total_sessions_observed == 4
 
     def test_multiple_sessions(self, store):
         """여러 세션의 레코드를 독립적으로 저장/로드"""
         record_a = MemoryRecord(
-            thread_ts="ts_a", user_id="UA", observations="Session A observations"
+            thread_ts="ts_a", user_id="UA",
+            observations=_make_obs_items([("🔴", "Session A observation")]),
         )
         record_b = MemoryRecord(
-            thread_ts="ts_b", user_id="UB", observations="Session B observations"
+            thread_ts="ts_b", user_id="UB",
+            observations=_make_obs_items([("🟡", "Session B observation")]),
         )
 
         store.save_record(record_a)
@@ -125,8 +155,8 @@ class TestMemoryStoreGetSave:
         loaded_a = store.get_record("ts_a")
         loaded_b = store.get_record("ts_b")
 
-        assert loaded_a.observations == "Session A observations"
-        assert loaded_b.observations == "Session B observations"
+        assert loaded_a.observations[0]["content"] == "Session A observation"
+        assert loaded_b.observations[0]["content"] == "Session B observation"
 
 
 class TestMemoryStorePending:
@@ -364,7 +394,10 @@ class TestPersistent:
 
     def test_save_and_get_persistent(self, store):
         """장기 기억 저장 및 로드"""
-        content = "🔴 사용자는 커밋 메시지를 한국어로 작성\n🟡 트렐로 체크리스트 먼저 확인"
+        content = _make_ltm_items([
+            ("🔴", "사용자는 커밋 메시지를 한국어로 작성"),
+            ("🟡", "트렐로 체크리스트 먼저 확인"),
+        ])
         meta = {"last_promoted_at": "2026-02-10T15:30:00Z", "total_promotions": 1}
         store.save_persistent(content, meta)
 
@@ -375,16 +408,23 @@ class TestPersistent:
 
     def test_save_persistent_overwrites(self, store):
         """저장 시 기존 내용 덮어쓰기"""
-        store.save_persistent("첫 번째 기억", {"total_promotions": 1})
-        store.save_persistent("두 번째 기억", {"total_promotions": 2})
+        store.save_persistent(
+            _make_ltm_items([("🔴", "첫 번째 기억")]),
+            {"total_promotions": 1},
+        )
+        second_content = _make_ltm_items([("🟡", "두 번째 기억")])
+        store.save_persistent(second_content, {"total_promotions": 2})
 
         result = store.get_persistent()
-        assert result["content"] == "두 번째 기억"
+        assert result["content"] == second_content
         assert result["meta"]["total_promotions"] == 2
 
     def test_save_persistent_preserves_unicode(self, store):
         """한글/이모지 보존"""
-        content = "🔴 캐릭터 정보 패턴\n🟢 이모지 테스트 ⚡"
+        content = _make_ltm_items([
+            ("🔴", "캐릭터 정보 패턴"),
+            ("🟢", "이모지 테스트 ⚡"),
+        ])
         store.save_persistent(content, {})
 
         result = store.get_persistent()
@@ -394,7 +434,7 @@ class TestPersistent:
         """디렉토리 자동 생성"""
         deep_path = tmp_path / "deep" / "path"
         store = MemoryStore(base_dir=deep_path)
-        store.save_persistent("test", {})
+        store.save_persistent(_make_ltm_items([("🔴", "test")]), {})
         assert store.persistent_dir.exists()
 
 
@@ -446,13 +486,15 @@ class TestArchivePersistent:
 
     def test_archive_persistent(self, store):
         """기존 장기 기억을 archive에 백업"""
-        store.save_persistent("원본 기억", {"total_promotions": 1})
+        content = _make_ltm_items([("🔴", "원본 기억")])
+        store.save_persistent(content, {"total_promotions": 1})
         archive_path = store.archive_persistent()
 
         assert archive_path is not None
         assert archive_path.exists()
         assert archive_path.parent.name == "archive"
-        assert archive_path.read_text(encoding="utf-8") == "원본 기억"
+        archived = json.loads(archive_path.read_text(encoding="utf-8"))
+        assert archived[0]["content"] == "원본 기억"
 
     def test_archive_persistent_no_existing(self, store):
         """장기 기억이 없으면 None"""
@@ -461,27 +503,32 @@ class TestArchivePersistent:
 
     def test_archive_persistent_preserves_original(self, store):
         """아카이브 후 원본도 유지"""
-        store.save_persistent("원본 기억", {"total_promotions": 1})
+        content = _make_ltm_items([("🔴", "원본 기억")])
+        store.save_persistent(content, {"total_promotions": 1})
         store.archive_persistent()
 
         result = store.get_persistent()
         assert result is not None
-        assert result["content"] == "원본 기억"
+        assert result["content"] == content
 
     def test_archive_multiple_times(self, store):
         """여러 번 아카이브해도 각각 다른 파일로 저장"""
         import time
 
-        store.save_persistent("기억 v1", {"total_promotions": 1})
+        store.save_persistent(
+            _make_ltm_items([("🔴", "기억 v1")]),
+            {"total_promotions": 1},
+        )
         path1 = store.archive_persistent()
 
-        time.sleep(0.01)  # 타임스탬프 차이 확보
+        time.sleep(0.01)
 
-        store.save_persistent("기억 v2", {"total_promotions": 2})
+        store.save_persistent(
+            _make_ltm_items([("🟡", "기억 v2")]),
+            {"total_promotions": 2},
+        )
         path2 = store.archive_persistent()
 
         assert path1 != path2
         assert path1.exists()
         assert path2.exists()
-
-

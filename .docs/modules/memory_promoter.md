@@ -12,61 +12,61 @@ Promoter / Compactor 모듈
 ## 클래스
 
 ### `PromoterResult`
-- 위치: 줄 20
+- 위치: 줄 22
 - 설명: Promoter 출력 결과
 
 #### 메서드
 
-- `__post_init__(self)` (줄 29): 
+- `__post_init__(self)` (줄 31): 
 
 ### `CompactorResult`
-- 위치: 줄 35
+- 위치: 줄 37
 - 설명: Compactor 출력 결과
 
 ### `Promoter`
-- 위치: 줄 103
+- 위치: 줄 181
 - 설명: 장기 기억 후보를 검토하여 승격
 
 #### 메서드
 
-- `__init__(self, api_key, model)` (줄 106): 
-- `async promote(self, candidates, existing_persistent)` (줄 110): 후보 항목들을 검토하여 장기 기억 승격 여부를 판단합니다.
-- `_format_candidates(candidates)` (줄 137): 후보 항목을 프롬프트용 텍스트로 포매팅.
-- `merge_promoted(existing, promoted)` (줄 148): 승격된 항목을 기존 장기 기억에 머지합니다.
+- `__init__(self, api_key, model)` (줄 184): 
+- `async promote(self, candidates, existing_persistent)` (줄 188): 후보 항목들을 검토하여 장기 기억 승격 여부를 판단합니다.
+- `_format_candidates(candidates)` (줄 215): 후보 항목을 프롬프트용 텍스트로 포매팅.
+- `merge_promoted(existing, promoted)` (줄 226): 승격된 항목을 기존 장기 기억에 머지합니다. ID 기반 중복 제거.
 
 ### `Compactor`
-- 위치: 줄 157
+- 위치: 줄 245
 - 설명: 장기 기억을 압축
 
 #### 메서드
 
-- `__init__(self, api_key, model)` (줄 160): 
-- `async compact(self, persistent, target_tokens)` (줄 165): 장기 기억을 압축합니다.
+- `__init__(self, api_key, model)` (줄 248): 
+- `async compact(self, persistent, target_tokens)` (줄 253): 장기 기억을 압축합니다.
 
 ## 함수
 
-### `_extract_tag(text, tag_name)`
-- 위치: 줄 42
-- 설명: XML 태그 내용을 추출합니다. 없으면 빈 문자열.
+### `_extract_json(text)`
+- 위치: 줄 44
+- 설명: 응답 텍스트에서 JSON을 추출합니다.
 
-### `_count_entries(text)`
-- 위치: 줄 51
-- 설명: 이모지 프리픽스(🔴🟡🟢) 또는 '-' 로 시작하는 비어있지 않은 줄 수를 카운트.
+### `_assign_ltm_ids(raw_items, existing)`
+- 위치: 줄 74
+- 설명: LTM 항목에 ID를 부여합니다.
 
-### `_count_priority(text)`
-- 위치: 줄 67
-- 설명: 승격 텍스트에서 우선순위별 카운트를 추출.
+기존 항목과 content+priority가 일치하면 기존 ID를 유지합니다.
+LLM이 id를 반환한 경우 그 ID를 우선 사용합니다.
 
-### `parse_promoter_output(text)`
-- 위치: 줄 83
-- 설명: Promoter 응답에서 <promoted>와 <rejected> 태그를 파싱합니다.
+### `parse_promoter_output(text, existing_items)`
+- 위치: 줄 119
+- 설명: Promoter 응답 JSON에서 promoted와 rejected를 파싱합니다.
 
-### `parse_compactor_output(text)`
-- 위치: 줄 97
-- 설명: Compactor 응답에서 <compacted> 태그를 파싱합니다.
+### `parse_compactor_output(text, existing_items)`
+- 위치: 줄 159
+- 설명: Compactor 응답에서 JSON 배열을 파싱합니다.
 
 ## 내부 의존성
 
 - `seosoyoung.memory.prompts.build_compactor_prompt`
 - `seosoyoung.memory.prompts.build_promoter_prompt`
+- `seosoyoung.memory.store.generate_ltm_id`
 - `seosoyoung.memory.token_counter.TokenCounter`
