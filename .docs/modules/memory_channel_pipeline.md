@@ -37,18 +37,18 @@ items가 있으면 각 JudgeItem에서 액션을 추출합니다.
 - related_to_me == True → importance × 2 (상한 10)
 - addressed_to_me == True && 발신자가 사람 → importance 최소 7, intervene 전환
 
-### `_validate_linked_messages(judge_result, judged_messages, pending_messages)`
+### `_validate_linked_messages(judge_result, judged_messages, pending_messages, thread_buffers)`
 - 위치: 줄 148
 - 설명: linked_message_ts가 실제 존재하는 ts인지 검증하고, 환각된 ts를 제거합니다.
 
 자기 자신을 가리키는 링크도 제거합니다.
 
 ### `_get_max_importance_item(judge_result)`
-- 위치: 줄 179
+- 위치: 줄 187
 - 설명: JudgeResult에서 가장 높은 중요도의 JudgeItem을 반환합니다.
 
 ### `_filter_already_reacted(actions, pending_messages, bot_user_id)`
-- 위치: 줄 186
+- 위치: 줄 194
 - 설명: 봇이 이미 리액션한 메시지에 대한 react 액션을 필터링합니다.
 
 pending_messages의 reactions 필드에 봇이 같은 이모지로 이미 리액션한 경우 스킵합니다.
@@ -62,7 +62,7 @@ Returns:
     중복이 아닌 액션만 남긴 리스트
 
 ### `async run_channel_pipeline(store, observer, channel_id, slack_client, cooldown, threshold_a, threshold_b, compressor, digest_max_tokens, digest_target_tokens, debug_channel, intervention_threshold, llm_call, claude_runner, bot_user_id)`
-- 위치: 줄 230
+- 위치: 줄 238
 - 설명: 소화/판단 분리 파이프라인을 실행합니다.
 
 흐름:
@@ -73,23 +73,23 @@ d) 리액션 처리 (이모지 일괄 + 확률 기반 개입 판단 + 슬랙 발
 e) pending을 judged로 이동
 
 ### `async _handle_multi_judge(judge_result, store, channel_id, slack_client, cooldown, pending_messages, current_digest, debug_channel, intervention_threshold, llm_call, claude_runner, bot_user_id, session_manager, thread_buffers)`
-- 위치: 줄 403
+- 위치: 줄 427
 - 설명: 복수 JudgeItem 처리: 이모지 일괄 + 개입 확률 판단
 
 ### `async _handle_single_judge(judge_result, store, channel_id, slack_client, cooldown, pending_messages, current_digest, debug_channel, intervention_threshold, llm_call, claude_runner, bot_user_id, session_manager, thread_buffers)`
-- 위치: 줄 510
+- 위치: 줄 534
 - 설명: 하위호환: 단일 JudgeResult 처리
 
 ### `async _execute_intervene(store, channel_id, slack_client, action, pending_messages, observer_reason, claude_runner, llm_call, bot_user_id, session_manager, thread_buffers)`
-- 위치: 줄 635
+- 위치: 줄 659
 - 설명: 서소영의 개입 응답을 생성하고 발송합니다.
 
 ### `_remove_thinking_reaction(client, channel_id, ts)`
-- 위치: 줄 771
+- 위치: 줄 826
 - 설명: 트리거 메시지에서 :ssy-thinking: 이모지를 제거합니다.
 
 ### `_swap_thinking_to_happy(client, channel_id, ts)`
-- 위치: 줄 781
+- 위치: 줄 836
 - 설명: :ssy-thinking: 이모지를 :ssy-happy:로 교체합니다.
 
 ## 내부 의존성

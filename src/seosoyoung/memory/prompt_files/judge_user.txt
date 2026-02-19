@@ -17,5 +17,6 @@ Channel: {channel_id}
 {thread_messages}
 
 For EACH pending message above, output a `<judgment ts="...">` block with importance, emotion, reasoning, and reaction decision.
+IMPORTANT: Only judge messages from the PENDING MESSAGES section. Do NOT create judgment blocks for messages in THREAD CONVERSATIONS or ALREADY JUDGED MESSAGES — those sections are context only.
 Do NOT react to messages marked [ALREADY REACTED].
 Wrap all judgments in `<judgments>...</judgments>`.
