@@ -1344,6 +1344,170 @@ class TestServiceFactory:
         assert isinstance(runner, ClaudeAgentRunner)
 
 
+class TestRunnerCaching:
+    """runner 캐싱 테스트 (Phase 2 싱글톤화)"""
+
+    def setup_method(self):
+        """각 테스트 전 캐시 초기화"""
+        from seosoyoung.claude import clear_runner_cache
+        clear_runner_cache()
+
+    def teardown_method(self):
+        """각 테스트 후 캐시 정리"""
+        from seosoyoung.claude import clear_runner_cache
+        clear_runner_cache()
+
+    def test_cache_key_none_creates_new_instance(self):
+        """cache_key가 None이면 항상 새 인스턴스 생성"""
+        from seosoyoung.claude import get_claude_runner, get_cached_runner_count
+
+        runner1 = get_claude_runner()
+        runner2 = get_claude_runner()
+
+        assert runner1 is not runner2
+        assert get_cached_runner_count() == 0
+
+    def test_cache_key_returns_same_instance(self):
+        """동일한 cache_key로 호출하면 같은 인스턴스 반환"""
+        from seosoyoung.claude import get_claude_runner, get_cached_runner_count
+
+        runner1 = get_claude_runner(cache_key="role:admin")
+        runner2 = get_claude_runner(cache_key="role:admin")
+
+        assert runner1 is runner2
+        assert get_cached_runner_count() == 1
+
+    def test_different_cache_keys_create_different_instances(self):
+        """다른 cache_key는 다른 인스턴스 생성"""
+        from seosoyoung.claude import get_claude_runner, get_cached_runner_count
+
+        runner_admin = get_claude_runner(cache_key="role:admin")
+        runner_viewer = get_claude_runner(cache_key="role:viewer")
+
+        assert runner_admin is not runner_viewer
+        assert get_cached_runner_count() == 2
+
+    def test_cached_runner_preserves_config(self):
+        """캐시된 runner가 설정을 유지"""
+        from seosoyoung.claude import get_claude_runner
+
+        runner1 = get_claude_runner(
+            timeout=600,
+            allowed_tools=["Read", "Write"],
+            cache_key="custom-config"
+        )
+
+        runner2 = get_claude_runner(cache_key="custom-config")
+
+        assert runner2.timeout == 600
+        assert runner2.allowed_tools == ["Read", "Write"]
+
+    def test_clear_runner_cache(self):
+        """clear_runner_cache가 캐시를 비움"""
+        from seosoyoung.claude import get_claude_runner, clear_runner_cache, get_cached_runner_count
+
+        get_claude_runner(cache_key="role:admin")
+        get_claude_runner(cache_key="role:viewer")
+        assert get_cached_runner_count() == 2
+
+        cleared = clear_runner_cache()
+        assert cleared == 2
+        assert get_cached_runner_count() == 0
+
+    def test_thread_safety_of_cache(self):
+        """캐시 접근이 스레드 안전한지 확인"""
+        import threading
+        from seosoyoung.claude import get_claude_runner, get_cached_runner_count
+
+        results = []
+        errors = []
+
+        def get_runner(cache_key):
+            try:
+                runner = get_claude_runner(cache_key=cache_key)
+                results.append((cache_key, id(runner)))
+            except Exception as e:
+                errors.append(e)
+
+        threads = []
+        for i in range(10):
+            # 같은 키로 여러 스레드가 동시 접근
+            t = threading.Thread(target=get_runner, args=("role:admin",))
+            threads.append(t)
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0
+        assert get_cached_runner_count() == 1
+
+        # 모든 스레드가 같은 인스턴스를 받았는지 확인
+        runner_ids = [r[1] for r in results]
+        assert len(set(runner_ids)) == 1
+
+
+class TestGetRunnerForRole:
+    """get_runner_for_role 함수 테스트"""
+
+    def setup_method(self):
+        """각 테스트 전 캐시 초기화"""
+        from seosoyoung.claude import clear_runner_cache
+        clear_runner_cache()
+
+    def teardown_method(self):
+        """각 테스트 후 캐시 정리"""
+        from seosoyoung.claude import clear_runner_cache
+        clear_runner_cache()
+
+    def test_get_runner_for_role_returns_cached_instance(self):
+        """동일한 역할로 호출하면 캐시된 인스턴스 반환"""
+        from seosoyoung.claude.executor import get_runner_for_role
+        from seosoyoung.claude import get_cached_runner_count
+
+        runner1 = get_runner_for_role("admin")
+        runner2 = get_runner_for_role("admin")
+
+        assert runner1 is runner2
+        assert get_cached_runner_count() == 1
+
+    def test_get_runner_for_role_different_roles(self):
+        """다른 역할은 다른 인스턴스"""
+        from seosoyoung.claude.executor import get_runner_for_role
+        from seosoyoung.claude import get_cached_runner_count
+
+        runner_admin = get_runner_for_role("admin")
+        runner_viewer = get_runner_for_role("viewer")
+
+        assert runner_admin is not runner_viewer
+        assert get_cached_runner_count() == 2
+
+    def test_viewer_role_has_correct_disallowed_tools(self):
+        """viewer 역할은 수정/실행 도구가 차단됨"""
+        from seosoyoung.claude.executor import get_runner_for_role
+
+        runner = get_runner_for_role("viewer")
+
+        assert "Write" in runner.disallowed_tools
+        assert "Edit" in runner.disallowed_tools
+        assert "Bash" in runner.disallowed_tools
+        assert "TodoWrite" in runner.disallowed_tools
+
+    def test_admin_role_has_mcp_config(self):
+        """admin 역할은 MCP 설정을 사용 (설정 파일 존재 시)"""
+        from seosoyoung.claude.executor import get_runner_for_role, _get_mcp_config_path
+
+        runner = get_runner_for_role("admin")
+
+        # MCP 설정 파일이 있으면 mcp_config_path가 설정됨
+        expected_path = _get_mcp_config_path()
+        if expected_path:
+            assert runner.mcp_config_path == expected_path
+        else:
+            assert runner.mcp_config_path is None
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 class TestClaudeAgentRunnerIntegration:

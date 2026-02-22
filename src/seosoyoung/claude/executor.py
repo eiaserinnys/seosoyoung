@@ -43,17 +43,25 @@ def _get_mcp_config_path() -> Optional[Path]:
 
 
 def get_runner_for_role(role: str):
-    """역할에 맞는 ClaudeAgentRunner 반환"""
+    """역할에 맞는 ClaudeAgentRunner 반환 (캐시된 인스턴스)
+
+    동일한 role에 대해서는 항상 같은 ClaudeAgentRunner 인스턴스를 반환합니다.
+    이를 통해 클래스 레벨의 _active_clients 관리가 일관되게 유지됩니다.
+    """
     allowed_tools = Config.ROLE_TOOLS.get(role, Config.ROLE_TOOLS["viewer"])
+    cache_key = f"role:{role}"
+
     # viewer는 수정/실행 도구 명시적 차단, MCP 도구 불필요
     if role == "viewer":
         return get_claude_runner(
             allowed_tools=allowed_tools,
-            disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"]
+            disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"],
+            cache_key=cache_key,
         )
     return get_claude_runner(
         allowed_tools=allowed_tools,
         mcp_config_path=_get_mcp_config_path(),
+        cache_key=cache_key,
     )
 
 
