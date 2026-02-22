@@ -732,19 +732,14 @@ class ClaudeAgentRunner:
 
                 aiter = client.receive_response().__aiter__()
                 rate_limited = False
-                rate_limit_event_received = False  # rate_limit_event 수신 여부 추적
                 while True:
                     try:
                         message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
                     except StopAsyncIteration:
-                        # rate_limit_event 후 연결이 끊긴 경우, result_text 없으면 재시도 필요
-                        if rate_limit_event_received and not result_text:
-                            logger.warning("rate_limit_event 후 연결 종료, result_text 없음 - 재시도 필요")
-                            rate_limited = True
                         break
                     except MessageParseError as e:
                         if e.data and e.data.get("type") == "rate_limit_event":
-                            # rate_limit_info.status 확인: "allowed"면 정상 진행
+                            # rate_limit_info.status 확인
                             rate_limit_info = e.data.get("rate_limit_info", {})
                             status = rate_limit_info.get("status", "")
 
@@ -760,12 +755,11 @@ class ClaudeAgentRunner:
                                 _send_debug_to_slack(channel, thread_ts, debug_msg)
 
                             if status == "allowed":
-                                # 정상 요청이지만 SDK가 연결을 끊을 수 있으므로 추적
-                                logger.debug(f"rate_limit_event (status=allowed) 수신, 계속 시도")
-                                rate_limit_event_received = True
+                                # status=allowed는 단순 상태 정보, 무시하고 계속
+                                logger.debug(f"rate_limit_event (status=allowed) 무시")
                                 continue
 
-                            # status가 allowed가 아닌 경우에만 rate limit 처리
+                            # status가 allowed가 아닌 경우에만 실제 rate limit
                             logger.warning(
                                 f"rate_limit_event 발생 (status={status}): "
                                 f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
