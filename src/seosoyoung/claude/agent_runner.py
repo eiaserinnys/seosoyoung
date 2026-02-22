@@ -142,6 +142,10 @@ class ClaudeAgentRunner:
     _loop_thread: Optional[threading.Thread] = None
     _loop_lock = threading.Lock()
 
+    # 클래스 레벨 활성 클라이언트 관리 (모든 인스턴스가 공유)
+    _active_clients: dict[str, ClaudeSDKClient] = {}
+    _clients_lock = threading.Lock()
+
     def __init__(
         self,
         working_dir: Optional[Path] = None,
@@ -156,7 +160,6 @@ class ClaudeAgentRunner:
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
         self._lock = asyncio.Lock()
-        self._active_clients: dict[str, ClaudeSDKClient] = {}
 
     @classmethod
     def _ensure_loop(cls) -> None:
@@ -188,6 +191,55 @@ class ClaudeAgentRunner:
             cls._shared_loop = None
             cls._loop_thread = None
 
+    @classmethod
+    async def shutdown_all_clients(cls) -> int:
+        """모든 활성 클라이언트 종료
+
+        프로세스 종료 전에 호출하여 고아 프로세스를 방지합니다.
+
+        Returns:
+            종료된 클라이언트 수
+        """
+        with cls._clients_lock:
+            clients = list(cls._active_clients.items())
+
+        if not clients:
+            logger.info("종료할 활성 클라이언트 없음")
+            return 0
+
+        count = 0
+        for thread_ts, client in clients:
+            try:
+                await client.disconnect()
+                count += 1
+                logger.info(f"클라이언트 종료 성공: {thread_ts}")
+            except Exception as e:
+                logger.warning(f"클라이언트 종료 실패: {thread_ts}, {e}")
+
+        with cls._clients_lock:
+            cls._active_clients.clear()
+
+        logger.info(f"총 {count}개 클라이언트 종료 완료")
+        return count
+
+    @classmethod
+    def shutdown_all_clients_sync(cls) -> int:
+        """모든 활성 클라이언트 종료 (동기 버전)
+
+        시그널 핸들러 등 동기 컨텍스트에서 사용합니다.
+
+        Returns:
+            종료된 클라이언트 수
+        """
+        try:
+            loop = asyncio.new_event_loop()
+            count = loop.run_until_complete(cls.shutdown_all_clients())
+            loop.close()
+            return count
+        except Exception as e:
+            logger.warning(f"클라이언트 동기 종료 중 오류: {e}")
+            return 0
+
     def run_sync(self, coro):
         """동기 컨텍스트에서 코루틴을 실행하는 브릿지
 
@@ -209,9 +261,10 @@ class ClaudeAgentRunner:
             thread_ts: 스레드 타임스탬프 (클라이언트 키)
             options: ClaudeCodeOptions (새 클라이언트 생성 시 사용)
         """
-        if thread_ts in self._active_clients:
-            logger.info(f"[DEBUG-CLIENT] 기존 클라이언트 재사용: thread={thread_ts}")
-            return self._active_clients[thread_ts]
+        with self._clients_lock:
+            if thread_ts in self._active_clients:
+                logger.info(f"[DEBUG-CLIENT] 기존 클라이언트 재사용: thread={thread_ts}")
+                return self._active_clients[thread_ts]
 
         import time as _time
         logger.info(f"[DEBUG-CLIENT] 새 ClaudeSDKClient 생성 시작: thread={thread_ts}")
@@ -231,7 +284,8 @@ class ClaudeAgentRunner:
             except Exception:
                 pass
             raise
-        self._active_clients[thread_ts] = client
+        with self._clients_lock:
+            self._active_clients[thread_ts] = client
         logger.info(f"ClaudeSDKClient 생성: thread={thread_ts}")
         return client
 
@@ -241,7 +295,8 @@ class ClaudeAgentRunner:
         disconnect 후 딕셔너리에서 제거합니다.
         disconnect 실패 시에도 딕셔너리에서 제거합니다.
         """
-        client = self._active_clients.pop(thread_ts, None)
+        with self._clients_lock:
+            client = self._active_clients.pop(thread_ts, None)
         if client is None:
             return
         try:
@@ -259,7 +314,8 @@ class ClaudeAgentRunner:
         Returns:
             True: 인터럽트 성공, False: 해당 스레드에 클라이언트 없음 또는 실패
         """
-        client = self._active_clients.get(thread_ts)
+        with self._clients_lock:
+            client = self._active_clients.get(thread_ts)
         if client is None:
             return False
         try:

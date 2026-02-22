@@ -4,6 +4,7 @@
 """
 
 import os
+import signal
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
@@ -12,6 +13,7 @@ from seosoyoung.logging_config import setup_logging
 from seosoyoung.auth import check_permission, get_user_role
 from seosoyoung.claude.session import SessionManager, SessionRuntime
 from seosoyoung.claude.executor import ClaudeExecutor
+from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 from seosoyoung.slack.helpers import upload_file_to_slack, send_long_message
 from seosoyoung.handlers import register_all_handlers
 from seosoyoung.handlers.actions import send_restart_confirmation
@@ -43,7 +45,18 @@ list_runner: ListRunner | None = None
 
 
 def _perform_restart(restart_type: RestartType) -> None:
-    """실제 재시작 수행"""
+    """실제 재시작 수행
+
+    모든 ClaudeSDKClient를 정리한 후 프로세스를 종료합니다.
+    이로써 고아 프로세스(Claude Code CLI)가 남지 않습니다.
+    """
+    # 모든 활성 클라이언트 종료 (고아 프로세스 방지)
+    try:
+        count = ClaudeAgentRunner.shutdown_all_clients_sync()
+        logger.info(f"재시작 전 {count}개 클라이언트 종료 완료")
+    except Exception as e:
+        logger.warning(f"클라이언트 종료 중 오류 (무시): {e}")
+
     notify_shutdown()
     os._exit(restart_type.value)
 
@@ -63,6 +76,24 @@ def _check_restart_on_session_stop():
 
 # 세션 종료 콜백 설정
 session_runtime.set_on_all_sessions_stopped(_check_restart_on_session_stop)
+
+
+def _signal_handler(signum, frame):
+    """시그널 수신 시 graceful shutdown 수행
+
+    SIGTERM, SIGINT 수신 시 모든 클라이언트를 정리하고 프로세스를 종료합니다.
+    """
+    sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    logger.info(f"시그널 수신: {sig_name}")
+    _perform_restart(RestartType.RESTART)
+
+
+# 시그널 핸들러 등록
+# Windows에서는 SIGTERM이 제한적이지만, SIGINT(Ctrl+C)는 지원됨
+signal.signal(signal.SIGINT, _signal_handler)
+# SIGTERM은 Unix 계열에서만 완전 지원, Windows에서는 TerminateProcess로 대체됨
+if hasattr(signal, 'SIGTERM'):
+    signal.signal(signal.SIGTERM, _signal_handler)
 
 # Claude 실행기
 executor = ClaudeExecutor(

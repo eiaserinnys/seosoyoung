@@ -1237,6 +1237,103 @@ class TestTriggerObservationToolFilter:
         assert len(messages) == 3
 
 
+@pytest.mark.asyncio
+class TestShutdownAllClients:
+    """shutdown_all_clients 메서드 테스트"""
+
+    async def test_shutdown_all_clients_empty(self):
+        """활성 클라이언트가 없을 때 0 반환"""
+        # 클래스 레벨 변수 초기화
+        ClaudeAgentRunner._active_clients.clear()
+
+        count = await ClaudeAgentRunner.shutdown_all_clients()
+        assert count == 0
+
+    async def test_shutdown_all_clients_multiple(self):
+        """여러 클라이언트가 있을 때 모두 종료"""
+        # 클래스 레벨 변수 초기화
+        ClaudeAgentRunner._active_clients.clear()
+
+        # Mock 클라이언트 추가
+        mock_client_1 = AsyncMock()
+        mock_client_2 = AsyncMock()
+        mock_client_3 = AsyncMock()
+
+        with ClaudeAgentRunner._clients_lock:
+            ClaudeAgentRunner._active_clients["thread_1"] = mock_client_1
+            ClaudeAgentRunner._active_clients["thread_2"] = mock_client_2
+            ClaudeAgentRunner._active_clients["thread_3"] = mock_client_3
+
+        count = await ClaudeAgentRunner.shutdown_all_clients()
+
+        assert count == 3
+        mock_client_1.disconnect.assert_called_once()
+        mock_client_2.disconnect.assert_called_once()
+        mock_client_3.disconnect.assert_called_once()
+
+        # 딕셔너리가 비워졌는지 확인
+        assert len(ClaudeAgentRunner._active_clients) == 0
+
+    async def test_shutdown_all_clients_partial_failure(self):
+        """일부 클라이언트 종료 실패 시에도 나머지 종료 진행"""
+        ClaudeAgentRunner._active_clients.clear()
+
+        mock_client_1 = AsyncMock()
+        mock_client_2 = AsyncMock()
+        mock_client_2.disconnect.side_effect = RuntimeError("연결 끊기 실패")
+        mock_client_3 = AsyncMock()
+
+        with ClaudeAgentRunner._clients_lock:
+            ClaudeAgentRunner._active_clients["thread_1"] = mock_client_1
+            ClaudeAgentRunner._active_clients["thread_2"] = mock_client_2
+            ClaudeAgentRunner._active_clients["thread_3"] = mock_client_3
+
+        count = await ClaudeAgentRunner.shutdown_all_clients()
+
+        # 2개만 성공
+        assert count == 2
+        # 모든 클라이언트에 disconnect 시도
+        mock_client_1.disconnect.assert_called_once()
+        mock_client_2.disconnect.assert_called_once()
+        mock_client_3.disconnect.assert_called_once()
+
+        # 실패해도 딕셔너리는 비워짐
+        assert len(ClaudeAgentRunner._active_clients) == 0
+
+    def test_shutdown_all_clients_sync(self):
+        """동기 버전 shutdown_all_clients_sync 테스트"""
+        ClaudeAgentRunner._active_clients.clear()
+
+        mock_client = AsyncMock()
+        with ClaudeAgentRunner._clients_lock:
+            ClaudeAgentRunner._active_clients["thread_sync"] = mock_client
+
+        count = ClaudeAgentRunner.shutdown_all_clients_sync()
+
+        assert count == 1
+        mock_client.disconnect.assert_called_once()
+
+    async def test_class_level_active_clients_shared(self):
+        """_active_clients가 클래스 레벨로 모든 인스턴스에서 공유"""
+        ClaudeAgentRunner._active_clients.clear()
+
+        runner1 = ClaudeAgentRunner()
+        runner2 = ClaudeAgentRunner()
+
+        # Mock 클라이언트 추가 (클래스 레벨)
+        mock_client = AsyncMock()
+        with ClaudeAgentRunner._clients_lock:
+            ClaudeAgentRunner._active_clients["shared_thread"] = mock_client
+
+        # 두 인스턴스 모두에서 같은 클라이언트가 보여야 함
+        with ClaudeAgentRunner._clients_lock:
+            assert "shared_thread" in ClaudeAgentRunner._active_clients
+
+        # shutdown은 클래스 메서드이므로 어느 인스턴스에서도 호출 가능
+        count = await ClaudeAgentRunner.shutdown_all_clients()
+        assert count == 1
+
+
 class TestServiceFactory:
     """서비스 팩토리 테스트"""
 
