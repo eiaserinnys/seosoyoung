@@ -283,16 +283,22 @@ def try_handle_command(
             mem_total_str = f"{mem_total_mb:.0f}MB"
 
         # Claude 관련 프로세스 수집
-        claude_processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'create_time']):
+        claude_processes = {}  # pid -> process info
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'create_time', 'ppid', 'cmdline']):
             try:
                 name = proc.info['name'].lower()
                 if 'claude' in name or 'node' in name:
                     pid = proc.info['pid']
+                    ppid = proc.info['ppid'] or 0
                     proc_name = proc.info['name']
                     cpu = proc.info['cpu_percent'] or 0.0
                     mem_bytes = proc.info['memory_info'].rss if proc.info['memory_info'] else 0
                     mem_mb = mem_bytes / (1024 * 1024)
+                    # 커맨드라인 (50자로 truncate)
+                    cmdline_list = proc.info['cmdline'] or []
+                    cmdline = ' '.join(cmdline_list) if cmdline_list else ''
+                    if len(cmdline) > 50:
+                        cmdline = cmdline[:47] + '...'
                     # 실행 시간 계산
                     create_time = proc.info['create_time']
                     elapsed_secs = (datetime.now().timestamp() - create_time)
@@ -302,19 +308,65 @@ def try_handle_command(
                         elapsed_str = f"{int(elapsed_secs // 60)}분"
                     else:
                         elapsed_str = f"{int(elapsed_secs)}초"
-                    claude_processes.append({
+                    claude_processes[pid] = {
                         'pid': pid,
+                        'ppid': ppid,
                         'name': proc_name,
                         'cpu': cpu,
                         'mem_mb': mem_mb,
                         'elapsed': elapsed_str,
-                    })
+                        'cmdline': cmdline,
+                        'children': [],
+                    }
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
 
-        # CPU 사용률 기준 상위 10개
-        claude_processes.sort(key=lambda x: x['cpu'], reverse=True)
-        claude_processes = claude_processes[:10]
+        # 트리 구조 구성: 부모-자식 관계 설정
+        root_processes = []
+        for pid, proc_info in claude_processes.items():
+            ppid = proc_info['ppid']
+            if ppid in claude_processes:
+                claude_processes[ppid]['children'].append(proc_info)
+            else:
+                root_processes.append(proc_info)
+
+        # CPU 사용률 기준으로 루트 프로세스 정렬
+        root_processes.sort(key=lambda x: x['cpu'], reverse=True)
+
+        def format_process_tree(proc_info, indent=0, is_last=True, prefix=""):
+            """프로세스를 트리 형태로 포맷팅"""
+            lines = []
+            # 현재 프로세스 포맷
+            if indent == 0:
+                line_prefix = "  - "
+            else:
+                line_prefix = prefix + ("└─ " if is_last else "├─ ")
+
+            lines.append(
+                f"{line_prefix}PID {proc_info['pid']} (PPID {proc_info['ppid']}): "
+                f"{proc_info['name']} (CPU {proc_info['cpu']:.1f}%, {proc_info['mem_mb']:.0f}MB, {proc_info['elapsed']})"
+            )
+            if proc_info['cmdline']:
+                if indent == 0:
+                    cmd_prefix = "    "
+                else:
+                    cmd_prefix = prefix + ("   " if is_last else "│  ")
+                lines.append(f"{cmd_prefix}cmd: {proc_info['cmdline']}")
+
+            # 자식 프로세스들 (CPU 사용률 기준 정렬)
+            children = sorted(proc_info['children'], key=lambda x: x['cpu'], reverse=True)
+            for i, child in enumerate(children):
+                is_last_child = (i == len(children) - 1)
+                if indent == 0:
+                    child_prefix = "    "
+                else:
+                    child_prefix = prefix + ("   " if is_last else "│  ")
+                lines.extend(format_process_tree(child, indent + 1, is_last_child, child_prefix))
+
+            return lines
+
+        # 상위 10개 루트 프로세스만 표시 (트리 포함)
+        root_processes = root_processes[:10]
 
         # 상태 메시지 구성
         status_lines = [
@@ -327,10 +379,8 @@ def try_handle_command(
             f"• 메모리: {mem_used_str} / {mem_total_str} ({mem_percent:.1f}%)",
             f"• Claude 관련 프로세스: {len(claude_processes)}개",
         ]
-        for p in claude_processes:
-            status_lines.append(
-                f"  - PID {p['pid']}: {p['name']} (CPU {p['cpu']:.1f}%, {p['mem_mb']:.0f}MB, {p['elapsed']})"
-            )
+        for proc_info in root_processes:
+            status_lines.extend(format_process_tree(proc_info))
 
         say(text="\n".join(status_lines))
         return True
