@@ -711,6 +711,10 @@ class ClaudeAgentRunner:
                         break
                     except MessageParseError as e:
                         if e.data and e.data.get("type") == "rate_limit_event":
+                            # ResultMessage를 이미 받았으면 무시
+                            if result_text:
+                                logger.debug("ResultMessage 후 rate_limit_event 무시")
+                                continue
                             rate_limited = True
                             break
                         raise
