@@ -22,8 +22,36 @@ from claude_code_sdk.types import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from slack_sdk import WebClient
 
 logger = logging.getLogger(__name__)
+
+# 디버그 메시지용 슬랙 클라이언트 (lazy init)
+_slack_client: Optional[WebClient] = None
+
+
+def _get_slack_client() -> Optional[WebClient]:
+    """슬랙 클라이언트 가져오기 (lazy init)"""
+    global _slack_client
+    if _slack_client is None:
+        from seosoyoung.config import Config
+        if Config.SLACK_BOT_TOKEN:
+            _slack_client = WebClient(token=Config.SLACK_BOT_TOKEN)
+    return _slack_client
+
+
+def _send_debug_to_slack(channel: str, thread_ts: str, message: str) -> None:
+    """슬랙에 디버그 메시지 전송 (별도 메시지로)"""
+    try:
+        client = _get_slack_client()
+        if client and channel and thread_ts:
+            client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=message,
+            )
+    except Exception as e:
+        logger.warning(f"디버그 메시지 슬랙 전송 실패: {e}")
 
 
 def _classify_process_error(e: ProcessError) -> str:
@@ -719,6 +747,17 @@ class ClaudeAgentRunner:
                             # rate_limit_info.status 확인: "allowed"면 정상 진행
                             rate_limit_info = e.data.get("rate_limit_info", {})
                             status = rate_limit_info.get("status", "")
+
+                            # 디버그: 슬랙에 rate_limit_event 정보 전송
+                            if channel and thread_ts:
+                                debug_msg = (
+                                    f"🔍 rate_limit_event:\n"
+                                    f"• status: `{status}`\n"
+                                    f"• data: `{json.dumps(e.data, ensure_ascii=False)[:500]}`\n"
+                                    f"• current_text: {len(current_text)} chars\n"
+                                    f"• attempt: {attempt + 1}/{max_attempts}"
+                                )
+                                _send_debug_to_slack(channel, thread_ts, debug_msg)
 
                             if status == "allowed":
                                 # 정상 요청이지만 SDK가 연결을 끊을 수 있으므로 추적
