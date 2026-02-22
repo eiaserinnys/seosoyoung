@@ -212,7 +212,7 @@ def try_handle_command(
     send_restart_confirmation = deps["send_restart_confirmation"]
     list_runner_ref = deps.get("list_runner_ref", lambda: None)
 
-    admin_commands = ["help", "status", "update", "restart", "compact", "profile", "cleanup"]
+    admin_commands = ["help", "status", "update", "restart", "compact", "profile", "cleanup", "log"]
     is_admin_command = command in admin_commands or command.startswith("profile ") or command.startswith("cleanup")
 
     # 정주행 재개 명령어
@@ -653,25 +653,39 @@ def try_handle_command(
         return True
 
     if command == "log":
-        # 오늘 날짜의 로그 파일 첨부
+        if not check_permission(user_id, client):
+            logger.warning(f"log 권한 없음: user={user_id}")
+            say(text="관리자 권한이 필요합니다.", thread_ts=ts)
+            return True
+        # 오늘 날짜의 로그 파일 + cli_stderr.log 첨부
         from datetime import datetime
         log_dir = Path(Config.get_log_path())
-        log_file = log_dir / f"bot_{datetime.now().strftime('%Y%m%d')}.log"
         target_ts = thread_ts or ts
-        if not log_file.exists():
-            say(text=f"오늘 날짜의 로그 파일이 없습니다: `{log_file}`", thread_ts=target_ts)
-            return True
-        try:
-            client.files_upload_v2(
-                channel=channel,
-                thread_ts=target_ts,
-                file=str(log_file),
-                filename=log_file.name,
-                initial_comment=f"📋 오늘자 로그 파일 (`{log_file.name}`)"
-            )
-        except Exception as e:
-            logger.exception(f"로그 파일 첨부 실패: {e}")
-            say(text=f"로그 파일 첨부 실패: `{e}`", thread_ts=target_ts)
+
+        log_files = [
+            (log_dir / f"bot_{datetime.now().strftime('%Y%m%d')}.log", "오늘자 로그 파일"),
+            (log_dir / "cli_stderr.log", "CLI stderr 로그"),
+        ]
+
+        found_any = False
+        for log_file, label in log_files:
+            if not log_file.exists():
+                continue
+            found_any = True
+            try:
+                client.files_upload_v2(
+                    channel=channel,
+                    thread_ts=target_ts,
+                    file=str(log_file),
+                    filename=log_file.name,
+                    initial_comment=f"📋 {label} (`{log_file.name}`)"
+                )
+            except Exception as e:
+                logger.exception(f"로그 파일 첨부 실패: {e}")
+                say(text=f"로그 파일 첨부 실패 (`{log_file.name}`): `{e}`", thread_ts=target_ts)
+
+        if not found_any:
+            say(text="수집 가능한 로그 파일이 없습니다.", thread_ts=target_ts)
         return True
 
     # 번역 테스트 명령어
