@@ -268,6 +268,7 @@ def try_handle_command(
 
     if command == "status":
         import psutil
+        from datetime import datetime
         cpu_percent = psutil.cpu_percent(interval=0.5)
         mem = psutil.virtual_memory()
         mem_used_mb = mem.used / (1024 * 1024)
@@ -280,17 +281,58 @@ def try_handle_command(
         else:
             mem_used_str = f"{mem_used_mb:.0f}MB"
             mem_total_str = f"{mem_total_mb:.0f}MB"
-        say(
-            text=(
-                f"📊 *상태*\n"
-                f"• 작업 폴더: `{Path.cwd()}`\n"
-                f"• 관리자: {', '.join(Config.ADMIN_USERS)}\n"
-                f"• 활성 세션: {session_manager.count()}개\n"
-                f"• 디버그 모드: {Config.DEBUG}\n"
-                f"• CPU 사용률: {cpu_percent:.1f}%\n"
-                f"• 메모리: {mem_used_str} / {mem_total_str} ({mem_percent:.1f}%)"
+
+        # Claude 관련 프로세스 수집
+        claude_processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'create_time']):
+            try:
+                name = proc.info['name'].lower()
+                if 'claude' in name or 'node' in name:
+                    pid = proc.info['pid']
+                    proc_name = proc.info['name']
+                    cpu = proc.info['cpu_percent'] or 0.0
+                    mem_bytes = proc.info['memory_info'].rss if proc.info['memory_info'] else 0
+                    mem_mb = mem_bytes / (1024 * 1024)
+                    # 실행 시간 계산
+                    create_time = proc.info['create_time']
+                    elapsed_secs = (datetime.now().timestamp() - create_time)
+                    if elapsed_secs >= 3600:
+                        elapsed_str = f"{int(elapsed_secs // 3600)}시간"
+                    elif elapsed_secs >= 60:
+                        elapsed_str = f"{int(elapsed_secs // 60)}분"
+                    else:
+                        elapsed_str = f"{int(elapsed_secs)}초"
+                    claude_processes.append({
+                        'pid': pid,
+                        'name': proc_name,
+                        'cpu': cpu,
+                        'mem_mb': mem_mb,
+                        'elapsed': elapsed_str,
+                    })
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+
+        # CPU 사용률 기준 상위 10개
+        claude_processes.sort(key=lambda x: x['cpu'], reverse=True)
+        claude_processes = claude_processes[:10]
+
+        # 상태 메시지 구성
+        status_lines = [
+            f"📊 *상태*",
+            f"• 작업 폴더: `{Path.cwd()}`",
+            f"• 관리자: {', '.join(Config.ADMIN_USERS)}",
+            f"• 활성 세션: {session_manager.count()}개",
+            f"• 디버그 모드: {Config.DEBUG}",
+            f"• CPU 사용률: {cpu_percent:.1f}%",
+            f"• 메모리: {mem_used_str} / {mem_total_str} ({mem_percent:.1f}%)",
+            f"• Claude 관련 프로세스: {len(claude_processes)}개",
+        ]
+        for p in claude_processes:
+            status_lines.append(
+                f"  - PID {p['pid']}: {p['name']} (CPU {p['cpu']:.1f}%, {p['mem_mb']:.0f}MB, {p['elapsed']})"
             )
-        )
+
+        say(text="\n".join(status_lines))
         return True
 
     if command == "log":
