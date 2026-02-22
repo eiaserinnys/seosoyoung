@@ -267,13 +267,28 @@ def try_handle_command(
         return True
 
     if command == "status":
+        import psutil
+        cpu_percent = psutil.cpu_percent(interval=0.5)
+        mem = psutil.virtual_memory()
+        mem_used_mb = mem.used / (1024 * 1024)
+        mem_total_mb = mem.total / (1024 * 1024)
+        mem_percent = mem.percent
+        # 메모리가 1GB 이상이면 GB 단위로 표시
+        if mem_used_mb >= 1024:
+            mem_used_str = f"{mem_used_mb / 1024:.1f}GB"
+            mem_total_str = f"{mem_total_mb / 1024:.1f}GB"
+        else:
+            mem_used_str = f"{mem_used_mb:.0f}MB"
+            mem_total_str = f"{mem_total_mb:.0f}MB"
         say(
             text=(
                 f"📊 *상태*\n"
                 f"• 작업 폴더: `{Path.cwd()}`\n"
                 f"• 관리자: {', '.join(Config.ADMIN_USERS)}\n"
                 f"• 활성 세션: {session_manager.count()}개\n"
-                f"• 디버그 모드: {Config.DEBUG}"
+                f"• 디버그 모드: {Config.DEBUG}\n"
+                f"• CPU 사용률: {cpu_percent:.1f}%\n"
+                f"• 메모리: {mem_used_str} / {mem_total_str} ({mem_percent:.1f}%)"
             )
         )
         return True
