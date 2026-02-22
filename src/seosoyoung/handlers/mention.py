@@ -282,8 +282,44 @@ def try_handle_command(
             mem_used_str = f"{mem_used_mb:.0f}MB"
             mem_total_str = f"{mem_total_mb:.0f}MB"
 
+        def get_ancestors(pid: int) -> list[int]:
+            """PID의 조상 체인(ancestor chain)을 반환"""
+            ancestors = []
+            try:
+                proc = psutil.Process(pid)
+                while proc.ppid() != 0:
+                    parent_pid = proc.ppid()
+                    ancestors.append(parent_pid)
+                    proc = psutil.Process(parent_pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+            return ancestors
+
+        def format_elapsed(elapsed_secs: float) -> str:
+            """경과 시간을 사람이 읽기 쉬운 형태로 포맷"""
+            if elapsed_secs >= 3600:
+                return f"{int(elapsed_secs // 3600)}시간"
+            elif elapsed_secs >= 60:
+                return f"{int(elapsed_secs // 60)}분"
+            else:
+                return f"{int(elapsed_secs)}초"
+
         # Claude 관련 프로세스 수집
         claude_processes = {}  # pid -> process info
+        all_processes = {}  # 모든 프로세스 정보 (조상 추적용)
+
+        # 먼저 모든 프로세스 정보 수집 (조상 추적에 필요)
+        for proc in psutil.process_iter(['pid', 'name', 'ppid', 'create_time']):
+            try:
+                all_processes[proc.info['pid']] = {
+                    'name': proc.info['name'],
+                    'ppid': proc.info['ppid'] or 0,
+                    'create_time': proc.info['create_time'],
+                }
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+
+        # Claude/node 관련 프로세스만 상세 정보 수집
         for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'create_time', 'ppid', 'cmdline']):
             try:
                 name = proc.info['name'].lower()
@@ -294,79 +330,77 @@ def try_handle_command(
                     cpu = proc.info['cpu_percent'] or 0.0
                     mem_bytes = proc.info['memory_info'].rss if proc.info['memory_info'] else 0
                     mem_mb = mem_bytes / (1024 * 1024)
-                    # 커맨드라인 (50자로 truncate)
+                    # 커맨드라인 (80자로 truncate)
                     cmdline_list = proc.info['cmdline'] or []
                     cmdline = ' '.join(cmdline_list) if cmdline_list else ''
-                    if len(cmdline) > 50:
-                        cmdline = cmdline[:47] + '...'
+                    if len(cmdline) > 80:
+                        cmdline = cmdline[:77] + '...'
                     # 실행 시간 계산
                     create_time = proc.info['create_time']
-                    elapsed_secs = (datetime.now().timestamp() - create_time)
-                    if elapsed_secs >= 3600:
-                        elapsed_str = f"{int(elapsed_secs // 3600)}시간"
-                    elif elapsed_secs >= 60:
-                        elapsed_str = f"{int(elapsed_secs // 60)}분"
-                    else:
-                        elapsed_str = f"{int(elapsed_secs)}초"
+                    elapsed_secs = datetime.now().timestamp() - create_time
                     claude_processes[pid] = {
                         'pid': pid,
                         'ppid': ppid,
                         'name': proc_name,
                         'cpu': cpu,
                         'mem_mb': mem_mb,
-                        'elapsed': elapsed_str,
+                        'elapsed_secs': elapsed_secs,
+                        'elapsed': format_elapsed(elapsed_secs),
                         'cmdline': cmdline,
-                        'children': [],
+                        'create_time': create_time,
                     }
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
 
-        # 트리 구조 구성: 부모-자식 관계 설정
-        root_processes = []
+        # 봇의 루트 프로세스 찾기 (가장 오래된 node.exe 또는 python.exe)
+        bot_root_candidates = []
+        for pid, info in all_processes.items():
+            name_lower = info['name'].lower()
+            if 'node' in name_lower or 'python' in name_lower:
+                bot_root_candidates.append({
+                    'pid': pid,
+                    'name': info['name'],
+                    'create_time': info['create_time'],
+                })
+        # 가장 오래된 프로세스가 루트일 가능성이 높음
+        bot_root_candidates.sort(key=lambda x: x['create_time'])
+
+        # 각 Claude 프로세스의 조상 체인 추적하여 루트 프로세스 찾기
+        bot_tree = {}  # root_pid -> [프로세스 목록]
+        orphan_processes = []  # 봇 트리에 속하지 않는 프로세스
+
         for pid, proc_info in claude_processes.items():
-            ppid = proc_info['ppid']
-            if ppid in claude_processes:
-                claude_processes[ppid]['children'].append(proc_info)
+            ancestors = get_ancestors(pid)
+            # 조상 중에서 봇 루트 후보가 있는지 확인
+            found_root = None
+            for ancestor_pid in ancestors:
+                if ancestor_pid in all_processes:
+                    ancestor_name = all_processes[ancestor_pid]['name'].lower()
+                    # node 또는 python이 조상에 있으면 그것이 루트
+                    if 'node' in ancestor_name or 'python' in ancestor_name:
+                        # 가장 먼 조상(루트에 가까운)을 찾음
+                        found_root = ancestor_pid
+
+            if found_root:
+                if found_root not in bot_tree:
+                    root_info = all_processes.get(found_root, {})
+                    root_create_time = root_info.get('create_time', 0)
+                    bot_tree[found_root] = {
+                        'root_pid': found_root,
+                        'root_name': root_info.get('name', 'unknown'),
+                        'root_elapsed': format_elapsed(datetime.now().timestamp() - root_create_time) if root_create_time else 'N/A',
+                        'processes': [],
+                    }
+                bot_tree[found_root]['processes'].append(proc_info)
             else:
-                root_processes.append(proc_info)
+                orphan_processes.append(proc_info)
 
-        # CPU 사용률 기준으로 루트 프로세스 정렬
-        root_processes.sort(key=lambda x: x['cpu'], reverse=True)
+        # 봇 트리 내 프로세스를 실행 시간 기준 정렬
+        for root_pid, tree_info in bot_tree.items():
+            tree_info['processes'].sort(key=lambda x: x['elapsed_secs'])
 
-        def format_process_tree(proc_info, indent=0, is_last=True, prefix=""):
-            """프로세스를 트리 형태로 포맷팅"""
-            lines = []
-            # 현재 프로세스 포맷
-            if indent == 0:
-                line_prefix = "  - "
-            else:
-                line_prefix = prefix + ("└─ " if is_last else "├─ ")
-
-            lines.append(
-                f"{line_prefix}PID {proc_info['pid']} (PPID {proc_info['ppid']}): "
-                f"{proc_info['name']} (CPU {proc_info['cpu']:.1f}%, {proc_info['mem_mb']:.0f}MB, {proc_info['elapsed']})"
-            )
-            if proc_info['cmdline']:
-                if indent == 0:
-                    cmd_prefix = "    "
-                else:
-                    cmd_prefix = prefix + ("   " if is_last else "│  ")
-                lines.append(f"{cmd_prefix}cmd: {proc_info['cmdline']}")
-
-            # 자식 프로세스들 (CPU 사용률 기준 정렬)
-            children = sorted(proc_info['children'], key=lambda x: x['cpu'], reverse=True)
-            for i, child in enumerate(children):
-                is_last_child = (i == len(children) - 1)
-                if indent == 0:
-                    child_prefix = "    "
-                else:
-                    child_prefix = prefix + ("   " if is_last else "│  ")
-                lines.extend(format_process_tree(child, indent + 1, is_last_child, child_prefix))
-
-            return lines
-
-        # 상위 10개 루트 프로세스만 표시 (트리 포함)
-        root_processes = root_processes[:10]
+        # 고아 프로세스는 메모리 사용량 기준 정렬
+        orphan_processes.sort(key=lambda x: x['mem_mb'], reverse=True)
 
         # 상태 메시지 구성
         status_lines = [
@@ -379,8 +413,32 @@ def try_handle_command(
             f"• 메모리: {mem_used_str} / {mem_total_str} ({mem_percent:.1f}%)",
             f"• Claude 관련 프로세스: {len(claude_processes)}개",
         ]
-        for proc_info in root_processes:
-            status_lines.extend(format_process_tree(proc_info))
+
+        # 봇 트리 표시
+        for root_pid, tree_info in bot_tree.items():
+            status_lines.append("")
+            status_lines.append(f"  *[봇 트리]* 루트 PID {tree_info['root_pid']} ({tree_info['root_name']}, {tree_info['root_elapsed']})")
+            for proc_info in tree_info['processes']:
+                status_lines.append(
+                    f"    └─ PID {proc_info['pid']}: {proc_info['name']} "
+                    f"({proc_info['mem_mb']:.0f}MB, {proc_info['elapsed']})"
+                )
+                if proc_info['cmdline']:
+                    status_lines.append(f"       cmd: {proc_info['cmdline']}")
+
+        # 고아 프로세스 표시
+        if orphan_processes:
+            status_lines.append("")
+            status_lines.append("  ⚠️ *고아 프로세스* (봇과 무관)")
+            for proc_info in orphan_processes[:5]:  # 최대 5개만 표시
+                status_lines.append(
+                    f"    - PID {proc_info['pid']}: {proc_info['name']} "
+                    f"({proc_info['mem_mb']:.0f}MB, {proc_info['elapsed']})"
+                )
+                if proc_info['cmdline']:
+                    status_lines.append(f"      cmd: {proc_info['cmdline']}")
+            if len(orphan_processes) > 5:
+                status_lines.append(f"    ... 외 {len(orphan_processes) - 5}개")
 
         say(text="\n".join(status_lines))
         return True
