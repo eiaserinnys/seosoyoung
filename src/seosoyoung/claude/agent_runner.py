@@ -55,6 +55,61 @@ def _send_debug_to_slack(channel: str, thread_ts: str, message: str) -> None:
         logger.warning(f"디버그 메시지 슬랙 전송 실패: {e}")
 
 
+def _read_stderr_tail(n_lines: int = 30) -> str:
+    """cli_stderr.log의 마지막 N줄 읽기"""
+    from collections import deque
+    try:
+        runtime_dir = Path(__file__).resolve().parents[3]
+        stderr_path = runtime_dir / "logs" / "cli_stderr.log"
+        if not stderr_path.exists():
+            return "(cli_stderr.log not found)"
+        with open(stderr_path, "r", encoding="utf-8", errors="replace") as f:
+            tail = list(deque(f, maxlen=n_lines))
+        return "".join(tail).strip()
+    except Exception as e:
+        return f"(stderr 읽기 실패: {e})"
+
+
+def _build_session_dump(
+    *,
+    reason: str,
+    pid: Optional[int],
+    duration_sec: float,
+    message_count: int,
+    last_tool: str,
+    current_text_len: int,
+    result_text_len: int,
+    session_id: Optional[str],
+    exit_code: Optional[int] = None,
+    error_detail: str = "",
+    active_clients_count: int = 0,
+) -> str:
+    """세션 종료 진단 덤프 메시지 생성"""
+    parts = [
+        f"🔍 *Session Dump* — {reason}",
+        f"• PID: `{pid}`",
+        f"• Duration: `{duration_sec:.1f}s`",
+        f"• Messages received: `{message_count}`",
+        f"• Last tool: `{last_tool or '(none)'}`",
+        f"• Output: current_text=`{current_text_len}` chars, result_text=`{result_text_len}` chars",
+        f"• Session ID: `{session_id or '(none)'}`",
+        f"• Active clients: `{active_clients_count}`",
+    ]
+    if exit_code is not None:
+        parts.append(f"• Exit code: `{exit_code}`")
+    if error_detail:
+        parts.append(f"• Error: `{error_detail[:300]}`")
+
+    stderr_tail = _read_stderr_tail(20)
+    if stderr_tail:
+        # 슬랙 메시지 길이 제한 고려
+        if len(stderr_tail) > 1500:
+            stderr_tail = stderr_tail[-1500:]
+        parts.append(f"• stderr tail:\n```\n{stderr_tail}\n```")
+
+    return "\n".join(parts)
+
+
 def _classify_process_error(e: ProcessError) -> str:
     """ProcessError를 사용자 친화적 메시지로 변환.
 
@@ -820,6 +875,11 @@ class ClaudeAgentRunner:
         # idle 타임아웃: 마지막 메시지 수신 후 이 시간이 지나면 강제 종료
         idle_timeout = self.timeout
 
+        # 세션 진단용 추적 변수
+        _session_start = datetime.now(timezone.utc)
+        _msg_count = 0
+        _last_tool = ""
+
         # 외부 retry loop: rate_limit_event 발생 시 client를 정리하고 새로 생성하여 재시도
         # SDK 내부에서 rate_limit_event 수신 후 연결이 끊기므로 같은 iterator를 재사용할 수 없음
         rate_limit_delays = [1, 3, 5]  # 재시도 대기 시간 (초)
@@ -866,6 +926,23 @@ class ClaudeAgentRunner:
                             resuming_session = True
                             await self._remove_client(client_key)
                             rate_limited = True  # retry loop 진입
+                        # 출력 없이 종료된 경우 진단 덤프
+                        elif not result_text and not current_text and channel and thread_ts:
+                            _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
+                            _pid = self._client_pids.get(client_key)
+                            dump = _build_session_dump(
+                                reason="CLI exited with no output (StopAsyncIteration)",
+                                pid=_pid,
+                                duration_sec=_dur,
+                                message_count=_msg_count,
+                                last_tool=_last_tool,
+                                current_text_len=len(current_text),
+                                result_text_len=len(result_text),
+                                session_id=result_session_id,
+                                active_clients_count=len(self._active_clients),
+                            )
+                            logger.warning(f"세션 무출력 종료 덤프: thread={thread_ts}, duration={_dur:.1f}s, msgs={_msg_count}, last_tool={_last_tool}")
+                            _send_debug_to_slack(channel, thread_ts, dump)
                         break
                     except MessageParseError as e:
                         if e.data and e.data.get("type") == "rate_limit_event":
@@ -898,6 +975,8 @@ class ClaudeAgentRunner:
                             rate_limited = True
                             break
                         raise
+                    _msg_count += 1
+
                     # SystemMessage에서 세션 ID 추출
                     if isinstance(message, SystemMessage):
                         if hasattr(message, 'session_id'):
@@ -938,6 +1017,7 @@ class ClaudeAgentRunner:
                                         tool_input = json.dumps(block.input, ensure_ascii=False)
                                         if len(tool_input) > 2000:
                                             tool_input = tool_input[:2000] + "..."
+                                    _last_tool = block.name
                                     logger.info(f"[TOOL_USE] {block.name}: {tool_input[:500]}")
                                     # OM용: 도구 호출 수집
                                     collected_messages.append({
@@ -1003,6 +1083,8 @@ class ClaudeAgentRunner:
                         collected_messages = []
                         last_progress_time = asyncio.get_event_loop().time()
                         compact_notified_count = 0
+                        _msg_count = 0
+                        _last_tool = ""
                         continue
                     else:
                         logger.error(f"rate_limit_event {max_attempts}회 초과, 재시도 중단")
@@ -1046,6 +1128,21 @@ class ClaudeAgentRunner:
 
             except asyncio.TimeoutError:
                 logger.error(f"Claude Code SDK idle 타임아웃 ({idle_timeout}초간 메시지 수신 없음)")
+                if channel and thread_ts:
+                    _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
+                    _pid = self._client_pids.get(client_key)
+                    dump = _build_session_dump(
+                        reason=f"Idle timeout ({idle_timeout}s)",
+                        pid=_pid,
+                        duration_sec=_dur,
+                        message_count=_msg_count,
+                        last_tool=_last_tool,
+                        current_text_len=len(current_text),
+                        result_text_len=len(result_text),
+                        session_id=result_session_id,
+                        active_clients_count=len(self._active_clients),
+                    )
+                    _send_debug_to_slack(channel, thread_ts, dump)
                 return ClaudeResult(
                     success=False,
                     output=current_text,
@@ -1063,6 +1160,24 @@ class ClaudeAgentRunner:
             except ProcessError as e:
                 friendly_msg = _classify_process_error(e)
                 logger.error(f"Claude Code CLI 프로세스 오류: exit_code={e.exit_code}, stderr={e.stderr}, friendly={friendly_msg}")
+                # 진단 덤프
+                if channel and thread_ts:
+                    _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
+                    _pid = self._client_pids.get(client_key)
+                    dump = _build_session_dump(
+                        reason="ProcessError",
+                        pid=_pid,
+                        duration_sec=_dur,
+                        message_count=_msg_count,
+                        last_tool=_last_tool,
+                        current_text_len=len(current_text),
+                        result_text_len=len(result_text),
+                        session_id=result_session_id,
+                        exit_code=e.exit_code,
+                        error_detail=str(e.stderr or e),
+                        active_clients_count=len(self._active_clients),
+                    )
+                    _send_debug_to_slack(channel, thread_ts, dump)
                 return ClaudeResult(
                     success=False,
                     output=current_text,
