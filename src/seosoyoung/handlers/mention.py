@@ -256,6 +256,7 @@ def try_handle_command(
                 "• `@seosoyoung 번역 <텍스트>` - 번역 테스트\n"
                 "• `@seosoyoung help` - 도움말\n"
                 "• `@seosoyoung status` - 상태 확인\n"
+                "• `@seosoyoung log` - 오늘자 로그 파일 첨부\n"
                 "• `@seosoyoung compact` - 스레드 세션 컴팩트\n"
                 "• `@seosoyoung profile` - 인증 프로필 관리 (관리자)\n"
                 "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
@@ -275,6 +276,28 @@ def try_handle_command(
                 f"• 디버그 모드: {Config.DEBUG}"
             )
         )
+        return True
+
+    if command == "log":
+        # 오늘 날짜의 로그 파일 첨부
+        from datetime import datetime
+        log_dir = Path(Config.get_log_path())
+        log_file = log_dir / f"bot_{datetime.now().strftime('%Y%m%d')}.log"
+        target_ts = thread_ts or ts
+        if not log_file.exists():
+            say(text=f"오늘 날짜의 로그 파일이 없습니다: `{log_file}`", thread_ts=target_ts)
+            return True
+        try:
+            client.files_upload_v2(
+                channel=channel,
+                thread_ts=target_ts,
+                file=str(log_file),
+                filename=log_file.name,
+                initial_comment=f"📋 오늘자 로그 파일 (`{log_file.name}`)"
+            )
+        except Exception as e:
+            logger.exception(f"로그 파일 첨부 실패: {e}")
+            say(text=f"로그 파일 첨부 실패: `{e}`", thread_ts=target_ts)
         return True
 
     # 번역 테스트 명령어
