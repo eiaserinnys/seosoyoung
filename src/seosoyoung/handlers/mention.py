@@ -212,8 +212,8 @@ def try_handle_command(
     send_restart_confirmation = deps["send_restart_confirmation"]
     list_runner_ref = deps.get("list_runner_ref", lambda: None)
 
-    admin_commands = ["help", "status", "update", "restart", "compact", "profile"]
-    is_admin_command = command in admin_commands or command.startswith("profile ")
+    admin_commands = ["help", "status", "update", "restart", "compact", "profile", "cleanup"]
+    is_admin_command = command in admin_commands or command.startswith("profile ") or command.startswith("cleanup")
 
     # 정주행 재개 명령어
     if _is_resume_list_run_command(command):
@@ -258,6 +258,7 @@ def try_handle_command(
                 "• `@seosoyoung status` - 상태 확인\n"
                 "• `@seosoyoung log` - 오늘자 로그 파일 첨부\n"
                 "• `@seosoyoung compact` - 스레드 세션 컴팩트\n"
+                "• `@seosoyoung cleanup` - 고아 프로세스/세션 정리 (관리자)\n"
                 "• `@seosoyoung profile` - 인증 프로필 관리 (관리자)\n"
                 "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
                 "• `@seosoyoung restart` - 봇 재시작 (관리자)"
@@ -441,6 +442,214 @@ def try_handle_command(
                 status_lines.append(f"    ... 외 {len(orphan_processes) - 5}개")
 
         say(text="\n".join(status_lines))
+        return True
+
+    if command == "cleanup" or command == "cleanup confirm":
+        # 관리자 권한 체크
+        if not check_permission(user_id, client):
+            logger.warning(f"cleanup 권한 없음: user={user_id}")
+            say(text="관리자 권한이 필요합니다.", thread_ts=ts)
+            return True
+
+        import psutil
+        from datetime import datetime
+
+        is_confirm = command == "cleanup confirm"
+
+        def get_ancestors(pid: int) -> list[int]:
+            """PID의 조상 체인(ancestor chain)을 반환"""
+            ancestors = []
+            try:
+                proc = psutil.Process(pid)
+                while proc.ppid() != 0:
+                    parent_pid = proc.ppid()
+                    ancestors.append(parent_pid)
+                    proc = psutil.Process(parent_pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+            return ancestors
+
+        def format_elapsed(elapsed_secs: float) -> str:
+            """경과 시간을 사람이 읽기 쉬운 형태로 포맷"""
+            if elapsed_secs >= 3600:
+                return f"{int(elapsed_secs // 3600)}시간"
+            elif elapsed_secs >= 60:
+                return f"{int(elapsed_secs // 60)}분"
+            else:
+                return f"{int(elapsed_secs)}초"
+
+        # 모든 프로세스 정보 수집 (조상 추적용)
+        all_processes = {}
+        for proc in psutil.process_iter(['pid', 'name', 'ppid', 'create_time']):
+            try:
+                all_processes[proc.info['pid']] = {
+                    'name': proc.info['name'],
+                    'ppid': proc.info['ppid'] or 0,
+                    'create_time': proc.info['create_time'],
+                }
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+
+        # Claude/node 관련 프로세스만 상세 정보 수집
+        claude_processes = {}
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'create_time', 'ppid', 'cmdline', 'exe']):
+            try:
+                name = proc.info['name'].lower()
+                if 'claude' in name or 'node' in name:
+                    pid = proc.info['pid']
+                    ppid = proc.info['ppid'] or 0
+                    proc_name = proc.info['name']
+                    mem_bytes = proc.info['memory_info'].rss if proc.info['memory_info'] else 0
+                    mem_mb = mem_bytes / (1024 * 1024)
+                    create_time = proc.info['create_time']
+                    elapsed_secs = datetime.now().timestamp() - create_time
+                    exe_path = proc.info.get('exe') or ''
+                    claude_processes[pid] = {
+                        'pid': pid,
+                        'ppid': ppid,
+                        'name': proc_name,
+                        'mem_mb': mem_mb,
+                        'elapsed_secs': elapsed_secs,
+                        'elapsed': format_elapsed(elapsed_secs),
+                        'exe_path': exe_path,
+                        'create_time': create_time,
+                    }
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+
+        # 고아 프로세스 식별 (봇 트리에 속하지 않음)
+        orphan_processes = []
+        for pid, proc_info in claude_processes.items():
+            ancestors = get_ancestors(pid)
+            found_root = None
+            for ancestor_pid in ancestors:
+                if ancestor_pid in all_processes:
+                    ancestor_name = all_processes[ancestor_pid]['name'].lower()
+                    if 'node' in ancestor_name or 'python' in ancestor_name:
+                        found_root = ancestor_pid
+            if not found_root:
+                # Claude Desktop 앱 제외 (AnthropicClaude 경로 확인)
+                exe_path = proc_info.get('exe_path', '').lower()
+                if 'anthropicclaude' not in exe_path:
+                    orphan_processes.append(proc_info)
+
+        orphan_processes.sort(key=lambda x: x['mem_mb'], reverse=True)
+
+        # 오래된 세션 식별 (24시간 이상)
+        old_sessions = []
+        threshold_hours = 24
+        now = datetime.now()
+        for session in session_manager.list_active():
+            try:
+                created_at = datetime.fromisoformat(session.created_at)
+                age_hours = (now - created_at).total_seconds() / 3600
+                if age_hours >= threshold_hours:
+                    old_sessions.append({
+                        'thread_ts': session.thread_ts,
+                        'age_hours': age_hours,
+                        'username': session.username or 'unknown',
+                    })
+            except Exception:
+                pass
+
+        # 회수 예상 메모리 계산
+        total_orphan_mem_mb = sum(p['mem_mb'] for p in orphan_processes)
+        if total_orphan_mem_mb >= 1024:
+            mem_str = f"{total_orphan_mem_mb / 1024:.1f}GB"
+        else:
+            mem_str = f"{total_orphan_mem_mb:.0f}MB"
+
+        if not is_confirm:
+            # Dry-run: 정리 대상만 표시
+            lines = ["*정리 대상 확인*", ""]
+
+            if orphan_processes:
+                lines.append("⚠️ *고아 프로세스* (봇과 무관):")
+                for proc_info in orphan_processes:
+                    lines.append(
+                        f"  - PID {proc_info['pid']}: {proc_info['name']} "
+                        f"({proc_info['mem_mb']:.0f}MB, {proc_info['elapsed']})"
+                    )
+                lines.append(f"  총 {mem_str} 회수 예정")
+            else:
+                lines.append("✅ 고아 프로세스 없음")
+
+            lines.append("")
+
+            if old_sessions:
+                lines.append(f"📋 *오래된 세션* (24시간 이상):")
+                lines.append(f"  - {len(old_sessions)}개 세션 정리 대상")
+            else:
+                lines.append("✅ 오래된 세션 없음")
+
+            if orphan_processes or old_sessions:
+                lines.append("")
+                lines.append("실제 정리하려면 `@서소영 cleanup confirm`을 실행하세요.")
+
+            say(text="\n".join(lines), thread_ts=ts)
+            return True
+
+        # Confirm: 실제 정리 수행
+        terminated_count = 0
+        terminated_lines = []
+        failed_lines = []
+        reclaimed_mem_mb = 0.0
+
+        for proc_info in orphan_processes:
+            try:
+                proc = psutil.Process(proc_info['pid'])
+                proc.terminate()
+                terminated_count += 1
+                reclaimed_mem_mb += proc_info['mem_mb']
+                terminated_lines.append(
+                    f"  - PID {proc_info['pid']}: {proc_info['name']} "
+                    f"({proc_info['mem_mb']:.0f}MB) - 종료됨"
+                )
+            except psutil.NoSuchProcess:
+                # 이미 종료됨
+                pass
+            except Exception as e:
+                failed_lines.append(
+                    f"  - PID {proc_info['pid']}: {proc_info['name']} - 실패: {e}"
+                )
+
+        # 세션 정리
+        cleaned_session_count = session_manager.cleanup_old_sessions(threshold_hours)
+
+        # 회수된 메모리 포맷
+        if reclaimed_mem_mb >= 1024:
+            reclaimed_str = f"{reclaimed_mem_mb / 1024:.1f}GB"
+        else:
+            reclaimed_str = f"{reclaimed_mem_mb:.0f}MB"
+
+        # 결과 메시지 구성
+        lines = ["*정리 완료*", ""]
+
+        if terminated_lines:
+            lines.append(f"✅ *종료된 프로세스*: {terminated_count}개")
+            lines.extend(terminated_lines)
+            lines.append(f"  회수된 메모리: 약 {reclaimed_str}")
+        else:
+            lines.append("✅ 종료할 프로세스 없음")
+
+        if failed_lines:
+            lines.append("")
+            lines.append("❌ *종료 실패*:")
+            lines.extend(failed_lines)
+
+        lines.append("")
+        lines.append(f"✅ *정리된 세션*: {cleaned_session_count}개")
+
+        # 현재 상태 표시
+        mem = psutil.virtual_memory()
+        mem_used_gb = mem.used / (1024 * 1024 * 1024)
+        mem_total_gb = mem.total / (1024 * 1024 * 1024)
+        lines.append("")
+        lines.append("*현재 상태*:")
+        lines.append(f"  - 활성 세션: {session_manager.count()}개")
+        lines.append(f"  - 메모리 사용: {mem_used_gb:.1f}GB / {mem_total_gb:.1f}GB ({mem.percent:.1f}%)")
+
+        say(text="\n".join(lines), thread_ts=ts)
         return True
 
     if command == "log":

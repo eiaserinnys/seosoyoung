@@ -219,6 +219,36 @@ class SessionManager:
         """활성 세션 수"""
         return len(list(self.session_dir.glob("session_*.json")))
 
+    def cleanup_old_sessions(self, threshold_hours: int = 24) -> int:
+        """오래된 세션 정리
+
+        Args:
+            threshold_hours: 정리 기준 시간 (시간 단위, 기본 24시간)
+
+        Returns:
+            정리된 세션 수
+        """
+        cleaned = 0
+        now = datetime.now()
+
+        for file_path in self.session_dir.glob("session_*.json"):
+            try:
+                data = json.loads(file_path.read_text(encoding="utf-8"))
+                created_at = datetime.fromisoformat(data.get("created_at", ""))
+                age_hours = (now - created_at).total_seconds() / 3600
+
+                if age_hours >= threshold_hours:
+                    thread_ts = data.get("thread_ts")
+                    file_path.unlink()
+                    if thread_ts and thread_ts in self._cache:
+                        del self._cache[thread_ts]
+                    cleaned += 1
+                    logger.info(f"세션 정리: thread_ts={thread_ts}, age={age_hours:.1f}h")
+            except Exception as e:
+                logger.error(f"세션 정리 실패: {file_path}, {e}")
+
+        return cleaned
+
 
 class SessionRuntime:
     """세션 실행 상태 관리자
