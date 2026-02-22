@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
+import psutil
 from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient, HookMatcher, HookContext
 from claude_code_sdk._errors import MessageParseError, ProcessError
 from claude_code_sdk.types import (
@@ -142,6 +143,11 @@ class ClaudeAgentRunner:
     _loop_thread: Optional[threading.Thread] = None
     _loop_lock = threading.Lock()
 
+    # 클래스 레벨 활성 클라이언트 관리 (모든 인스턴스가 공유)
+    _active_clients: dict[str, ClaudeSDKClient] = {}
+    _client_pids: dict[str, int] = {}  # thread_ts -> subprocess PID
+    _clients_lock = threading.Lock()
+
     def __init__(
         self,
         working_dir: Optional[Path] = None,
@@ -156,7 +162,6 @@ class ClaudeAgentRunner:
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
         self._lock = asyncio.Lock()
-        self._active_clients: dict[str, ClaudeSDKClient] = {}
 
     @classmethod
     def _ensure_loop(cls) -> None:
@@ -188,6 +193,63 @@ class ClaudeAgentRunner:
             cls._shared_loop = None
             cls._loop_thread = None
 
+    @classmethod
+    async def shutdown_all_clients(cls) -> int:
+        """모든 활성 클라이언트 종료
+
+        프로세스 종료 전에 호출하여 고아 프로세스를 방지합니다.
+        disconnect 실패 시 psutil로 강제 종료합니다.
+
+        Returns:
+            종료된 클라이언트 수
+        """
+        with cls._clients_lock:
+            clients = list(cls._active_clients.items())
+            pids = dict(cls._client_pids)  # 복사
+
+        if not clients:
+            logger.info("종료할 활성 클라이언트 없음")
+            return 0
+
+        count = 0
+        for thread_ts, client in clients:
+            try:
+                await client.disconnect()
+                count += 1
+                logger.info(f"클라이언트 종료 성공: {thread_ts}")
+            except Exception as e:
+                logger.warning(f"클라이언트 종료 실패: {thread_ts}, {e}")
+                # PID로 강제 종료 시도
+                pid = pids.get(thread_ts)
+                if pid:
+                    cls._force_kill_process(pid, thread_ts)
+                    count += 1  # 강제 종료도 성공으로 카운트
+
+        with cls._clients_lock:
+            cls._active_clients.clear()
+            cls._client_pids.clear()
+
+        logger.info(f"총 {count}개 클라이언트 종료 완료")
+        return count
+
+    @classmethod
+    def shutdown_all_clients_sync(cls) -> int:
+        """모든 활성 클라이언트 종료 (동기 버전)
+
+        시그널 핸들러 등 동기 컨텍스트에서 사용합니다.
+
+        Returns:
+            종료된 클라이언트 수
+        """
+        try:
+            loop = asyncio.new_event_loop()
+            count = loop.run_until_complete(cls.shutdown_all_clients())
+            loop.close()
+            return count
+        except Exception as e:
+            logger.warning(f"클라이언트 동기 종료 중 오류: {e}")
+            return 0
+
     def run_sync(self, coro):
         """동기 컨텍스트에서 코루틴을 실행하는 브릿지
 
@@ -209,9 +271,10 @@ class ClaudeAgentRunner:
             thread_ts: 스레드 타임스탬프 (클라이언트 키)
             options: ClaudeCodeOptions (새 클라이언트 생성 시 사용)
         """
-        if thread_ts in self._active_clients:
-            logger.info(f"[DEBUG-CLIENT] 기존 클라이언트 재사용: thread={thread_ts}")
-            return self._active_clients[thread_ts]
+        with self._clients_lock:
+            if thread_ts in self._active_clients:
+                logger.info(f"[DEBUG-CLIENT] 기존 클라이언트 재사용: thread={thread_ts}")
+                return self._active_clients[thread_ts]
 
         import time as _time
         logger.info(f"[DEBUG-CLIENT] 새 ClaudeSDKClient 생성 시작: thread={thread_ts}")
@@ -231,24 +294,72 @@ class ClaudeAgentRunner:
             except Exception:
                 pass
             raise
-        self._active_clients[thread_ts] = client
-        logger.info(f"ClaudeSDKClient 생성: thread={thread_ts}")
+
+        # subprocess PID 추출 (SDK 내부 구조: client._transport._process.pid)
+        pid: Optional[int] = None
+        try:
+            transport = getattr(client, "_transport", None)
+            if transport:
+                process = getattr(transport, "_process", None)
+                if process:
+                    pid = getattr(process, "pid", None)
+                    if pid:
+                        logger.info(f"[DEBUG-CLIENT] subprocess PID 추출: {pid}")
+        except Exception as e:
+            logger.warning(f"[DEBUG-CLIENT] PID 추출 실패 (무시): {e}")
+
+        with self._clients_lock:
+            self._active_clients[thread_ts] = client
+            if pid:
+                self._client_pids[thread_ts] = pid
+        logger.info(f"ClaudeSDKClient 생성: thread={thread_ts}, pid={pid}")
         return client
 
     async def _remove_client(self, thread_ts: str) -> None:
         """스레드의 ClaudeSDKClient를 정리
 
         disconnect 후 딕셔너리에서 제거합니다.
-        disconnect 실패 시에도 딕셔너리에서 제거합니다.
+        disconnect 실패 시 psutil로 강제 종료합니다.
         """
-        client = self._active_clients.pop(thread_ts, None)
+        with self._clients_lock:
+            client = self._active_clients.pop(thread_ts, None)
+            pid = self._client_pids.pop(thread_ts, None)
+
         if client is None:
             return
+
         try:
             await client.disconnect()
+            logger.info(f"ClaudeSDKClient 정상 종료: thread={thread_ts}")
         except Exception as e:
-            logger.warning(f"ClaudeSDKClient disconnect 오류 (무시): thread={thread_ts}, {e}")
-        logger.info(f"ClaudeSDKClient 제거: thread={thread_ts}")
+            logger.warning(f"ClaudeSDKClient disconnect 실패: thread={thread_ts}, {e}")
+            # PID로 강제 종료 시도
+            if pid:
+                self._force_kill_process(pid, thread_ts)
+
+    @staticmethod
+    def _force_kill_process(pid: int, thread_ts: str) -> None:
+        """psutil을 사용하여 프로세스를 강제 종료
+
+        Args:
+            pid: 종료할 프로세스 ID
+            thread_ts: 로깅용 스레드 식별자
+        """
+        try:
+            proc = psutil.Process(pid)
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+                logger.info(f"프로세스 강제 종료 성공 (terminate): PID {pid}, thread={thread_ts}")
+            except psutil.TimeoutExpired:
+                # terminate가 실패하면 kill로 강제 종료
+                proc.kill()
+                proc.wait(timeout=2)
+                logger.info(f"프로세스 강제 종료 성공 (kill): PID {pid}, thread={thread_ts}")
+        except psutil.NoSuchProcess:
+            logger.info(f"프로세스 이미 종료됨: PID {pid}, thread={thread_ts}")
+        except Exception as kill_error:
+            logger.error(f"프로세스 강제 종료 실패: PID {pid}, thread={thread_ts}, {kill_error}")
 
     async def interrupt(self, thread_ts: str) -> bool:
         """실행 중인 스레드에 인터럽트 전송
@@ -259,7 +370,8 @@ class ClaudeAgentRunner:
         Returns:
             True: 인터럽트 성공, False: 해당 스레드에 클라이언트 없음 또는 실패
         """
-        client = self._active_clients.get(thread_ts)
+        with self._clients_lock:
+            client = self._active_clients.get(thread_ts)
         if client is None:
             return False
         try:
