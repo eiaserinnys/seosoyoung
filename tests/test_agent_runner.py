@@ -1237,22 +1237,26 @@ class TestTriggerObservationToolFilter:
         assert len(messages) == 3
 
 
+def _clear_all_client_state():
+    """테스트용: 클래스 레벨 클라이언트 상태 초기화"""
+    ClaudeAgentRunner._active_clients.clear()
+    ClaudeAgentRunner._client_pids.clear()
+
+
 @pytest.mark.asyncio
 class TestShutdownAllClients:
     """shutdown_all_clients 메서드 테스트"""
 
     async def test_shutdown_all_clients_empty(self):
         """활성 클라이언트가 없을 때 0 반환"""
-        # 클래스 레벨 변수 초기화
-        ClaudeAgentRunner._active_clients.clear()
+        _clear_all_client_state()
 
         count = await ClaudeAgentRunner.shutdown_all_clients()
         assert count == 0
 
     async def test_shutdown_all_clients_multiple(self):
         """여러 클라이언트가 있을 때 모두 종료"""
-        # 클래스 레벨 변수 초기화
-        ClaudeAgentRunner._active_clients.clear()
+        _clear_all_client_state()
 
         # Mock 클라이언트 추가
         mock_client_1 = AsyncMock()
@@ -1273,10 +1277,11 @@ class TestShutdownAllClients:
 
         # 딕셔너리가 비워졌는지 확인
         assert len(ClaudeAgentRunner._active_clients) == 0
+        assert len(ClaudeAgentRunner._client_pids) == 0
 
-    async def test_shutdown_all_clients_partial_failure(self):
-        """일부 클라이언트 종료 실패 시에도 나머지 종료 진행"""
-        ClaudeAgentRunner._active_clients.clear()
+    async def test_shutdown_all_clients_partial_failure_with_force_kill(self):
+        """일부 클라이언트 종료 실패 시 psutil로 강제 종료"""
+        _clear_all_client_state()
 
         mock_client_1 = AsyncMock()
         mock_client_2 = AsyncMock()
@@ -1287,22 +1292,46 @@ class TestShutdownAllClients:
             ClaudeAgentRunner._active_clients["thread_1"] = mock_client_1
             ClaudeAgentRunner._active_clients["thread_2"] = mock_client_2
             ClaudeAgentRunner._active_clients["thread_3"] = mock_client_3
+            # thread_2에 PID 설정 (강제 종료 대상)
+            ClaudeAgentRunner._client_pids["thread_2"] = 12345
 
-        count = await ClaudeAgentRunner.shutdown_all_clients()
+        with patch.object(ClaudeAgentRunner, "_force_kill_process") as mock_force_kill:
+            count = await ClaudeAgentRunner.shutdown_all_clients()
 
-        # 2개만 성공
-        assert count == 2
+        # 3개 모두 성공 (2개 정상 + 1개 강제 종료)
+        assert count == 3
         # 모든 클라이언트에 disconnect 시도
         mock_client_1.disconnect.assert_called_once()
         mock_client_2.disconnect.assert_called_once()
         mock_client_3.disconnect.assert_called_once()
+        # thread_2는 강제 종료
+        mock_force_kill.assert_called_once_with(12345, "thread_2")
 
-        # 실패해도 딕셔너리는 비워짐
+        # 딕셔너리가 비워짐
         assert len(ClaudeAgentRunner._active_clients) == 0
+        assert len(ClaudeAgentRunner._client_pids) == 0
+
+    async def test_shutdown_partial_failure_no_pid(self):
+        """disconnect 실패 시 PID가 없으면 강제 종료 시도 안 함"""
+        _clear_all_client_state()
+
+        mock_client = AsyncMock()
+        mock_client.disconnect.side_effect = RuntimeError("연결 끊기 실패")
+
+        with ClaudeAgentRunner._clients_lock:
+            ClaudeAgentRunner._active_clients["thread_no_pid"] = mock_client
+            # PID 미설정
+
+        with patch.object(ClaudeAgentRunner, "_force_kill_process") as mock_force_kill:
+            count = await ClaudeAgentRunner.shutdown_all_clients()
+
+        # disconnect 실패, 강제 종료도 불가 -> 0
+        assert count == 0
+        mock_force_kill.assert_not_called()
 
     def test_shutdown_all_clients_sync(self):
         """동기 버전 shutdown_all_clients_sync 테스트"""
-        ClaudeAgentRunner._active_clients.clear()
+        _clear_all_client_state()
 
         mock_client = AsyncMock()
         with ClaudeAgentRunner._clients_lock:
@@ -1315,7 +1344,7 @@ class TestShutdownAllClients:
 
     async def test_class_level_active_clients_shared(self):
         """_active_clients가 클래스 레벨로 모든 인스턴스에서 공유"""
-        ClaudeAgentRunner._active_clients.clear()
+        _clear_all_client_state()
 
         runner1 = ClaudeAgentRunner()
         runner2 = ClaudeAgentRunner()
@@ -1332,6 +1361,136 @@ class TestShutdownAllClients:
         # shutdown은 클래스 메서드이므로 어느 인스턴스에서도 호출 가능
         count = await ClaudeAgentRunner.shutdown_all_clients()
         assert count == 1
+
+
+@pytest.mark.asyncio
+class TestPidTrackingAndForceKill:
+    """PID 추적 및 강제 종료 테스트"""
+
+    async def test_pid_extracted_from_client(self):
+        """클라이언트 생성 시 subprocess PID가 추출되는지 확인"""
+        _clear_all_client_state()
+        runner = ClaudeAgentRunner()
+
+        # Mock transport와 process 설정
+        mock_process = MagicMock()
+        mock_process.pid = 54321
+
+        mock_transport = MagicMock()
+        mock_transport._process = mock_process
+
+        mock_client = AsyncMock()
+        mock_client._transport = mock_transport
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            client = await runner._get_or_create_client("test_thread")
+
+        # PID가 저장되었는지 확인
+        with ClaudeAgentRunner._clients_lock:
+            assert "test_thread" in ClaudeAgentRunner._client_pids
+            assert ClaudeAgentRunner._client_pids["test_thread"] == 54321
+
+    async def test_pid_not_extracted_when_transport_missing(self):
+        """transport가 없을 때 PID 추출 실패해도 오류 없음"""
+        _clear_all_client_state()
+        runner = ClaudeAgentRunner()
+
+        mock_client = AsyncMock()
+        mock_client._transport = None  # transport 없음
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            client = await runner._get_or_create_client("test_no_transport")
+
+        # PID가 저장되지 않음
+        with ClaudeAgentRunner._clients_lock:
+            assert "test_no_transport" not in ClaudeAgentRunner._client_pids
+            # 클라이언트는 여전히 등록됨
+            assert "test_no_transport" in ClaudeAgentRunner._active_clients
+
+    async def test_remove_client_force_kills_on_disconnect_failure(self):
+        """disconnect 실패 시 PID로 강제 종료"""
+        _clear_all_client_state()
+        runner = ClaudeAgentRunner()
+
+        mock_client = AsyncMock()
+        mock_client.disconnect.side_effect = RuntimeError("연결 끊기 실패")
+
+        with ClaudeAgentRunner._clients_lock:
+            ClaudeAgentRunner._active_clients["thread_fail"] = mock_client
+            ClaudeAgentRunner._client_pids["thread_fail"] = 99999
+
+        with patch.object(ClaudeAgentRunner, "_force_kill_process") as mock_force_kill:
+            await runner._remove_client("thread_fail")
+
+        mock_force_kill.assert_called_once_with(99999, "thread_fail")
+
+    async def test_remove_client_no_force_kill_on_success(self):
+        """disconnect 성공 시 강제 종료 호출 안 함"""
+        _clear_all_client_state()
+        runner = ClaudeAgentRunner()
+
+        mock_client = AsyncMock()  # disconnect 성공
+
+        with ClaudeAgentRunner._clients_lock:
+            ClaudeAgentRunner._active_clients["thread_ok"] = mock_client
+            ClaudeAgentRunner._client_pids["thread_ok"] = 11111
+
+        with patch.object(ClaudeAgentRunner, "_force_kill_process") as mock_force_kill:
+            await runner._remove_client("thread_ok")
+
+        mock_force_kill.assert_not_called()
+
+        # 클라이언트와 PID 모두 제거됨
+        with ClaudeAgentRunner._clients_lock:
+            assert "thread_ok" not in ClaudeAgentRunner._active_clients
+            assert "thread_ok" not in ClaudeAgentRunner._client_pids
+
+    def test_force_kill_process_terminate_success(self):
+        """_force_kill_process: terminate 성공"""
+        mock_proc = MagicMock()
+
+        # agent_runner 모듈 내부에서 psutil을 import하므로 해당 경로로 패치
+        with patch("seosoyoung.claude.agent_runner.psutil") as mock_psutil:
+            mock_psutil.Process.return_value = mock_proc
+            ClaudeAgentRunner._force_kill_process(12345, "test_thread")
+
+        mock_proc.terminate.assert_called_once()
+        mock_proc.wait.assert_called_once_with(timeout=3)
+
+    def test_force_kill_process_terminate_timeout_then_kill(self):
+        """_force_kill_process: terminate 타임아웃 시 kill 사용"""
+        mock_proc = MagicMock()
+
+        with patch("seosoyoung.claude.agent_runner.psutil") as mock_psutil:
+            # TimeoutExpired 예외 시뮬레이션
+            mock_psutil.TimeoutExpired = type("TimeoutExpired", (Exception,), {})
+            mock_proc.wait.side_effect = [mock_psutil.TimeoutExpired(3), None]
+            mock_psutil.Process.return_value = mock_proc
+            ClaudeAgentRunner._force_kill_process(12345, "test_thread")
+
+        mock_proc.terminate.assert_called_once()
+        mock_proc.kill.assert_called_once()
+        assert mock_proc.wait.call_count == 2
+
+    def test_force_kill_process_no_such_process(self):
+        """_force_kill_process: 프로세스가 이미 종료된 경우"""
+        with patch("seosoyoung.claude.agent_runner.psutil") as mock_psutil:
+            # NoSuchProcess 예외 시뮬레이션
+            mock_psutil.NoSuchProcess = type("NoSuchProcess", (Exception,), {})
+            mock_psutil.Process.side_effect = mock_psutil.NoSuchProcess(12345)
+            # 예외 발생하지 않음
+            ClaudeAgentRunner._force_kill_process(12345, "test_thread")
+
+    def test_force_kill_process_general_error(self):
+        """_force_kill_process: 일반 오류 발생 시 로깅만"""
+        import psutil as real_psutil
+        with patch("seosoyoung.claude.agent_runner.psutil") as mock_psutil:
+            # 실제 예외 클래스들을 유지
+            mock_psutil.NoSuchProcess = real_psutil.NoSuchProcess
+            mock_psutil.TimeoutExpired = real_psutil.TimeoutExpired
+            mock_psutil.Process.side_effect = RuntimeError("알 수 없는 오류")
+            # 예외 발생하지 않음 (로깅만)
+            ClaudeAgentRunner._force_kill_process(12345, "test_thread")
 
 
 class TestServiceFactory:
