@@ -711,25 +711,21 @@ class ClaudeAgentRunner:
                         break
                     except MessageParseError as e:
                         if e.data and e.data.get("type") == "rate_limit_event":
-                            # rate_limit_event 상세 정보를 슬랙에 전송 (디버깅용)
-                            debug_info = (
-                                f"🔍 rate_limit_event 디버그:\n"
-                                f"• data: `{json.dumps(e.data, ensure_ascii=False)}`\n"
-                                f"• current_text 길이: {len(current_text)}\n"
-                                f"• result_text 길이: {len(result_text)}\n"
-                                f"• attempt: {attempt + 1}/{max_attempts}"
-                            )
-                            logger.warning(debug_info)
-                            if on_progress:
-                                try:
-                                    await on_progress(debug_info)
-                                except Exception:
-                                    pass
-                            # ResultMessage를 이미 받았거나 응답이 진행 중이면 무시하고 계속 진행
-                            # (rate_limit_event가 경고성일 수 있으므로 StopAsyncIteration까지 대기)
-                            if result_text or current_text:
-                                logger.info("응답 진행 중 rate_limit_event 무시, 계속 수신 시도")
+                            # rate_limit_info.status 확인: "allowed"면 정상 진행
+                            rate_limit_info = e.data.get("rate_limit_info", {})
+                            status = rate_limit_info.get("status", "")
+
+                            if status == "allowed":
+                                # 정상 요청, rate limit 상태 정보일 뿐 - 무시하고 계속
+                                logger.debug(f"rate_limit_event (status=allowed) 무시, 계속 수신")
                                 continue
+
+                            # status가 allowed가 아닌 경우에만 rate limit 처리
+                            logger.warning(
+                                f"rate_limit_event 발생 (status={status}): "
+                                f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
+                                f"resetsAt={rate_limit_info.get('resetsAt')}"
+                            )
                             rate_limited = True
                             break
                         raise
