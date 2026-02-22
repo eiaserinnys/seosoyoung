@@ -743,6 +743,11 @@ class ClaudeAgentRunner:
                             rate_limit_info = e.data.get("rate_limit_info", {})
                             status = rate_limit_info.get("status", "")
 
+                            if status == "allowed":
+                                # status=allowed는 단순 상태 정보, 무시하고 계속
+                                continue
+
+                            # status가 allowed가 아닌 경우에만 실제 rate limit
                             # 디버그: 슬랙에 rate_limit_event 정보 전송
                             if channel and thread_ts:
                                 debug_msg = (
@@ -754,12 +759,6 @@ class ClaudeAgentRunner:
                                 )
                                 _send_debug_to_slack(channel, thread_ts, debug_msg)
 
-                            if status == "allowed":
-                                # status=allowed는 단순 상태 정보, 무시하고 계속
-                                logger.debug(f"rate_limit_event (status=allowed) 무시")
-                                continue
-
-                            # status가 allowed가 아닌 경우에만 실제 rate limit
                             logger.warning(
                                 f"rate_limit_event 발생 (status={status}): "
                                 f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
