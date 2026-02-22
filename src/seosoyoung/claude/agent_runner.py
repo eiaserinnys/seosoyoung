@@ -713,29 +713,47 @@ class ClaudeAgentRunner:
         rate_limit_delays = [1, 3, 5]  # 재시도 대기 시간 (초)
         max_attempts = len(rate_limit_delays) + 1  # 최초 1회 + 재시도 3회
 
+        resuming_session = False  # 세션 이어받기 모드
         for attempt in range(max_attempts):
             try:
                 client = await self._get_or_create_client(client_key, options=options)
 
-                # OM 메모리를 첫 번째 메시지에 프리픽스로 주입
-                # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt 대신 이 방식 사용
-                effective_prompt = prompt
-                if memory_prompt:
-                    effective_prompt = (
-                        f"{memory_prompt}\n\n"
-                        f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
-                        f"사용자의 질문: {prompt}"
-                    )
-                    logger.info(f"OM 메모리 프리픽스 주입 완료 (prompt 길이: {len(effective_prompt)})")
+                # 세션 이어받기 모드일 때는 "계속" 프롬프트 사용
+                if resuming_session:
+                    effective_prompt = "계속"
+                    logger.info(f"세션 이어받기 모드: 프롬프트='계속'")
+                else:
+                    # OM 메모리를 첫 번째 메시지에 프리픽스로 주입
+                    # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt 대신 이 방식 사용
+                    effective_prompt = prompt
+                    if memory_prompt:
+                        effective_prompt = (
+                            f"{memory_prompt}\n\n"
+                            f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
+                            f"사용자의 질문: {prompt}"
+                        )
+                        logger.info(f"OM 메모리 프리픽스 주입 완료 (prompt 길이: {len(effective_prompt)})")
 
                 await client.query(effective_prompt)
 
                 aiter = client.receive_response().__aiter__()
                 rate_limited = False
+                session_interrupted = False  # rate_limit_event (status=allowed) 후 연결 끊김 추적
                 while True:
                     try:
                         message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
                     except StopAsyncIteration:
+                        # rate_limit_event (status=allowed) 후 연결이 끊긴 경우
+                        # result_text가 없고 session_id가 있으면 세션 이어받기 시도
+                        if session_interrupted and not result_text and result_session_id:
+                            logger.info(f"rate_limit_event 후 세션 이어받기 시도 (session_id={result_session_id})")
+                            if channel and thread_ts:
+                                _send_debug_to_slack(channel, thread_ts, f"🔄 세션 이어받기 시도 (session_id={result_session_id[:8]}...)")
+                            # 세션 이어받기 위해 options.resume 설정하고 재시도
+                            options.resume = result_session_id
+                            resuming_session = True
+                            await self._remove_client(client_key)
+                            rate_limited = True  # retry loop 진입
                         break
                     except MessageParseError as e:
                         if e.data and e.data.get("type") == "rate_limit_event":
@@ -744,7 +762,8 @@ class ClaudeAgentRunner:
                             status = rate_limit_info.get("status", "")
 
                             if status == "allowed":
-                                # status=allowed는 단순 상태 정보, 무시하고 계속
+                                # status=allowed는 단순 상태 정보, SDK가 연결 끊을 수 있음
+                                session_interrupted = True
                                 continue
 
                             # status가 allowed가 아닌 경우에만 실제 rate limit
