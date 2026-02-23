@@ -199,8 +199,7 @@ class Promoter:
         Returns:
             PromoterResult
         """
-        candidate_text = self._format_candidates(candidates)
-        prompt = build_promoter_prompt(existing_persistent, candidate_text)
+        prompt = build_promoter_prompt(existing_persistent, candidates)
 
         response = await self.client.chat.completions.create(
             model=self.model,
@@ -210,17 +209,6 @@ class Promoter:
 
         result_text = response.choices[0].message.content or ""
         return parse_promoter_output(result_text, existing_persistent)
-
-    @staticmethod
-    def _format_candidates(candidates: list[dict]) -> str:
-        """후보 항목을 프롬프트용 텍스트로 포매팅."""
-        lines = []
-        for entry in candidates:
-            priority = entry.get("priority", "🟢")
-            content = entry.get("content", "")
-            ts = entry.get("ts", "")
-            lines.append(f"{priority} [{ts}] {content}")
-        return "\n".join(lines)
 
     @staticmethod
     def merge_promoted(existing: list[dict], promoted: list[dict]) -> list[dict]:

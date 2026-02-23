@@ -186,7 +186,7 @@
 - `PromoterResult` (seosoyoung/memory/promoter.py:22): Promoter 출력 결과
 - `CompactorResult` (seosoyoung/memory/promoter.py:37): Compactor 출력 결과
 - `Promoter` (seosoyoung/memory/promoter.py:181): 장기 기억 후보를 검토하여 승격
-- `Compactor` (seosoyoung/memory/promoter.py:245): 장기 기억을 압축
+- `Compactor` (seosoyoung/memory/promoter.py:233): 장기 기억을 압축
 - `ReflectorResult` (seosoyoung/memory/reflector.py:25): Reflector 출력 결과
 - `Reflector` (seosoyoung/memory/reflector.py:93): 관찰 로그를 압축하고 재구조화
 - `ObservationItem` (seosoyoung/memory/store.py:40): 세션 관찰 항목
@@ -384,7 +384,7 @@
 - `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:67): Reflector 시스템 프롬프트를 반환합니다.
 - `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:72): Reflector 재시도 프롬프트를 반환합니다.
 - `build_promoter_prompt()` (seosoyoung/memory/prompts.py:79): Promoter 프롬프트를 구성합니다.
-- `build_compactor_prompt()` (seosoyoung/memory/prompts.py:95): Compactor 프롬프트를 구성합니다.
+- `build_compactor_prompt()` (seosoyoung/memory/prompts.py:100): Compactor 프롬프트를 구성합니다.
 - `generate_obs_id()` (seosoyoung/memory/store.py:123): 관찰 항목 ID를 생성합니다.
 - `generate_ltm_id()` (seosoyoung/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
 - `parse_md_observations()` (seosoyoung/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.

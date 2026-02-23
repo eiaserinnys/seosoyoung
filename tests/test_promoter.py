@@ -150,19 +150,6 @@ class TestPromoterMerge:
         assert result[0]["priority"] == "🔴"
 
 
-class TestPromoterFormatCandidates:
-    def test_format(self):
-        candidates = [
-            {"ts": "2026-02-10T00:00:00", "priority": "🔴", "content": "핵심 선호"},
-            {"ts": "2026-02-10T01:00:00", "priority": "🟡", "content": "작업 패턴"},
-        ]
-        text = Promoter._format_candidates(candidates)
-        assert "🔴" in text
-        assert "핵심 선호" in text
-        assert "🟡" in text
-        assert "작업 패턴" in text
-
-
 class TestPromoterPromote:
     @pytest.mark.asyncio
     async def test_promote_calls_api(self):
