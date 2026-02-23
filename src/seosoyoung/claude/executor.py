@@ -25,6 +25,7 @@ from seosoyoung.claude.message_formatter import (
     build_trello_header,
     build_context_usage_bar,
 )
+from seosoyoung.slack.formatting import update_message
 from seosoyoung.trello.watcher import TrackedCard
 from seosoyoung.restart import RestartType
 
@@ -408,28 +409,12 @@ class ClaudeExecutor:
                         escaped_text = escape_backticks(display_text)
                         update_text = f"{header}\n\n```\n{escaped_text}\n```"
 
-                        ctx.client.chat_update(
-                            channel=ctx.channel,
-                            ts=ctx.main_msg_ts,
-                            text=update_text,
-                            blocks=[{
-                                "type": "section",
-                                "text": {"type": "mrkdwn", "text": update_text}
-                            }]
-                        )
+                        update_message(ctx.client, ctx.channel, ctx.main_msg_ts, update_text)
                 else:
                     escaped_text = escape_backticks(display_text)
                     quote_lines = [f"> {line}" for line in escaped_text.split("\n")]
                     quote_text = "\n".join(quote_lines)
-                    ctx.client.chat_update(
-                        channel=ctx.channel,
-                        ts=ctx.last_msg_ts,
-                        text=quote_text,
-                        blocks=[{
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": quote_text}
-                        }]
-                    )
+                    update_message(ctx.client, ctx.channel, ctx.last_msg_ts, quote_text)
             except Exception as e:
                 logger.warning(f"사고 과정 메시지 전송 실패: {e}")
 
@@ -562,12 +547,7 @@ class ClaudeExecutor:
         Returns:
             최종 메시지 ts
         """
-        client.chat_update(
-            channel=channel,
-            ts=old_msg_ts,
-            text=new_text,
-            blocks=new_blocks,
-        )
+        update_message(client, channel, old_msg_ts, new_text, blocks=new_blocks)
         return old_msg_ts
 
     def _handle_interrupted(self, ctx: ExecutionContext):
@@ -576,15 +556,8 @@ class ClaudeExecutor:
             # DM 스레드의 마지막 답글을 "(중단됨)"으로 업데이트
             if ctx.dm_channel_id and ctx.dm_last_reply_ts:
                 try:
-                    ctx.client.chat_update(
-                        channel=ctx.dm_channel_id,
-                        ts=ctx.dm_last_reply_ts,
-                        text="> (중단됨)",
-                        blocks=[{
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": "> (중단됨)"}
-                        }]
-                    )
+                    update_message(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
+                                   "> (중단됨)")
                 except Exception as e:
                     logger.warning(f"DM 중단 메시지 업데이트 실패: {e}")
 
@@ -598,15 +571,7 @@ class ClaudeExecutor:
             else:
                 interrupted_text = "> (중단됨)"
 
-            ctx.client.chat_update(
-                channel=ctx.channel,
-                ts=target_ts,
-                text=interrupted_text,
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": interrupted_text}
-                }]
-            )
+            update_message(ctx.client, ctx.channel, target_ts, interrupted_text)
             logger.info(f"중단된 실행 메시지 업데이트: ts={target_ts}")
         except Exception as e:
             logger.warning(f"중단 메시지 업데이트 실패: {e}")
@@ -658,15 +623,7 @@ class ClaudeExecutor:
         if ctx.dm_channel_id and ctx.dm_last_reply_ts:
             try:
                 dm_final = response[:3800] if len(response) > 3800 else response
-                ctx.client.chat_update(
-                    channel=ctx.dm_channel_id,
-                    ts=ctx.dm_last_reply_ts,
-                    text=dm_final,
-                    blocks=[{
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": dm_final}
-                    }]
-                )
+                update_message(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts, dm_final)
             except Exception as e:
                 logger.warning(f"DM 스레드 최종 메시지 업데이트 실패: {e}")
 
@@ -689,12 +646,8 @@ class ClaudeExecutor:
         }]
 
         if is_list_run:
-            ctx.client.chat_update(
-                channel=ctx.channel,
-                ts=ctx.main_msg_ts,
-                text=final_text,
-                blocks=final_blocks,
-            )
+            update_message(ctx.client, ctx.channel, ctx.main_msg_ts,
+                           final_text, blocks=final_blocks)
         else:
             self._replace_thinking_message(
                 ctx.client, ctx.channel, ctx.main_msg_ts,
@@ -735,12 +688,8 @@ class ClaudeExecutor:
                 }]
 
                 if is_list_run:
-                    ctx.client.chat_update(
-                        channel=ctx.channel,
-                        ts=ctx.last_msg_ts,
-                        text=final_text,
-                        blocks=final_blocks,
-                    )
+                    update_message(ctx.client, ctx.channel, ctx.last_msg_ts,
+                                   final_text, blocks=final_blocks)
                 else:
                     self._replace_thinking_message(
                         ctx.client, ctx.channel, ctx.last_msg_ts,
@@ -883,11 +832,8 @@ class ClaudeExecutor:
         # DM 스레드에 에러 표시
         if ctx.dm_channel_id and ctx.dm_last_reply_ts:
             try:
-                ctx.client.chat_update(
-                    channel=ctx.dm_channel_id,
-                    ts=ctx.dm_last_reply_ts,
-                    text=f"❌ {error_msg}",
-                )
+                update_message(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
+                               f"❌ {error_msg}")
             except Exception as e:
                 logger.warning(f"DM 에러 메시지 업데이트 실패: {e}")
 
@@ -895,30 +841,14 @@ class ClaudeExecutor:
             header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
             continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
             error_text = f"{header}\n\n❌ {error_msg}\n\n{continuation_hint}"
-            ctx.client.chat_update(
-                channel=ctx.channel,
-                ts=ctx.main_msg_ts,
-                text=error_text,
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": error_text}
-                }]
-            )
+            update_message(ctx.client, ctx.channel, ctx.main_msg_ts, error_text)
         else:
             if ctx.is_thread_reply:
                 error_text = f"❌ {error_msg}"
             else:
                 continuation_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
                 error_text = f"❌ {error_msg}\n\n{continuation_hint}"
-            ctx.client.chat_update(
-                channel=ctx.channel,
-                ts=ctx.last_msg_ts,
-                text=error_text,
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": error_text}
-                }]
-            )
+            update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text)
 
     def _handle_exception(self, ctx: ExecutionContext, e: Exception):
         """예외 처리"""
@@ -927,11 +857,8 @@ class ClaudeExecutor:
         # DM 스레드에 에러 표시
         if ctx.dm_channel_id and ctx.dm_last_reply_ts:
             try:
-                ctx.client.chat_update(
-                    channel=ctx.dm_channel_id,
-                    ts=ctx.dm_last_reply_ts,
-                    text=f"❌ {error_msg}",
-                )
+                update_message(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
+                               f"❌ {error_msg}")
             except Exception:
                 pass
 
@@ -939,11 +866,8 @@ class ClaudeExecutor:
             try:
                 header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
                 continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
-                ctx.client.chat_update(
-                    channel=ctx.channel,
-                    ts=ctx.main_msg_ts,
-                    text=f"{header}\n\n❌ {error_msg}\n\n{continuation_hint}"
-                )
+                update_message(ctx.client, ctx.channel, ctx.main_msg_ts,
+                               f"{header}\n\n❌ {error_msg}\n\n{continuation_hint}")
             except Exception:
                 ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)
         else:
@@ -953,11 +877,7 @@ class ClaudeExecutor:
                 else:
                     continuation_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
                     error_text = f"❌ {error_msg}\n\n{continuation_hint}"
-                ctx.client.chat_update(
-                    channel=ctx.channel,
-                    ts=ctx.last_msg_ts,
-                    text=error_text
-                )
+                update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text)
             except Exception:
                 ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)
 

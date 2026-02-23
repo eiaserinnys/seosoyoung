@@ -86,6 +86,7 @@
 - [`search/searcher.py`](modules/search_searcher.md): Whoosh searcher for dialogue data.
 - [`search/sentence_splitter.py`](modules/search_sentence_splitter.md): 한/영 텍스트 문장 분할기.
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
+- [`slack/formatting.py`](modules/slack_formatting.md): 슬랙 메시지 포맷팅 헬퍼
 - [`slack/helpers.py`](modules/slack_helpers.md): Slack 메시지 유틸리티
 - [`translator/__main__.py`](modules/translator___main__.md): 번역 기능 CLI 테스트
 - [`translator/detector.py`](modules/translator_detector.md): 언어 감지 모듈
@@ -94,6 +95,7 @@
 - [`trello/client.py`](modules/trello_client.md): Trello API 클라이언트
 - [`trello/list_runner.py`](modules/trello_list_runner.md): ListRunner - 리스트 정주행 기능
 - [`trello/watcher.py`](modules/trello_watcher.md): Trello 워처 - To Go 리스트 감시 및 처리
+- [`utils/async_bridge.py`](modules/utils_async_bridge.md): Async-to-sync 브릿지 유틸리티
 - [`web/cache.py`](modules/web_cache.md): 웹 콘텐츠 캐시 관리
 - [`web/extractor.py`](modules/web_extractor.md): HTML에서 컨텐츠 및 메타데이터 추출
 - [`web/fetcher.py`](modules/web_fetcher.md): Selenium 기반 HTML 페처
@@ -102,11 +104,11 @@
 
 ### 주요 클래스
 
-- `ClaudeResult` (seosoyoung/claude/agent_runner.py:178): Claude Code 실행 결과
-- `ClaudeRunner` (seosoyoung/claude/agent_runner.py:295): Claude Code SDK 기반 실행기
-- `ExecutionContext` (seosoyoung/claude/executor.py:67): 실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
-- `PendingPrompt` (seosoyoung/claude/executor.py:106): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:122): Claude Code 실행기
+- `ClaudeResult` (seosoyoung/claude/agent_runner.py:156): Claude Code 실행 결과
+- `ClaudeRunner` (seosoyoung/claude/agent_runner.py:252): Claude Code SDK 기반 실행기
+- `ExecutionContext` (seosoyoung/claude/executor.py:68): 실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
+- `PendingPrompt` (seosoyoung/claude/executor.py:107): 인터벤션 대기 중인 프롬프트 정보
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:123): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `ClaudeServiceAdapter` (seosoyoung/claude/service_adapter.py:26): 원격 soul 서버 어댑터
 - `SSEEvent` (seosoyoung/claude/service_client.py:32): Server-Sent Event 데이터
@@ -197,10 +199,10 @@
 - `ProfileInfo` (seosoyoung/profile/manager.py:23): 프로필 정보
 - `ProfileManager` (seosoyoung/profile/manager.py:33): Claude Code 인증 프로필 관리자 (CLAUDE_CONFIG_DIR + Junction)
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
-- `PendingPrompt` (seosoyoung/rescue/main.py:49): 인터벤션 대기 중인 프롬프트 정보
-- `RescueBotApp` (seosoyoung/rescue/main.py:58): rescue-bot 애플리케이션
-- `RescueResult` (seosoyoung/rescue/runner.py:88): 실행 결과
-- `RescueRunner` (seosoyoung/rescue/runner.py:99): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
+- `PendingPrompt` (seosoyoung/rescue/main.py:50): 인터벤션 대기 중인 프롬프트 정보
+- `RescueBotApp` (seosoyoung/rescue/main.py:59): rescue-bot 애플리케이션
+- `RescueResult` (seosoyoung/rescue/runner.py:81): 실행 결과
+- `RescueRunner` (seosoyoung/rescue/runner.py:92): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
 - `RestartType` (seosoyoung/restart.py:15): 재시작 유형
@@ -243,13 +245,12 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:18): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `run_in_new_loop()` (seosoyoung/claude/agent_runner.py:193): 별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
-- `get_runner()` (seosoyoung/claude/agent_runner.py:224): 레지스트리에서 러너 조회
-- `register_runner()` (seosoyoung/claude/agent_runner.py:230): 레지스트리에 러너 등록
-- `remove_runner()` (seosoyoung/claude/agent_runner.py:236): 레지스트리에서 러너 제거
-- `async shutdown_all()` (seosoyoung/claude/agent_runner.py:242): 모든 등록된 러너의 클라이언트를 종료
-- `shutdown_all_sync()` (seosoyoung/claude/agent_runner.py:277): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/claude/agent_runner.py:1243): 
+- `get_runner()` (seosoyoung/claude/agent_runner.py:181): 레지스트리에서 러너 조회
+- `register_runner()` (seosoyoung/claude/agent_runner.py:187): 레지스트리에 러너 등록
+- `remove_runner()` (seosoyoung/claude/agent_runner.py:193): 레지스트리에서 러너 제거
+- `async shutdown_all()` (seosoyoung/claude/agent_runner.py:199): 모든 등록된 러너의 클라이언트를 종료
+- `shutdown_all_sync()` (seosoyoung/claude/agent_runner.py:234): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+- `async main()` (seosoyoung/claude/agent_runner.py:1202): 
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:14): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:49): 텍스트 내 모든 백틱을 이스케이프
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:68): 트렐로 카드용 슬랙 메시지 헤더 생성
@@ -398,10 +399,10 @@
 - `generate_ltm_id()` (seosoyoung/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
 - `parse_md_observations()` (seosoyoung/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.
 - `parse_md_persistent()` (seosoyoung/memory/store.py:192): 마크다운 장기 기억을 항목 리스트로 파싱합니다.
-- `main()` (seosoyoung/rescue/main.py:664): rescue-bot 진입점
+- `main()` (seosoyoung/rescue/main.py:616): rescue-bot 진입점
 - `build_context_usage_bar()` (seosoyoung/rescue/message_formatter.py:12): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/rescue/message_formatter.py:41): 텍스트 내 모든 백틱을 이스케이프
-- `get_runner()` (seosoyoung/rescue/runner.py:469): 모듈 레벨 RescueRunner 인스턴스를 반환
+- `get_runner()` (seosoyoung/rescue/runner.py:462): 모듈 레벨 RescueRunner 인스턴스를 반환
 - `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
 - `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
 - `build_all()` (seosoyoung/search/build.py:84): Whoosh + 임베딩 인덱스 통합 빌드.
@@ -420,6 +421,8 @@
 - `async download_files_from_event()` (seosoyoung/slack/file_handler.py:183): 이벤트에서 파일들을 다운로드 (async 버전)
 - `download_files_sync()` (seosoyoung/slack/file_handler.py:209): 이벤트에서 파일들을 다운로드 (동기 버전)
 - `build_file_context()` (seosoyoung/slack/file_handler.py:240): 파일 정보를 프롬프트 컨텍스트로 구성
+- `build_section_blocks()` (seosoyoung/slack/formatting.py:9): mrkdwn section block 리스트 생성
+- `update_message()` (seosoyoung/slack/formatting.py:17): 슬랙 메시지를 업데이트합니다.
 - `upload_file_to_slack()` (seosoyoung/slack/helpers.py:12): 파일을 슬랙에 첨부
 - `send_long_message()` (seosoyoung/slack/helpers.py:47): 긴 메시지를 분할해서 전송 (thread_ts가 None이면 채널에 응답)
 - `main()` (seosoyoung/translator/__main__.py:18): 
@@ -431,5 +434,7 @@
 - `get_term_mappings()` (seosoyoung/translator/glossary.py:406): 용어 매핑 딕셔너리 생성 (하위 호환성 유지)
 - `clear_cache()` (seosoyoung/translator/glossary.py:436): 캐시 초기화 (테스트 또는 용어집 갱신 시 사용)
 - `translate()` (seosoyoung/translator/translator.py:169): 텍스트를 번역
+- `run_in_new_loop()` (seosoyoung/utils/async_bridge.py:13): 별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
+- `run_async_in_thread()` (seosoyoung/utils/async_bridge.py:46): 별도 스레드에서 코루틴을 실행 (fire-and-forget)
 - `async get_article()` (seosoyoung/web/__init__.py:22): URL에서 아티클 추출
 - `format_article_for_prompt()` (seosoyoung/web/__init__.py:97): 아티클 데이터를 프롬프트용 문자열로 포맷

@@ -15,7 +15,6 @@ from seosoyoung.claude.agent_runner import (
     ClaudeAgentRunner,
     ClaudeRunner,
     ClaudeResult,
-    DEFAULT_ALLOWED_TOOLS,
     DEFAULT_DISALLOWED_TOOLS,
     _classify_process_error,
     _registry,
@@ -26,6 +25,7 @@ from seosoyoung.claude.agent_runner import (
     shutdown_all,
     shutdown_all_sync,
 )
+from seosoyoung.config import Config
 from claude_code_sdk._errors import MessageParseError, ProcessError
 
 
@@ -71,7 +71,7 @@ class TestClaudeAgentRunnerUnit:
         runner = ClaudeAgentRunner()
         options, memory_prompt, anchor_ts = runner._build_options()
 
-        assert options.allowed_tools == DEFAULT_ALLOWED_TOOLS
+        assert options.allowed_tools == Config.ROLE_TOOLS["admin"]
         assert options.disallowed_tools == DEFAULT_DISALLOWED_TOOLS
         assert options.permission_mode == "bypassPermissions"
         assert options.resume is None

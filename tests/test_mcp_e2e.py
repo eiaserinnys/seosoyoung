@@ -361,11 +361,11 @@ class TestMCPConfigIntegrity:
             tool_name = tool_pattern.split("__")[-1]
             assert tool_name in actual_tools, f"{tool_name} not in MCP server tools"
 
-    def test_default_allowed_tools_include_all_mcp_tools(self):
-        """DEFAULT_ALLOWED_TOOLS에 MCP 도구 5개 모두 포함"""
-        from seosoyoung.claude.agent_runner import DEFAULT_ALLOWED_TOOLS
+    def test_admin_tools_include_all_mcp_tools(self):
+        """Config.ROLE_TOOLS["admin"]에 MCP 도구 모두 포함"""
+        from seosoyoung.config import Config
 
-        mcp_tools = [t for t in DEFAULT_ALLOWED_TOOLS if "seosoyoung-attach" in t]
+        mcp_tools = [t for t in Config.ROLE_TOOLS["admin"] if "seosoyoung-attach" in t]
         assert len(mcp_tools) == 11
 
     def test_viewer_has_no_mcp_tools(self):

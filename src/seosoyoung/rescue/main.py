@@ -35,6 +35,7 @@ from seosoyoung.rescue.message_formatter import (
 )
 from seosoyoung.rescue.runner import get_runner, RescueResult
 from seosoyoung.rescue.session import Session, SessionManager
+from seosoyoung.slack.formatting import update_message
 
 # 로깅 설정
 logging.basicConfig(
@@ -294,15 +295,7 @@ class RescueBotApp:
                 escaped_text = escape_backticks(display_text)
                 quote_lines = [f"> {line}" for line in escaped_text.split("\n")]
                 quote_text = "\n".join(quote_lines)
-                client.chat_update(
-                    channel=channel,
-                    ts=last_msg_ts,
-                    text=quote_text,
-                    blocks=[{
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": quote_text}
-                    }]
-                )
+                update_message(client, channel, last_msg_ts, quote_text)
             except Exception as e:
                 logger.warning(f"사고 과정 메시지 전송 실패: {e}")
 
@@ -361,11 +354,7 @@ class RescueBotApp:
             logger.exception(f"Claude 실행 오류: {e}")
             try:
                 error_text = f"❌ 오류가 발생했습니다: {e}"
-                client.chat_update(
-                    channel=channel,
-                    ts=last_msg_ts,
-                    text=error_text,
-                )
+                update_message(client, channel, last_msg_ts, error_text)
             except Exception:
                 say(text=f"❌ 오류가 발생했습니다: {e}", thread_ts=thread_ts)
         finally:
@@ -378,15 +367,7 @@ class RescueBotApp:
         """인터럽트로 중단된 실행의 사고 과정 메시지 정리"""
         try:
             interrupted_text = "> (중단됨)"
-            client.chat_update(
-                channel=channel,
-                ts=last_msg_ts,
-                text=interrupted_text,
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": interrupted_text}
-                }]
-            )
+            update_message(client, channel, last_msg_ts, interrupted_text)
         except Exception as e:
             logger.warning(f"중단 메시지 업데이트 실패: {e}")
 
@@ -433,12 +414,7 @@ class RescueBotApp:
                     "type": "section",
                     "text": {"type": "mrkdwn", "text": final_text}
                 }]
-                client.chat_update(
-                    channel=channel,
-                    ts=last_msg_ts,
-                    text=final_text,
-                    blocks=final_blocks,
-                )
+                update_message(client, channel, last_msg_ts, final_text, blocks=final_blocks)
 
                 # 전문을 스레드에 전송
                 self._send_long_message(say, response, thread_ts)
@@ -453,26 +429,10 @@ class RescueBotApp:
 
             try:
                 if len(display_response) <= 3900:
-                    client.chat_update(
-                        channel=channel,
-                        ts=last_msg_ts,
-                        text=display_response,
-                        blocks=[{
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": display_response}
-                        }]
-                    )
+                    update_message(client, channel, last_msg_ts, display_response)
                 else:
                     truncated = display_response[:3900] + "..."
-                    client.chat_update(
-                        channel=channel,
-                        ts=last_msg_ts,
-                        text=truncated,
-                        blocks=[{
-                            "type": "section",
-                            "text": {"type": "mrkdwn", "text": truncated}
-                        }]
-                    )
+                    update_message(client, channel, last_msg_ts, truncated)
                     remaining = display_response[3900:]
                     self._send_long_message(say, remaining, thread_ts)
             except Exception:
@@ -497,15 +457,7 @@ class RescueBotApp:
             error_text = f"❌ {error_msg}\n\n{continuation_hint}"
 
         try:
-            client.chat_update(
-                channel=channel,
-                ts=last_msg_ts,
-                text=error_text,
-                blocks=[{
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": error_text}
-                }]
-            )
+            update_message(client, channel, last_msg_ts, error_text)
         except Exception:
             say(text=f"❌ {error_msg}", thread_ts=thread_ts)
 

@@ -3,9 +3,9 @@
 import re
 import logging
 import threading
-import asyncio
 
 from seosoyoung.config import Config
+from seosoyoung.utils.async_bridge import run_in_new_loop
 from seosoyoung.handlers.translate import process_translate_message
 from seosoyoung.slack import download_files_sync, build_file_context
 from seosoyoung.claude import get_claude_runner
@@ -427,7 +427,7 @@ def register_message_handlers(app, dependencies: dict):
                         )
 
                         runner = get_claude_runner()
-                        compact_result = asyncio.run(runner.compact_session(session.session_id))
+                        compact_result = run_in_new_loop(runner.compact_session(session.session_id))
 
                         if compact_result.success:
                             logger.info(f"세션 컴팩트 성공: {session.session_id}")
@@ -529,7 +529,7 @@ def _maybe_trigger_digest(
 
             runner = get_claude_runner()
 
-            asyncio.run(
+            run_in_new_loop(
                 run_channel_pipeline(
                     store=store,
                     observer=observer,

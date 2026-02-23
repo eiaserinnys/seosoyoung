@@ -51,13 +51,6 @@ class TestMCPToolsInAllowedTools:
         mcp_tools = [t for t in viewer_tools if t.startswith("mcp__")]
         assert len(mcp_tools) == 0, "viewer에 MCP 도구가 있으면 안됨"
 
-    def test_default_allowed_tools_include_mcp(self):
-        """DEFAULT_ALLOWED_TOOLS에도 MCP 도구가 포함됨"""
-        from seosoyoung.claude.agent_runner import DEFAULT_ALLOWED_TOOLS
-
-        mcp_tools = [t for t in DEFAULT_ALLOWED_TOOLS if t.startswith("mcp__seosoyoung-attach")]
-        assert len(mcp_tools) > 0, "DEFAULT_ALLOWED_TOOLS에 mcp__seosoyoung-attach 도구가 없음"
-
 
 class TestBuildOptionsEnvInjection:
     """_build_options()가 SLACK_CHANNEL/SLACK_THREAD_TS를 env에 주입하는지 검증"""

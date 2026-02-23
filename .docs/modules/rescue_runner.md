@@ -19,11 +19,11 @@ Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
 ## 클래스
 
 ### `RescueResult`
-- 위치: 줄 88
+- 위치: 줄 81
 - 설명: 실행 결과
 
 ### `RescueRunner`
-- 위치: 줄 99
+- 위치: 줄 92
 - 설명: Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 
 메인 봇의 ClaudeAgentRunner와 동일한 패턴:
@@ -34,27 +34,28 @@ Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
 
 #### 메서드
 
-- `__init__(self)` (줄 109): 
-- `run_sync(self, coro)` (줄 115): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
-- `_build_options(self, session_id, channel, thread_ts, compact_events)` (줄 122): ClaudeCodeOptions를 생성합니다.
-- `async _get_or_create_client(self, client_key, options)` (줄 202): 클라이언트를 가져오거나 새로 생성
-- `async _remove_client(self, client_key)` (줄 229): 클라이언트를 정리 (disconnect 후 딕셔너리에서 제거)
-- `interrupt(self, thread_ts)` (줄 241): 실행 중인 스레드에 인터럽트 전송 (동기)
-- `async compact_session(self, session_id)` (줄 264): 세션 컴팩트 처리
-- `async run(self, prompt, session_id, thread_ts, channel, on_progress, on_compact)` (줄 290): Claude Code 실행 (async, lock 포함)
-- `async _execute(self, prompt, session_id, thread_ts, channel, on_progress, on_compact)` (줄 310): 실제 실행 로직 (메인 봇 _execute와 동일한 구조)
+- `__init__(self)` (줄 102): 
+- `run_sync(self, coro)` (줄 108): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
+- `_build_options(self, session_id, channel, thread_ts, compact_events)` (줄 115): ClaudeCodeOptions를 생성합니다.
+- `async _get_or_create_client(self, client_key, options)` (줄 195): 클라이언트를 가져오거나 새로 생성
+- `async _remove_client(self, client_key)` (줄 222): 클라이언트를 정리 (disconnect 후 딕셔너리에서 제거)
+- `interrupt(self, thread_ts)` (줄 234): 실행 중인 스레드에 인터럽트 전송 (동기)
+- `async compact_session(self, session_id)` (줄 257): 세션 컴팩트 처리
+- `async run(self, prompt, session_id, thread_ts, channel, on_progress, on_compact)` (줄 283): Claude Code 실행 (async, lock 포함)
+- `async _execute(self, prompt, session_id, thread_ts, channel, on_progress, on_compact)` (줄 303): 실제 실행 로직 (메인 봇 _execute와 동일한 구조)
 
 ## 함수
 
 ### `_classify_process_error(e)`
-- 위치: 줄 60
+- 위치: 줄 53
 - 설명: ProcessError를 사용자 친화적 메시지로 변환.
 
 ### `get_runner()`
-- 위치: 줄 469
+- 위치: 줄 462
 - 설명: 모듈 레벨 RescueRunner 인스턴스를 반환
 
 ## 내부 의존성
 
-- `seosoyoung.claude.agent_runner.run_in_new_loop`
+- `seosoyoung.config.Config`
 - `seosoyoung.rescue.config.RescueConfig`
+- `seosoyoung.utils.async_bridge.run_in_new_loop`

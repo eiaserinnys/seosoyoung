@@ -144,28 +144,6 @@ def _classify_process_error(e: ProcessError) -> str:
     return f"Claude Code 실행 중 오류가 발생했습니다 (exit code: {e.exit_code})"
 
 
-# Claude Code 기본 허용 도구
-DEFAULT_ALLOWED_TOOLS = [
-    "Read",
-    "Write",
-    "Edit",
-    "Glob",
-    "Grep",
-    "Bash",
-    "TodoWrite",
-    "mcp__seosoyoung-attach__slack_attach_file",
-    "mcp__seosoyoung-attach__slack_get_context",
-    "mcp__seosoyoung-attach__slack_post_message",
-    "mcp__seosoyoung-attach__slack_download_thread_files",
-    "mcp__seosoyoung-attach__slack_generate_image",
-    "mcp__seosoyoung-attach__npc_list_characters",
-    "mcp__seosoyoung-attach__npc_open_session",
-    "mcp__seosoyoung-attach__npc_talk",
-    "mcp__seosoyoung-attach__npc_set_situation",
-    "mcp__seosoyoung-attach__npc_close_session",
-    "mcp__seosoyoung-attach__npc_get_history",
-]
-
 # Claude Code 기본 금지 도구
 DEFAULT_DISALLOWED_TOOLS = [
     "WebFetch",
@@ -190,28 +168,7 @@ class ClaudeResult:
     anchor_ts: str = ""  # OM 디버그 채널 세션 스레드 앵커 ts
 
 
-def run_in_new_loop(coro):
-    """별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
-
-    각 호출마다 격리된 이벤트 루프를 생성하여
-    이전 실행의 anyio 잔여물이 영향을 미치지 않도록 합니다.
-    """
-    result_box = [None]
-    error_box = [None]
-
-    def _run():
-        try:
-            result_box[0] = asyncio.run(coro)
-        except BaseException as e:
-            error_box[0] = e
-
-    thread = threading.Thread(target=_run, name="claude-run-sync")
-    thread.start()
-    thread.join()
-
-    if error_box[0] is not None:
-        raise error_box[0]
-    return result_box[0]
+from seosoyoung.utils.async_bridge import run_in_new_loop  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -308,10 +265,12 @@ class ClaudeRunner:
         disallowed_tools: Optional[list[str]] = None,
         mcp_config_path: Optional[Path] = None,
     ):
+        from seosoyoung.config import Config
+
         self.thread_ts = thread_ts
         self.channel = channel
         self.working_dir = working_dir or Path.cwd()
-        self.allowed_tools = allowed_tools or DEFAULT_ALLOWED_TOOLS
+        self.allowed_tools = allowed_tools or Config.ROLE_TOOLS["admin"]
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
 
