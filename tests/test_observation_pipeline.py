@@ -530,20 +530,19 @@ class TestReflector:
 
 
 class TestTriggerObservation:
-    """agent_runner._trigger_observation 테스트"""
+    """memory.injector.trigger_observation 테스트"""
 
     @pytest.mark.asyncio
     async def test_trigger_creates_thread(self):
-        """_trigger_observation이 별도 스레드를 생성하는지 확인"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        """trigger_observation이 별도 스레드를 생성하는지 확인"""
+        from seosoyoung.memory.injector import trigger_observation
 
-        runner = ClaudeAgentRunner()
         messages = [{"role": "assistant", "content": "응답"}]
 
-        with patch("seosoyoung.claude.agent_runner.threading.Thread") as mock_thread:
+        with patch("seosoyoung.memory.injector.threading.Thread") as mock_thread:
             mock_thread.return_value.start = MagicMock()
             with patch("seosoyoung.config.Config.OM_ENABLED", True):
-                runner._trigger_observation("ts_1234", "U12345", "프롬프트", messages)
+                trigger_observation("ts_1234", "U12345", "프롬프트", messages)
 
         mock_thread.assert_called_once()
         mock_thread.return_value.start.assert_called_once()
@@ -551,34 +550,29 @@ class TestTriggerObservation:
     @pytest.mark.asyncio
     async def test_trigger_disabled_when_om_off(self):
         """OM이 비활성화되면 트리거하지 않음"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.memory.injector import trigger_observation
 
-        runner = ClaudeAgentRunner()
-
-        with patch("seosoyoung.claude.agent_runner.threading.Thread") as mock_thread:
+        with patch("seosoyoung.memory.injector.threading.Thread") as mock_thread:
             with patch("seosoyoung.config.Config.OM_ENABLED", False):
-                runner._trigger_observation("ts_1234", "U12345", "프롬프트", [])
+                trigger_observation("ts_1234", "U12345", "프롬프트", [])
 
         mock_thread.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_trigger_error_does_not_propagate(self):
         """트리거 오류가 전파되지 않음"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
-
-        runner = ClaudeAgentRunner()
+        from seosoyoung.memory.injector import trigger_observation
 
         with patch(
             "seosoyoung.config.Config.OM_ENABLED",
             new_callable=lambda: property(lambda self: (_ for _ in ()).throw(RuntimeError("설정 오류"))),
         ):
-            runner._trigger_observation("ts_1234", "U12345", "프롬프트", [])
+            trigger_observation("ts_1234", "U12345", "프롬프트", [])
 
     def test_trigger_passes_min_turn_tokens(self):
         """트리거 시 min_turn_tokens가 전달되는지 확인"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.memory.injector import trigger_observation
 
-        runner = ClaudeAgentRunner()
         collected = [{"role": "assistant", "content": "응답"}]
 
         def run_thread_target_directly(target, daemon=True):
@@ -596,10 +590,10 @@ class TestTriggerObservation:
                                 new_callable=AsyncMock,
                             ) as mock_obs:
                                 with patch(
-                                    "seosoyoung.claude.agent_runner.threading.Thread",
+                                    "seosoyoung.memory.injector.threading.Thread",
                                     side_effect=run_thread_target_directly,
                                 ):
-                                    runner._trigger_observation("ts_1234", "U12345", "테스트 프롬프트", collected)
+                                    trigger_observation("ts_1234", "U12345", "테스트 프롬프트", collected)
 
         mock_obs.assert_called_once()
         call_kwargs = mock_obs.call_args.kwargs
@@ -612,9 +606,8 @@ class TestTriggerObservation:
 
     def test_trigger_passes_promoter_and_compactor(self):
         """트리거 시 Promoter와 Compactor가 생성되어 전달되는지 확인"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.memory.injector import trigger_observation
 
-        runner = ClaudeAgentRunner()
         collected = [{"role": "assistant", "content": "응답"}]
 
         def run_thread_target_directly(target, daemon=True):
@@ -636,10 +629,10 @@ class TestTriggerObservation:
                                                 new_callable=AsyncMock,
                                             ) as mock_obs:
                                                 with patch(
-                                                    "seosoyoung.claude.agent_runner.threading.Thread",
+                                                    "seosoyoung.memory.injector.threading.Thread",
                                                     side_effect=run_thread_target_directly,
                                                 ):
-                                                    runner._trigger_observation("ts_1234", "U12345", "테스트", collected)
+                                                    trigger_observation("ts_1234", "U12345", "테스트", collected)
 
         mock_obs.assert_called_once()
         call_kwargs = mock_obs.call_args.kwargs
@@ -670,7 +663,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch.object(runner, "_trigger_observation") as mock_trigger:
+            with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
                 result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is True
@@ -696,7 +689,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch.object(runner, "_trigger_observation") as mock_trigger:
+            with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
                 result = await runner.run("테스트")
 
         assert result.success is True
@@ -716,7 +709,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch.object(runner, "_trigger_observation") as mock_trigger:
+            with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
                 result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is True
@@ -736,7 +729,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch.object(runner, "_trigger_observation") as mock_trigger:
+            with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
                 result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is False
@@ -866,13 +859,12 @@ class TestObserveConversationAnchorTs:
 
 
 class TestTriggerObservationAnchorTs:
-    """_trigger_observation에서 anchor_ts가 observe_conversation에 전달되는지 테스트"""
+    """trigger_observation에서 anchor_ts가 observe_conversation에 전달되는지 테스트"""
 
     def test_trigger_passes_anchor_ts(self):
         """anchor_ts가 observe_conversation에 전달됨"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.memory.injector import trigger_observation
 
-        runner = ClaudeAgentRunner()
         collected = [{"role": "assistant", "content": "응답"}]
 
         def run_thread_target_directly(target, daemon=True):
@@ -890,10 +882,10 @@ class TestTriggerObservationAnchorTs:
                                 new_callable=AsyncMock,
                             ) as mock_obs:
                                 with patch(
-                                    "seosoyoung.claude.agent_runner.threading.Thread",
+                                    "seosoyoung.memory.injector.threading.Thread",
                                     side_effect=run_thread_target_directly,
                                 ):
-                                    runner._trigger_observation(
+                                    trigger_observation(
                                         "ts_1234", "U12345", "테스트", collected,
                                         anchor_ts="anchor_abc",
                                     )

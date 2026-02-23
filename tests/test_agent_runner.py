@@ -16,7 +16,6 @@ from seosoyoung.claude.agent_runner import (
     ClaudeRunner,
     ClaudeResult,
     DEFAULT_DISALLOWED_TOOLS,
-    _classify_process_error,
     _registry,
     _registry_lock,
     get_runner,
@@ -24,6 +23,12 @@ from seosoyoung.claude.agent_runner import (
     remove_runner,
     shutdown_all,
     shutdown_all_sync,
+)
+from seosoyoung.claude.diagnostics import classify_process_error
+from seosoyoung.memory.injector import (
+    create_or_load_debug_anchor,
+    prepare_memory_injection,
+    send_injection_debug_log,
 )
 from seosoyoung.config import Config
 from claude_code_sdk._errors import MessageParseError, ProcessError
@@ -406,56 +411,56 @@ class TestClassifyProcessError:
     def test_usage_limit_keyword(self):
         """usage limit 키워드 감지"""
         e = ProcessError("Command failed", exit_code=1, stderr="usage limit reached")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "사용량 제한" in msg
 
     def test_rate_limit_keyword(self):
         """rate limit 키워드 감지"""
         e = ProcessError("rate limit exceeded", exit_code=1, stderr=None)
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "사용량 제한" in msg
 
     def test_429_status(self):
         """429 상태 코드 감지"""
         e = ProcessError("Command failed", exit_code=1, stderr="HTTP 429 Too Many Requests")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "사용량 제한" in msg
 
     def test_unauthorized_401(self):
         """401 인증 오류 감지"""
         e = ProcessError("Command failed", exit_code=1, stderr="401 Unauthorized")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "인증" in msg
 
     def test_forbidden_403(self):
         """403 권한 오류 감지"""
         e = ProcessError("Command failed", exit_code=1, stderr="403 Forbidden")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "인증" in msg
 
     def test_network_error(self):
         """네트워크 오류 감지"""
         e = ProcessError("Connection refused", exit_code=1, stderr="ECONNREFUSED")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "네트워크" in msg
 
     def test_generic_exit_code_1(self):
         """exit code 1 일반 폴백"""
         e = ProcessError("Command failed with exit code 1", exit_code=1, stderr="Check stderr output for details")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "비정상 종료" in msg
         assert "잠시 후" in msg
 
     def test_other_exit_code(self):
         """기타 exit code"""
         e = ProcessError("Command failed", exit_code=137, stderr=None)
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "exit code: 137" in msg
 
     def test_none_stderr(self):
         """stderr가 None인 경우"""
         e = ProcessError("Command failed", exit_code=1, stderr=None)
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "비정상 종료" in msg
 
 
@@ -856,11 +861,10 @@ class TestBuildOptionsAnchorTs:
 
 
 class TestInjectionDebugLogSkipsWithoutAnchor:
-    """anchor_ts가 빈 문자열일 때 _send_injection_debug_log가 디버그 로그를 스킵하는지 테스트"""
+    """anchor_ts가 빈 문자열일 때 send_injection_debug_log가 디버그 로그를 스킵하는지 테스트"""
 
     def test_skips_debug_log_when_anchor_ts_empty(self):
         """anchor_ts가 빈 문자열이면 디버그 로그를 발송하지 않음 (채널 본문 오염 방지)"""
-        runner = ClaudeAgentRunner()
         mock_result = MagicMock(
             persistent_tokens=100,
             session_tokens=50,
@@ -873,7 +877,7 @@ class TestInjectionDebugLogSkipsWithoutAnchor:
         )
 
         with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
-            runner._send_injection_debug_log(
+            send_injection_debug_log(
                 thread_ts="ts_1234",
                 result=mock_result,
                 debug_channel="C_DEBUG",
@@ -885,7 +889,6 @@ class TestInjectionDebugLogSkipsWithoutAnchor:
 
     def test_sends_debug_log_when_anchor_ts_present(self):
         """anchor_ts가 있으면 정상적으로 디버그 로그를 발송"""
-        runner = ClaudeAgentRunner()
         mock_result = MagicMock(
             persistent_tokens=100,
             session_tokens=0,
@@ -898,7 +901,7 @@ class TestInjectionDebugLogSkipsWithoutAnchor:
         with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
             with patch("seosoyoung.memory.observation_pipeline._format_tokens", return_value="100"):
                 with patch("seosoyoung.memory.observation_pipeline._blockquote", return_value=">장기 기억"):
-                    runner._send_injection_debug_log(
+                    send_injection_debug_log(
                         thread_ts="ts_1234",
                         result=mock_result,
                         debug_channel="C_DEBUG",
@@ -939,7 +942,7 @@ class TestObserverUserMessage:
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch.object(runner, "_trigger_observation") as mock_trigger:
+                    with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
                         result = await runner.run(
                             prompt="채널 히스토리 20개 + 사용자 질문",
                             user_id="U123",
@@ -965,7 +968,7 @@ class TestObserverUserMessage:
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch.object(runner, "_trigger_observation") as mock_trigger:
+                    with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
                         result = await runner.run(
                             prompt="전체 프롬프트",
                             user_id="U123",
@@ -1448,12 +1451,11 @@ class TestBuildCompactHook:
 
 
 class TestCreateOrLoadDebugAnchor:
-    """_create_or_load_debug_anchor 메서드 단위 테스트"""
+    """create_or_load_debug_anchor 함수 단위 테스트"""
 
     def test_returns_empty_when_no_debug_channel(self):
         """debug_channel이 빈 문자열이면 빈 문자열 반환"""
-        runner = ClaudeAgentRunner()
-        anchor_ts = runner._create_or_load_debug_anchor(
+        anchor_ts = create_or_load_debug_anchor(
             thread_ts="ts_1", session_id=None, store=MagicMock(),
             prompt="test", debug_channel="",
         )
@@ -1463,18 +1465,16 @@ class TestCreateOrLoadDebugAnchor:
         """새 세션(session_id=None) 시 앵커 메시지 생성 + MemoryRecord 저장"""
         from seosoyoung.memory.store import MemoryStore
         store = MemoryStore(base_dir=tmp_path)
-        runner = ClaudeAgentRunner()
 
         with patch("seosoyoung.config.Config") as MockConfig:
             MockConfig.EMOJI_TEXT_SESSION_START = "🟢"
             with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anchor_new_123"):
-                anchor_ts = runner._create_or_load_debug_anchor(
+                anchor_ts = create_or_load_debug_anchor(
                     thread_ts="ts_new", session_id=None, store=store,
                     prompt="테스트 프롬프트입니다", debug_channel="C_DEBUG",
                 )
 
         assert anchor_ts == "anchor_new_123"
-        # MemoryRecord에 저장되었는지 확인
         record = store.get_record("ts_new")
         assert record is not None
         assert record.anchor_ts == "anchor_new_123"
@@ -1486,8 +1486,7 @@ class TestCreateOrLoadDebugAnchor:
         record = MemoryRecord(thread_ts="ts_existing", anchor_ts="saved_anchor_456")
         store.save_record(record)
 
-        runner = ClaudeAgentRunner()
-        anchor_ts = runner._create_or_load_debug_anchor(
+        anchor_ts = create_or_load_debug_anchor(
             thread_ts="ts_existing", session_id="session_abc", store=store,
             prompt="test", debug_channel="C_DEBUG",
         )
@@ -1498,8 +1497,7 @@ class TestCreateOrLoadDebugAnchor:
         from seosoyoung.memory.store import MemoryStore
         store = MemoryStore(base_dir=tmp_path)
 
-        runner = ClaudeAgentRunner()
-        anchor_ts = runner._create_or_load_debug_anchor(
+        anchor_ts = create_or_load_debug_anchor(
             thread_ts="ts_no_record", session_id="session_xyz", store=store,
             prompt="test", debug_channel="C_DEBUG",
         )
@@ -1509,13 +1507,12 @@ class TestCreateOrLoadDebugAnchor:
         """80자 초과 프롬프트가 잘려서 앵커에 포함"""
         from seosoyoung.memory.store import MemoryStore
         store = MemoryStore(base_dir=tmp_path)
-        runner = ClaudeAgentRunner()
         long_prompt = "A" * 100
 
         with patch("seosoyoung.config.Config") as MockConfig:
             MockConfig.EMOJI_TEXT_SESSION_START = "🟢"
             with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anc") as mock_send:
-                runner._create_or_load_debug_anchor(
+                create_or_load_debug_anchor(
                     thread_ts="ts_long", session_id=None, store=store,
                     prompt=long_prompt, debug_channel="C_DEBUG",
                 )
@@ -1525,31 +1522,28 @@ class TestCreateOrLoadDebugAnchor:
 
 
 class TestPrepareMemoryInjection:
-    """_prepare_memory_injection 메서드 단위 테스트"""
+    """prepare_memory_injection 함수 단위 테스트"""
 
     def test_returns_none_when_no_thread_ts(self):
-        """thread_ts가 None이면 (None, '') 반환"""
-        runner = ClaudeAgentRunner()
-        memory_prompt, anchor_ts = runner._prepare_memory_injection(
-            session_id=None, prompt="test",
+        """thread_ts가 빈 문자열이면 (None, '') 반환"""
+        memory_prompt, anchor_ts = prepare_memory_injection(
+            thread_ts="", channel=None, session_id=None, prompt="test",
         )
         assert memory_prompt is None
         assert anchor_ts == ""
 
     def test_returns_none_when_om_disabled(self):
         """OM 비활성 시 (None, '') 반환"""
-        runner = ClaudeAgentRunner(thread_ts="ts_1", channel="C1")
         with patch("seosoyoung.config.Config") as MockConfig:
             MockConfig.OM_ENABLED = False
-            memory_prompt, anchor_ts = runner._prepare_memory_injection(
-                session_id=None, prompt="test",
+            memory_prompt, anchor_ts = prepare_memory_injection(
+                thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
             )
         assert memory_prompt is None
         assert anchor_ts == ""
 
     def test_returns_memory_prompt_when_available(self, tmp_path):
         """OM 활성 + 메모리 존재 시 memory_prompt 반환"""
-        runner = ClaudeAgentRunner(thread_ts="ts_1", channel="C1")
         config_patches = {
             "OM_ENABLED": True,
             "CHANNEL_OBSERVER_ENABLED": False,
@@ -1575,16 +1569,15 @@ class TestPrepareMemoryInjection:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                memory_prompt, anchor_ts = runner._prepare_memory_injection(
-                    session_id=None, prompt="test",
+                memory_prompt, anchor_ts = prepare_memory_injection(
+                    thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
                 )
 
         assert memory_prompt is not None
         assert "기억" in memory_prompt
 
     def test_calls_create_or_load_debug_anchor(self, tmp_path):
-        """_create_or_load_debug_anchor가 내부적으로 호출되는지 확인"""
-        runner = ClaudeAgentRunner(thread_ts="ts_1", channel="C1")
+        """create_or_load_debug_anchor가 내부적으로 호출되는지 확인"""
         config_patches = {
             "OM_ENABLED": True,
             "CHANNEL_OBSERVER_ENABLED": False,
@@ -1610,9 +1603,9 @@ class TestPrepareMemoryInjection:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                with patch.object(runner, "_create_or_load_debug_anchor", return_value="anc_789") as mock_anchor:
-                    _, anchor_ts = runner._prepare_memory_injection(
-                        session_id=None, prompt="test",
+                with patch("seosoyoung.memory.injector.create_or_load_debug_anchor", return_value="anc_789") as mock_anchor:
+                    _, anchor_ts = prepare_memory_injection(
+                        thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
                     )
 
         mock_anchor.assert_called_once()
@@ -1620,12 +1613,11 @@ class TestPrepareMemoryInjection:
 
     def test_exception_returns_none_gracefully(self):
         """OM 내부 예외 발생 시 (None, '') 반환 (무시)"""
-        runner = ClaudeAgentRunner(thread_ts="ts_err", channel="C1")
         with patch("seosoyoung.config.Config") as MockConfig:
             MockConfig.OM_ENABLED = True
             MockConfig.get_memory_path.side_effect = RuntimeError("boom")
-            memory_prompt, anchor_ts = runner._prepare_memory_injection(
-                session_id=None, prompt="test",
+            memory_prompt, anchor_ts = prepare_memory_injection(
+                thread_ts="ts_err", channel="C1", session_id=None, prompt="test",
             )
         assert memory_prompt is None
         assert anchor_ts == ""

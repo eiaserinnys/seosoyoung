@@ -7,6 +7,7 @@
 
 - [`seosoyoung/auth.py`](modules/seosoyoung_auth.md): 권한 및 역할 관리
 - [`claude/agent_runner.py`](modules/claude_agent_runner.md): Claude Code SDK 기반 실행기
+- [`claude/diagnostics.py`](modules/claude_diagnostics.md): 세션 진단 및 에러 분류 로직
 - [`claude/executor.py`](modules/claude_executor.md): Claude Code 실행 로직
 - [`claude/message_formatter.py`](modules/claude_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티
 - [`claude/security.py`](modules/claude_security.md): 보안 레이어
@@ -59,6 +60,7 @@
 - [`memory/channel_scheduler.py`](modules/memory_channel_scheduler.md): 채널 소화 주기적 스케줄러
 - [`memory/channel_store.py`](modules/memory_channel_store.md): 채널 관찰 데이터 저장소
 - [`memory/context_builder.py`](modules/memory_context_builder.md): 컨텍스트 빌더
+- [`memory/injector.py`](modules/memory_injector.md): OM(Observational Memory) 주입 및 관찰 트리거 로직
 - [`memory/migration.py`](modules/memory_migration.md): OM 마크다운 → JSON 마이그레이션
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
 - [`memory/observer.py`](modules/memory_observer.md): Observer 모듈
@@ -104,8 +106,8 @@
 
 ### 주요 클래스
 
-- `ClaudeResult` (seosoyoung/claude/agent_runner.py:156): Claude Code 실행 결과
-- `ClaudeRunner` (seosoyoung/claude/agent_runner.py:252): Claude Code SDK 기반 실행기
+- `ClaudeResult` (seosoyoung/claude/agent_runner.py:50): Claude Code 실행 결과
+- `ClaudeRunner` (seosoyoung/claude/agent_runner.py:147): Claude Code SDK 기반 실행기
 - `ExecutionContext` (seosoyoung/claude/executor.py:68): 실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
 - `PendingPrompt` (seosoyoung/claude/executor.py:107): 인터벤션 대기 중인 프롬프트 정보
 - `ClaudeExecutor` (seosoyoung/claude/executor.py:123): Claude Code 실행기
@@ -245,12 +247,16 @@
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/claude/__init__.py:18): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `get_runner()` (seosoyoung/claude/agent_runner.py:181): 레지스트리에서 러너 조회
-- `register_runner()` (seosoyoung/claude/agent_runner.py:187): 레지스트리에 러너 등록
-- `remove_runner()` (seosoyoung/claude/agent_runner.py:193): 레지스트리에서 러너 제거
-- `async shutdown_all()` (seosoyoung/claude/agent_runner.py:199): 모든 등록된 러너의 클라이언트를 종료
-- `shutdown_all_sync()` (seosoyoung/claude/agent_runner.py:234): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/claude/agent_runner.py:1202): 
+- `get_runner()` (seosoyoung/claude/agent_runner.py:72): 레지스트리에서 러너 조회
+- `register_runner()` (seosoyoung/claude/agent_runner.py:78): 레지스트리에 러너 등록
+- `remove_runner()` (seosoyoung/claude/agent_runner.py:84): 레지스트리에서 러너 제거
+- `async shutdown_all()` (seosoyoung/claude/agent_runner.py:90): 모든 등록된 러너의 클라이언트를 종료
+- `shutdown_all_sync()` (seosoyoung/claude/agent_runner.py:125): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+- `async main()` (seosoyoung/claude/agent_runner.py:693): 
+- `read_stderr_tail()` (seosoyoung/claude/diagnostics.py:17): cli_stderr.log의 마지막 N줄 읽기
+- `build_session_dump()` (seosoyoung/claude/diagnostics.py:31): 세션 종료 진단 덤프 메시지 생성
+- `classify_process_error()` (seosoyoung/claude/diagnostics.py:71): ProcessError를 사용자 친화적 메시지로 변환.
+- `send_debug_to_slack()` (seosoyoung/claude/diagnostics.py:105): 슬랙에 디버그 메시지 전송 (별도 메시지로)
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:14): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:49): 텍스트 내 모든 백틱을 이스케이프
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:68): 트렐로 카드용 슬랙 메시지 헤더 생성
@@ -380,6 +386,10 @@
 - `optimize_items_for_context()` (seosoyoung/memory/context_builder.py:121): 관찰 항목을 컨텍스트 주입에 최적화합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:161): [하위 호환] 텍스트 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:181): [하위 호환] 텍스트 관찰 로그를 컨텍스트 주입에 최적화합니다.
+- `prepare_memory_injection()` (seosoyoung/memory/injector.py:15): OM 메모리 주입을 준비합니다.
+- `create_or_load_debug_anchor()` (seosoyoung/memory/injector.py:101): 디버그 앵커 메시지를 생성하거나 기존 앵커를 로드합니다.
+- `send_injection_debug_log()` (seosoyoung/memory/injector.py:157): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
+- `trigger_observation()` (seosoyoung/memory/injector.py:241): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
 - `migrate_observations()` (seosoyoung/memory/migration.py:53): observations/ 디렉토리의 .md 파일을 .json으로 변환합니다.
 - `migrate_persistent()` (seosoyoung/memory/migration.py:105): persistent/recent.md → recent.json 변환.
 - `migrate_memory_dir()` (seosoyoung/memory/migration.py:145): memory/ 디렉토리 전체를 마이그레이션합니다.
