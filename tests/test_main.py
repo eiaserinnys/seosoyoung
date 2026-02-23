@@ -194,10 +194,11 @@ class TestGetRunnerForRole:
 
         get_runner_for_role("admin")
 
-        # admin은 disallowed_tools 없이, mcp_config_path 포함하여 생성
+        # admin은 disallowed_tools 없이, mcp_config_path + cache_key 포함하여 생성
         mock_get_runner.assert_called_once_with(
             allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
             mcp_config_path=Path("mcp_config.json"),
+            cache_key="role:admin",
         )
 
     @patch("seosoyoung.claude.executor.Config")
@@ -214,7 +215,8 @@ class TestGetRunnerForRole:
         # viewer는 수정 도구들이 차단됨
         mock_get_runner.assert_called_once_with(
             allowed_tools=["Read", "Glob", "Grep"],
-            disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"]
+            disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"],
+            cache_key="role:viewer",
         )
 
 

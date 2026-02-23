@@ -81,6 +81,9 @@ def _classify_process_error(e: ProcessError) -> str:
     return f"Claude Code 실행 중 오류가 발생했습니다 (exit code: {e.exit_code})"
 
 
+from seosoyoung.claude.agent_runner import run_in_new_loop as _run_in_new_loop
+
+
 @dataclass
 class RescueResult:
     """실행 결과"""
@@ -97,56 +100,24 @@ class RescueRunner:
     """Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 
     메인 봇의 ClaudeAgentRunner와 동일한 패턴:
-    - 클래스 레벨 공유 이벤트 루프 (데몬 스레드)
-    - run_coroutine_threadsafe로 동기→비동기 브릿지
+    - run_in_new_loop로 각 실행마다 격리된 이벤트 루프 사용
     - _get_or_create_client / _remove_client로 클라이언트 생명주기 관리
     - on_progress / on_compact 콜백
     - interrupt / compact_session
     """
 
-    _shared_loop: Optional[asyncio.AbstractEventLoop] = None
-    _loop_thread: Optional[threading.Thread] = None
-    _loop_lock = threading.Lock()
-
     def __init__(self):
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
         self._active_clients: dict[str, ClaudeSDKClient] = {}
-
-    @classmethod
-    def _ensure_loop(cls) -> None:
-        """공유 이벤트 루프가 없거나 닫혀있으면 데몬 스레드에서 새로 생성"""
-        with cls._loop_lock:
-            if cls._shared_loop is not None and cls._shared_loop.is_running():
-                return
-
-            loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                target=loop.run_forever,
-                daemon=True,
-                name="rescue-shared-loop",
-            )
-            thread.start()
-
-            cls._shared_loop = loop
-            cls._loop_thread = thread
-            logger.info("공유 이벤트 루프 생성됨")
-
-    @classmethod
-    def _reset_shared_loop(cls) -> None:
-        """공유 루프를 리셋 (테스트용)"""
-        with cls._loop_lock:
-            if cls._shared_loop is not None and cls._shared_loop.is_running():
-                cls._shared_loop.call_soon_threadsafe(cls._shared_loop.stop)
-                if cls._loop_thread is not None:
-                    cls._loop_thread.join(timeout=2)
-            cls._shared_loop = None
-            cls._loop_thread = None
+        self._execution_loops: dict[str, asyncio.AbstractEventLoop] = {}
+        self._clients_lock = threading.Lock()
 
     def run_sync(self, coro):
-        """동기 컨텍스트에서 코루틴을 실행하는 브릿지"""
-        self._ensure_loop()
-        future = asyncio.run_coroutine_threadsafe(coro, self._shared_loop)
-        return future.result()
+        """동기 컨텍스트에서 코루틴을 실행하는 브릿지
+
+        별도 스레드에서 새 이벤트 루프를 생성하여 코루틴을 실행합니다.
+        """
+        return _run_in_new_loop(coro)
 
     def _build_options(
         self,
@@ -234,9 +205,10 @@ class RescueRunner:
         options: Optional[ClaudeCodeOptions] = None,
     ) -> ClaudeSDKClient:
         """클라이언트를 가져오거나 새로 생성"""
-        if client_key in self._active_clients:
-            logger.info(f"기존 클라이언트 재사용: key={client_key}")
-            return self._active_clients[client_key]
+        with self._clients_lock:
+            if client_key in self._active_clients:
+                logger.info(f"기존 클라이언트 재사용: key={client_key}")
+                return self._active_clients[client_key]
 
         logger.info(f"새 ClaudeSDKClient 생성: key={client_key}")
         client = ClaudeSDKClient(options=options)
@@ -250,12 +222,14 @@ class RescueRunner:
             except Exception:
                 pass
             raise
-        self._active_clients[client_key] = client
+        with self._clients_lock:
+            self._active_clients[client_key] = client
         return client
 
     async def _remove_client(self, client_key: str) -> None:
         """클라이언트를 정리 (disconnect 후 딕셔너리에서 제거)"""
-        client = self._active_clients.pop(client_key, None)
+        with self._clients_lock:
+            client = self._active_clients.pop(client_key, None)
         if client is None:
             return
         try:
@@ -264,8 +238,8 @@ class RescueRunner:
             logger.warning(f"ClaudeSDKClient disconnect 오류 (무시): key={client_key}, {e}")
         logger.info(f"ClaudeSDKClient 제거: key={client_key}")
 
-    async def interrupt(self, thread_ts: str) -> bool:
-        """실행 중인 스레드에 인터럽트 전송
+    def interrupt(self, thread_ts: str) -> bool:
+        """실행 중인 스레드에 인터럽트 전송 (동기)
 
         Args:
             thread_ts: 스레드 타임스탬프
@@ -273,11 +247,14 @@ class RescueRunner:
         Returns:
             True: 인터럽트 성공, False: 해당 스레드에 클라이언트 없음 또는 실패
         """
-        client = self._active_clients.get(thread_ts)
-        if client is None:
+        with self._clients_lock:
+            client = self._active_clients.get(thread_ts)
+            loop = self._execution_loops.get(thread_ts)
+        if client is None or loop is None or not loop.is_running():
             return False
         try:
-            await client.interrupt()
+            future = asyncio.run_coroutine_threadsafe(client.interrupt(), loop)
+            future.result(timeout=5)
             logger.info(f"인터럽트 전송: thread={thread_ts}")
             return True
         except Exception as e:
@@ -320,7 +297,7 @@ class RescueRunner:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> RescueResult:
         """Claude Code 실행 (async, lock 포함)"""
-        async with self._lock:
+        with self._lock:
             return await self._execute(
                 prompt,
                 session_id=session_id,
@@ -353,6 +330,10 @@ class RescueRunner:
 
         # 클라이언트 키: thread_ts가 없으면 임시 키
         client_key = thread_ts or f"_ephemeral_{id(asyncio.current_task())}"
+
+        # 현재 실행 루프를 등록 (interrupt에서 사용)
+        with self._clients_lock:
+            self._execution_loops[client_key] = asyncio.get_running_loop()
 
         result_session_id = None
         current_text = ""
@@ -496,6 +477,8 @@ class RescueRunner:
             )
         finally:
             await self._remove_client(client_key)
+            with self._clients_lock:
+                self._execution_loops.pop(client_key, None)
             if stderr_file is not None:
                 try:
                     stderr_file.close()

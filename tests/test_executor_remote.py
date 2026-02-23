@@ -190,7 +190,7 @@ class TestInterventionDualPath:
         )
 
     def test_local_intervention_uses_runner(self, executor):
-        """local 모드 인터벤션: runner.interrupt 호출"""
+        """local 모드 인터벤션: runner.interrupt 호출 (동기)"""
         mock_runner = MagicMock()
         executor._active_runners["1234.5678"] = mock_runner
 
@@ -204,27 +204,19 @@ class TestInterventionDualPath:
                 client=MagicMock(),
             )
 
-        # runner.run_sync(runner.interrupt(...))가 호출되어야 함
-        mock_runner.run_sync.assert_called_once()
+        # runner.interrupt()가 직접 호출되어야 함 (이제 동기)
+        mock_runner.interrupt.assert_called_once_with("1234.5678")
 
     def test_remote_intervention_uses_adapter(self, executor):
-        """remote 모드 인터벤션: adapter.intervene HTTP 호출"""
+        """remote 모드 인터벤션: run_in_new_loop으로 adapter.intervene 호출"""
         mock_adapter = MagicMock()
         executor._service_adapter = mock_adapter
         executor._active_remote_requests["1234.5678"] = "1234.5678"
 
         with patch("seosoyoung.claude.executor._is_remote_mode", return_value=True), \
-             patch("seosoyoung.claude.executor.asyncio") as mock_asyncio, \
-             patch("seosoyoung.claude.executor.ClaudeAgentRunner", create=True) as mock_runner_cls:
+             patch("seosoyoung.claude.agent_runner.run_in_new_loop") as mock_run:
 
-            # ClaudeAgentRunner 클래스 모킹
-            mock_loop = MagicMock()
-            mock_runner_cls._shared_loop = mock_loop
-            mock_runner_cls._ensure_loop = MagicMock()
-
-            mock_future = MagicMock()
-            mock_future.result.return_value = True
-            mock_asyncio.run_coroutine_threadsafe.return_value = mock_future
+            mock_run.return_value = True
 
             executor._handle_intervention(
                 thread_ts="1234.5678",
@@ -235,8 +227,8 @@ class TestInterventionDualPath:
                 client=MagicMock(),
             )
 
-            # asyncio.run_coroutine_threadsafe로 adapter.intervene이 호출되어야 함
-            mock_asyncio.run_coroutine_threadsafe.assert_called_once()
+            # run_in_new_loop으로 adapter.intervene이 호출되어야 함
+            mock_run.assert_called_once()
 
     def test_pending_prompt_saved_on_intervention(self, executor):
         """인터벤션 시 pending에 프롬프트가 저장되는지 확인"""

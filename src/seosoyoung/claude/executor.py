@@ -241,29 +241,26 @@ class ClaudeExecutor:
             request_id = self._active_remote_requests.get(thread_ts)
             if request_id and self._service_adapter:
                 try:
-                    from seosoyoung.claude.agent_runner import ClaudeAgentRunner
-                    ClaudeAgentRunner._ensure_loop()
-                    future = asyncio.run_coroutine_threadsafe(
+                    from seosoyoung.claude.agent_runner import run_in_new_loop
+                    run_in_new_loop(
                         self._service_adapter.intervene(
                             request_id=request_id,
                             text=prompt,
                             user="intervention",
-                        ),
-                        ClaudeAgentRunner._shared_loop,
+                        )
                     )
-                    future.result(timeout=10)
                     logger.info(f"[Remote] 인터벤션 전송 완료: thread={thread_ts}")
                 except Exception as e:
                     logger.warning(f"[Remote] 인터벤션 전송 실패 (무시): thread={thread_ts}, {e}")
             else:
                 logger.warning(f"[Remote] 인터벤션 전송 불가: request_id 없음 (thread={thread_ts})")
         else:
-            # Local 모드: 실행 중인 runner에게 interrupt 전송
+            # Local 모드: 실행 중인 runner에게 interrupt 전송 (동기)
             with self._runners_lock:
                 runner = self._active_runners.get(thread_ts)
             if runner:
                 try:
-                    runner.run_sync(runner.interrupt(thread_ts))
+                    runner.interrupt(thread_ts)
                     logger.info(f"인터럽트 전송 완료: thread={thread_ts}")
                 except Exception as e:
                     logger.warning(f"인터럽트 전송 실패 (무시): thread={thread_ts}, {e}")
@@ -588,7 +585,7 @@ class ClaudeExecutor:
         user_message=None,
     ):
         """Remote 모드: soul 서버에 실행을 위임"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.claude.agent_runner import run_in_new_loop
 
         adapter = self._get_service_adapter()
         request_id = original_thread_ts  # thread_ts를 request_id로 사용
@@ -597,18 +594,15 @@ class ClaudeExecutor:
         self._active_remote_requests[original_thread_ts] = request_id
 
         try:
-            ClaudeAgentRunner._ensure_loop()
-            future = asyncio.run_coroutine_threadsafe(
+            result = run_in_new_loop(
                 adapter.execute(
                     prompt=prompt,
                     request_id=request_id,
                     resume_session_id=session.session_id,
                     on_progress=on_progress,
                     on_compact=on_compact,
-                ),
-                ClaudeAgentRunner._shared_loop,
+                )
             )
-            result = future.result()
 
             self._process_result(
                 result, session, effective_role, is_trello_mode, trello_card,

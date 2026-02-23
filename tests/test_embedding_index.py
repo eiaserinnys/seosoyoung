@@ -14,6 +14,13 @@ from seosoyoung.search.embedding_index import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _mock_openai_client():
+    """OpenAI 클라이언트 생성을 mock하여 API 키 없이도 테스트 가능하게 함."""
+    with patch("seosoyoung.search.embedding_cache.OpenAI"):
+        yield
+
+
 # -- fixtures --
 
 

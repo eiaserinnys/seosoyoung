@@ -185,13 +185,13 @@ class RescueBotApp:
         with self._pending_lock:
             self._pending_prompts[thread_ts] = pending
 
-        # interrupt fire-and-forget
+        # interrupt fire-and-forget (동기)
         runner = get_runner()
         with self._runners_lock:
             active_runner = self._active_runners.get(thread_ts)
         if active_runner:
             try:
-                runner.run_sync(runner.interrupt(thread_ts))
+                runner.interrupt(thread_ts)
                 logger.info(f"인터럽트 전송 완료: thread={thread_ts}")
             except Exception as e:
                 logger.warning(f"인터럽트 전송 실패 (무시): thread={thread_ts}, {e}")

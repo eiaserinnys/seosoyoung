@@ -11,37 +11,47 @@ SeoSoyoung 슬랙 봇 메인
 ## 함수
 
 ### `_perform_restart(restart_type)`
-- 위치: 줄 45
+- 위치: 줄 47
 - 설명: 실제 재시작 수행
 
+모든 ClaudeSDKClient를 정리한 후 프로세스를 종료합니다.
+이로써 고아 프로세스(Claude Code CLI)가 남지 않습니다.
+
 ### `_check_restart_on_session_stop()`
-- 위치: 줄 58
+- 위치: 줄 71
 - 설명: 세션 종료 시 재시작 확인
 
+### `_signal_handler(signum, frame)`
+- 위치: 줄 81
+- 설명: 시그널 수신 시 graceful shutdown 수행
+
+SIGTERM, SIGINT 수신 시 모든 클라이언트를 정리하고 프로세스를 종료합니다.
+
 ### `notify_startup()`
-- 위치: 줄 158
+- 위치: 줄 189
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 169
+- 위치: 줄 200
 - 설명: 봇 종료 알림
 
 ### `start_trello_watcher()`
-- 위치: 줄 180
+- 위치: 줄 211
 - 설명: Trello 워처 시작
 
 ### `start_list_runner()`
-- 위치: 줄 200
+- 위치: 줄 231
 - 설명: 리스트 러너 초기화
 
 ### `init_bot_user_id()`
-- 위치: 줄 210
+- 위치: 줄 241
 - 설명: 봇 사용자 ID 초기화
 
 ## 내부 의존성
 
 - `seosoyoung.auth.check_permission`
 - `seosoyoung.auth.get_user_role`
+- `seosoyoung.claude.agent_runner.ClaudeAgentRunner`
 - `seosoyoung.claude.executor.ClaudeExecutor`
 - `seosoyoung.claude.session.SessionManager`
 - `seosoyoung.claude.session.SessionRuntime`

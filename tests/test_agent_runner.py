@@ -205,7 +205,14 @@ class TestClaudeAgentRunnerAsync:
         assert "SDK error" in result.error
 
     async def test_concurrent_execution_blocked(self):
-        """동시 실행 제어 테스트 (Lock)"""
+        """동시 실행 제어 테스트 (threading.Lock, run_sync 경유)
+
+        per-execution loop 전환 후 threading.Lock으로 직렬화하므로,
+        실제 프로덕션 경로(run_sync → 별도 스레드)에서 동시 실행이
+        순차 처리되는지 확인합니다.
+        """
+        import threading as _threading
+
         runner = ClaudeAgentRunner()
         call_order = []
 
@@ -223,20 +230,35 @@ class TestClaudeAgentRunnerAsync:
 
         clients = [make_ordered_client("1"), make_ordered_client("2")]
         client_idx = [0]
+        client_lock = _threading.Lock()
 
         def get_next_client(*args, **kwargs):
-            c = clients[client_idx[0]]
-            client_idx[0] += 1
+            with client_lock:
+                c = clients[client_idx[0]]
+                client_idx[0] += 1
             return c
 
+        results = [None, None]
+
+        # patch를 외부에서 한 번만 적용 (스레드 간 경쟁 방지)
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", side_effect=get_next_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                task1 = asyncio.create_task(runner.run("first"))
-                task2 = asyncio.create_task(runner.run("second"))
-                await asyncio.gather(task1, task2)
+                def run_task(idx, prompt):
+                    results[idx] = runner.run_sync(runner.run(prompt))
 
-        # Lock으로 인해 순차 실행
-        assert call_order == ["start-1", "end-1", "start-2", "end-2"]
+                t1 = _threading.Thread(target=run_task, args=(0, "first"))
+                t2 = _threading.Thread(target=run_task, args=(1, "second"))
+                t1.start()
+                t2.start()
+                t1.join(timeout=10)
+                t2.join(timeout=10)
+
+        # threading.Lock으로 인해 순차 실행 (start→end가 교차하지 않음)
+        assert len(call_order) == 4
+        assert call_order[0].startswith("start-")
+        assert call_order[1].startswith("end-")
+        assert call_order[2].startswith("start-")
+        assert call_order[3].startswith("end-")
 
     async def test_compact_session_success(self):
         """compact_session 성공 테스트"""

@@ -8,6 +8,7 @@ ClaudeAgentRunner가 ClaudeSDKClient를 사용하여:
 """
 
 import asyncio
+import threading
 import pytest
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -69,7 +70,7 @@ class TestActiveClientLifecycle:
     """스레드별 ClaudeSDKClient 생명주기 테스트"""
 
     def setup_method(self):
-        ClaudeAgentRunner._reset_shared_loop()
+        pass  # 공유 루프 제거됨, 정리 불필요
 
     def test_active_clients_dict_exists(self):
         """_active_clients 딕셔너리가 존재하는지 확인"""
@@ -141,7 +142,7 @@ class TestRunWithSDKClient:
     """run() 메서드의 ClaudeSDKClient 기반 실행 테스트"""
 
     def setup_method(self):
-        ClaudeAgentRunner._reset_shared_loop()
+        pass  # 공유 루프 제거됨, 정리 불필요
 
     async def test_run_uses_sdk_client(self):
         """run()이 ClaudeSDKClient를 사용하는지 확인"""
@@ -285,50 +286,104 @@ class TestRunWithSDKClient:
         assert "찾을 수 없습니다" in result.error
 
 
-@pytest.mark.asyncio
 class TestInterrupt:
-    """interrupt() 메서드 테스트"""
+    """interrupt() 메서드 테스트 (동기)"""
 
-    def setup_method(self):
-        ClaudeAgentRunner._reset_shared_loop()
-
-    async def test_interrupt_calls_client_interrupt(self):
+    def test_interrupt_calls_client_interrupt(self):
         """interrupt()가 해당 스레드의 클라이언트에 interrupt를 호출하는지 확인"""
         runner = ClaudeAgentRunner()
 
         mock_client = AsyncMock()
-        runner._active_clients["thread-1"] = mock_client
 
-        await runner.interrupt("thread-1")
-        mock_client.interrupt.assert_awaited_once()
+        # 실행 중인 이벤트 루프를 시뮬레이션
+        loop = asyncio.new_event_loop()
+        loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+        loop_thread.start()
 
-    async def test_interrupt_nonexistent_thread_returns_false(self):
+        try:
+            with runner._clients_lock:
+                runner._active_clients["thread-1"] = mock_client
+                runner._execution_loops["thread-1"] = loop
+
+            result = runner.interrupt("thread-1")
+            assert result is True
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            loop_thread.join(timeout=2)
+            with runner._clients_lock:
+                runner._active_clients.pop("thread-1", None)
+                runner._execution_loops.pop("thread-1", None)
+
+    def test_interrupt_nonexistent_thread_returns_false(self):
         """존재하지 않는 스레드에 interrupt 시 False 반환"""
         runner = ClaudeAgentRunner()
 
-        result = await runner.interrupt("nonexistent")
+        result = runner.interrupt("nonexistent")
         assert result is False
 
-    async def test_interrupt_existing_thread_returns_true(self):
+    def test_interrupt_existing_thread_returns_true(self):
         """존재하는 스레드에 interrupt 시 True 반환"""
         runner = ClaudeAgentRunner()
 
         mock_client = AsyncMock()
-        runner._active_clients["thread-1"] = mock_client
 
-        result = await runner.interrupt("thread-1")
-        assert result is True
+        loop = asyncio.new_event_loop()
+        loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+        loop_thread.start()
 
-    async def test_interrupt_handles_client_error(self):
+        try:
+            with runner._clients_lock:
+                runner._active_clients["thread-1"] = mock_client
+                runner._execution_loops["thread-1"] = loop
+
+            result = runner.interrupt("thread-1")
+            assert result is True
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            loop_thread.join(timeout=2)
+            with runner._clients_lock:
+                runner._active_clients.pop("thread-1", None)
+                runner._execution_loops.pop("thread-1", None)
+
+    def test_interrupt_handles_client_error(self):
         """클라이언트 interrupt 실패 시 False 반환"""
         runner = ClaudeAgentRunner()
 
         mock_client = AsyncMock()
         mock_client.interrupt.side_effect = Exception("interrupt failed")
-        runner._active_clients["thread-1"] = mock_client
 
-        result = await runner.interrupt("thread-1")
-        assert result is False
+        loop = asyncio.new_event_loop()
+        loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+        loop_thread.start()
+
+        try:
+            with runner._clients_lock:
+                runner._active_clients["thread-1"] = mock_client
+                runner._execution_loops["thread-1"] = loop
+
+            result = runner.interrupt("thread-1")
+            assert result is False
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            loop_thread.join(timeout=2)
+            with runner._clients_lock:
+                runner._active_clients.pop("thread-1", None)
+                runner._execution_loops.pop("thread-1", None)
+
+    def test_interrupt_no_loop_returns_false(self):
+        """클라이언트는 있지만 루프가 없으면 False 반환"""
+        runner = ClaudeAgentRunner()
+
+        mock_client = AsyncMock()
+        with runner._clients_lock:
+            runner._active_clients["thread-1"] = mock_client
+
+        try:
+            result = runner.interrupt("thread-1")
+            assert result is False
+        finally:
+            with runner._clients_lock:
+                runner._active_clients.pop("thread-1", None)
 
 
 @pytest.mark.asyncio
@@ -336,7 +391,7 @@ class TestRunWithSessionResume:
     """세션 resume 관련 테스트"""
 
     def setup_method(self):
-        ClaudeAgentRunner._reset_shared_loop()
+        pass  # 공유 루프 제거됨, 정리 불필요
 
     async def test_run_with_session_id_sets_resume(self):
         """session_id가 있으면 options.resume에 설정되는지 확인"""

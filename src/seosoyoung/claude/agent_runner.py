@@ -190,17 +190,37 @@ class ClaudeResult:
     anchor_ts: str = ""  # OM 디버그 채널 세션 스레드 앵커 ts
 
 
+def run_in_new_loop(coro):
+    """별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
+
+    각 호출마다 격리된 이벤트 루프를 생성하여
+    이전 실행의 anyio 잔여물이 영향을 미치지 않도록 합니다.
+    """
+    result_box = [None]
+    error_box = [None]
+
+    def _run():
+        try:
+            result_box[0] = asyncio.run(coro)
+        except BaseException as e:
+            error_box[0] = e
+
+    thread = threading.Thread(target=_run, name="claude-run-sync")
+    thread.start()
+    thread.join()
+
+    if error_box[0] is not None:
+        raise error_box[0]
+    return result_box[0]
+
+
 class ClaudeAgentRunner:
     """Claude Code SDK 기반 실행기"""
-
-    # 클래스 레벨 공유 이벤트 루프 (모든 인스턴스가 공유)
-    _shared_loop: Optional[asyncio.AbstractEventLoop] = None
-    _loop_thread: Optional[threading.Thread] = None
-    _loop_lock = threading.Lock()
 
     # 클래스 레벨 활성 클라이언트 관리 (모든 인스턴스가 공유)
     _active_clients: dict[str, ClaudeSDKClient] = {}
     _client_pids: dict[str, int] = {}  # thread_ts -> subprocess PID
+    _execution_loops: dict[str, asyncio.AbstractEventLoop] = {}  # client_key -> running loop
     _clients_lock = threading.Lock()
 
     def __init__(
@@ -216,37 +236,8 @@ class ClaudeAgentRunner:
         self.allowed_tools = allowed_tools or DEFAULT_ALLOWED_TOOLS
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
 
-    @classmethod
-    def _ensure_loop(cls) -> None:
-        """공유 이벤트 루프가 없거나 닫혀있으면 데몬 스레드에서 새로 생성"""
-        with cls._loop_lock:
-            if cls._shared_loop is not None and cls._shared_loop.is_running():
-                return
-
-            loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                target=loop.run_forever,
-                daemon=True,
-                name="claude-shared-loop",
-            )
-            thread.start()
-
-            cls._shared_loop = loop
-            cls._loop_thread = thread
-            logger.info("공유 이벤트 루프 생성됨")
-
-    @classmethod
-    def _reset_shared_loop(cls) -> None:
-        """공유 루프를 리셋 (테스트용)"""
-        with cls._loop_lock:
-            if cls._shared_loop is not None and cls._shared_loop.is_running():
-                cls._shared_loop.call_soon_threadsafe(cls._shared_loop.stop)
-                if cls._loop_thread is not None:
-                    cls._loop_thread.join(timeout=2)
-            cls._shared_loop = None
-            cls._loop_thread = None
 
     @classmethod
     async def shutdown_all_clients(cls) -> int:
@@ -309,11 +300,9 @@ class ClaudeAgentRunner:
         """동기 컨텍스트에서 코루틴을 실행하는 브릿지
 
         Slack 이벤트 핸들러(동기)에서 async 함수를 호출할 때 사용.
-        공유 이벤트 루프에 코루틴을 제출하고 결과를 기다립니다.
+        별도 스레드에서 새 이벤트 루프를 생성하여 코루틴을 실행합니다.
         """
-        self._ensure_loop()
-        future = asyncio.run_coroutine_threadsafe(coro, self._shared_loop)
-        return future.result()
+        return run_in_new_loop(coro)
 
     async def _get_or_create_client(
         self,
@@ -416,8 +405,8 @@ class ClaudeAgentRunner:
         except Exception as kill_error:
             logger.error(f"프로세스 강제 종료 실패: PID {pid}, thread={thread_ts}, {kill_error}")
 
-    async def interrupt(self, thread_ts: str) -> bool:
-        """실행 중인 스레드에 인터럽트 전송
+    def interrupt(self, thread_ts: str) -> bool:
+        """실행 중인 스레드에 인터럽트 전송 (동기)
 
         Args:
             thread_ts: 스레드 타임스탬프
@@ -427,10 +416,12 @@ class ClaudeAgentRunner:
         """
         with self._clients_lock:
             client = self._active_clients.get(thread_ts)
-        if client is None:
+            loop = self._execution_loops.get(thread_ts)
+        if client is None or loop is None or not loop.is_running():
             return False
         try:
-            await client.interrupt()
+            future = asyncio.run_coroutine_threadsafe(client.interrupt(), loop)
+            future.result(timeout=5)
             logger.info(f"인터럽트 전송: thread={thread_ts}")
             return True
         except Exception as e:
@@ -731,7 +722,7 @@ class ClaudeAgentRunner:
             channel: 슬랙 채널 ID (MCP 서버 컨텍스트용, 선택)
             user_message: 사용자 원본 메시지 (OM Observer용, 선택). 미지정 시 prompt 사용.
         """
-        async with self._lock:
+        with self._lock:
             result = await self._execute(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel=channel)
 
         # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
@@ -863,6 +854,10 @@ class ClaudeAgentRunner:
 
         # 스레드 키: thread_ts가 없으면 임시 키 생성
         client_key = thread_ts or f"_ephemeral_{id(asyncio.current_task())}"
+
+        # 현재 실행 루프를 등록 (interrupt에서 사용)
+        with self._clients_lock:
+            self._execution_loops[client_key] = asyncio.get_running_loop()
 
         result_session_id = None
         current_text = ""
@@ -1211,6 +1206,8 @@ class ClaudeAgentRunner:
             finally:
                 # 응답 완료 또는 에러 시 클라이언트 정리
                 await self._remove_client(client_key)
+                with self._clients_lock:
+                    self._execution_loops.pop(client_key, None)
 
     async def compact_session(self, session_id: str) -> ClaudeResult:
         """세션 컴팩트 처리

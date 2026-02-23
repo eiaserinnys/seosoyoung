@@ -139,12 +139,12 @@ class TestInterventionHandling:
         assert pending.msg_ts == "msg_456"
 
     def test_intervention_fires_interrupt_with_active_runner(self):
-        """인터벤션 시 _active_runners에 runner가 있으면 interrupt 호출"""
+        """인터벤션 시 _active_runners에 runner가 있으면 interrupt 호출 (동기)"""
         executor = make_executor()
 
         # 실행 중인 runner 등록
         mock_runner = MagicMock()
-        mock_runner.run_sync.return_value = True
+        mock_runner.interrupt.return_value = True
         executor._active_runners["thread_123"] = mock_runner
 
         executor._handle_intervention(
@@ -156,9 +156,8 @@ class TestInterventionHandling:
             client=MagicMock(),
         )
 
-        # interrupt(thread_ts) 호출됨
+        # interrupt(thread_ts) 직접 호출됨 (이제 동기)
         mock_runner.interrupt.assert_called_once_with("thread_123")
-        mock_runner.run_sync.assert_called_once()
 
     def test_intervention_no_runner_no_interrupt(self):
         """_active_runners에 runner가 없으면 interrupt 호출 안 함"""
