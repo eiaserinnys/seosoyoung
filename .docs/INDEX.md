@@ -58,6 +58,7 @@
 - [`memory/channel_scheduler.py`](modules/memory_channel_scheduler.md): 채널 소화 주기적 스케줄러
 - [`memory/channel_store.py`](modules/memory_channel_store.md): 채널 관찰 데이터 저장소
 - [`memory/context_builder.py`](modules/memory_context_builder.md): 컨텍스트 빌더
+- [`memory/migration.py`](modules/memory_migration.md): OM 마크다운 → JSON 마이그레이션
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
 - [`memory/observer.py`](modules/memory_observer.md): Observer 모듈
 - [`memory/promoter.py`](modules/memory_promoter.md): Promoter / Compactor 모듈
@@ -181,12 +182,13 @@
 - `ChannelStore` (seosoyoung/memory/channel_store.py:24): 파일 기반 채널 관찰 데이터 저장소
 - `InjectionResult` (seosoyoung/memory/context_builder.py:31): 주입 결과 — 디버그 로그용 정보를 포함
 - `ContextBuilder` (seosoyoung/memory/context_builder.py:221): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
+- `MigrationReport` (seosoyoung/memory/migration.py:21): 마이그레이션 결과 보고서
 - `ObserverResult` (seosoyoung/memory/observer.py:24): Observer 출력 결과
 - `Observer` (seosoyoung/memory/observer.py:145): 대화를 관찰하여 구조화된 관찰 로그를 생성
 - `PromoterResult` (seosoyoung/memory/promoter.py:22): Promoter 출력 결과
 - `CompactorResult` (seosoyoung/memory/promoter.py:37): Compactor 출력 결과
 - `Promoter` (seosoyoung/memory/promoter.py:181): 장기 기억 후보를 검토하여 승격
-- `Compactor` (seosoyoung/memory/promoter.py:245): 장기 기억을 압축
+- `Compactor` (seosoyoung/memory/promoter.py:233): 장기 기억을 압축
 - `ReflectorResult` (seosoyoung/memory/reflector.py:25): Reflector 출력 결과
 - `Reflector` (seosoyoung/memory/reflector.py:93): 관찰 로그를 압축하고 재구조화
 - `ObservationItem` (seosoyoung/memory/store.py:40): 세션 관찰 항목
@@ -376,6 +378,9 @@
 - `optimize_items_for_context()` (seosoyoung/memory/context_builder.py:121): 관찰 항목을 컨텍스트 주입에 최적화합니다.
 - `add_relative_time()` (seosoyoung/memory/context_builder.py:161): [하위 호환] 텍스트 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
 - `optimize_for_context()` (seosoyoung/memory/context_builder.py:181): [하위 호환] 텍스트 관찰 로그를 컨텍스트 주입에 최적화합니다.
+- `migrate_observations()` (seosoyoung/memory/migration.py:53): observations/ 디렉토리의 .md 파일을 .json으로 변환합니다.
+- `migrate_persistent()` (seosoyoung/memory/migration.py:105): persistent/recent.md → recent.json 변환.
+- `migrate_memory_dir()` (seosoyoung/memory/migration.py:145): memory/ 디렉토리 전체를 마이그레이션합니다.
 - `async observe_conversation()` (seosoyoung/memory/observation_pipeline.py:100): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 - `parse_observer_output()` (seosoyoung/memory/observer.py:33): Observer 응답 JSON을 파싱합니다.
 - `parse_promoter_output()` (seosoyoung/memory/promoter.py:119): Promoter 응답 JSON에서 promoted와 rejected를 파싱합니다.
@@ -387,7 +392,7 @@
 - `build_reflector_system_prompt()` (seosoyoung/memory/prompts.py:67): Reflector 시스템 프롬프트를 반환합니다.
 - `build_reflector_retry_prompt()` (seosoyoung/memory/prompts.py:72): Reflector 재시도 프롬프트를 반환합니다.
 - `build_promoter_prompt()` (seosoyoung/memory/prompts.py:79): Promoter 프롬프트를 구성합니다.
-- `build_compactor_prompt()` (seosoyoung/memory/prompts.py:95): Compactor 프롬프트를 구성합니다.
+- `build_compactor_prompt()` (seosoyoung/memory/prompts.py:100): Compactor 프롬프트를 구성합니다.
 - `generate_obs_id()` (seosoyoung/memory/store.py:123): 관찰 항목 ID를 생성합니다.
 - `generate_ltm_id()` (seosoyoung/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
 - `parse_md_observations()` (seosoyoung/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.

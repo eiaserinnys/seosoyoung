@@ -41,7 +41,7 @@ Mastra의 Observational Memory 프롬프트를 서소영 컨텍스트에 맞게 
 - 설명: Promoter 프롬프트를 구성합니다.
 
 ### `build_compactor_prompt(persistent_memory, target_tokens)`
-- 위치: 줄 95
+- 위치: 줄 100
 - 설명: Compactor 프롬프트를 구성합니다.
 
 ## 내부 의존성

@@ -7,6 +7,7 @@
 모든 LLM 호출은 모킹합니다.
 """
 
+import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -801,3 +802,179 @@ class TestInjectionIntegration:
             "ts_flags", include_persistent=False, include_session=False,
         )
         assert result.prompt is None
+
+
+class TestMigrationE2E:
+    """기존 .md 데이터 → 자동 마이그레이션 → JSON 파이프라인 정상 동작"""
+
+    @pytest.fixture
+    def store(self, tmp_path):
+        return MemoryStore(base_dir=tmp_path)
+
+    @pytest.fixture
+    def mock_observer(self):
+        observer = AsyncMock()
+        observer.observe = AsyncMock()
+        return observer
+
+    @pytest.fixture
+    def long_messages(self):
+        return [
+            {"role": "user", "content": "캐릭터 정보를 찾아주세요. " * 10},
+            {"role": "assistant", "content": "네, 안내 드리겠습니다. " * 10},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_md_observations_auto_migrate_then_observe(
+        self, store, mock_observer, long_messages
+    ):
+        """기존 .md 관찰 데이터가 있는 세션에서 새 관찰을 수행하면
+        자동 마이그레이션 후 JSON 기반으로 정상 동작"""
+        thread_ts = "ts_legacy_001"
+        store._ensure_dirs()
+
+        # 레거시 .md 관찰 데이터 직접 배치
+        meta = {
+            "thread_ts": thread_ts,
+            "user_id": "U_LEGACY",
+            "username": "legacy_user",
+            "observation_tokens": 50,
+            "total_sessions_observed": 2,
+            "reflection_count": 0,
+            "created_at": "2026-02-10T00:00:00+00:00",
+        }
+        store._meta_path(thread_ts).write_text(
+            json.dumps(meta, ensure_ascii=False), encoding="utf-8"
+        )
+
+        md_content = (
+            "## [2026-02-10] Session Observations\n"
+            "🔴 사용자는 커밋 메시지를 한글로 작성하는 것을 선호\n"
+            "🟡 트렐로 체크리스트를 먼저 확인하는 패턴\n"
+        )
+        store._obs_md_path(thread_ts).write_text(md_content, encoding="utf-8")
+
+        # get_record로 자동 마이그레이션 트리거
+        record = store.get_record(thread_ts)
+        assert record is not None
+        assert len(record.observations) == 2
+        assert record.observations[0]["source"] == "migrated"
+        assert not store._obs_md_path(thread_ts).exists()
+        assert store._obs_path(thread_ts).exists()
+
+        # 마이그레이션된 데이터 위에 새 관찰 수행
+        mock_observer.observe.return_value = ObserverResult(
+            observations=[
+                *record.observations,
+                {
+                    "priority": "🔴",
+                    "content": "새로운 관찰 추가됨",
+                    "session_date": "2026-02-10",
+                },
+            ],
+            candidates=[],
+        )
+
+        result = await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            thread_ts=thread_ts,
+            user_id="U_LEGACY",
+            messages=long_messages,
+            min_turn_tokens=0,
+        )
+
+        assert result is True
+
+        updated_record = store.get_record(thread_ts)
+        assert len(updated_record.observations) == 3
+        assert any("새로운 관찰 추가됨" in item["content"] for item in updated_record.observations)
+
+    @pytest.mark.asyncio
+    async def test_md_persistent_auto_migrate_then_inject(self, store):
+        """기존 .md 장기 기억 → 자동 마이그레이션 → ContextBuilder 주입"""
+        store._ensure_dirs()
+
+        md_content = "🔴 사용자는 한국어 커밋 메시지를 선호\n🟡 체크리스트 먼저 확인\n"
+        store._persistent_md_path().write_text(md_content, encoding="utf-8")
+
+        # get_persistent로 자동 마이그레이션 트리거
+        persistent = store.get_persistent()
+        assert persistent is not None
+        assert len(persistent["content"]) == 2
+        assert not store._persistent_md_path().exists()
+        assert store._persistent_content_path().exists()
+
+        # ContextBuilder로 주입 확인
+        builder = ContextBuilder(store)
+        injection = builder.build_memory_prompt(
+            "ts_new_session",
+            include_persistent=True,
+            include_session=True,
+        )
+
+        assert injection.prompt is not None
+        assert "<long-term-memory>" in injection.prompt
+        assert "한국어 커밋 메시지를 선호" in injection.prompt
+        assert injection.persistent_tokens > 0
+
+    @pytest.mark.asyncio
+    async def test_bulk_migration_then_pipeline(
+        self, store, mock_observer, long_messages
+    ):
+        """일괄 마이그레이션 모듈 실행 후 파이프라인이 정상 동작"""
+        from seosoyoung.memory.migration import migrate_memory_dir
+
+        store._ensure_dirs()
+
+        # 여러 세션의 .md 파일 배치
+        for i in range(3):
+            ts = f"ts_bulk_{i:03d}"
+            meta = {"thread_ts": ts, "user_id": "U_BULK", "total_sessions_observed": 1}
+            store._meta_path(ts).write_text(
+                json.dumps(meta), encoding="utf-8"
+            )
+            store._obs_md_path(ts).write_text(
+                f"## [2026-02-1{i}] Session\n🔴 세션 {i}의 관찰\n",
+                encoding="utf-8",
+            )
+
+        # 장기 기억 .md
+        store._persistent_md_path().write_text(
+            "🔴 기존 장기 기억\n", encoding="utf-8"
+        )
+
+        # 일괄 마이그레이션 실행
+        report = migrate_memory_dir(store.base_dir)
+
+        assert report.total_converted == 4  # 3 obs + 1 persistent
+        assert len(report.errors) == 0
+
+        # 마이그레이션 후 각 세션을 정상 로드
+        for i in range(3):
+            ts = f"ts_bulk_{i:03d}"
+            record = store.get_record(ts)
+            assert record is not None
+            assert len(record.observations) == 1
+            assert record.observations[0]["content"] == f"세션 {i}의 관찰"
+
+        # 장기 기억도 정상 로드
+        persistent = store.get_persistent()
+        assert persistent is not None
+        assert persistent["content"][0]["content"] == "기존 장기 기억"
+
+        # 마이그레이션 후 새 관찰도 정상 동작
+        mock_observer.observe.return_value = ObserverResult(
+            observations=_make_obs_items([("🔴", "마이그레이션 후 새 관찰")]),
+            candidates=[],
+        )
+
+        result = await observe_conversation(
+            store=store,
+            observer=mock_observer,
+            thread_ts="ts_bulk_000",
+            user_id="U_BULK",
+            messages=long_messages,
+            min_turn_tokens=0,
+        )
+        assert result is True

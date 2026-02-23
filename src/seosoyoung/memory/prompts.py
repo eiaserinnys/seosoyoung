@@ -78,7 +78,7 @@ def build_reflector_retry_prompt(token_count: int, target: int) -> str:
 
 def build_promoter_prompt(
     existing_persistent: list[dict],
-    candidate_entries: str,
+    candidate_entries: list[dict],
 ) -> str:
     """Promoter 프롬프트를 구성합니다."""
     existing_json = (
@@ -86,9 +86,14 @@ def build_promoter_prompt(
         if existing_persistent
         else "[]"
     )
+    candidates_json = (
+        json.dumps(candidate_entries, ensure_ascii=False, indent=2)
+        if candidate_entries
+        else "[]"
+    )
     return _load("om_promoter_system.txt").format(
         existing_persistent=existing_json,
-        candidate_entries=candidate_entries,
+        candidate_entries=candidates_json,
     )
 
 
