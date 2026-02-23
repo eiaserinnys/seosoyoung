@@ -198,8 +198,7 @@ class TestMentionHandlerThreadSession:
         handler_deps["session_manager"].exists.return_value = False
 
         with patch("seosoyoung.handlers.mention.process_thread_message") as mock_process, \
-             patch("seosoyoung.handlers.mention.get_channel_history", return_value=""), \
-             patch("seosoyoung.handlers.mention._run_recall", return_value=None):
+             patch("seosoyoung.handlers.mention.get_channel_history", return_value=""):
 
             from seosoyoung.handlers.mention import register_mention_handlers
 
@@ -240,8 +239,7 @@ class TestMentionHandlerThreadSession:
         handler_deps["session_manager"].get.return_value = None
 
         with patch("seosoyoung.handlers.mention.process_thread_message") as mock_process, \
-             patch("seosoyoung.handlers.mention.get_channel_history", return_value=""), \
-             patch("seosoyoung.handlers.mention._run_recall", return_value=None):
+             patch("seosoyoung.handlers.mention.get_channel_history", return_value=""):
 
             from seosoyoung.handlers.mention import register_mention_handlers
 

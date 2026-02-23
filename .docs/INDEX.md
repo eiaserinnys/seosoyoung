@@ -69,10 +69,6 @@
 - [`memory/store.py`](modules/memory_store.md): 관찰 로그 저장소
 - [`memory/token_counter.py`](modules/memory_token_counter.md): 토큰 카운터
 - [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리 (CLAUDE_CONFIG_DIR + Junction 방식)
-- [`recall/aggregator.py`](modules/recall_aggregator.md): 결과 집계기
-- [`recall/evaluator.py`](modules/recall_evaluator.md): 하이쿠 평가 클라이언트
-- [`recall/loader.py`](modules/recall_loader.md): 도구 정의 로더
-- [`recall/recall.py`](modules/recall_recall.md): Recall - 도구 선택 사전 분석 파이프라인
 - [`rescue/__main__.py`](modules/rescue___main__.md): python -m seosoyoung.rescue.main 실행 지원
 - [`rescue/config.py`](modules/rescue_config.md): rescue-bot 환경변수 설정
 - [`rescue/main.py`](modules/rescue_main.md): rescue-bot 메인 모듈 (메인 봇 기본 대화 기능 완전 복제)
@@ -200,16 +196,6 @@
 - `TokenCounter` (seosoyoung/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
 - `ProfileInfo` (seosoyoung/profile/manager.py:23): 프로필 정보
 - `ProfileManager` (seosoyoung/profile/manager.py:33): Claude Code 인증 프로필 관리자 (CLAUDE_CONFIG_DIR + Junction)
-- `AggregationResult` (seosoyoung/recall/aggregator.py:121): 집계 결과
-- `ResultAggregator` (seosoyoung/recall/aggregator.py:211): 결과 집계기
-- `EvaluationResult` (seosoyoung/recall/evaluator.py:182): 도구 평가 결과
-- `ToolEvaluator` (seosoyoung/recall/evaluator.py:208): 도구 적합도 평가기
-- `ToolDefinition` (seosoyoung/recall/loader.py:51): 도구 정의 기본 클래스
-- `AgentDefinition` (seosoyoung/recall/loader.py:73): 에이전트 정의
-- `SkillDefinition` (seosoyoung/recall/loader.py:95): 스킬 정의
-- `ToolLoader` (seosoyoung/recall/loader.py:125): 도구 정의 로더
-- `RecallResult` (seosoyoung/recall/recall.py:30): Recall 결과
-- `Recall` (seosoyoung/recall/recall.py:106): Recall - 도구 선택 사전 분석 파이프라인
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
 - `PendingPrompt` (seosoyoung/rescue/main.py:49): 인터벤션 대기 중인 프롬프트 정보
 - `RescueBotApp` (seosoyoung/rescue/main.py:58): rescue-bot 애플리케이션
@@ -260,7 +246,7 @@
 - `clear_runner_cache()` (seosoyoung/claude/__init__.py:57): runner 캐시를 비웁니다 (테스트용)
 - `get_cached_runner_count()` (seosoyoung/claude/__init__.py:69): 캐시된 runner 수를 반환합니다 (테스트/디버그용)
 - `run_in_new_loop()` (seosoyoung/claude/agent_runner.py:193): 별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
-- `async main()` (seosoyoung/claude/agent_runner.py:1308): 
+- `async main()` (seosoyoung/claude/agent_runner.py:1243): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:45): 역할에 맞는 ClaudeAgentRunner 반환 (캐시된 인스턴스)
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:14): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:49): 텍스트 내 모든 백틱을 이스케이프
@@ -282,12 +268,12 @@
 - `handle_compact()` (seosoyoung/handlers/commands.py:494): compact 명령어 핸들러 - 스레드 세션 컴팩트
 - `handle_profile()` (seosoyoung/handlers/commands.py:529): profile 명령어 핸들러 - 인증 프로필 관리
 - `handle_resume_list_run()` (seosoyoung/handlers/commands.py:585): 정주행 재개 명령어 핸들러
-- `extract_command()` (seosoyoung/handlers/mention.py:93): 멘션에서 명령어 추출
-- `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:119): Recall 결과를 포함한 프롬프트 구성.
-- `get_channel_history()` (seosoyoung/handlers/mention.py:185): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-- `try_handle_command()` (seosoyoung/handlers/mention.py:215): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
-- `create_session_and_run_claude()` (seosoyoung/handlers/mention.py:278): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
-- `register_mention_handlers()` (seosoyoung/handlers/mention.py:423): 멘션 핸들러 등록
+- `extract_command()` (seosoyoung/handlers/mention.py:28): 멘션에서 명령어 추출
+- `build_prompt()` (seosoyoung/handlers/mention.py:54): 프롬프트 구성.
+- `get_channel_history()` (seosoyoung/handlers/mention.py:112): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
+- `try_handle_command()` (seosoyoung/handlers/mention.py:142): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
+- `create_session_and_run_claude()` (seosoyoung/handlers/mention.py:205): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
+- `register_mention_handlers()` (seosoyoung/handlers/mention.py:327): 멘션 핸들러 등록
 - `build_slack_context()` (seosoyoung/handlers/message.py:20): 슬랙 컨텍스트 블록 문자열을 생성합니다.
 - `process_thread_message()` (seosoyoung/handlers/message.py:46): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 - `register_message_handlers()` (seosoyoung/handlers/message.py:214): 메시지 핸들러 등록
@@ -410,16 +396,10 @@
 - `generate_ltm_id()` (seosoyoung/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
 - `parse_md_observations()` (seosoyoung/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.
 - `parse_md_persistent()` (seosoyoung/memory/store.py:192): 마크다운 장기 기억을 항목 리스트로 파싱합니다.
-- `rank_results()` (seosoyoung/recall/aggregator.py:27): 평가 결과를 점수 기준으로 정렬.
-- `select_best_tool()` (seosoyoung/recall/aggregator.py:42): 최적 도구 선택.
-- `build_summary_prompt()` (seosoyoung/recall/aggregator.py:67): 요약 생성 프롬프트.
-- `build_evaluation_prompt()` (seosoyoung/recall/evaluator.py:28): 도구 평가를 위한 프롬프트 생성.
-- `parse_evaluation_response()` (seosoyoung/recall/evaluator.py:90): 평가 응답 파싱.
-- `parse_frontmatter()` (seosoyoung/recall/loader.py:19): YAML frontmatter와 본문을 분리하여 파싱.
 - `main()` (seosoyoung/rescue/main.py:664): rescue-bot 진입점
 - `build_context_usage_bar()` (seosoyoung/rescue/message_formatter.py:12): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/rescue/message_formatter.py:41): 텍스트 내 모든 백틱을 이스케이프
-- `get_runner()` (seosoyoung/rescue/runner.py:493): 모듈 레벨 RescueRunner 인스턴스를 반환
+- `get_runner()` (seosoyoung/rescue/runner.py:479): 모듈 레벨 RescueRunner 인스턴스를 반환
 - `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
 - `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
 - `build_all()` (seosoyoung/search/build.py:84): Whoosh + 임베딩 인덱스 통합 빌드.

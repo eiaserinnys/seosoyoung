@@ -3,10 +3,8 @@
 멘션 이벤트 처리 및 DM 채널에서 공유하는 명령어/세션 생성 함수를 제공합니다.
 """
 
-import asyncio
 import re
 import logging
-from pathlib import Path
 
 from seosoyoung.config import Config
 from seosoyoung.slack import download_files_sync, build_file_context
@@ -25,69 +23,6 @@ from seosoyoung.handlers.commands import (
 from seosoyoung.claude.session_context import build_initial_context, format_hybrid_context
 
 logger = logging.getLogger(__name__)
-
-# Recall 지연 임포트 (의존성 순환 방지)
-_recall = None
-
-
-def _get_recall():
-    """Recall 싱글톤 반환 (지연 초기화)"""
-    global _recall
-    if _recall is None and Config.RECALL_ENABLED:
-        try:
-            from anthropic import AsyncAnthropic
-            from seosoyoung.recall import Recall
-
-            api_key = Config.RECALL_API_KEY
-            if not api_key:
-                logger.warning("RECALL_API_KEY가 설정되지 않아 Recall 비활성화")
-                return None
-
-            workspace_path = Path.cwd()
-            client = AsyncAnthropic(api_key=api_key)
-            model = Config.RECALL_MODEL
-
-            _recall = Recall(
-                workspace_path=workspace_path,
-                client=client,
-                model=model,
-                threshold=Config.RECALL_THRESHOLD,
-                timeout=Config.RECALL_TIMEOUT,
-            )
-            logger.info(f"Recall 초기화 완료 (모델: {model})")
-        except Exception as e:
-            logger.error(f"Recall 초기화 실패: {e}")
-            return None
-    return _recall
-
-
-def _run_recall(user_request: str):
-    """Recall 실행 (동기 래퍼)
-
-    Args:
-        user_request: 사용자 요청
-
-    Returns:
-        RecallResult 또는 None
-    """
-    recall = _get_recall()
-    if not recall:
-        return None
-
-    try:
-        result = asyncio.run(recall.analyze(user_request))
-        if result.suitable_tools:
-            logger.info(
-                f"Recall 완료: {len(result.suitable_tools)}개 도구 적합, "
-                f"최고점={result.selected_tool}({result.confidence*10:.0f}점), "
-                f"시간={result.evaluation_time_ms:.0f}ms"
-            )
-        else:
-            logger.info(f"Recall 완료: 적합한 도구 없음")
-        return result
-    except Exception as e:
-        logger.error(f"Recall 실패: {e}")
-        return None
 
 
 def extract_command(text: str) -> str:
@@ -116,20 +51,18 @@ def _is_resume_list_run_command(command: str) -> bool:
     return False
 
 
-def build_prompt_with_recall(
+def build_prompt(
     context: str,
     question: str,
     file_context: str,
-    recall_result=None,
     slack_context: str = "",
 ) -> str:
-    """Recall 결과를 포함한 프롬프트 구성.
+    """프롬프트 구성.
 
     Args:
         context: 채널 히스토리 컨텍스트
         question: 사용자 질문
         file_context: 첨부 파일 컨텍스트
-        recall_result: RecallResult 객체 (선택사항)
         slack_context: 슬랙 컨텍스트 블록 문자열
 
     Returns:
@@ -142,12 +75,6 @@ def build_prompt_with_recall(
 
     if context:
         prompt_parts.append(context)
-
-    # Recall 결과 주입
-    if recall_result and recall_result.has_recommendation:
-        recall_injection = recall_result.to_prompt_injection()
-        if recall_injection:
-            prompt_parts.append(f"\n{recall_injection}")
 
     if question:
         prompt_parts.append(f"\n사용자의 질문: {question}")
@@ -367,28 +294,6 @@ def create_session_and_run_claude(
     )
     initial_msg_ts = initial_msg["ts"]
 
-    # Recall 실행
-    recall_result = None
-    if Config.RECALL_ENABLED and clean_text:
-        recall_result = _run_recall(clean_text)
-        if recall_result and recall_result.suitable_tools:
-            recall_debug_lines = ["*🔍 Recall 결과*", ""]
-            for tool_info in recall_result.suitable_tools:
-                recall_debug_lines.append(f"*{tool_info['name']}* ({tool_info['type']}) - {tool_info['score']}점")
-                if tool_info.get('approach'):
-                    recall_debug_lines.append(f"> {tool_info['approach']}")
-                if tool_info.get('reason'):
-                    for line in tool_info['reason'].split('\n'):
-                        if line.strip():
-                            recall_debug_lines.append(f"> {line}")
-                recall_debug_lines.append("")
-            recall_debug_lines.append(f"`⏱️ {recall_result.evaluation_time_ms:.0f}ms`")
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=session_thread_ts,
-                text="\n".join(recall_debug_lines),
-            )
-
     # 채널 컨텍스트 포맷팅
     context = format_hybrid_context(
         initial_ctx["messages"], initial_ctx["source_type"]
@@ -403,11 +308,10 @@ def create_session_and_run_claude(
     )
 
     # 프롬프트 구성
-    prompt = build_prompt_with_recall(
+    prompt = build_prompt(
         context=context,
         question=clean_text,
         file_context=file_context,
-        recall_result=recall_result,
         slack_context=slack_ctx,
     )
 

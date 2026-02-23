@@ -463,8 +463,8 @@ class TestProcessErrorHandling:
 class TestRateLimitEventHandling:
     """rate_limit_event (MessageParseError) 처리 테스트"""
 
-    async def test_rate_limit_event_retries_and_continues(self):
-        """rate_limit_event 1회 후 정상 종료되면 success"""
+    async def test_rate_limit_event_graceful_break(self):
+        """rate_limit_event 발생 시 재시도 없이 graceful 종료"""
         from claude_code_sdk._errors import MessageParseError
 
         from seosoyoung.rescue.runner import RescueRunner
@@ -473,45 +473,7 @@ class TestRateLimitEventHandling:
 
         mock_client = AsyncMock()
 
-        class MockAsyncIter:
-            def __init__(self):
-                self.raised = False
-
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                if not self.raised:
-                    self.raised = True
-                    raise MessageParseError(
-                        "Unknown message type: rate_limit_event",
-                        {"type": "rate_limit_event"},
-                    )
-                raise StopAsyncIteration
-
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.receive_response = MagicMock(return_value=MockAsyncIter())
-        mock_client.disconnect = AsyncMock()
-
-        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-                result = await runner.run("테스트")
-
-        assert result.success is True
-        mock_sleep.assert_called_with(1)
-
-    async def test_rate_limit_event_max_retries_exceeded(self):
-        """rate_limit_event 3회 초과 시 친화적 에러 반환"""
-        from claude_code_sdk._errors import MessageParseError
-
-        from seosoyoung.rescue.runner import RescueRunner
-
-        runner = RescueRunner()
-
-        mock_client = AsyncMock()
-
-        class MockAsyncIterAlwaysRateLimit:
+        class RateLimitThenStop:
             def __aiter__(self):
                 return self
 
@@ -523,16 +485,15 @@ class TestRateLimitEventHandling:
 
         mock_client.connect = AsyncMock()
         mock_client.query = AsyncMock()
-        mock_client.receive_response = MagicMock(return_value=MockAsyncIterAlwaysRateLimit())
+        mock_client.receive_response = MagicMock(return_value=RateLimitThenStop())
         mock_client.disconnect = AsyncMock()
 
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-                result = await runner.run("테스트")
+            result = await runner.run("테스트")
 
-        assert result.success is False
-        assert "사용량 제한" in result.error
-        assert mock_sleep.call_count == 3
+        # rate_limit_event로 while loop가 break되어 정상 종료 (output 없음)
+        assert result.success is True
+        assert result.output == ""
 
     async def test_rate_limit_event_returns_friendly_error(self):
         """rate_limit_event가 외부 except에서 잡힐 때 친화적 메시지 반환"""

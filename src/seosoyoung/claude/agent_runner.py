@@ -941,340 +941,274 @@ class ClaudeAgentRunner:
         _msg_count = 0
         _last_tool = ""
 
-        # 외부 retry loop: rate_limit_event 발생 시 client를 정리하고 새로 생성하여 재시도
-        # SDK 내부에서 rate_limit_event 수신 후 연결이 끊기므로 같은 iterator를 재사용할 수 없음
-        rate_limit_delays = [1, 3, 5]  # 재시도 대기 시간 (초)
-        max_attempts = len(rate_limit_delays) + 1  # 최초 1회 + 재시도 3회
+        try:
+            client = await self._get_or_create_client(client_key, options=options)
 
-        resuming_session = False  # 세션 이어받기 모드
-        for attempt in range(max_attempts):
-            try:
-                client = await self._get_or_create_client(client_key, options=options)
+            # OM 메모리를 첫 번째 메시지에 프리픽스로 주입
+            # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt 대신 이 방식 사용
+            effective_prompt = prompt
+            if memory_prompt:
+                effective_prompt = (
+                    f"{memory_prompt}\n\n"
+                    f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
+                    f"사용자의 질문: {prompt}"
+                )
+                logger.info(f"OM 메모리 프리픽스 주입 완료 (prompt 길이: {len(effective_prompt)})")
 
-                # 세션 이어받기 모드일 때는 "계속" 프롬프트 사용
-                if resuming_session:
-                    effective_prompt = "계속"
-                    logger.info(f"세션 이어받기 모드: 프롬프트='계속'")
-                else:
-                    # OM 메모리를 첫 번째 메시지에 프리픽스로 주입
-                    # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt 대신 이 방식 사용
-                    effective_prompt = prompt
-                    if memory_prompt:
-                        effective_prompt = (
-                            f"{memory_prompt}\n\n"
-                            f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
-                            f"사용자의 질문: {prompt}"
-                        )
-                        logger.info(f"OM 메모리 프리픽스 주입 완료 (prompt 길이: {len(effective_prompt)})")
+            await client.query(effective_prompt)
 
-                await client.query(effective_prompt)
-
-                aiter = client.receive_response().__aiter__()
-                rate_limited = False
-                session_interrupted = False  # rate_limit_event (status=allowed) 후 연결 끊김 추적
-                while True:
-                    try:
-                        message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
-                    except StopAsyncIteration:
-                        # rate_limit_event (status=allowed) 후 연결이 끊긴 경우
-                        # result_text가 없고 session_id가 있으면 세션 이어받기 시도
-                        if session_interrupted and not result_text and result_session_id:
-                            logger.info(f"rate_limit_event 후 세션 이어받기 시도 (session_id={result_session_id})")
-                            if channel and thread_ts:
-                                _send_debug_to_slack(channel, thread_ts, f"🔄 세션 이어받기 시도 (session_id={result_session_id[:8]}...)")
-                            # 세션 이어받기 위해 options.resume 설정하고 재시도
-                            options.resume = result_session_id
-                            resuming_session = True
-                            await self._remove_client(client_key)
-                            rate_limited = True  # retry loop 진입
-                        # 출력 없이 종료된 경우 진단 덤프
-                        elif not result_text and not current_text and channel and thread_ts:
-                            _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                            _pid = self._client_pids.get(client_key)
-                            dump = _build_session_dump(
-                                reason="CLI exited with no output (StopAsyncIteration)",
-                                pid=_pid,
-                                duration_sec=_dur,
-                                message_count=_msg_count,
-                                last_tool=_last_tool,
-                                current_text_len=len(current_text),
-                                result_text_len=len(result_text),
-                                session_id=result_session_id,
-                                active_clients_count=len(self._active_clients),
-                            )
-                            logger.warning(f"세션 무출력 종료 덤프: thread={thread_ts}, duration={_dur:.1f}s, msgs={_msg_count}, last_tool={_last_tool}")
-                            _send_debug_to_slack(channel, thread_ts, dump)
-                        break
-                    except MessageParseError as e:
-                        if e.data and e.data.get("type") == "rate_limit_event":
-                            # rate_limit_info.status 확인
-                            rate_limit_info = e.data.get("rate_limit_info", {})
-                            status = rate_limit_info.get("status", "")
-
-                            if status == "allowed":
-                                # status=allowed는 단순 상태 정보, SDK가 연결 끊을 수 있음
-                                session_interrupted = True
-                                continue
-
-                            # status가 allowed가 아닌 경우에만 실제 rate limit
-                            # 디버그: 슬랙에 rate_limit_event 정보 전송
-                            if channel and thread_ts:
-                                debug_msg = (
-                                    f"🔍 rate_limit_event:\n"
-                                    f"• status: `{status}`\n"
-                                    f"• data: `{json.dumps(e.data, ensure_ascii=False)[:500]}`\n"
-                                    f"• current_text: {len(current_text)} chars\n"
-                                    f"• attempt: {attempt + 1}/{max_attempts}"
-                                )
-                                _send_debug_to_slack(channel, thread_ts, debug_msg)
-
-                            logger.warning(
-                                f"rate_limit_event 발생 (status={status}): "
-                                f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
-                                f"resetsAt={rate_limit_info.get('resetsAt')}"
-                            )
-                            rate_limited = True
-                            break
-                        raise
-                    _msg_count += 1
-
-                    # SystemMessage에서 세션 ID 추출
-                    if isinstance(message, SystemMessage):
-                        if hasattr(message, 'session_id'):
-                            result_session_id = message.session_id
-                            logger.info(f"세션 ID: {result_session_id}")
-
-                    # AssistantMessage에서 텍스트/도구 사용 추출
-                    elif isinstance(message, AssistantMessage):
-                        if hasattr(message, 'content'):
-                            for block in message.content:
-                                if isinstance(block, TextBlock):
-                                    current_text = block.text
-
-                                    # OM용 대화 수집
-                                    collected_messages.append({
-                                        "role": "assistant",
-                                        "content": block.text,
-                                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                                    })
-
-                                    # 진행 상황 콜백 (2초 간격)
-                                    if on_progress:
-                                        current_time = asyncio.get_event_loop().time()
-                                        if current_time - last_progress_time >= progress_interval:
-                                            try:
-                                                display_text = current_text
-                                                if len(display_text) > 1000:
-                                                    display_text = "...\n" + display_text[-1000:]
-                                                await on_progress(display_text)
-                                                last_progress_time = current_time
-                                            except Exception as e:
-                                                logger.warning(f"진행 상황 콜백 오류: {e}")
-
-                                elif isinstance(block, ToolUseBlock):
-                                    # 도구 호출 로깅
-                                    tool_input = ""
-                                    if block.input:
-                                        tool_input = json.dumps(block.input, ensure_ascii=False)
-                                        if len(tool_input) > 2000:
-                                            tool_input = tool_input[:2000] + "..."
-                                    _last_tool = block.name
-                                    logger.info(f"[TOOL_USE] {block.name}: {tool_input[:500]}")
-                                    # OM용: 도구 호출 수집
-                                    collected_messages.append({
-                                        "role": "assistant",
-                                        "content": f"[tool_use: {block.name}] {tool_input}",
-                                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                                    })
-
-                                elif isinstance(block, ToolResultBlock):
-                                    # 도구 결과 수집 (내용이 긴 경우 truncate)
-                                    content = ""
-                                    if isinstance(block.content, str):
-                                        content = block.content[:2000]
-                                    elif block.content:
-                                        content = json.dumps(block.content, ensure_ascii=False)[:2000]
-                                    logger.info(f"[TOOL_RESULT] {content[:500]}")
-                                    collected_messages.append({
-                                        "role": "tool",
-                                        "content": content,
-                                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                                    })
-
-                    # ResultMessage에서 최종 결과 추출
-                    elif isinstance(message, ResultMessage):
-                        if hasattr(message, 'is_error'):
-                            result_is_error = message.is_error
-                        if hasattr(message, 'result'):
-                            result_text = message.result
-                        # ResultMessage에서도 세션 ID 추출 시도
-                        if hasattr(message, 'session_id') and message.session_id:
-                            result_session_id = message.session_id
-                        # usage 정보 추출
-                        if hasattr(message, 'usage') and message.usage:
-                            result_usage = message.usage
-
-                    # 컴팩션 이벤트 확인 (PreCompact 훅에서 추가된 이벤트)
-                    if on_compact and len(compact_events) > compact_notified_count:
-                        for event in compact_events[compact_notified_count:]:
-                            try:
-                                await on_compact(event["trigger"], event["message"])
-                            except Exception as e:
-                                logger.warning(f"컴팩션 콜백 오류: {e}")
-                        compact_notified_count = len(compact_events)
-
-                if rate_limited:
-                    # 현재 client를 정리하고 재시도
-                    await self._remove_client(client_key)
-
-                    if attempt < len(rate_limit_delays):
-                        wait_seconds = rate_limit_delays[attempt]
-                        logger.warning(f"rate_limit_event 수신 ({attempt + 1}/{len(rate_limit_delays)}회), {wait_seconds}초 후 새 연결로 재시도")
-                        if on_progress:
-                            try:
-                                await on_progress(f"사용량 제한 감지, {wait_seconds}초 후 재시도합니다 ({attempt + 1}/{len(rate_limit_delays)})")
-                            except Exception:
-                                pass
-                        await asyncio.sleep(wait_seconds)
-                        # 상태 초기화 후 다음 attempt로
-                        current_text = ""
-                        result_text = ""
-                        result_is_error = False
-                        result_usage = None
-                        collected_messages = []
-                        last_progress_time = asyncio.get_event_loop().time()
-                        compact_events.clear()
-                        compact_notified_count = 0
-                        _msg_count = 0
-                        _last_tool = ""
-                        continue
-                    else:
-                        logger.error(f"rate_limit_event {max_attempts}회 초과, 재시도 중단")
-                        return ClaudeResult(
-                            success=False,
-                            output=current_text,
+            aiter = client.receive_response().__aiter__()
+            while True:
+                try:
+                    message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
+                except StopAsyncIteration:
+                    # 출력 없이 종료된 경우 진단 덤프
+                    if not result_text and not current_text and channel and thread_ts:
+                        _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
+                        _pid = self._client_pids.get(client_key)
+                        dump = _build_session_dump(
+                            reason="CLI exited with no output (StopAsyncIteration)",
+                            pid=_pid,
+                            duration_sec=_dur,
+                            message_count=_msg_count,
+                            last_tool=_last_tool,
+                            current_text_len=len(current_text),
+                            result_text_len=len(result_text),
                             session_id=result_session_id,
-                            error="사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요.",
+                            active_clients_count=len(self._active_clients),
                         )
+                        logger.warning(f"세션 무출력 종료 덤프: thread={thread_ts}, duration={_dur:.1f}s, msgs={_msg_count}, last_tool={_last_tool}")
+                        _send_debug_to_slack(channel, thread_ts, dump)
+                    break
+                except MessageParseError as e:
+                    if e.data and e.data.get("type") == "rate_limit_event":
+                        rate_limit_info = e.data.get("rate_limit_info", {})
+                        status = rate_limit_info.get("status", "")
 
-                # 정상 완료
-                output = result_text or current_text
+                        if status == "allowed":
+                            continue
 
-                # 마커 추출
-                update_requested = "<!-- UPDATE -->" in output
-                restart_requested = "<!-- RESTART -->" in output
+                        if channel and thread_ts:
+                            debug_msg = (
+                                f"🔍 rate_limit_event:\n"
+                                f"• status: `{status}`\n"
+                                f"• data: `{json.dumps(e.data, ensure_ascii=False)[:500]}`\n"
+                                f"• current_text: {len(current_text)} chars"
+                            )
+                            _send_debug_to_slack(channel, thread_ts, debug_msg)
 
-                # LIST_RUN 마커 추출
-                list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
-                list_run = list_run_match.group(1).strip() if list_run_match else None
+                        logger.warning(
+                            f"rate_limit_event 발생 (status={status}): "
+                            f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
+                            f"resetsAt={rate_limit_info.get('resetsAt')}"
+                        )
+                        break
+                    raise
+                _msg_count += 1
 
-                if update_requested:
-                    logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
-                if restart_requested:
-                    logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
-                if list_run:
-                    logger.info(f"리스트 정주행 요청 마커 감지: {list_run}")
+                # SystemMessage에서 세션 ID 추출
+                if isinstance(message, SystemMessage):
+                    if hasattr(message, 'session_id'):
+                        result_session_id = message.session_id
+                        logger.info(f"세션 ID: {result_session_id}")
 
-                return ClaudeResult(
-                    success=True,
-                    output=output,
+                # AssistantMessage에서 텍스트/도구 사용 추출
+                elif isinstance(message, AssistantMessage):
+                    if hasattr(message, 'content'):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                current_text = block.text
+
+                                # OM용 대화 수집
+                                collected_messages.append({
+                                    "role": "assistant",
+                                    "content": block.text,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                })
+
+                                # 진행 상황 콜백 (2초 간격)
+                                if on_progress:
+                                    current_time = asyncio.get_event_loop().time()
+                                    if current_time - last_progress_time >= progress_interval:
+                                        try:
+                                            display_text = current_text
+                                            if len(display_text) > 1000:
+                                                display_text = "...\n" + display_text[-1000:]
+                                            await on_progress(display_text)
+                                            last_progress_time = current_time
+                                        except Exception as e:
+                                            logger.warning(f"진행 상황 콜백 오류: {e}")
+
+                            elif isinstance(block, ToolUseBlock):
+                                # 도구 호출 로깅
+                                tool_input = ""
+                                if block.input:
+                                    tool_input = json.dumps(block.input, ensure_ascii=False)
+                                    if len(tool_input) > 2000:
+                                        tool_input = tool_input[:2000] + "..."
+                                _last_tool = block.name
+                                logger.info(f"[TOOL_USE] {block.name}: {tool_input[:500]}")
+                                # OM용: 도구 호출 수집
+                                collected_messages.append({
+                                    "role": "assistant",
+                                    "content": f"[tool_use: {block.name}] {tool_input}",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                })
+
+                            elif isinstance(block, ToolResultBlock):
+                                # 도구 결과 수집 (내용이 긴 경우 truncate)
+                                content = ""
+                                if isinstance(block.content, str):
+                                    content = block.content[:2000]
+                                elif block.content:
+                                    content = json.dumps(block.content, ensure_ascii=False)[:2000]
+                                logger.info(f"[TOOL_RESULT] {content[:500]}")
+                                collected_messages.append({
+                                    "role": "tool",
+                                    "content": content,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                })
+
+                # ResultMessage에서 최종 결과 추출
+                elif isinstance(message, ResultMessage):
+                    if hasattr(message, 'is_error'):
+                        result_is_error = message.is_error
+                    if hasattr(message, 'result'):
+                        result_text = message.result
+                    # ResultMessage에서도 세션 ID 추출 시도
+                    if hasattr(message, 'session_id') and message.session_id:
+                        result_session_id = message.session_id
+                    # usage 정보 추출
+                    if hasattr(message, 'usage') and message.usage:
+                        result_usage = message.usage
+
+                # 컴팩션 이벤트 확인 (PreCompact 훅에서 추가된 이벤트)
+                if on_compact and len(compact_events) > compact_notified_count:
+                    for event in compact_events[compact_notified_count:]:
+                        try:
+                            await on_compact(event["trigger"], event["message"])
+                        except Exception as e:
+                            logger.warning(f"컴팩션 콜백 오류: {e}")
+                    compact_notified_count = len(compact_events)
+
+            # 정상 완료
+            output = result_text or current_text
+
+            # 마커 추출
+            update_requested = "<!-- UPDATE -->" in output
+            restart_requested = "<!-- RESTART -->" in output
+
+            # LIST_RUN 마커 추출
+            list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
+            list_run = list_run_match.group(1).strip() if list_run_match else None
+
+            if update_requested:
+                logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
+            if restart_requested:
+                logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
+            if list_run:
+                logger.info(f"리스트 정주행 요청 마커 감지: {list_run}")
+
+            return ClaudeResult(
+                success=True,
+                output=output,
+                session_id=result_session_id,
+                update_requested=update_requested,
+                restart_requested=restart_requested,
+                list_run=list_run,
+                collected_messages=collected_messages,
+                interrupted=result_is_error,
+                usage=result_usage,
+                anchor_ts=anchor_ts,
+            )
+
+        except asyncio.TimeoutError:
+            logger.error(f"Claude Code SDK idle 타임아웃 ({idle_timeout}초간 메시지 수신 없음)")
+            if channel and thread_ts:
+                _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
+                _pid = self._client_pids.get(client_key)
+                dump = _build_session_dump(
+                    reason=f"Idle timeout ({idle_timeout}s)",
+                    pid=_pid,
+                    duration_sec=_dur,
+                    message_count=_msg_count,
+                    last_tool=_last_tool,
+                    current_text_len=len(current_text),
+                    result_text_len=len(result_text),
                     session_id=result_session_id,
-                    update_requested=update_requested,
-                    restart_requested=restart_requested,
-                    list_run=list_run,
-                    collected_messages=collected_messages,
-                    interrupted=result_is_error,
-                    usage=result_usage,
-                    anchor_ts=anchor_ts,
+                    active_clients_count=len(self._active_clients),
                 )
-
-            except asyncio.TimeoutError:
-                logger.error(f"Claude Code SDK idle 타임아웃 ({idle_timeout}초간 메시지 수신 없음)")
-                if channel and thread_ts:
-                    _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                    _pid = self._client_pids.get(client_key)
-                    dump = _build_session_dump(
-                        reason=f"Idle timeout ({idle_timeout}s)",
-                        pid=_pid,
-                        duration_sec=_dur,
-                        message_count=_msg_count,
-                        last_tool=_last_tool,
-                        current_text_len=len(current_text),
-                        result_text_len=len(result_text),
-                        session_id=result_session_id,
-                        active_clients_count=len(self._active_clients),
-                    )
-                    _send_debug_to_slack(channel, thread_ts, dump)
+                _send_debug_to_slack(channel, thread_ts, dump)
+            return ClaudeResult(
+                success=False,
+                output=current_text,
+                session_id=result_session_id,
+                error=f"타임아웃: {idle_timeout}초간 SDK 응답 없음",
+                collected_messages=collected_messages,
+            )
+        except FileNotFoundError as e:
+            logger.error(f"Claude Code CLI를 찾을 수 없습니다: {e}")
+            return ClaudeResult(
+                success=False,
+                output="",
+                error="Claude Code CLI를 찾을 수 없습니다. claude 명령어가 PATH에 있는지 확인하세요."
+            )
+        except ProcessError as e:
+            friendly_msg = _classify_process_error(e)
+            logger.error(f"Claude Code CLI 프로세스 오류: exit_code={e.exit_code}, stderr={e.stderr}, friendly={friendly_msg}")
+            # 진단 덤프
+            if channel and thread_ts:
+                _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
+                _pid = self._client_pids.get(client_key)
+                dump = _build_session_dump(
+                    reason="ProcessError",
+                    pid=_pid,
+                    duration_sec=_dur,
+                    message_count=_msg_count,
+                    last_tool=_last_tool,
+                    current_text_len=len(current_text),
+                    result_text_len=len(result_text),
+                    session_id=result_session_id,
+                    exit_code=e.exit_code,
+                    error_detail=str(e.stderr or e),
+                    active_clients_count=len(self._active_clients),
+                )
+                _send_debug_to_slack(channel, thread_ts, dump)
+            return ClaudeResult(
+                success=False,
+                output=current_text,
+                session_id=result_session_id,
+                error=friendly_msg,
+            )
+        except MessageParseError as e:
+            if e.data and e.data.get("type") == "rate_limit_event":
+                logger.warning(f"rate_limit_event로 실행 실패: {e}")
                 return ClaudeResult(
                     success=False,
                     output=current_text,
                     session_id=result_session_id,
-                    error=f"타임아웃: {idle_timeout}초간 SDK 응답 없음",
-                    collected_messages=collected_messages,
+                    error="사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요.",
                 )
-            except FileNotFoundError as e:
-                logger.error(f"Claude Code CLI를 찾을 수 없습니다: {e}")
-                return ClaudeResult(
-                    success=False,
-                    output="",
-                    error="Claude Code CLI를 찾을 수 없습니다. claude 명령어가 PATH에 있는지 확인하세요."
-                )
-            except ProcessError as e:
-                friendly_msg = _classify_process_error(e)
-                logger.error(f"Claude Code CLI 프로세스 오류: exit_code={e.exit_code}, stderr={e.stderr}, friendly={friendly_msg}")
-                # 진단 덤프
-                if channel and thread_ts:
-                    _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                    _pid = self._client_pids.get(client_key)
-                    dump = _build_session_dump(
-                        reason="ProcessError",
-                        pid=_pid,
-                        duration_sec=_dur,
-                        message_count=_msg_count,
-                        last_tool=_last_tool,
-                        current_text_len=len(current_text),
-                        result_text_len=len(result_text),
-                        session_id=result_session_id,
-                        exit_code=e.exit_code,
-                        error_detail=str(e.stderr or e),
-                        active_clients_count=len(self._active_clients),
-                    )
-                    _send_debug_to_slack(channel, thread_ts, dump)
-                return ClaudeResult(
-                    success=False,
-                    output=current_text,
-                    session_id=result_session_id,
-                    error=friendly_msg,
-                )
-            except MessageParseError as e:
-                if e.data and e.data.get("type") == "rate_limit_event":
-                    logger.warning(f"rate_limit_event로 실행 실패: {e}")
-                    return ClaudeResult(
-                        success=False,
-                        output=current_text,
-                        session_id=result_session_id,
-                        error="사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요.",
-                    )
-                logger.exception(f"SDK 메시지 파싱 오류: {e}")
-                return ClaudeResult(
-                    success=False,
-                    output=current_text,
-                    session_id=result_session_id,
-                    error="Claude 응답 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
-                )
-            except Exception as e:
-                logger.exception(f"Claude Code SDK 실행 오류: {e}")
-                return ClaudeResult(
-                    success=False,
-                    output=current_text,
-                    session_id=result_session_id,
-                    error=str(e)
-                )
-            finally:
-                # 응답 완료 또는 에러 시 클라이언트 정리
-                await self._remove_client(client_key)
-                with self._clients_lock:
-                    self._execution_loops.pop(client_key, None)
+            logger.exception(f"SDK 메시지 파싱 오류: {e}")
+            return ClaudeResult(
+                success=False,
+                output=current_text,
+                session_id=result_session_id,
+                error="Claude 응답 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+            )
+        except Exception as e:
+            logger.exception(f"Claude Code SDK 실행 오류: {e}")
+            return ClaudeResult(
+                success=False,
+                output=current_text,
+                session_id=result_session_id,
+                error=str(e)
+            )
+        finally:
+            # 응답 완료 또는 에러 시 클라이언트 정리
+            await self._remove_client(client_key)
+            with self._clients_lock:
+                self._execution_loops.pop(client_key, None)
 
     async def compact_session(self, session_id: str) -> ClaudeResult:
         """세션 컴팩트 처리

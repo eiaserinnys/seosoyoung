@@ -71,15 +71,6 @@ class Config:
     BOT_USER_ID: str | None = None  # 런타임에 auth.test()로 설정
 
     # ========================================
-    # Recall 설정 (도구 선택 사전 분석)
-    # ========================================
-    RECALL_API_KEY = os.getenv("RECALL_API_KEY")
-    RECALL_ENABLED = _parse_bool(os.getenv("RECALL_ENABLED"), False)
-    RECALL_MODEL = os.getenv("RECALL_MODEL", "claude-3-5-haiku-latest")
-    RECALL_THRESHOLD = _parse_int(os.getenv("RECALL_THRESHOLD"), 5)
-    RECALL_TIMEOUT = _parse_float(os.getenv("RECALL_TIMEOUT"), 10.0)
-
-    # ========================================
     # 권한 설정
     # ========================================
     ALLOWED_USERS = os.getenv("ALLOWED_USERS", "").split(",")
