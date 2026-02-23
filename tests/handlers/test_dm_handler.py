@@ -134,18 +134,16 @@ class TestDmMessageDetection:
 class TestDmFirstMessage:
     """DM 첫 메시지 처리 테스트 (세션 생성 + Claude 실행)"""
 
-    @patch("seosoyoung.handlers.mention._run_recall", return_value=None)
     @patch("seosoyoung.handlers.mention._get_channel_messages", return_value=[])
     @patch("seosoyoung.handlers.mention.Config")
     @patch("seosoyoung.handlers.message.Config")
     def test_dm_first_message_creates_session(
-        self, mock_msg_config, mock_mention_config, mock_get_msgs, mock_recall
+        self, mock_msg_config, mock_mention_config, mock_get_msgs
     ):
         """DM 첫 메시지 → 세션 생성 + Claude 실행"""
         mock_msg_config.BOT_USER_ID = "B_BOT"
         mock_msg_config.TRANSLATE_CHANNELS = []
         mock_msg_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
-        mock_mention_config.RECALL_ENABLED = False
         mock_mention_config.CHANNEL_OBSERVER_CHANNELS = []
 
         from seosoyoung.handlers.message import register_message_handlers

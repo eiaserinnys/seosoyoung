@@ -66,30 +66,6 @@ class TestConfigValidation:
 class TestConfigConsistency:
     """설정 접근 방식 일관성 테스트"""
 
-    def test_recall_settings_are_class_variables(self):
-        """Recall 설정은 클래스 변수로 접근 가능해야 함"""
-        config_module = reload_config_with_env({
-            "RECALL_ENABLED": "true",
-            "RECALL_MODEL": "claude-3-opus",
-            "RECALL_THRESHOLD": "7",
-            "RECALL_TIMEOUT": "15.0",
-        })
-
-        # 클래스 변수로 접근 가능해야 함
-        assert config_module.Config.RECALL_ENABLED is True
-        assert config_module.Config.RECALL_MODEL == "claude-3-opus"
-        assert config_module.Config.RECALL_THRESHOLD == 7
-        assert config_module.Config.RECALL_TIMEOUT == 15.0
-
-    def test_recall_settings_defaults(self):
-        """Recall 설정 기본값 확인"""
-        config_module = reload_config_with_env({})
-
-        assert config_module.Config.RECALL_ENABLED is False
-        assert config_module.Config.RECALL_MODEL == "claude-3-5-haiku-latest"
-        assert config_module.Config.RECALL_THRESHOLD == 5
-        assert config_module.Config.RECALL_TIMEOUT == 10.0
-
     def test_path_methods_exist(self):
         """경로 관련 메서드는 여전히 존재해야 함"""
         from seosoyoung.config import Config

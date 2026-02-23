@@ -10,26 +10,12 @@
 
 ## 함수
 
-### `_get_recall()`
-- 위치: 줄 33
-- 설명: Recall 싱글톤 반환 (지연 초기화)
-
-### `_run_recall(user_request)`
-- 위치: 줄 64
-- 설명: Recall 실행 (동기 래퍼)
-
-Args:
-    user_request: 사용자 요청
-
-Returns:
-    RecallResult 또는 None
-
 ### `extract_command(text)`
-- 위치: 줄 93
+- 위치: 줄 28
 - 설명: 멘션에서 명령어 추출
 
 ### `_is_resume_list_run_command(command)`
-- 위치: 줄 99
+- 위치: 줄 34
 - 설명: 정주행 재개 명령어인지 확인
 
 다음과 같은 패턴을 인식합니다:
@@ -38,38 +24,37 @@ Returns:
 - 리스트런 재개
 - resume list run
 
-### `build_prompt_with_recall(context, question, file_context, recall_result, slack_context)`
-- 위치: 줄 119
-- 설명: Recall 결과를 포함한 프롬프트 구성.
+### `build_prompt(context, question, file_context, slack_context)`
+- 위치: 줄 54
+- 설명: 프롬프트 구성.
 
 Args:
     context: 채널 히스토리 컨텍스트
     question: 사용자 질문
     file_context: 첨부 파일 컨텍스트
-    recall_result: RecallResult 객체 (선택사항)
     slack_context: 슬랙 컨텍스트 블록 문자열
 
 Returns:
     구성된 프롬프트 문자열
 
 ### `_get_channel_messages(client, channel, limit)`
-- 위치: 줄 163
+- 위치: 줄 90
 - 설명: 채널의 최근 메시지를 가져와서 dict 리스트로 반환
 
 ### `_format_context_messages(messages)`
-- 위치: 줄 175
+- 위치: 줄 102
 - 설명: 메시지 dict 리스트를 컨텍스트 문자열로 포맷팅
 
 ### `get_channel_history(client, channel, limit)`
-- 위치: 줄 185
+- 위치: 줄 112
 - 설명: 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 
 ### `_is_admin_command(command)`
-- 위치: 줄 206
+- 위치: 줄 133
 - 설명: 관리자 명령어 여부 판별
 
 ### `try_handle_command(command, text, channel, ts, thread_ts, user_id, say, client, deps)`
-- 위치: 줄 215
+- 위치: 줄 142
 - 설명: 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
 
 handle_mention과 DM 핸들러에서 공유합니다.
@@ -86,7 +71,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `create_session_and_run_claude(event, clean_text, channel, ts, thread_ts, user_id, say, client, deps)`
-- 위치: 줄 278
+- 위치: 줄 205
 - 설명: 세션 생성 + 컨텍스트 빌드 + Claude 실행.
 
 handle_mention과 DM 핸들러에서 공유합니다.
@@ -103,7 +88,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 423
+- 위치: 줄 327
 - 설명: 멘션 핸들러 등록
 
 Args:
