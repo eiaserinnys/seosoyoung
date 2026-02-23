@@ -427,6 +427,199 @@ class ClaudeAgentRunner:
             logger.warning(f"인터럽트 실패: thread={thread_ts}, {e}")
             return False
 
+    def _build_compact_hook(
+        self,
+        compact_events: Optional[list],
+        thread_ts: Optional[str],
+    ) -> Optional[dict]:
+        """PreCompact 훅을 생성합니다.
+
+        Args:
+            compact_events: 컴팩션 이벤트를 수집할 리스트. None이면 훅 미설정.
+            thread_ts: OM inject 플래그 설정용 스레드 타임스탬프
+
+        Returns:
+            hooks dict 또는 None
+        """
+        if compact_events is None:
+            return None
+
+        async def on_pre_compact(
+            hook_input: dict,
+            tool_use_id: Optional[str],
+            context: HookContext,
+        ) -> HookJSONOutput:
+            trigger = hook_input.get("trigger", "auto")
+            logger.info(f"PreCompact 훅 트리거: trigger={trigger}")
+            compact_events.append({
+                "trigger": trigger,
+                "message": f"컨텍스트 컴팩트 실행됨 (트리거: {trigger})",
+            })
+
+            # OM: 컴팩션 시 다음 요청에 관찰 로그 재주입하도록 플래그 설정
+            if thread_ts:
+                try:
+                    from seosoyoung.config import Config
+                    if Config.OM_ENABLED:
+                        from seosoyoung.memory.store import MemoryStore
+                        store = MemoryStore(Config.get_memory_path())
+                        record = store.get_record(thread_ts)
+                        if record and record.observations.strip():
+                            store.set_inject_flag(thread_ts)
+                            logger.info(f"OM inject 플래그 설정 (PreCompact, thread={thread_ts})")
+                except Exception as e:
+                    logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
+
+            return HookJSONOutput()  # 빈 응답 = 컴팩션 진행 허용
+
+        return {
+            "PreCompact": [
+                HookMatcher(matcher=None, hooks=[on_pre_compact])
+            ]
+        }
+
+    def _create_or_load_debug_anchor(
+        self,
+        thread_ts: str,
+        session_id: Optional[str],
+        store: "MemoryStore",
+        prompt: Optional[str],
+        debug_channel: str,
+    ) -> str:
+        """디버그 앵커 메시지를 생성하거나 기존 앵커를 로드합니다.
+
+        새 세션이면 앵커 메시지를 생성하고 MemoryRecord에 저장합니다.
+        기존 세션이면 MemoryRecord에서 저장된 anchor_ts를 로드합니다.
+
+        Args:
+            thread_ts: 스레드 타임스탬프
+            session_id: 세션 ID (None이면 새 세션)
+            store: MemoryStore 인스턴스
+            prompt: 사용자 프롬프트 (앵커 미리보기용)
+            debug_channel: 디버그 채널 ID
+
+        Returns:
+            anchor_ts (빈 문자열이면 앵커 없음)
+        """
+        if not debug_channel:
+            return ""
+
+        # 기존 세션: MemoryRecord에서 저장된 anchor_ts 로드
+        if session_id is not None:
+            record = store.get_record(thread_ts)
+            return getattr(record, "anchor_ts", "") or ""
+
+        # 새 세션: 앵커 메시지 생성
+        try:
+            from seosoyoung.config import Config
+            from seosoyoung.memory.observation_pipeline import _send_debug_log
+            from seosoyoung.memory.store import MemoryRecord
+
+            safe_prompt = prompt or ""
+            preview = safe_prompt[:80]
+            if len(safe_prompt) > 80:
+                preview += "…"
+            anchor_ts = _send_debug_log(
+                debug_channel,
+                f"{Config.EMOJI_TEXT_SESSION_START} *OM | 세션 시작 감지* `{thread_ts}`\n>{preview}",
+            )
+            if anchor_ts:
+                record = store.get_record(thread_ts)
+                if record is None:
+                    record = MemoryRecord(thread_ts=thread_ts)
+                record.anchor_ts = anchor_ts
+                store.save_record(record)
+            return anchor_ts or ""
+        except Exception as e:
+            logger.warning(f"OM 앵커 메시지 생성 실패 (무시): {e}")
+            return ""
+
+    def _prepare_memory_injection(
+        self,
+        thread_ts: Optional[str],
+        channel: Optional[str],
+        session_id: Optional[str],
+        prompt: Optional[str],
+    ) -> tuple[Optional[str], str]:
+        """OM 메모리 주입을 준비합니다.
+
+        장기 기억, 세션 관찰, 채널 관찰 등을 수집하여
+        첫 번째 query 메시지에 프리픽스로 주입할 프롬프트를 생성합니다.
+
+        Args:
+            thread_ts: 스레드 타임스탬프
+            channel: 슬랙 채널 ID
+            session_id: 세션 ID (None이면 새 세션)
+            prompt: 사용자 프롬프트 (앵커 미리보기용)
+
+        Returns:
+            (memory_prompt, anchor_ts) 튜플
+        """
+        if not thread_ts:
+            return None, ""
+
+        try:
+            from seosoyoung.config import Config
+            if not Config.OM_ENABLED:
+                return None, ""
+
+            from seosoyoung.memory.context_builder import ContextBuilder, InjectionResult
+            from seosoyoung.memory.store import MemoryStore
+
+            store = MemoryStore(Config.get_memory_path())
+            is_new_session = session_id is None
+            should_inject_session = store.check_and_clear_inject_flag(thread_ts)
+
+            # 채널 관찰: 관찰 대상 채널에서 멘션될 때만 주입
+            channel_store = None
+            include_channel_obs = False
+            if (
+                is_new_session
+                and Config.CHANNEL_OBSERVER_ENABLED
+                and channel
+                and channel in Config.CHANNEL_OBSERVER_CHANNELS
+            ):
+                from seosoyoung.memory.channel_store import ChannelStore
+                channel_store = ChannelStore(Config.get_memory_path())
+                include_channel_obs = True
+
+            builder = ContextBuilder(store, channel_store=channel_store)
+            result: InjectionResult = builder.build_memory_prompt(
+                thread_ts,
+                max_tokens=Config.OM_MAX_OBSERVATION_TOKENS,
+                include_persistent=is_new_session,
+                include_session=should_inject_session,
+                include_channel_observation=include_channel_obs,
+                channel_id=channel,
+                include_new_observations=True,
+            )
+
+            memory_prompt: Optional[str] = None
+            if result.prompt:
+                memory_prompt = result.prompt
+                logger.info(
+                    f"OM 주입 준비 완료 (thread={thread_ts}, "
+                    f"LTM={result.persistent_tokens} tok, "
+                    f"새관찰={result.new_observation_tokens} tok, "
+                    f"세션={result.session_tokens} tok, "
+                    f"채널={result.channel_digest_tokens}+{result.channel_buffer_tokens} tok)"
+                )
+
+            # 앵커 ts: 새 세션이면 생성, 기존 세션이면 MemoryRecord에서 로드
+            anchor_ts = self._create_or_load_debug_anchor(
+                thread_ts, session_id, store, prompt, Config.OM_DEBUG_CHANNEL,
+            )
+
+            # 디버그 로그 이벤트 #7, #8: 주입 정보
+            self._send_injection_debug_log(
+                thread_ts, result, Config.OM_DEBUG_CHANNEL, anchor_ts=anchor_ts,
+            )
+
+            return memory_prompt, anchor_ts
+        except Exception as e:
+            logger.warning(f"OM 주입 실패 (무시): {e}")
+            return None, ""
+
     def _build_options(
         self,
         session_id: Optional[str] = None,
@@ -442,56 +635,15 @@ class ClaudeAgentRunner:
             (options, memory_prompt, anchor_ts)
             - memory_prompt는 첫 번째 query에 프리픽스로 주입합니다.
             - anchor_ts는 디버그 채널의 세션 스레드 앵커 메시지 ts입니다.
-            append_system_prompt는 CLI 인자 크기 제한이 있어 장기 기억이 커지면 실패하므로,
-            메모리는 첫 번째 사용자 메시지에 주입하는 방식을 사용합니다.
 
         참고: env 파라미터를 명시적으로 전달하지 않으면
         Claude Code CLI가 현재 프로세스의 환경변수를 상속받습니다.
-        이 방식이 API 키 등을 안전하게 전달하는 가장 간단한 방법입니다.
-
         channel과 thread_ts가 모두 제공되면 env에 SLACK_CHANNEL, SLACK_THREAD_TS를
-        명시적으로 설정합니다. MCP 서버(seosoyoung-attach)가 이 값을 사용하여
-        파일을 올바른 스레드에 첨부합니다.
+        명시적으로 설정합니다.
         """
-        # PreCompact 훅 설정
-        hooks = None
-        if compact_events is not None:
-            async def on_pre_compact(
-                hook_input: dict,
-                tool_use_id: Optional[str],
-                context: HookContext,
-            ) -> HookJSONOutput:
-                trigger = hook_input.get("trigger", "auto")
-                logger.info(f"PreCompact 훅 트리거: trigger={trigger}")
-                compact_events.append({
-                    "trigger": trigger,
-                    "message": f"컨텍스트 컴팩트 실행됨 (트리거: {trigger})",
-                })
-
-                # OM: 컴팩션 시 다음 요청에 관찰 로그 재주입하도록 플래그 설정
-                if thread_ts:
-                    try:
-                        from seosoyoung.config import Config
-                        if Config.OM_ENABLED:
-                            from seosoyoung.memory.store import MemoryStore
-                            store = MemoryStore(Config.get_memory_path())
-                            record = store.get_record(thread_ts)
-                            if record and record.observations.strip():
-                                store.set_inject_flag(thread_ts)
-                                logger.info(f"OM inject 플래그 설정 (PreCompact, thread={thread_ts})")
-                    except Exception as e:
-                        logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
-
-                return HookJSONOutput()  # 빈 응답 = 컴팩션 진행 허용
-
-            hooks = {
-                "PreCompact": [
-                    HookMatcher(matcher=None, hooks=[on_pre_compact])
-                ]
-            }
+        hooks = self._build_compact_hook(compact_events, thread_ts)
 
         # 슬랙 컨텍스트가 있으면 env에 주입 (MCP 서버용)
-        # SDK는 env가 항상 dict이길 기대하므로 빈 dict를 기본값으로 사용
         env: dict[str, str] = {}
         if channel and thread_ts:
             env["SLACK_CHANNEL"] = channel
@@ -499,8 +651,7 @@ class ClaudeAgentRunner:
 
         # DEBUG: CLI stderr를 파일에 캡처
         import sys as _sys
-        # logs 디렉토리: seosoyoung 패키지 기준으로 계산
-        _runtime_dir = Path(__file__).resolve().parents[3]  # src/seosoyoung/claude/agent_runner.py -> seosoyoung_runtime
+        _runtime_dir = Path(__file__).resolve().parents[3]
         _stderr_log_path = _runtime_dir / "logs" / "cli_stderr.log"
         logger.info(f"[DEBUG] CLI stderr 로그 경로: {_stderr_log_path}")
         try:
@@ -514,103 +665,20 @@ class ClaudeAgentRunner:
         options = ClaudeCodeOptions(
             allowed_tools=self.allowed_tools,
             disallowed_tools=self.disallowed_tools,
-            permission_mode="bypassPermissions",  # dangerously-skip-permissions 대응
+            permission_mode="bypassPermissions",
             cwd=self.working_dir,
             hooks=hooks,
             env=env,
-            extra_args={"debug-to-stderr": None},  # DEBUG: stderr 출력 활성화
-            debug_stderr=_stderr_file,  # DEBUG: stderr를 파일에 기록
+            extra_args={"debug-to-stderr": None},
+            debug_stderr=_stderr_file,
         )
 
-        # 세션 재개
         if session_id:
             options.resume = session_id
 
-        # OM 디버그 채널 앵커 ts — 세션별 스레드 통합용
-        anchor_ts: str = ""
-
-        # Observational Memory: 장기 기억은 새 세션 시작 시만, 세션 관찰은 컴팩션 후만 주입
-        # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt가 아닌
-        # 첫 번째 query 메시지에 프리픽스로 주입합니다.
-        memory_prompt: Optional[str] = None
-        if thread_ts:
-            try:
-                from seosoyoung.config import Config
-                if Config.OM_ENABLED:
-                    from seosoyoung.memory.context_builder import ContextBuilder, InjectionResult
-                    from seosoyoung.memory.store import MemoryStore
-
-                    store = MemoryStore(Config.get_memory_path())
-                    is_new_session = session_id is None  # 새 세션일 때만 장기 기억 주입
-                    should_inject_session = store.check_and_clear_inject_flag(thread_ts)
-
-                    # 채널 관찰: 관찰 대상 채널에서 멘션될 때만 주입
-                    channel_store = None
-                    include_channel_obs = False
-                    if (
-                        is_new_session
-                        and Config.CHANNEL_OBSERVER_ENABLED
-                        and channel
-                        and channel in Config.CHANNEL_OBSERVER_CHANNELS
-                    ):
-                        from seosoyoung.memory.channel_store import ChannelStore
-                        channel_store = ChannelStore(Config.get_memory_path())
-                        include_channel_obs = True
-
-                    builder = ContextBuilder(store, channel_store=channel_store)
-                    result: InjectionResult = builder.build_memory_prompt(
-                        thread_ts,
-                        max_tokens=Config.OM_MAX_OBSERVATION_TOKENS,
-                        include_persistent=is_new_session,          # 장기 기억: 새 세션만
-                        include_session=should_inject_session,  # 세션 관찰: 컴팩션 후만 (inject 플래그)
-                        include_channel_observation=include_channel_obs,
-                        channel_id=channel,
-                        include_new_observations=True,               # 새 관찰: 매 턴 (현재 세션 diff)
-                    )
-
-                    if result.prompt:
-                        memory_prompt = result.prompt
-                        logger.info(
-                            f"OM 주입 준비 완료 (thread={thread_ts}, "
-                            f"LTM={result.persistent_tokens} tok, "
-                            f"새관찰={result.new_observation_tokens} tok, "
-                            f"세션={result.session_tokens} tok, "
-                            f"채널={result.channel_digest_tokens}+{result.channel_buffer_tokens} tok)"
-                        )
-
-                    # 앵커 ts: 새 세션이면 생성, 기존 세션이면 MemoryRecord에서 로드
-                    if is_new_session and Config.OM_DEBUG_CHANNEL:
-                        try:
-                            from seosoyoung.memory.observation_pipeline import _send_debug_log
-                            preview = (prompt or "")[:80]
-                            if len(prompt or "") > 80:
-                                preview += "…"
-                            anchor_ts = _send_debug_log(
-                                Config.OM_DEBUG_CHANNEL,
-                                f"{Config.EMOJI_TEXT_SESSION_START} *OM | 세션 시작 감지* `{thread_ts}`\n>{preview}",
-                            )
-                            # 새 세션 앵커 ts를 MemoryRecord에 저장 (후속 턴에서 재사용)
-                            if anchor_ts:
-                                record = store.get_record(thread_ts)
-                                if record is None:
-                                    from seosoyoung.memory.store import MemoryRecord
-                                    record = MemoryRecord(thread_ts=thread_ts)
-                                record.anchor_ts = anchor_ts
-                                store.save_record(record)
-                        except Exception as e:
-                            logger.warning(f"OM 앵커 메시지 생성 실패 (무시): {e}")
-                    elif not is_new_session and Config.OM_DEBUG_CHANNEL:
-                        # 기존 세션: MemoryRecord에서 저장된 anchor_ts 로드
-                        record = store.get_record(thread_ts)
-                        if record and record.anchor_ts:
-                            anchor_ts = record.anchor_ts
-
-                    # 디버그 로그 이벤트 #7, #8: 주입 정보
-                    self._send_injection_debug_log(
-                        thread_ts, result, Config.OM_DEBUG_CHANNEL, anchor_ts=anchor_ts,
-                    )
-            except Exception as e:
-                logger.warning(f"OM 주입 실패 (무시): {e}")
+        memory_prompt, anchor_ts = self._prepare_memory_injection(
+            thread_ts, channel, session_id, prompt,
+        )
 
         return options, memory_prompt, anchor_ts
 
