@@ -12,29 +12,31 @@ Claude Code SDK 기반 실행기
 - 위치: 줄 178
 - 설명: Claude Code 실행 결과
 
-### `ClaudeAgentRunner`
-- 위치: 줄 217
+### `ClaudeRunner`
+- 위치: 줄 295
 - 설명: Claude Code SDK 기반 실행기
+
+thread_ts 단위 인스턴스: 각 인스턴스가 자신의 client/pid/execution_loop를 소유합니다.
 
 #### 메서드
 
-- `__init__(self, working_dir, timeout, allowed_tools, disallowed_tools, mcp_config_path)` (줄 226): 
-- `async shutdown_all_clients(cls)` (줄 242): 모든 활성 클라이언트 종료
-- `shutdown_all_clients_sync(cls)` (줄 281): 모든 활성 클라이언트 종료 (동기 버전)
-- `run_sync(self, coro)` (줄 298): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
-- `async _get_or_create_client(self, thread_ts, options)` (줄 306): 스레드에 대한 ClaudeSDKClient를 가져오거나 새로 생성
-- `async _remove_client(self, thread_ts)` (줄 361): 스레드의 ClaudeSDKClient를 정리
-- `_force_kill_process(pid, thread_ts)` (줄 384): psutil을 사용하여 프로세스를 강제 종료
-- `interrupt(self, thread_ts)` (줄 407): 실행 중인 스레드에 인터럽트 전송 (동기)
-- `_build_compact_hook(self, compact_events, thread_ts)` (줄 430): PreCompact 훅을 생성합니다.
-- `_create_or_load_debug_anchor(self, thread_ts, session_id, store, prompt, debug_channel)` (줄 481): 디버그 앵커 메시지를 생성하거나 기존 앵커를 로드합니다.
-- `_prepare_memory_injection(self, thread_ts, channel, session_id, prompt)` (줄 537): OM 메모리 주입을 준비합니다.
-- `_build_options(self, session_id, compact_events, user_id, thread_ts, channel, prompt)` (줄 623): ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts를 함께 반환합니다.
-- `_send_injection_debug_log(thread_ts, result, debug_channel, anchor_ts)` (줄 686): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
-- `async run(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel, user_message)` (줄 769): Claude Code 실행
-- `_trigger_observation(self, thread_ts, user_id, prompt, collected_messages, anchor_ts)` (줄 802): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
-- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel)` (줄 895): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 1213): 세션 컴팩트 처리
+- `__init__(self, thread_ts)` (줄 301): 
+- `async shutdown_all_clients(cls)` (줄 327): 하위 호환: 모듈 레벨 shutdown_all()로 위임
+- `shutdown_all_clients_sync(cls)` (줄 332): 하위 호환: 모듈 레벨 shutdown_all_sync()로 위임
+- `run_sync(self, coro)` (줄 336): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
+- `async _get_or_create_client(self, options)` (줄 344): ClaudeSDKClient를 가져오거나 새로 생성
+- `async _remove_client(self)` (줄 394): 이 러너의 ClaudeSDKClient를 정리
+- `_force_kill_process(pid, thread_ts)` (줄 417): psutil을 사용하여 프로세스를 강제 종료
+- `interrupt(self)` (줄 440): 이 러너에 인터럽트 전송 (동기)
+- `_build_compact_hook(self, compact_events)` (줄 459): PreCompact 훅을 생성합니다.
+- `_create_or_load_debug_anchor(self, thread_ts, session_id, store, prompt, debug_channel)` (줄 510): 디버그 앵커 메시지를 생성하거나 기존 앵커를 로드합니다.
+- `_prepare_memory_injection(self, session_id, prompt)` (줄 566): OM 메모리 주입을 준비합니다.
+- `_build_options(self, session_id, compact_events, user_id, prompt)` (줄 650): ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts를 함께 반환합니다.
+- `_send_injection_debug_log(thread_ts, result, debug_channel, anchor_ts)` (줄 713): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
+- `async run(self, prompt, session_id, on_progress, on_compact, user_id, user_message)` (줄 796): Claude Code 실행
+- `_trigger_observation(self, thread_ts, user_id, prompt, collected_messages, anchor_ts)` (줄 826): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
+- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id)` (줄 919): 실제 실행 로직 (ClaudeSDKClient 기반)
+- `async compact_session(self, session_id)` (줄 1238): 세션 컴팩트 처리
 
 ## 함수
 
@@ -69,5 +71,35 @@ exit_code와 stderr 패턴을 기반으로 최대한 분류합니다.
 각 호출마다 격리된 이벤트 루프를 생성하여
 이전 실행의 anyio 잔여물이 영향을 미치지 않도록 합니다.
 
+### `get_runner(thread_ts)`
+- 위치: 줄 224
+- 설명: 레지스트리에서 러너 조회
+
+### `register_runner(runner)`
+- 위치: 줄 230
+- 설명: 레지스트리에 러너 등록
+
+### `remove_runner(thread_ts)`
+- 위치: 줄 236
+- 설명: 레지스트리에서 러너 제거
+
+### `async shutdown_all()`
+- 위치: 줄 242
+- 설명: 모든 등록된 러너의 클라이언트를 종료
+
+프로세스 종료 전에 호출하여 고아 프로세스를 방지합니다.
+
+Returns:
+    종료된 클라이언트 수
+
+### `shutdown_all_sync()`
+- 위치: 줄 277
+- 설명: 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+
+시그널 핸들러 등 동기 컨텍스트에서 사용합니다.
+
+Returns:
+    종료된 클라이언트 수
+
 ### `async main()`
-- 위치: 줄 1243
+- 위치: 줄 1272

@@ -103,10 +103,10 @@
 ### 주요 클래스
 
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:178): Claude Code 실행 결과
-- `ClaudeAgentRunner` (seosoyoung/claude/agent_runner.py:217): Claude Code SDK 기반 실행기
-- `ExecutionContext` (seosoyoung/claude/executor.py:69): 실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
-- `PendingPrompt` (seosoyoung/claude/executor.py:108): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:124): Claude Code 실행기
+- `ClaudeRunner` (seosoyoung/claude/agent_runner.py:295): Claude Code SDK 기반 실행기
+- `ExecutionContext` (seosoyoung/claude/executor.py:67): 실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
+- `PendingPrompt` (seosoyoung/claude/executor.py:106): 인터벤션 대기 중인 프롬프트 정보
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:122): Claude Code 실행기
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `ClaudeServiceAdapter` (seosoyoung/claude/service_adapter.py:26): 원격 soul 서버 어댑터
 - `SSEEvent` (seosoyoung/claude/service_client.py:32): Server-Sent Event 데이터
@@ -242,12 +242,14 @@
 
 - `check_permission()` (seosoyoung/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/auth.py:26): 사용자 역할 정보 반환
-- `get_claude_runner()` (seosoyoung/claude/__init__.py:14): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `clear_runner_cache()` (seosoyoung/claude/__init__.py:57): runner 캐시를 비웁니다 (테스트용)
-- `get_cached_runner_count()` (seosoyoung/claude/__init__.py:69): 캐시된 runner 수를 반환합니다 (테스트/디버그용)
+- `get_claude_runner()` (seosoyoung/claude/__init__.py:18): Claude 실행기 인스턴스를 반환하는 팩토리 함수
 - `run_in_new_loop()` (seosoyoung/claude/agent_runner.py:193): 별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
-- `async main()` (seosoyoung/claude/agent_runner.py:1243): 
-- `get_runner_for_role()` (seosoyoung/claude/executor.py:45): 역할에 맞는 ClaudeAgentRunner 반환 (캐시된 인스턴스)
+- `get_runner()` (seosoyoung/claude/agent_runner.py:224): 레지스트리에서 러너 조회
+- `register_runner()` (seosoyoung/claude/agent_runner.py:230): 레지스트리에 러너 등록
+- `remove_runner()` (seosoyoung/claude/agent_runner.py:236): 레지스트리에서 러너 제거
+- `async shutdown_all()` (seosoyoung/claude/agent_runner.py:242): 모든 등록된 러너의 클라이언트를 종료
+- `shutdown_all_sync()` (seosoyoung/claude/agent_runner.py:277): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+- `async main()` (seosoyoung/claude/agent_runner.py:1272): 
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:14): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:49): 텍스트 내 모든 백틱을 이스케이프
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:68): 트렐로 카드용 슬랙 메시지 헤더 생성

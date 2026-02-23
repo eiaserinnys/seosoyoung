@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from seosoyoung.config import Config
-from seosoyoung.claude import get_claude_runner
+from seosoyoung.claude.agent_runner import ClaudeRunner, get_runner
 from seosoyoung.claude.session import Session, SessionManager
 from seosoyoung.claude.message_formatter import (
     escape_backticks,
@@ -42,27 +42,25 @@ def _get_mcp_config_path() -> Optional[Path]:
     return config_path if config_path.exists() else None
 
 
-def get_runner_for_role(role: str):
-    """역할에 맞는 ClaudeAgentRunner 반환 (캐시된 인스턴스)
+def _get_role_config(role: str) -> dict:
+    """역할에 맞는 runner 설정을 반환
 
-    동일한 role에 대해서는 항상 같은 ClaudeAgentRunner 인스턴스를 반환합니다.
-    이를 통해 클래스 레벨의 _active_clients 관리가 일관되게 유지됩니다.
+    Returns:
+        dict with keys: allowed_tools, disallowed_tools, mcp_config_path
     """
     allowed_tools = Config.ROLE_TOOLS.get(role, Config.ROLE_TOOLS["viewer"])
-    cache_key = f"role:{role}"
 
-    # viewer는 수정/실행 도구 명시적 차단, MCP 도구 불필요
     if role == "viewer":
-        return get_claude_runner(
-            allowed_tools=allowed_tools,
-            disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"],
-            cache_key=cache_key,
-        )
-    return get_claude_runner(
-        allowed_tools=allowed_tools,
-        mcp_config_path=_get_mcp_config_path(),
-        cache_key=cache_key,
-    )
+        return {
+            "allowed_tools": allowed_tools,
+            "disallowed_tools": ["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"],
+            "mcp_config_path": None,
+        }
+    return {
+        "allowed_tools": allowed_tools,
+        "disallowed_tools": None,
+        "mcp_config_path": _get_mcp_config_path(),
+    }
 
 
 @dataclass
@@ -157,10 +155,6 @@ class ClaudeExecutor:
         # 인터벤션: 스레드별 대기 중인 프롬프트
         self._pending_prompts: dict[str, PendingPrompt] = {}
         self._pending_lock = threading.Lock()
-        # 인터벤션: 실행 중인 runner 추적 (interrupt 전송용)
-        self._active_runners: dict[str, object] = {}
-        self._runners_lock = threading.Lock()
-
         # Remote 모드: ClaudeServiceAdapter (lazy 초기화)
         self._service_adapter: Optional[object] = None
         self._adapter_lock = threading.Lock()
@@ -283,12 +277,11 @@ class ClaudeExecutor:
             else:
                 logger.warning(f"[Remote] 인터벤션 전송 불가: request_id 없음 (thread={thread_ts})")
         else:
-            # Local 모드: 실행 중인 runner에게 interrupt 전송 (동기)
-            with self._runners_lock:
-                runner = self._active_runners.get(thread_ts)
+            # Local 모드: 모듈 레지스트리에서 runner를 찾아 interrupt 전송 (동기)
+            runner = get_runner(thread_ts)
             if runner:
                 try:
-                    runner.interrupt(thread_ts)
+                    runner.interrupt()
                     logger.info(f"인터럽트 전송 완료: thread={thread_ts}")
                 except Exception as e:
                     logger.warning(f"인터럽트 전송 실패 (무시): thread={thread_ts}, {e}")
@@ -460,10 +453,15 @@ class ClaudeExecutor:
             logger.info(f"Claude 실행 (remote): thread={thread_ts}, role={ctx.effective_role}")
             self._execute_remote(ctx, prompt)
         else:
-            # === Local 모드: 기존 방식 ===
-            runner = get_runner_for_role(ctx.effective_role)
-            with self._runners_lock:
-                self._active_runners[original_thread_ts] = runner
+            # === Local 모드: thread_ts 단위 runner 생성 ===
+            role_config = _get_role_config(ctx.effective_role)
+            runner = ClaudeRunner(
+                thread_ts,
+                channel=ctx.channel,
+                allowed_tools=role_config["allowed_tools"],
+                disallowed_tools=role_config["disallowed_tools"],
+                mcp_config_path=role_config["mcp_config_path"],
+            )
             logger.info(f"Claude 실행 (local): thread={thread_ts}, role={ctx.effective_role}")
 
             try:
@@ -473,8 +471,6 @@ class ClaudeExecutor:
                     on_progress=on_progress,
                     on_compact=on_compact,
                     user_id=session.user_id,
-                    thread_ts=thread_ts,
-                    channel=ctx.channel,
                     user_message=ctx.user_message,
                 ))
 
@@ -483,9 +479,6 @@ class ClaudeExecutor:
             except Exception as e:
                 logger.exception(f"Claude 실행 오류: {e}")
                 self._handle_exception(ctx, e)
-            finally:
-                with self._runners_lock:
-                    self._active_runners.pop(original_thread_ts, None)
 
     def _get_service_adapter(self):
         """Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환"""

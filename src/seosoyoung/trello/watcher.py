@@ -820,8 +820,8 @@ class TrelloWatcher:
             return
 
         try:
-            from seosoyoung.claude.agent_runner import ClaudeAgentRunner
-            runner = ClaudeAgentRunner()
+            from seosoyoung.claude.agent_runner import ClaudeRunner
+            runner = ClaudeRunner()
             result = runner.run_sync(runner.compact_session(session.session_id))
 
             if result.success:

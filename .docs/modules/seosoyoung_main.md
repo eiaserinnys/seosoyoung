@@ -63,7 +63,7 @@ Returns:
 
 - `seosoyoung.auth.check_permission`
 - `seosoyoung.auth.get_user_role`
-- `seosoyoung.claude.agent_runner.ClaudeAgentRunner`
+- `seosoyoung.claude.agent_runner.shutdown_all_sync`
 - `seosoyoung.claude.executor.ClaudeExecutor`
 - `seosoyoung.claude.session.SessionManager`
 - `seosoyoung.claude.session.SessionRuntime`
