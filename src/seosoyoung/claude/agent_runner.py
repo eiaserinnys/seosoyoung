@@ -1075,6 +1075,7 @@ class ClaudeAgentRunner:
                         result_usage = None
                         collected_messages = []
                         last_progress_time = asyncio.get_event_loop().time()
+                        compact_events.clear()
                         compact_notified_count = 0
                         _msg_count = 0
                         _last_tool = ""
