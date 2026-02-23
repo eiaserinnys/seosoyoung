@@ -19,19 +19,19 @@ Claude Code SDK 기반 실행기
 #### 메서드
 
 - `__init__(self, working_dir, timeout, allowed_tools, disallowed_tools, mcp_config_path)` (줄 226): 
-- `async shutdown_all_clients(cls)` (줄 243): 모든 활성 클라이언트 종료
-- `shutdown_all_clients_sync(cls)` (줄 282): 모든 활성 클라이언트 종료 (동기 버전)
-- `run_sync(self, coro)` (줄 299): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
-- `async _get_or_create_client(self, thread_ts, options)` (줄 307): 스레드에 대한 ClaudeSDKClient를 가져오거나 새로 생성
-- `async _remove_client(self, thread_ts)` (줄 362): 스레드의 ClaudeSDKClient를 정리
-- `_force_kill_process(pid, thread_ts)` (줄 385): psutil을 사용하여 프로세스를 강제 종료
-- `interrupt(self, thread_ts)` (줄 408): 실행 중인 스레드에 인터럽트 전송 (동기)
-- `_build_options(self, session_id, compact_events, user_id, thread_ts, channel, prompt)` (줄 431): ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts를 함께 반환합니다.
-- `_send_injection_debug_log(thread_ts, result, debug_channel, anchor_ts)` (줄 619): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
-- `async run(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel, user_message)` (줄 702): Claude Code 실행
-- `_trigger_observation(self, thread_ts, user_id, prompt, collected_messages, anchor_ts)` (줄 736): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
-- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel)` (줄 829): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 1212): 세션 컴팩트 처리
+- `async shutdown_all_clients(cls)` (줄 242): 모든 활성 클라이언트 종료
+- `shutdown_all_clients_sync(cls)` (줄 281): 모든 활성 클라이언트 종료 (동기 버전)
+- `run_sync(self, coro)` (줄 298): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
+- `async _get_or_create_client(self, thread_ts, options)` (줄 306): 스레드에 대한 ClaudeSDKClient를 가져오거나 새로 생성
+- `async _remove_client(self, thread_ts)` (줄 361): 스레드의 ClaudeSDKClient를 정리
+- `_force_kill_process(pid, thread_ts)` (줄 384): psutil을 사용하여 프로세스를 강제 종료
+- `interrupt(self, thread_ts)` (줄 407): 실행 중인 스레드에 인터럽트 전송 (동기)
+- `_build_options(self, session_id, compact_events, user_id, thread_ts, channel, prompt)` (줄 430): ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts를 함께 반환합니다.
+- `_send_injection_debug_log(thread_ts, result, debug_channel, anchor_ts)` (줄 618): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
+- `async run(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel, user_message)` (줄 701): Claude Code 실행
+- `_trigger_observation(self, thread_ts, user_id, prompt, collected_messages, anchor_ts)` (줄 734): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
+- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel)` (줄 827): 실제 실행 로직 (ClaudeSDKClient 기반)
+- `async compact_session(self, session_id)` (줄 1210): 세션 컴팩트 처리
 
 ## 함수
 
@@ -67,4 +67,4 @@ exit_code와 stderr 패턴을 기반으로 최대한 분류합니다.
 이전 실행의 anyio 잔여물이 영향을 미치지 않도록 합니다.
 
 ### `async main()`
-- 위치: 줄 1242
+- 위치: 줄 1240

@@ -258,7 +258,7 @@
 - `clear_runner_cache()` (seosoyoung/claude/__init__.py:57): runner 캐시를 비웁니다 (테스트용)
 - `get_cached_runner_count()` (seosoyoung/claude/__init__.py:69): 캐시된 runner 수를 반환합니다 (테스트/디버그용)
 - `run_in_new_loop()` (seosoyoung/claude/agent_runner.py:193): 별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
-- `async main()` (seosoyoung/claude/agent_runner.py:1242): 
+- `async main()` (seosoyoung/claude/agent_runner.py:1240): 
 - `get_runner_for_role()` (seosoyoung/claude/executor.py:45): 역할에 맞는 ClaudeAgentRunner 반환 (캐시된 인스턴스)
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:14): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:49): 텍스트 내 모든 백틱을 이스케이프

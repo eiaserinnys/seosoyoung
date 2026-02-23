@@ -236,7 +236,6 @@ class ClaudeAgentRunner:
         self.allowed_tools = allowed_tools or DEFAULT_ALLOWED_TOOLS
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
-        self._lock = threading.Lock()
 
 
     @classmethod
@@ -722,8 +721,7 @@ class ClaudeAgentRunner:
             channel: 슬랙 채널 ID (MCP 서버 컨텍스트용, 선택)
             user_message: 사용자 원본 메시지 (OM Observer용, 선택). 미지정 시 prompt 사용.
         """
-        with self._lock:
-            result = await self._execute(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel=channel)
+        result = await self._execute(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel=channel)
 
         # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
         # user_message가 지정되면 사용자 원본 질문만 전달 (채널 히스토리 제외)
