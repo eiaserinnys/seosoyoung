@@ -13,7 +13,7 @@ from seosoyoung.logging_config import setup_logging
 from seosoyoung.auth import check_permission, get_user_role
 from seosoyoung.claude.session import SessionManager, SessionRuntime
 from seosoyoung.claude.executor import ClaudeExecutor
-from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+from seosoyoung.claude.agent_runner import shutdown_all_sync
 from seosoyoung.slack.helpers import upload_file_to_slack, send_long_message
 from seosoyoung.handlers import register_all_handlers
 from seosoyoung.handlers.actions import send_restart_confirmation
@@ -52,7 +52,7 @@ def _perform_restart(restart_type: RestartType) -> None:
     """
     # 모든 활성 클라이언트 종료 (고아 프로세스 방지)
     try:
-        count = ClaudeAgentRunner.shutdown_all_clients_sync()
+        count = shutdown_all_sync()
         logger.info(f"재시작 전 {count}개 클라이언트 종료 완료")
     except Exception as e:
         logger.warning(f"클라이언트 종료 중 오류 (무시): {e}")

@@ -214,86 +214,124 @@ def run_in_new_loop(coro):
     return result_box[0]
 
 
-class ClaudeAgentRunner:
-    """Claude Code SDK 기반 실행기"""
+# ---------------------------------------------------------------------------
+# Module-level registry: thread_ts → ClaudeRunner
+# ---------------------------------------------------------------------------
+_registry: dict[str, "ClaudeRunner"] = {}
+_registry_lock = threading.Lock()
 
-    # 클래스 레벨 활성 클라이언트 관리 (모든 인스턴스가 공유)
-    _active_clients: dict[str, ClaudeSDKClient] = {}
-    _client_pids: dict[str, int] = {}  # thread_ts -> subprocess PID
-    _execution_loops: dict[str, asyncio.AbstractEventLoop] = {}  # client_key -> running loop
-    _clients_lock = threading.Lock()
+
+def get_runner(thread_ts: str) -> Optional["ClaudeRunner"]:
+    """레지스트리에서 러너 조회"""
+    with _registry_lock:
+        return _registry.get(thread_ts)
+
+
+def register_runner(runner: "ClaudeRunner") -> None:
+    """레지스트리에 러너 등록"""
+    with _registry_lock:
+        _registry[runner.thread_ts] = runner
+
+
+def remove_runner(thread_ts: str) -> Optional["ClaudeRunner"]:
+    """레지스트리에서 러너 제거"""
+    with _registry_lock:
+        return _registry.pop(thread_ts, None)
+
+
+async def shutdown_all() -> int:
+    """모든 등록된 러너의 클라이언트를 종료
+
+    프로세스 종료 전에 호출하여 고아 프로세스를 방지합니다.
+
+    Returns:
+        종료된 클라이언트 수
+    """
+    with _registry_lock:
+        runners = list(_registry.values())
+
+    if not runners:
+        logger.info("종료할 활성 클라이언트 없음")
+        return 0
+
+    count = 0
+    for runner in runners:
+        try:
+            if runner.client:
+                await runner.client.disconnect()
+                count += 1
+                logger.info(f"클라이언트 종료 성공: {runner.thread_ts}")
+        except Exception as e:
+            logger.warning(f"클라이언트 종료 실패: {runner.thread_ts}, {e}")
+            if runner.pid:
+                ClaudeRunner._force_kill_process(runner.pid, runner.thread_ts)
+                count += 1
+
+    with _registry_lock:
+        _registry.clear()
+
+    logger.info(f"총 {count}개 클라이언트 종료 완료")
+    return count
+
+
+def shutdown_all_sync() -> int:
+    """모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+
+    시그널 핸들러 등 동기 컨텍스트에서 사용합니다.
+
+    Returns:
+        종료된 클라이언트 수
+    """
+    try:
+        loop = asyncio.new_event_loop()
+        count = loop.run_until_complete(shutdown_all())
+        loop.close()
+        return count
+    except Exception as e:
+        logger.warning(f"클라이언트 동기 종료 중 오류: {e}")
+        return 0
+
+
+class ClaudeRunner:
+    """Claude Code SDK 기반 실행기
+
+    thread_ts 단위 인스턴스: 각 인스턴스가 자신의 client/pid/execution_loop를 소유합니다.
+    """
 
     def __init__(
         self,
+        thread_ts: str = "",
+        *,
+        channel: Optional[str] = None,
         working_dir: Optional[Path] = None,
         timeout: int = 300,
         allowed_tools: Optional[list[str]] = None,
         disallowed_tools: Optional[list[str]] = None,
         mcp_config_path: Optional[Path] = None,
     ):
+        self.thread_ts = thread_ts
+        self.channel = channel
         self.working_dir = working_dir or Path.cwd()
         self.timeout = timeout
         self.allowed_tools = allowed_tools or DEFAULT_ALLOWED_TOOLS
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
 
+        # Instance-level client state
+        self.client: Optional[ClaudeSDKClient] = None
+        self.pid: Optional[int] = None
+        self.execution_loop: Optional[asyncio.AbstractEventLoop] = None
+
 
     @classmethod
     async def shutdown_all_clients(cls) -> int:
-        """모든 활성 클라이언트 종료
-
-        프로세스 종료 전에 호출하여 고아 프로세스를 방지합니다.
-        disconnect 실패 시 psutil로 강제 종료합니다.
-
-        Returns:
-            종료된 클라이언트 수
-        """
-        with cls._clients_lock:
-            clients = list(cls._active_clients.items())
-            pids = dict(cls._client_pids)  # 복사
-
-        if not clients:
-            logger.info("종료할 활성 클라이언트 없음")
-            return 0
-
-        count = 0
-        for thread_ts, client in clients:
-            try:
-                await client.disconnect()
-                count += 1
-                logger.info(f"클라이언트 종료 성공: {thread_ts}")
-            except Exception as e:
-                logger.warning(f"클라이언트 종료 실패: {thread_ts}, {e}")
-                # PID로 강제 종료 시도
-                pid = pids.get(thread_ts)
-                if pid:
-                    cls._force_kill_process(pid, thread_ts)
-                    count += 1  # 강제 종료도 성공으로 카운트
-
-        with cls._clients_lock:
-            cls._active_clients.clear()
-            cls._client_pids.clear()
-
-        logger.info(f"총 {count}개 클라이언트 종료 완료")
-        return count
+        """하위 호환: 모듈 레벨 shutdown_all()로 위임"""
+        return await shutdown_all()
 
     @classmethod
     def shutdown_all_clients_sync(cls) -> int:
-        """모든 활성 클라이언트 종료 (동기 버전)
-
-        시그널 핸들러 등 동기 컨텍스트에서 사용합니다.
-
-        Returns:
-            종료된 클라이언트 수
-        """
-        try:
-            loop = asyncio.new_event_loop()
-            count = loop.run_until_complete(cls.shutdown_all_clients())
-            loop.close()
-            return count
-        except Exception as e:
-            logger.warning(f"클라이언트 동기 종료 중 오류: {e}")
-            return 0
+        """하위 호환: 모듈 레벨 shutdown_all_sync()로 위임"""
+        return shutdown_all_sync()
 
     def run_sync(self, coro):
         """동기 컨텍스트에서 코루틴을 실행하는 브릿지
@@ -305,22 +343,19 @@ class ClaudeAgentRunner:
 
     async def _get_or_create_client(
         self,
-        thread_ts: str,
         options: Optional[ClaudeCodeOptions] = None,
     ) -> ClaudeSDKClient:
-        """스레드에 대한 ClaudeSDKClient를 가져오거나 새로 생성
+        """ClaudeSDKClient를 가져오거나 새로 생성
 
         Args:
-            thread_ts: 스레드 타임스탬프 (클라이언트 키)
             options: ClaudeCodeOptions (새 클라이언트 생성 시 사용)
         """
-        with self._clients_lock:
-            if thread_ts in self._active_clients:
-                logger.info(f"[DEBUG-CLIENT] 기존 클라이언트 재사용: thread={thread_ts}")
-                return self._active_clients[thread_ts]
+        if self.client is not None:
+            logger.info(f"[DEBUG-CLIENT] 기존 클라이언트 재사용: thread={self.thread_ts}")
+            return self.client
 
         import time as _time
-        logger.info(f"[DEBUG-CLIENT] 새 ClaudeSDKClient 생성 시작: thread={thread_ts}")
+        logger.info(f"[DEBUG-CLIENT] 새 ClaudeSDKClient 생성 시작: thread={self.thread_ts}")
         client = ClaudeSDKClient(options=options)
         logger.info(f"[DEBUG-CLIENT] ClaudeSDKClient 인스턴스 생성 완료, connect() 호출...")
         t0 = _time.monotonic()
@@ -351,34 +386,32 @@ class ClaudeAgentRunner:
         except Exception as e:
             logger.warning(f"[DEBUG-CLIENT] PID 추출 실패 (무시): {e}")
 
-        with self._clients_lock:
-            self._active_clients[thread_ts] = client
-            if pid:
-                self._client_pids[thread_ts] = pid
-        logger.info(f"ClaudeSDKClient 생성: thread={thread_ts}, pid={pid}")
+        self.client = client
+        self.pid = pid
+        logger.info(f"ClaudeSDKClient 생성: thread={self.thread_ts}, pid={pid}")
         return client
 
-    async def _remove_client(self, thread_ts: str) -> None:
-        """스레드의 ClaudeSDKClient를 정리
+    async def _remove_client(self) -> None:
+        """이 러너의 ClaudeSDKClient를 정리
 
-        disconnect 후 딕셔너리에서 제거합니다.
+        disconnect 후 인스턴스 변수를 초기화합니다.
         disconnect 실패 시 psutil로 강제 종료합니다.
         """
-        with self._clients_lock:
-            client = self._active_clients.pop(thread_ts, None)
-            pid = self._client_pids.pop(thread_ts, None)
+        client = self.client
+        pid = self.pid
+        self.client = None
+        self.pid = None
 
         if client is None:
             return
 
         try:
             await client.disconnect()
-            logger.info(f"ClaudeSDKClient 정상 종료: thread={thread_ts}")
+            logger.info(f"ClaudeSDKClient 정상 종료: thread={self.thread_ts}")
         except Exception as e:
-            logger.warning(f"ClaudeSDKClient disconnect 실패: thread={thread_ts}, {e}")
-            # PID로 강제 종료 시도
+            logger.warning(f"ClaudeSDKClient disconnect 실패: thread={self.thread_ts}, {e}")
             if pid:
-                self._force_kill_process(pid, thread_ts)
+                self._force_kill_process(pid, self.thread_ts)
 
     @staticmethod
     def _force_kill_process(pid: int, thread_ts: str) -> None:
@@ -404,45 +437,41 @@ class ClaudeAgentRunner:
         except Exception as kill_error:
             logger.error(f"프로세스 강제 종료 실패: PID {pid}, thread={thread_ts}, {kill_error}")
 
-    def interrupt(self, thread_ts: str) -> bool:
-        """실행 중인 스레드에 인터럽트 전송 (동기)
-
-        Args:
-            thread_ts: 스레드 타임스탬프
+    def interrupt(self) -> bool:
+        """이 러너에 인터럽트 전송 (동기)
 
         Returns:
-            True: 인터럽트 성공, False: 해당 스레드에 클라이언트 없음 또는 실패
+            True: 인터럽트 성공, False: 클라이언트 없음 또는 실패
         """
-        with self._clients_lock:
-            client = self._active_clients.get(thread_ts)
-            loop = self._execution_loops.get(thread_ts)
+        client = self.client
+        loop = self.execution_loop
         if client is None or loop is None or not loop.is_running():
             return False
         try:
             future = asyncio.run_coroutine_threadsafe(client.interrupt(), loop)
             future.result(timeout=5)
-            logger.info(f"인터럽트 전송: thread={thread_ts}")
+            logger.info(f"인터럽트 전송: thread={self.thread_ts}")
             return True
         except Exception as e:
-            logger.warning(f"인터럽트 실패: thread={thread_ts}, {e}")
+            logger.warning(f"인터럽트 실패: thread={self.thread_ts}, {e}")
             return False
 
     def _build_compact_hook(
         self,
         compact_events: Optional[list],
-        thread_ts: Optional[str],
     ) -> Optional[dict]:
         """PreCompact 훅을 생성합니다.
 
         Args:
             compact_events: 컴팩션 이벤트를 수집할 리스트. None이면 훅 미설정.
-            thread_ts: OM inject 플래그 설정용 스레드 타임스탬프
 
         Returns:
             hooks dict 또는 None
         """
         if compact_events is None:
             return None
+
+        thread_ts = self.thread_ts
 
         async def on_pre_compact(
             hook_input: dict,
@@ -536,8 +565,6 @@ class ClaudeAgentRunner:
 
     def _prepare_memory_injection(
         self,
-        thread_ts: Optional[str],
-        channel: Optional[str],
         session_id: Optional[str],
         prompt: Optional[str],
     ) -> tuple[Optional[str], str]:
@@ -547,14 +574,14 @@ class ClaudeAgentRunner:
         첫 번째 query 메시지에 프리픽스로 주입할 프롬프트를 생성합니다.
 
         Args:
-            thread_ts: 스레드 타임스탬프
-            channel: 슬랙 채널 ID
             session_id: 세션 ID (None이면 새 세션)
             prompt: 사용자 프롬프트 (앵커 미리보기용)
 
         Returns:
             (memory_prompt, anchor_ts) 튜플
         """
+        thread_ts = self.thread_ts
+        channel = self.channel
         if not thread_ts:
             return None, ""
 
@@ -625,8 +652,6 @@ class ClaudeAgentRunner:
         session_id: Optional[str] = None,
         compact_events: Optional[list] = None,
         user_id: Optional[str] = None,
-        thread_ts: Optional[str] = None,
-        channel: Optional[str] = None,
         prompt: Optional[str] = None,
     ) -> tuple[ClaudeCodeOptions, Optional[str], str]:
         """ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts를 함께 반환합니다.
@@ -641,7 +666,9 @@ class ClaudeAgentRunner:
         channel과 thread_ts가 모두 제공되면 env에 SLACK_CHANNEL, SLACK_THREAD_TS를
         명시적으로 설정합니다.
         """
-        hooks = self._build_compact_hook(compact_events, thread_ts)
+        thread_ts = self.thread_ts
+        channel = self.channel
+        hooks = self._build_compact_hook(compact_events)
 
         # 슬랙 컨텍스트가 있으면 env에 주입 (MCP 서버용)
         env: dict[str, str] = {}
@@ -677,7 +704,7 @@ class ClaudeAgentRunner:
             options.resume = session_id
 
         memory_prompt, anchor_ts = self._prepare_memory_injection(
-            thread_ts, channel, session_id, prompt,
+            session_id, prompt,
         )
 
         return options, memory_prompt, anchor_ts
@@ -773,8 +800,6 @@ class ClaudeAgentRunner:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         user_id: Optional[str] = None,
-        thread_ts: Optional[str] = None,
-        channel: Optional[str] = None,
         user_message: Optional[str] = None,
     ) -> ClaudeResult:
         """Claude Code 실행
@@ -785,11 +810,10 @@ class ClaudeAgentRunner:
             on_progress: 진행 상황 콜백 (선택)
             on_compact: 컴팩션 발생 콜백 (선택) - (trigger, message) 전달
             user_id: 사용자 ID (OM 관찰 로그 주입용, 선택)
-            thread_ts: 스레드 타임스탬프 (OM 세션 단위 저장용, 선택)
-            channel: 슬랙 채널 ID (MCP 서버 컨텍스트용, 선택)
             user_message: 사용자 원본 메시지 (OM Observer용, 선택). 미지정 시 prompt 사용.
         """
-        result = await self._execute(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel=channel)
+        thread_ts = self.thread_ts
+        result = await self._execute(prompt, session_id, on_progress, on_compact, user_id)
 
         # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
         # user_message가 지정되면 사용자 원본 질문만 전달 (채널 히스토리 제외)
@@ -899,13 +923,13 @@ class ClaudeAgentRunner:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         user_id: Optional[str] = None,
-        thread_ts: Optional[str] = None,
-        channel: Optional[str] = None,
     ) -> ClaudeResult:
         """실제 실행 로직 (ClaudeSDKClient 기반)"""
+        thread_ts = self.thread_ts
+        channel = self.channel
         compact_events: list[dict] = []
         compact_notified_count = 0
-        options, memory_prompt, anchor_ts = self._build_options(session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel, prompt=prompt)
+        options, memory_prompt, anchor_ts = self._build_options(session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
         # DEBUG: SDK에 전달되는 options 상세 로그
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
         logger.info(f"[DEBUG-OPTIONS] permission_mode={options.permission_mode}")
@@ -918,12 +942,12 @@ class ClaudeAgentRunner:
         logger.info(f"[DEBUG-OPTIONS] memory_prompt length={len(memory_prompt) if memory_prompt else 0}")
         logger.info(f"[DEBUG-OPTIONS] hooks={'yes' if options.hooks else 'no'}")
 
-        # 스레드 키: thread_ts가 없으면 임시 키 생성
-        client_key = thread_ts or f"_ephemeral_{id(asyncio.current_task())}"
+        # 현재 실행 루프를 인스턴스에 등록 (interrupt에서 사용)
+        self.execution_loop = asyncio.get_running_loop()
 
-        # 현재 실행 루프를 등록 (interrupt에서 사용)
-        with self._clients_lock:
-            self._execution_loops[client_key] = asyncio.get_running_loop()
+        # 모듈 레지스트리에 등록 (thread_ts가 있을 때만)
+        if thread_ts:
+            register_runner(self)
 
         result_session_id = None
         current_text = ""
@@ -942,7 +966,7 @@ class ClaudeAgentRunner:
         _last_tool = ""
 
         try:
-            client = await self._get_or_create_client(client_key, options=options)
+            client = await self._get_or_create_client(options=options)
 
             # OM 메모리를 첫 번째 메시지에 프리픽스로 주입
             # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt 대신 이 방식 사용
@@ -965,7 +989,7 @@ class ClaudeAgentRunner:
                     # 출력 없이 종료된 경우 진단 덤프
                     if not result_text and not current_text and channel and thread_ts:
                         _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                        _pid = self._client_pids.get(client_key)
+                        _pid = self.pid
                         dump = _build_session_dump(
                             reason="CLI exited with no output (StopAsyncIteration)",
                             pid=_pid,
@@ -975,7 +999,7 @@ class ClaudeAgentRunner:
                             current_text_len=len(current_text),
                             result_text_len=len(result_text),
                             session_id=result_session_id,
-                            active_clients_count=len(self._active_clients),
+                            active_clients_count=len(_registry),
                         )
                         logger.warning(f"세션 무출력 종료 덤프: thread={thread_ts}, duration={_dur:.1f}s, msgs={_msg_count}, last_tool={_last_tool}")
                         _send_debug_to_slack(channel, thread_ts, dump)
@@ -1126,7 +1150,7 @@ class ClaudeAgentRunner:
             logger.error(f"Claude Code SDK idle 타임아웃 ({idle_timeout}초간 메시지 수신 없음)")
             if channel and thread_ts:
                 _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                _pid = self._client_pids.get(client_key)
+                _pid = self.pid
                 dump = _build_session_dump(
                     reason=f"Idle timeout ({idle_timeout}s)",
                     pid=_pid,
@@ -1136,7 +1160,7 @@ class ClaudeAgentRunner:
                     current_text_len=len(current_text),
                     result_text_len=len(result_text),
                     session_id=result_session_id,
-                    active_clients_count=len(self._active_clients),
+                    active_clients_count=len(_registry),
                 )
                 _send_debug_to_slack(channel, thread_ts, dump)
             return ClaudeResult(
@@ -1159,7 +1183,7 @@ class ClaudeAgentRunner:
             # 진단 덤프
             if channel and thread_ts:
                 _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                _pid = self._client_pids.get(client_key)
+                _pid = self.pid
                 dump = _build_session_dump(
                     reason="ProcessError",
                     pid=_pid,
@@ -1171,7 +1195,7 @@ class ClaudeAgentRunner:
                     session_id=result_session_id,
                     exit_code=e.exit_code,
                     error_detail=str(e.stderr or e),
-                    active_clients_count=len(self._active_clients),
+                    active_clients_count=len(_registry),
                 )
                 _send_debug_to_slack(channel, thread_ts, dump)
             return ClaudeResult(
@@ -1206,9 +1230,10 @@ class ClaudeAgentRunner:
             )
         finally:
             # 응답 완료 또는 에러 시 클라이언트 정리
-            await self._remove_client(client_key)
-            with self._clients_lock:
-                self._execution_loops.pop(client_key, None)
+            await self._remove_client()
+            self.execution_loop = None
+            if thread_ts:
+                remove_runner(thread_ts)
 
     async def compact_session(self, session_id: str) -> ClaudeResult:
         """세션 컴팩트 처리
@@ -1239,9 +1264,13 @@ class ClaudeAgentRunner:
         return result
 
 
+# 하위 호환 alias
+ClaudeAgentRunner = ClaudeRunner
+
+
 # 테스트용
 async def main():
-    runner = ClaudeAgentRunner()
+    runner = ClaudeRunner()
     result = await runner.run("안녕? 간단히 인사해줘. 3줄 이내로.")
     print(f"Success: {result.success}")
     print(f"Session ID: {result.session_id}")

@@ -13,10 +13,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from seosoyoung.claude.agent_runner import (
     ClaudeAgentRunner,
+    ClaudeRunner,
     ClaudeResult,
     DEFAULT_ALLOWED_TOOLS,
     DEFAULT_DISALLOWED_TOOLS,
     _classify_process_error,
+    _registry,
+    _registry_lock,
+    get_runner,
+    register_runner,
+    remove_runner,
+    shutdown_all,
+    shutdown_all_sync,
 )
 from claude_code_sdk._errors import MessageParseError, ProcessError
 
@@ -306,8 +314,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None, prompt=None):
-            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel, prompt=prompt)
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -344,8 +352,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None, prompt=None):
-            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel, prompt=prompt)
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -380,8 +388,8 @@ class TestClaudeAgentRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, thread_ts=None, channel=None, prompt=None):
-            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, thread_ts=thread_ts, channel=channel, prompt=prompt)
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -604,7 +612,7 @@ class TestBuildOptionsChannelObservation:
             "OM_DEBUG_CHANNEL": "",
         }
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
 
         with patch("seosoyoung.config.Config") as MockConfig:
             for k, v in config_patches.items():
@@ -619,9 +627,7 @@ class TestBuildOptionsChannelObservation:
                     channel_digest_tokens=50,
                     channel_buffer_tokens=0,
                 )
-                _, memory_prompt, _ = runner._build_options(
-                    thread_ts="ts_1", channel="C_OBS",
-                )
+                _, memory_prompt, _ = runner._build_options()
 
                 # build_memory_prompt에 include_channel_observation=True가 전달되었는지 확인
                 call_kwargs = mock_build.call_args.kwargs
@@ -640,7 +646,7 @@ class TestBuildOptionsChannelObservation:
             "OM_DEBUG_CHANNEL": "",
         }
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_1", channel="C_OTHER")
 
         with patch("seosoyoung.config.Config") as MockConfig:
             for k, v in config_patches.items():
@@ -655,9 +661,7 @@ class TestBuildOptionsChannelObservation:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                runner._build_options(
-                    thread_ts="ts_1", channel="C_OTHER",
-                )
+                runner._build_options()
 
                 call_kwargs = mock_build.call_args.kwargs
                 assert call_kwargs.get("include_channel_observation") is False
@@ -672,7 +676,7 @@ class TestBuildOptionsChannelObservation:
             "OM_DEBUG_CHANNEL": "",
         }
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
 
         with patch("seosoyoung.config.Config") as MockConfig:
             for k, v in config_patches.items():
@@ -687,9 +691,7 @@ class TestBuildOptionsChannelObservation:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                runner._build_options(
-                    thread_ts="ts_1", channel="C_OBS",
-                )
+                runner._build_options()
 
                 call_kwargs = mock_build.call_args.kwargs
                 assert call_kwargs.get("include_channel_observation") is False
@@ -714,7 +716,7 @@ class TestBuildOptionsAnchorTs:
             "OM_DEBUG_CHANNEL": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_1")
 
         with patch("seosoyoung.config.Config") as MockConfig:
             for k, v in config_patches.items():
@@ -735,7 +737,7 @@ class TestBuildOptionsAnchorTs:
                 )
                 with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anchor_ts_123") as mock_send:
                     _, _, anchor_ts = runner._build_options(
-                        thread_ts="ts_1", prompt="테스트 프롬프트입니다",
+                        prompt="테스트 프롬프트입니다",
                     )
 
         assert anchor_ts == "anchor_ts_123"
@@ -762,7 +764,7 @@ class TestBuildOptionsAnchorTs:
             "OM_DEBUG_CHANNEL": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_1")
 
         with patch("seosoyoung.config.Config") as MockConfig:
             for k, v in config_patches.items():
@@ -784,7 +786,7 @@ class TestBuildOptionsAnchorTs:
                 with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
                     _, _, anchor_ts = runner._build_options(
                         session_id="existing-session",
-                        thread_ts="ts_1", prompt="테스트",
+                        prompt="테스트",
                     )
 
         # 기존 세션이므로 새 앵커 메시지 미생성, 하지만 저장된 anchor_ts 로드
@@ -801,7 +803,7 @@ class TestBuildOptionsAnchorTs:
             "OM_DEBUG_CHANNEL": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_no_record")
 
         with patch("seosoyoung.config.Config") as MockConfig:
             for k, v in config_patches.items():
@@ -822,7 +824,7 @@ class TestBuildOptionsAnchorTs:
                 )
                 _, _, anchor_ts = runner._build_options(
                     session_id="existing-session",
-                    thread_ts="ts_no_record", prompt="테스트",
+                    prompt="테스트",
                 )
 
         # MemoryRecord가 없으므로 anchor_ts 빈 문자열
@@ -840,7 +842,7 @@ class TestBuildOptionsAnchorTs:
             "OM_DEBUG_CHANNEL": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_new")
 
         with patch("seosoyoung.config.Config") as MockConfig:
             for k, v in config_patches.items():
@@ -861,7 +863,7 @@ class TestBuildOptionsAnchorTs:
                 )
                 with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="new_anchor_456"):
                     _, _, anchor_ts = runner._build_options(
-                        thread_ts="ts_new", prompt="새 세션 테스트",
+                        prompt="새 세션 테스트",
                     )
 
         assert anchor_ts == "new_anchor_456"
@@ -947,7 +949,7 @@ class TestObserverUserMessage:
 
     async def test_trigger_observation_uses_user_message(self):
         """user_message가 지정되면 prompt 대신 user_message가 Observer에 전달"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_1")
 
         mock_client = _make_mock_client(
             MockSystemMessage(session_id="obs-test"),
@@ -961,7 +963,6 @@ class TestObserverUserMessage:
                         result = await runner.run(
                             prompt="채널 히스토리 20개 + 사용자 질문",
                             user_id="U123",
-                            thread_ts="ts_1",
                             user_message="사용자 원본 질문만",
                         )
 
@@ -974,7 +975,7 @@ class TestObserverUserMessage:
 
     async def test_trigger_observation_falls_back_to_prompt(self):
         """user_message가 None이면 prompt가 Observer에 전달 (하위 호환)"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_2")
 
         mock_client = _make_mock_client(
             MockSystemMessage(session_id="obs-test-2"),
@@ -988,7 +989,6 @@ class TestObserverUserMessage:
                         result = await runner.run(
                             prompt="전체 프롬프트",
                             user_id="U123",
-                            thread_ts="ts_2",
                             # user_message 미지정
                         )
 
@@ -1087,48 +1087,51 @@ class TestTriggerObservationToolFilter:
 
 
 def _clear_all_client_state():
-    """테스트용: 클래스 레벨 클라이언트 상태 초기화"""
-    ClaudeAgentRunner._active_clients.clear()
-    ClaudeAgentRunner._client_pids.clear()
+    """테스트용: 모듈 레벨 레지스트리 초기화"""
+    with _registry_lock:
+        _registry.clear()
 
 
 @pytest.mark.asyncio
 class TestShutdownAllClients:
-    """shutdown_all_clients 메서드 테스트"""
+    """shutdown_all (모듈 레벨 레지스트리) 테스트"""
 
-    async def test_shutdown_all_clients_empty(self):
-        """활성 클라이언트가 없을 때 0 반환"""
+    async def test_shutdown_all_empty(self):
+        """활성 러너가 없을 때 0 반환"""
         _clear_all_client_state()
 
-        count = await ClaudeAgentRunner.shutdown_all_clients()
+        count = await shutdown_all()
         assert count == 0
 
-    async def test_shutdown_all_clients_multiple(self):
-        """여러 클라이언트가 있을 때 모두 종료"""
+    async def test_shutdown_all_multiple(self):
+        """여러 러너가 있을 때 모두 종료"""
         _clear_all_client_state()
 
-        # Mock 클라이언트 추가
         mock_client_1 = AsyncMock()
         mock_client_2 = AsyncMock()
         mock_client_3 = AsyncMock()
 
-        with ClaudeAgentRunner._clients_lock:
-            ClaudeAgentRunner._active_clients["thread_1"] = mock_client_1
-            ClaudeAgentRunner._active_clients["thread_2"] = mock_client_2
-            ClaudeAgentRunner._active_clients["thread_3"] = mock_client_3
+        runner1 = ClaudeRunner("thread_1")
+        runner1.client = mock_client_1
+        runner2 = ClaudeRunner("thread_2")
+        runner2.client = mock_client_2
+        runner3 = ClaudeRunner("thread_3")
+        runner3.client = mock_client_3
 
-        count = await ClaudeAgentRunner.shutdown_all_clients()
+        register_runner(runner1)
+        register_runner(runner2)
+        register_runner(runner3)
+
+        count = await shutdown_all()
 
         assert count == 3
         mock_client_1.disconnect.assert_called_once()
         mock_client_2.disconnect.assert_called_once()
         mock_client_3.disconnect.assert_called_once()
 
-        # 딕셔너리가 비워졌는지 확인
-        assert len(ClaudeAgentRunner._active_clients) == 0
-        assert len(ClaudeAgentRunner._client_pids) == 0
+        assert len(_registry) == 0
 
-    async def test_shutdown_all_clients_partial_failure_with_force_kill(self):
+    async def test_shutdown_all_partial_failure_with_force_kill(self):
         """일부 클라이언트 종료 실패 시 psutil로 강제 종료"""
         _clear_all_client_state()
 
@@ -1137,28 +1140,28 @@ class TestShutdownAllClients:
         mock_client_2.disconnect.side_effect = RuntimeError("연결 끊기 실패")
         mock_client_3 = AsyncMock()
 
-        with ClaudeAgentRunner._clients_lock:
-            ClaudeAgentRunner._active_clients["thread_1"] = mock_client_1
-            ClaudeAgentRunner._active_clients["thread_2"] = mock_client_2
-            ClaudeAgentRunner._active_clients["thread_3"] = mock_client_3
-            # thread_2에 PID 설정 (강제 종료 대상)
-            ClaudeAgentRunner._client_pids["thread_2"] = 12345
+        runner1 = ClaudeRunner("thread_1")
+        runner1.client = mock_client_1
+        runner2 = ClaudeRunner("thread_2")
+        runner2.client = mock_client_2
+        runner2.pid = 12345
+        runner3 = ClaudeRunner("thread_3")
+        runner3.client = mock_client_3
 
-        with patch.object(ClaudeAgentRunner, "_force_kill_process") as mock_force_kill:
-            count = await ClaudeAgentRunner.shutdown_all_clients()
+        register_runner(runner1)
+        register_runner(runner2)
+        register_runner(runner3)
 
-        # 3개 모두 성공 (2개 정상 + 1개 강제 종료)
+        with patch.object(ClaudeRunner, "_force_kill_process") as mock_force_kill:
+            count = await shutdown_all()
+
         assert count == 3
-        # 모든 클라이언트에 disconnect 시도
         mock_client_1.disconnect.assert_called_once()
         mock_client_2.disconnect.assert_called_once()
         mock_client_3.disconnect.assert_called_once()
-        # thread_2는 강제 종료
         mock_force_kill.assert_called_once_with(12345, "thread_2")
 
-        # 딕셔너리가 비워짐
-        assert len(ClaudeAgentRunner._active_clients) == 0
-        assert len(ClaudeAgentRunner._client_pids) == 0
+        assert len(_registry) == 0
 
     async def test_shutdown_partial_failure_no_pid(self):
         """disconnect 실패 시 PID가 없으면 강제 종료 시도 안 함"""
@@ -1167,48 +1170,42 @@ class TestShutdownAllClients:
         mock_client = AsyncMock()
         mock_client.disconnect.side_effect = RuntimeError("연결 끊기 실패")
 
-        with ClaudeAgentRunner._clients_lock:
-            ClaudeAgentRunner._active_clients["thread_no_pid"] = mock_client
-            # PID 미설정
+        runner = ClaudeRunner("thread_no_pid")
+        runner.client = mock_client
+        register_runner(runner)
 
-        with patch.object(ClaudeAgentRunner, "_force_kill_process") as mock_force_kill:
-            count = await ClaudeAgentRunner.shutdown_all_clients()
+        with patch.object(ClaudeRunner, "_force_kill_process") as mock_force_kill:
+            count = await shutdown_all()
 
-        # disconnect 실패, 강제 종료도 불가 -> 0
         assert count == 0
         mock_force_kill.assert_not_called()
 
-    def test_shutdown_all_clients_sync(self):
-        """동기 버전 shutdown_all_clients_sync 테스트"""
+    def test_shutdown_all_sync(self):
+        """동기 버전 shutdown_all_sync 테스트"""
         _clear_all_client_state()
 
         mock_client = AsyncMock()
-        with ClaudeAgentRunner._clients_lock:
-            ClaudeAgentRunner._active_clients["thread_sync"] = mock_client
+        runner = ClaudeRunner("thread_sync")
+        runner.client = mock_client
+        register_runner(runner)
 
-        count = ClaudeAgentRunner.shutdown_all_clients_sync()
+        count = shutdown_all_sync()
 
         assert count == 1
         mock_client.disconnect.assert_called_once()
 
-    async def test_class_level_active_clients_shared(self):
-        """_active_clients가 클래스 레벨로 모든 인스턴스에서 공유"""
+    async def test_registry_shared_across_runners(self):
+        """레지스트리가 모든 러너에서 공유"""
         _clear_all_client_state()
 
-        runner1 = ClaudeAgentRunner()
-        runner2 = ClaudeAgentRunner()
-
-        # Mock 클라이언트 추가 (클래스 레벨)
         mock_client = AsyncMock()
-        with ClaudeAgentRunner._clients_lock:
-            ClaudeAgentRunner._active_clients["shared_thread"] = mock_client
+        runner = ClaudeRunner("shared_thread")
+        runner.client = mock_client
+        register_runner(runner)
 
-        # 두 인스턴스 모두에서 같은 클라이언트가 보여야 함
-        with ClaudeAgentRunner._clients_lock:
-            assert "shared_thread" in ClaudeAgentRunner._active_clients
+        assert get_runner("shared_thread") is runner
 
-        # shutdown은 클래스 메서드이므로 어느 인스턴스에서도 호출 가능
-        count = await ClaudeAgentRunner.shutdown_all_clients()
+        count = await shutdown_all()
         assert count == 1
 
 
@@ -1218,10 +1215,8 @@ class TestPidTrackingAndForceKill:
 
     async def test_pid_extracted_from_client(self):
         """클라이언트 생성 시 subprocess PID가 추출되는지 확인"""
-        _clear_all_client_state()
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner("test_thread")
 
-        # Mock transport와 process 설정
         mock_process = MagicMock()
         mock_process.pid = 54321
 
@@ -1232,67 +1227,55 @@ class TestPidTrackingAndForceKill:
         mock_client._transport = mock_transport
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            client = await runner._get_or_create_client("test_thread")
+            client = await runner._get_or_create_client()
 
-        # PID가 저장되었는지 확인
-        with ClaudeAgentRunner._clients_lock:
-            assert "test_thread" in ClaudeAgentRunner._client_pids
-            assert ClaudeAgentRunner._client_pids["test_thread"] == 54321
+        assert runner.pid == 54321
+        assert runner.client is client
 
     async def test_pid_not_extracted_when_transport_missing(self):
         """transport가 없을 때 PID 추출 실패해도 오류 없음"""
-        _clear_all_client_state()
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner("test_no_transport")
 
         mock_client = AsyncMock()
-        mock_client._transport = None  # transport 없음
+        mock_client._transport = None
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            client = await runner._get_or_create_client("test_no_transport")
+            client = await runner._get_or_create_client()
 
-        # PID가 저장되지 않음
-        with ClaudeAgentRunner._clients_lock:
-            assert "test_no_transport" not in ClaudeAgentRunner._client_pids
-            # 클라이언트는 여전히 등록됨
-            assert "test_no_transport" in ClaudeAgentRunner._active_clients
+        assert runner.pid is None
+        assert runner.client is client
 
     async def test_remove_client_force_kills_on_disconnect_failure(self):
         """disconnect 실패 시 PID로 강제 종료"""
-        _clear_all_client_state()
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner("thread_fail")
 
         mock_client = AsyncMock()
         mock_client.disconnect.side_effect = RuntimeError("연결 끊기 실패")
 
-        with ClaudeAgentRunner._clients_lock:
-            ClaudeAgentRunner._active_clients["thread_fail"] = mock_client
-            ClaudeAgentRunner._client_pids["thread_fail"] = 99999
+        runner.client = mock_client
+        runner.pid = 99999
 
-        with patch.object(ClaudeAgentRunner, "_force_kill_process") as mock_force_kill:
-            await runner._remove_client("thread_fail")
+        with patch.object(ClaudeRunner, "_force_kill_process") as mock_force_kill:
+            await runner._remove_client()
 
         mock_force_kill.assert_called_once_with(99999, "thread_fail")
+        assert runner.client is None
+        assert runner.pid is None
 
     async def test_remove_client_no_force_kill_on_success(self):
         """disconnect 성공 시 강제 종료 호출 안 함"""
-        _clear_all_client_state()
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner("thread_ok")
 
-        mock_client = AsyncMock()  # disconnect 성공
+        mock_client = AsyncMock()
+        runner.client = mock_client
+        runner.pid = 11111
 
-        with ClaudeAgentRunner._clients_lock:
-            ClaudeAgentRunner._active_clients["thread_ok"] = mock_client
-            ClaudeAgentRunner._client_pids["thread_ok"] = 11111
-
-        with patch.object(ClaudeAgentRunner, "_force_kill_process") as mock_force_kill:
-            await runner._remove_client("thread_ok")
+        with patch.object(ClaudeRunner, "_force_kill_process") as mock_force_kill:
+            await runner._remove_client()
 
         mock_force_kill.assert_not_called()
-
-        # 클라이언트와 PID 모두 제거됨
-        with ClaudeAgentRunner._clients_lock:
-            assert "thread_ok" not in ClaudeAgentRunner._active_clients
-            assert "thread_ok" not in ClaudeAgentRunner._client_pids
+        assert runner.client is None
+        assert runner.pid is None
 
     def test_force_kill_process_terminate_success(self):
         """_force_kill_process: terminate 성공"""
@@ -1352,168 +1335,47 @@ class TestServiceFactory:
         assert isinstance(runner, ClaudeAgentRunner)
 
 
-class TestRunnerCaching:
-    """runner 캐싱 테스트 (Phase 2 싱글톤화)"""
-
-    def setup_method(self):
-        """각 테스트 전 캐시 초기화"""
-        from seosoyoung.claude import clear_runner_cache
-        clear_runner_cache()
-
-    def teardown_method(self):
-        """각 테스트 후 캐시 정리"""
-        from seosoyoung.claude import clear_runner_cache
-        clear_runner_cache()
-
-    def test_cache_key_none_creates_new_instance(self):
-        """cache_key가 None이면 항상 새 인스턴스 생성"""
-        from seosoyoung.claude import get_claude_runner, get_cached_runner_count
-
-        runner1 = get_claude_runner()
-        runner2 = get_claude_runner()
-
-        assert runner1 is not runner2
-        assert get_cached_runner_count() == 0
-
-    def test_cache_key_returns_same_instance(self):
-        """동일한 cache_key로 호출하면 같은 인스턴스 반환"""
-        from seosoyoung.claude import get_claude_runner, get_cached_runner_count
-
-        runner1 = get_claude_runner(cache_key="role:admin")
-        runner2 = get_claude_runner(cache_key="role:admin")
-
-        assert runner1 is runner2
-        assert get_cached_runner_count() == 1
-
-    def test_different_cache_keys_create_different_instances(self):
-        """다른 cache_key는 다른 인스턴스 생성"""
-        from seosoyoung.claude import get_claude_runner, get_cached_runner_count
-
-        runner_admin = get_claude_runner(cache_key="role:admin")
-        runner_viewer = get_claude_runner(cache_key="role:viewer")
-
-        assert runner_admin is not runner_viewer
-        assert get_cached_runner_count() == 2
-
-    def test_cached_runner_preserves_config(self):
-        """캐시된 runner가 설정을 유지"""
-        from seosoyoung.claude import get_claude_runner
-
-        runner1 = get_claude_runner(
-            timeout=600,
-            allowed_tools=["Read", "Write"],
-            cache_key="custom-config"
-        )
-
-        runner2 = get_claude_runner(cache_key="custom-config")
-
-        assert runner2.timeout == 600
-        assert runner2.allowed_tools == ["Read", "Write"]
-
-    def test_clear_runner_cache(self):
-        """clear_runner_cache가 캐시를 비움"""
-        from seosoyoung.claude import get_claude_runner, clear_runner_cache, get_cached_runner_count
-
-        get_claude_runner(cache_key="role:admin")
-        get_claude_runner(cache_key="role:viewer")
-        assert get_cached_runner_count() == 2
-
-        cleared = clear_runner_cache()
-        assert cleared == 2
-        assert get_cached_runner_count() == 0
-
-    def test_thread_safety_of_cache(self):
-        """캐시 접근이 스레드 안전한지 확인"""
-        import threading
-        from seosoyoung.claude import get_claude_runner, get_cached_runner_count
-
-        results = []
-        errors = []
-
-        def get_runner(cache_key):
-            try:
-                runner = get_claude_runner(cache_key=cache_key)
-                results.append((cache_key, id(runner)))
-            except Exception as e:
-                errors.append(e)
-
-        threads = []
-        for i in range(10):
-            # 같은 키로 여러 스레드가 동시 접근
-            t = threading.Thread(target=get_runner, args=("role:admin",))
-            threads.append(t)
-
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert len(errors) == 0
-        assert get_cached_runner_count() == 1
-
-        # 모든 스레드가 같은 인스턴스를 받았는지 확인
-        runner_ids = [r[1] for r in results]
-        assert len(set(runner_ids)) == 1
-
-
-class TestGetRunnerForRole:
-    """get_runner_for_role 함수 테스트"""
-
-    def setup_method(self):
-        """각 테스트 전 캐시 초기화"""
-        from seosoyoung.claude import clear_runner_cache
-        clear_runner_cache()
-
-    def teardown_method(self):
-        """각 테스트 후 캐시 정리"""
-        from seosoyoung.claude import clear_runner_cache
-        clear_runner_cache()
-
-    def test_get_runner_for_role_returns_cached_instance(self):
-        """동일한 역할로 호출하면 캐시된 인스턴스 반환"""
-        from seosoyoung.claude.executor import get_runner_for_role
-        from seosoyoung.claude import get_cached_runner_count
-
-        runner1 = get_runner_for_role("admin")
-        runner2 = get_runner_for_role("admin")
-
-        assert runner1 is runner2
-        assert get_cached_runner_count() == 1
-
-    def test_get_runner_for_role_different_roles(self):
-        """다른 역할은 다른 인스턴스"""
-        from seosoyoung.claude.executor import get_runner_for_role
-        from seosoyoung.claude import get_cached_runner_count
-
-        runner_admin = get_runner_for_role("admin")
-        runner_viewer = get_runner_for_role("viewer")
-
-        assert runner_admin is not runner_viewer
-        assert get_cached_runner_count() == 2
+class TestGetRoleConfig:
+    """_get_role_config 함수 테스트"""
 
     def test_viewer_role_has_correct_disallowed_tools(self):
         """viewer 역할은 수정/실행 도구가 차단됨"""
-        from seosoyoung.claude.executor import get_runner_for_role
+        from seosoyoung.claude.executor import _get_role_config
 
-        runner = get_runner_for_role("viewer")
+        config = _get_role_config("viewer")
 
-        assert "Write" in runner.disallowed_tools
-        assert "Edit" in runner.disallowed_tools
-        assert "Bash" in runner.disallowed_tools
-        assert "TodoWrite" in runner.disallowed_tools
+        assert "Write" in config["disallowed_tools"]
+        assert "Edit" in config["disallowed_tools"]
+        assert "Bash" in config["disallowed_tools"]
+        assert "TodoWrite" in config["disallowed_tools"]
 
     def test_admin_role_has_mcp_config(self):
         """admin 역할은 MCP 설정을 사용 (설정 파일 존재 시)"""
-        from seosoyoung.claude.executor import get_runner_for_role, _get_mcp_config_path
+        from seosoyoung.claude.executor import _get_role_config, _get_mcp_config_path
 
-        runner = get_runner_for_role("admin")
+        config = _get_role_config("admin")
 
-        # MCP 설정 파일이 있으면 mcp_config_path가 설정됨
         expected_path = _get_mcp_config_path()
         if expected_path:
-            assert runner.mcp_config_path == expected_path
+            assert config["mcp_config_path"] == expected_path
         else:
-            assert runner.mcp_config_path is None
+            assert config["mcp_config_path"] is None
+
+    def test_admin_role_has_no_disallowed_tools(self):
+        """admin 역할은 disallowed_tools가 None"""
+        from seosoyoung.claude.executor import _get_role_config
+
+        config = _get_role_config("admin")
+        assert config["disallowed_tools"] is None
+
+    def test_returns_dict_with_required_keys(self):
+        """반환값이 필수 키를 포함"""
+        from seosoyoung.claude.executor import _get_role_config
+
+        config = _get_role_config("admin")
+        assert "allowed_tools" in config
+        assert "disallowed_tools" in config
+        assert "mcp_config_path" in config
 
 
 @pytest.mark.integration
@@ -1572,14 +1434,14 @@ class TestBuildCompactHook:
     def test_returns_none_when_compact_events_is_none(self):
         """compact_events가 None이면 hooks는 None"""
         runner = ClaudeAgentRunner()
-        hooks = runner._build_compact_hook(None, None)
+        hooks = runner._build_compact_hook(None)
         assert hooks is None
 
     def test_returns_hooks_when_compact_events_provided(self):
         """compact_events 제공 시 PreCompact 훅 딕셔너리 반환"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner(thread_ts="ts_1")
         compact_events = []
-        hooks = runner._build_compact_hook(compact_events, "ts_1")
+        hooks = runner._build_compact_hook(compact_events)
 
         assert hooks is not None
         assert "PreCompact" in hooks
@@ -1587,10 +1449,10 @@ class TestBuildCompactHook:
         assert hooks["PreCompact"][0].matcher is None
 
     def test_returns_hooks_without_thread_ts(self):
-        """thread_ts가 None이어도 훅 생성됨"""
+        """thread_ts가 없어도 훅 생성됨"""
         runner = ClaudeAgentRunner()
         compact_events = []
-        hooks = runner._build_compact_hook(compact_events, None)
+        hooks = runner._build_compact_hook(compact_events)
 
         assert hooks is not None
         assert "PreCompact" in hooks
@@ -1680,25 +1542,25 @@ class TestPrepareMemoryInjection:
         """thread_ts가 None이면 (None, '') 반환"""
         runner = ClaudeAgentRunner()
         memory_prompt, anchor_ts = runner._prepare_memory_injection(
-            thread_ts=None, channel=None, session_id=None, prompt="test",
+            session_id=None, prompt="test",
         )
         assert memory_prompt is None
         assert anchor_ts == ""
 
     def test_returns_none_when_om_disabled(self):
         """OM 비활성 시 (None, '') 반환"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner(thread_ts="ts_1", channel="C1")
         with patch("seosoyoung.config.Config") as MockConfig:
             MockConfig.OM_ENABLED = False
             memory_prompt, anchor_ts = runner._prepare_memory_injection(
-                thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
+                session_id=None, prompt="test",
             )
         assert memory_prompt is None
         assert anchor_ts == ""
 
     def test_returns_memory_prompt_when_available(self, tmp_path):
         """OM 활성 + 메모리 존재 시 memory_prompt 반환"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner(thread_ts="ts_1", channel="C1")
         config_patches = {
             "OM_ENABLED": True,
             "CHANNEL_OBSERVER_ENABLED": False,
@@ -1725,7 +1587,7 @@ class TestPrepareMemoryInjection:
                     channel_buffer_tokens=0,
                 )
                 memory_prompt, anchor_ts = runner._prepare_memory_injection(
-                    thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
+                    session_id=None, prompt="test",
                 )
 
         assert memory_prompt is not None
@@ -1733,7 +1595,7 @@ class TestPrepareMemoryInjection:
 
     def test_calls_create_or_load_debug_anchor(self, tmp_path):
         """_create_or_load_debug_anchor가 내부적으로 호출되는지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner(thread_ts="ts_1", channel="C1")
         config_patches = {
             "OM_ENABLED": True,
             "CHANNEL_OBSERVER_ENABLED": False,
@@ -1761,7 +1623,7 @@ class TestPrepareMemoryInjection:
                 )
                 with patch.object(runner, "_create_or_load_debug_anchor", return_value="anc_789") as mock_anchor:
                     _, anchor_ts = runner._prepare_memory_injection(
-                        thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
+                        session_id=None, prompt="test",
                     )
 
         mock_anchor.assert_called_once()
@@ -1769,12 +1631,12 @@ class TestPrepareMemoryInjection:
 
     def test_exception_returns_none_gracefully(self):
         """OM 내부 예외 발생 시 (None, '') 반환 (무시)"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner(thread_ts="ts_err", channel="C1")
         with patch("seosoyoung.config.Config") as MockConfig:
             MockConfig.OM_ENABLED = True
             MockConfig.get_memory_path.side_effect = RuntimeError("boom")
             memory_prompt, anchor_ts = runner._prepare_memory_injection(
-                thread_ts="ts_err", channel="C1", session_id=None, prompt="test",
+                session_id=None, prompt="test",
             )
         assert memory_prompt is None
         assert anchor_ts == ""
