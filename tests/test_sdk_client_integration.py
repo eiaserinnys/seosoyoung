@@ -377,7 +377,7 @@ class TestRunWithSessionResume:
                     )
 
         assert len(captured_options) > 0
-        options, _memory_prompt, _anchor_ts = captured_options[0]
+        options, _memory_prompt, _anchor_ts, _stderr_file = captured_options[0]
         assert options.resume == "existing-session"
 
 

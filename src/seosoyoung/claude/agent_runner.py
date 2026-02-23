@@ -651,13 +651,14 @@ class ClaudeRunner:
         compact_events: Optional[list] = None,
         user_id: Optional[str] = None,
         prompt: Optional[str] = None,
-    ) -> tuple[ClaudeCodeOptions, Optional[str], str]:
-        """ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts를 함께 반환합니다.
+    ) -> tuple[ClaudeCodeOptions, Optional[str], str, Optional[object]]:
+        """ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts, stderr 파일을 반환합니다.
 
         Returns:
-            (options, memory_prompt, anchor_ts)
+            (options, memory_prompt, anchor_ts, stderr_file)
             - memory_prompt는 첫 번째 query에 프리픽스로 주입합니다.
             - anchor_ts는 디버그 채널의 세션 스레드 앵커 메시지 ts입니다.
+            - stderr_file은 호출자가 닫아야 함 (sys.stderr이면 None)
 
         참고: env 파라미터를 명시적으로 전달하지 않으면
         Claude Code CLI가 현재 프로세스의 환경변수를 상속받습니다.
@@ -674,18 +675,24 @@ class ClaudeRunner:
             env["SLACK_CHANNEL"] = channel
             env["SLACK_THREAD_TS"] = thread_ts
 
-        # DEBUG: CLI stderr를 파일에 캡처
+        # CLI stderr를 세션별 파일에 캡처
         import sys as _sys
         _runtime_dir = Path(__file__).resolve().parents[3]
-        _stderr_log_path = _runtime_dir / "logs" / "cli_stderr.log"
+        _stderr_suffix = thread_ts.replace(".", "_") if thread_ts else "default"
+        _stderr_log_path = _runtime_dir / "logs" / f"cli_stderr_{_stderr_suffix}.log"
         logger.info(f"[DEBUG] CLI stderr 로그 경로: {_stderr_log_path}")
+        _stderr_file = None
+        _stderr_target = _sys.stderr
         try:
             _stderr_file = open(_stderr_log_path, "a", encoding="utf-8")
             _stderr_file.write(f"\n--- CLI stderr capture start: {datetime.now(timezone.utc).isoformat()} ---\n")
             _stderr_file.flush()
+            _stderr_target = _stderr_file
         except Exception as _e:
             logger.warning(f"[DEBUG] stderr 캡처 파일 열기 실패: {_e}")
-            _stderr_file = _sys.stderr
+            if _stderr_file:
+                _stderr_file.close()
+            _stderr_file = None
 
         options = ClaudeCodeOptions(
             allowed_tools=self.allowed_tools,
@@ -695,7 +702,7 @@ class ClaudeRunner:
             hooks=hooks,
             env=env,
             extra_args={"debug-to-stderr": None},
-            debug_stderr=_stderr_file,
+            debug_stderr=_stderr_target,
         )
 
         if session_id:
@@ -705,7 +712,7 @@ class ClaudeRunner:
             session_id, prompt,
         )
 
-        return options, memory_prompt, anchor_ts
+        return options, memory_prompt, anchor_ts, _stderr_file
 
     @staticmethod
     def _send_injection_debug_log(
@@ -927,7 +934,7 @@ class ClaudeRunner:
         channel = self.channel
         compact_events: list[dict] = []
         compact_notified_count = 0
-        options, memory_prompt, anchor_ts = self._build_options(session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+        options, memory_prompt, anchor_ts, stderr_file = self._build_options(session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
         # DEBUG: SDK에 전달되는 options 상세 로그
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
         logger.info(f"[DEBUG-OPTIONS] permission_mode={options.permission_mode}")
@@ -1205,6 +1212,11 @@ class ClaudeRunner:
             self.execution_loop = None
             if thread_ts:
                 remove_runner(thread_ts)
+            if stderr_file is not None:
+                try:
+                    stderr_file.close()
+                except Exception:
+                    pass
 
     async def compact_session(self, session_id: str) -> ClaudeResult:
         """세션 컴팩트 처리
