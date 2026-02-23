@@ -27,24 +27,36 @@ SeoSoyoung 슬랙 봇 메인
 
 SIGTERM, SIGINT 수신 시 모든 클라이언트를 정리하고 프로세스를 종료합니다.
 
+### `_init_channel_observer(slack_client, mention_tracker)`
+- 위치: 줄 117
+- 설명: 채널 관찰 시스템 초기화
+
+Returns:
+    tuple: (store, collector, cooldown, observer, compressor, scheduler)
+           비활성화 시 모두 None.
+
+### `_build_dependencies()`
+- 위치: 줄 184
+- 설명: 핸들러 의존성 딕셔너리 빌드
+
 ### `notify_startup()`
-- 위치: 줄 189
+- 위치: 줄 210
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 200
+- 위치: 줄 221
 - 설명: 봇 종료 알림
 
 ### `start_trello_watcher()`
-- 위치: 줄 211
+- 위치: 줄 232
 - 설명: Trello 워처 시작
 
 ### `start_list_runner()`
-- 위치: 줄 231
+- 위치: 줄 252
 - 설명: 리스트 러너 초기화
 
 ### `init_bot_user_id()`
-- 위치: 줄 241
+- 위치: 줄 262
 - 설명: 봇 사용자 ID 초기화
 
 ## 내부 의존성

@@ -294,11 +294,11 @@
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/main.py:189): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/main.py:200): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/main.py:211): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/main.py:231): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/main.py:241): 봇 사용자 ID 초기화
+- `notify_startup()` (seosoyoung/main.py:210): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/main.py:221): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/main.py:232): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/main.py:252): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/main.py:262): 봇 사용자 ID 초기화
 - `start_git_watcher()` (seosoyoung/mcp/server.py:46): Git watcher 백그라운드 스레드 시작.
 - `stop_git_watcher()` (seosoyoung/mcp/server.py:72): Git watcher 정지.
 - `slack_attach_file()` (seosoyoung/mcp/server.py:81): 슬랙에 파일을 첨부합니다.
