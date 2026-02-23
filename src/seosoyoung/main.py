@@ -113,40 +113,46 @@ executor = ClaudeExecutor(
 # 멘션 트래커 (채널 관찰자-멘션 핸들러 통합용)
 _mention_tracker = MentionTracker()
 
-# 채널 관찰 시스템 초기화
-_channel_store: ChannelStore | None = None
-_channel_collector: ChannelMessageCollector | None = None
-_channel_cooldown: InterventionHistory | None = None
-_channel_observer: ChannelObserver | None = None
-_channel_compressor: DigestCompressor | None = None
-_channel_scheduler: ChannelDigestScheduler | None = None
 
-if Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS:
-    _channel_store = ChannelStore(base_dir=Config.get_memory_path())
-    _channel_collector = ChannelMessageCollector(
-        store=_channel_store,
+def _init_channel_observer(slack_client, mention_tracker):
+    """채널 관찰 시스템 초기화
+
+    Returns:
+        tuple: (store, collector, cooldown, observer, compressor, scheduler)
+               비활성화 시 모두 None.
+    """
+    nones = (None, None, None, None, None, None)
+    if not (Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS):
+        return nones
+
+    store = ChannelStore(base_dir=Config.get_memory_path())
+    collector = ChannelMessageCollector(
+        store=store,
         target_channels=Config.CHANNEL_OBSERVER_CHANNELS,
-        mention_tracker=_mention_tracker,
+        mention_tracker=mention_tracker,
     )
-    _channel_cooldown = InterventionHistory(
-        base_dir=Config.get_memory_path(),
-    )
+    cooldown = InterventionHistory(base_dir=Config.get_memory_path())
+
+    observer = None
+    compressor = None
     if Config.CHANNEL_OBSERVER_API_KEY:
-        _channel_observer = ChannelObserver(
+        observer = ChannelObserver(
             api_key=Config.CHANNEL_OBSERVER_API_KEY,
             model=Config.CHANNEL_OBSERVER_MODEL,
         )
-        _channel_compressor = DigestCompressor(
+        compressor = DigestCompressor(
             api_key=Config.CHANNEL_OBSERVER_API_KEY,
             model=Config.CHANNEL_OBSERVER_COMPRESSOR_MODEL,
         )
-    if _channel_observer and Config.CHANNEL_OBSERVER_PERIODIC_SEC > 0:
-        _channel_scheduler = ChannelDigestScheduler(
-            store=_channel_store,
-            observer=_channel_observer,
-            compressor=_channel_compressor,
-            cooldown=_channel_cooldown,
-            slack_client=app.client,
+
+    scheduler = None
+    if observer and Config.CHANNEL_OBSERVER_PERIODIC_SEC > 0:
+        scheduler = ChannelDigestScheduler(
+            store=store,
+            observer=observer,
+            compressor=compressor,
+            cooldown=cooldown,
+            slack_client=slack_client,
             channels=Config.CHANNEL_OBSERVER_CHANNELS,
             interval_sec=Config.CHANNEL_OBSERVER_PERIODIC_SEC,
             buffer_threshold=Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD,
@@ -154,36 +160,51 @@ if Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS:
             digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
             debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
             intervention_threshold=Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD,
-            mention_tracker=_mention_tracker,
+            mention_tracker=mention_tracker,
         )
+
     logger.info(
         f"채널 관찰 시스템 초기화: channels={Config.CHANNEL_OBSERVER_CHANNELS}, "
         f"threshold={Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD}, "
         f"periodic={Config.CHANNEL_OBSERVER_PERIODIC_SEC}s"
     )
+    return store, collector, cooldown, observer, compressor, scheduler
 
-# 핸들러 의존성
-dependencies = {
-    "session_manager": session_manager,
-    "restart_manager": restart_manager,
-    "get_session_lock": session_runtime.get_session_lock,
-    "get_running_session_count": session_runtime.get_running_session_count,
-    "run_claude_in_session": executor.run,
-    "check_permission": check_permission,
-    "get_user_role": get_user_role,
-    "send_restart_confirmation": send_restart_confirmation,
-    "trello_watcher_ref": lambda: trello_watcher,
-    "list_runner_ref": lambda: list_runner,
-    "channel_collector": _channel_collector,
-    "channel_store": _channel_store,
-    "channel_observer": _channel_observer,
-    "channel_compressor": _channel_compressor,
-    "channel_cooldown": _channel_cooldown,
-    "mention_tracker": _mention_tracker,
-}
+
+(
+    _channel_store,
+    _channel_collector,
+    _channel_cooldown,
+    _channel_observer,
+    _channel_compressor,
+    _channel_scheduler,
+) = _init_channel_observer(app.client, _mention_tracker)
+
+
+def _build_dependencies():
+    """핸들러 의존성 딕셔너리 빌드"""
+    return {
+        "session_manager": session_manager,
+        "restart_manager": restart_manager,
+        "get_session_lock": session_runtime.get_session_lock,
+        "get_running_session_count": session_runtime.get_running_session_count,
+        "run_claude_in_session": executor.run,
+        "check_permission": check_permission,
+        "get_user_role": get_user_role,
+        "send_restart_confirmation": send_restart_confirmation,
+        "trello_watcher_ref": lambda: trello_watcher,
+        "list_runner_ref": lambda: list_runner,
+        "channel_collector": _channel_collector,
+        "channel_store": _channel_store,
+        "channel_observer": _channel_observer,
+        "channel_compressor": _channel_compressor,
+        "channel_cooldown": _channel_cooldown,
+        "mention_tracker": _mention_tracker,
+    }
+
 
 # 핸들러 등록
-register_all_handlers(app, dependencies)
+register_all_handlers(app, _build_dependencies())
 
 
 def notify_startup():

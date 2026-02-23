@@ -137,7 +137,7 @@ class TestCompactCommand:
         mock_runner.compact_session = AsyncMock(return_value=mock_result)
 
         with patch("seosoyoung.claude.get_claude_runner", return_value=mock_runner):
-            with patch("seosoyoung.handlers.mention.asyncio") as mock_asyncio:
+            with patch("seosoyoung.handlers.commands.asyncio") as mock_asyncio:
                 mock_asyncio.run.return_value = mock_result
                 handler(event, say, client)
 
@@ -171,7 +171,7 @@ class TestCompactCommand:
         mock_result.session_id = "new-session-id"
 
         with patch("seosoyoung.claude.get_claude_runner") as mock_get_runner:
-            with patch("seosoyoung.handlers.mention.asyncio") as mock_asyncio:
+            with patch("seosoyoung.handlers.commands.asyncio") as mock_asyncio:
                 mock_asyncio.run.return_value = mock_result
                 handler(event, say, client)
 
@@ -203,7 +203,7 @@ class TestCompactCommand:
         mock_result.error = "세션을 찾을 수 없습니다"
 
         with patch("seosoyoung.claude.get_claude_runner") as mock_get_runner:
-            with patch("seosoyoung.handlers.mention.asyncio") as mock_asyncio:
+            with patch("seosoyoung.handlers.commands.asyncio") as mock_asyncio:
                 mock_asyncio.run.return_value = mock_result
                 handler(event, say, client)
 
