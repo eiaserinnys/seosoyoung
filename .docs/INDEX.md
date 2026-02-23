@@ -276,12 +276,12 @@
 - `handle_help()` (seosoyoung/handlers/commands.py:162): help 명령어 핸들러
 - `handle_status()` (seosoyoung/handlers/commands.py:182): status 명령어 핸들러 - 시스템 상태 및 프로세스 트리 표시
 - `handle_cleanup()` (seosoyoung/handlers/commands.py:234): cleanup 명령어 핸들러 - 고아 프로세스 및 오래된 세션 정리
-- `handle_log()` (seosoyoung/handlers/commands.py:413): log 명령어 핸들러 - 오늘자 로그 파일 첨부
-- `handle_translate()` (seosoyoung/handlers/commands.py:449): 번역 명령어 핸들러
-- `handle_update_restart()` (seosoyoung/handlers/commands.py:487): update/restart 명령어 핸들러
-- `handle_compact()` (seosoyoung/handlers/commands.py:525): compact 명령어 핸들러 - 스레드 세션 컴팩트
-- `handle_profile()` (seosoyoung/handlers/commands.py:553): profile 명령어 핸들러 - 인증 프로필 관리
-- `handle_resume_list_run()` (seosoyoung/handlers/commands.py:626): 정주행 재개 명령어 핸들러
+- `handle_log()` (seosoyoung/handlers/commands.py:382): log 명령어 핸들러 - 오늘자 로그 파일 첨부
+- `handle_translate()` (seosoyoung/handlers/commands.py:418): 번역 명령어 핸들러
+- `handle_update_restart()` (seosoyoung/handlers/commands.py:456): update/restart 명령어 핸들러
+- `handle_compact()` (seosoyoung/handlers/commands.py:494): compact 명령어 핸들러 - 스레드 세션 컴팩트
+- `handle_profile()` (seosoyoung/handlers/commands.py:529): profile 명령어 핸들러 - 인증 프로필 관리
+- `handle_resume_list_run()` (seosoyoung/handlers/commands.py:585): 정주행 재개 명령어 핸들러
 - `extract_command()` (seosoyoung/handlers/mention.py:93): 멘션에서 명령어 추출
 - `build_prompt_with_recall()` (seosoyoung/handlers/mention.py:119): Recall 결과를 포함한 프롬프트 구성.
 - `get_channel_history()` (seosoyoung/handlers/mention.py:185): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
