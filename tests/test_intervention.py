@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-from seosoyoung.claude.executor import ClaudeExecutor, PendingPrompt
+from seosoyoung.claude.executor import ClaudeExecutor, ExecutionContext, PendingPrompt
 from seosoyoung.claude.agent_runner import ClaudeResult
 
 
@@ -56,6 +56,23 @@ def make_claude_result(**overrides) -> ClaudeResult:
     )
     defaults.update(overrides)
     return ClaudeResult(**defaults)
+
+
+def _make_ctx(session=None, **overrides) -> ExecutionContext:
+    """테스트용 ExecutionContext 생성 헬퍼"""
+    if session is None:
+        session = FakeSession()
+    defaults = dict(
+        session=session,
+        channel="C_TEST",
+        say=MagicMock(),
+        client=MagicMock(),
+        msg_ts="msg_456",
+        effective_role="admin",
+        thread_ts=session.thread_ts,
+    )
+    defaults.update(overrides)
+    return ExecutionContext(**defaults)
 
 
 class TestPendingPrompts:
@@ -105,17 +122,10 @@ class TestInterventionHandling:
     def test_intervention_no_message(self):
         """락 실패 시 텍스트 메시지 없음"""
         executor = make_executor()
-        client = MagicMock()
         say = MagicMock()
+        ctx = _make_ctx(say=say)
 
-        executor._handle_intervention(
-            thread_ts="thread_123",
-            prompt="새 질문",
-            msg_ts="msg_456",
-            channel="C_TEST",
-            say=say,
-            client=client,
-        )
+        executor._handle_intervention(ctx, "새 질문")
 
         # say (텍스트 메시지)는 호출되지 않음
         say.assert_not_called()
@@ -123,15 +133,9 @@ class TestInterventionHandling:
     def test_intervention_saves_pending(self):
         """인터벤션 시 pending에 프롬프트 저장"""
         executor = make_executor()
+        ctx = _make_ctx()
 
-        executor._handle_intervention(
-            thread_ts="thread_123",
-            prompt="새 질문",
-            msg_ts="msg_456",
-            channel="C_TEST",
-            say=MagicMock(),
-            client=MagicMock(),
-        )
+        executor._handle_intervention(ctx, "새 질문")
 
         pending = executor._pending_prompts.get("thread_123")
         assert pending is not None
@@ -147,14 +151,8 @@ class TestInterventionHandling:
         mock_runner.interrupt.return_value = True
         executor._active_runners["thread_123"] = mock_runner
 
-        executor._handle_intervention(
-            thread_ts="thread_123",
-            prompt="새 질문",
-            msg_ts="msg_456",
-            channel="C_TEST",
-            say=MagicMock(),
-            client=MagicMock(),
-        )
+        ctx = _make_ctx()
+        executor._handle_intervention(ctx, "새 질문")
 
         # interrupt(thread_ts) 직접 호출됨 (이제 동기)
         mock_runner.interrupt.assert_called_once_with("thread_123")
@@ -162,15 +160,9 @@ class TestInterventionHandling:
     def test_intervention_no_runner_no_interrupt(self):
         """_active_runners에 runner가 없으면 interrupt 호출 안 함"""
         executor = make_executor()
+        ctx = _make_ctx()
 
-        executor._handle_intervention(
-            thread_ts="thread_123",
-            prompt="새 질문",
-            msg_ts="msg_456",
-            channel="C_TEST",
-            say=MagicMock(),
-            client=MagicMock(),
-        )
+        executor._handle_intervention(ctx, "새 질문")
 
         # pending에는 저장됨
         assert "thread_123" in executor._pending_prompts
@@ -215,16 +207,15 @@ class TestInterruptedExecution:
         """일반 모드에서 중단 시 사고 과정 메시지 업데이트"""
         executor = make_executor()
         client = MagicMock()
-
-        executor._handle_interrupted(
+        ctx = _make_ctx(
+            client=client,
             last_msg_ts="msg_100",
             main_msg_ts=None,
             is_trello_mode=False,
             trello_card=None,
-            session=FakeSession(),
-            channel="C_TEST",
-            client=client,
         )
+
+        executor._handle_interrupted(ctx)
 
         client.chat_update.assert_called_once()
         call_kwargs = client.chat_update.call_args
@@ -239,16 +230,16 @@ class TestInterruptedExecution:
         trello_card.card_name = "Test Card"
         trello_card.has_execute = True
 
+        ctx = _make_ctx(
+            client=client,
+            last_msg_ts=None,
+            main_msg_ts="msg_200",
+            is_trello_mode=True,
+            trello_card=trello_card,
+        )
+
         with patch("seosoyoung.claude.executor.build_trello_header", return_value="[Trello Header]"):
-            executor._handle_interrupted(
-                last_msg_ts=None,
-                main_msg_ts="msg_200",
-                is_trello_mode=True,
-                trello_card=trello_card,
-                session=FakeSession(),
-                channel="C_TEST",
-                client=client,
-            )
+            executor._handle_interrupted(ctx)
 
         client.chat_update.assert_called_once()
         call_kwargs = client.chat_update.call_args
@@ -260,16 +251,15 @@ class TestInterruptedExecution:
         """target_ts가 없으면 업데이트 스킵"""
         executor = make_executor()
         client = MagicMock()
-
-        executor._handle_interrupted(
+        ctx = _make_ctx(
+            client=client,
             last_msg_ts=None,
             main_msg_ts=None,
             is_trello_mode=False,
             trello_card=None,
-            session=FakeSession(),
-            channel="C_TEST",
-            client=client,
         )
+
+        executor._handle_interrupted(ctx)
 
         client.chat_update.assert_not_called()
 
@@ -290,20 +280,18 @@ class TestExecuteOnceWithInterruption:
         client = MagicMock()
         client.chat_postMessage.return_value = {"ts": "msg_posted"}
 
+        ctx = _make_ctx(
+            session=session,
+            client=client,
+            msg_ts="msg_1",
+            initial_msg_ts=None,
+            is_trello_mode=False,
+            trello_card=None,
+            is_existing_thread=False,
+        )
+
         with patch.object(executor, "_handle_interrupted") as mock_interrupted:
-            executor._execute_once(
-                session=session,
-                prompt="test",
-                msg_ts="msg_1",
-                channel="C_TEST",
-                say=MagicMock(),
-                client=client,
-                effective_role="admin",
-                trello_card=None,
-                is_existing_thread=False,
-                initial_msg_ts=None,
-                is_trello_mode=False,
-            )
+            executor._execute_once(ctx, "test")
 
             mock_interrupted.assert_called_once()
 
@@ -320,20 +308,18 @@ class TestExecuteOnceWithInterruption:
         client = MagicMock()
         client.chat_postMessage.return_value = {"ts": "msg_posted"}
 
+        ctx = _make_ctx(
+            session=session,
+            client=client,
+            msg_ts="msg_1",
+            initial_msg_ts=None,
+            is_trello_mode=False,
+            trello_card=None,
+            is_existing_thread=False,
+        )
+
         with patch.object(executor, "_handle_success") as mock_success:
-            executor._execute_once(
-                session=session,
-                prompt="test",
-                msg_ts="msg_1",
-                channel="C_TEST",
-                say=MagicMock(),
-                client=client,
-                effective_role="admin",
-                trello_card=None,
-                is_existing_thread=False,
-                initial_msg_ts=None,
-                is_trello_mode=False,
-            )
+            executor._execute_once(ctx, "test")
 
             mock_success.assert_called_once()
 
@@ -350,20 +336,18 @@ class TestExecuteOnceWithInterruption:
         client = MagicMock()
         client.chat_postMessage.return_value = {"ts": "msg_posted"}
 
+        ctx = _make_ctx(
+            session=session,
+            client=client,
+            msg_ts="msg_1",
+            initial_msg_ts=None,
+            is_trello_mode=False,
+            trello_card=None,
+            is_existing_thread=False,
+        )
+
         with patch.object(executor, "_handle_success"):
-            executor._execute_once(
-                session=session,
-                prompt="test",
-                msg_ts="msg_1",
-                channel="C_TEST",
-                say=MagicMock(),
-                client=client,
-                effective_role="admin",
-                trello_card=None,
-                is_existing_thread=False,
-                initial_msg_ts=None,
-                is_trello_mode=False,
-            )
+            executor._execute_once(ctx, "test")
 
         # 실행 완료 후 _active_runners에서 해제됨
         assert "thread_123" not in executor._active_runners
@@ -385,15 +369,10 @@ class TestRunWithLockPendingLoop:
         client = MagicMock()
         client.chat_postMessage.return_value = {"ts": "msg_1"}
 
+        ctx = _make_ctx(session=session, client=client, msg_ts="msg_1")
+
         with patch.object(executor, "_handle_success"):
-            executor._run_with_lock(
-                session=session,
-                prompt="first prompt",
-                msg_ts="msg_1",
-                channel="C_TEST",
-                say=MagicMock(),
-                client=client,
-            )
+            executor._run_with_lock(ctx, "first prompt")
 
         # run이 한 번만 호출됨
         assert mock_runner.run_sync.call_count == 1
@@ -411,6 +390,8 @@ class TestRunWithLockPendingLoop:
         client = MagicMock()
         client.chat_postMessage.return_value = {"ts": "msg_1"}
 
+        ctx = _make_ctx(session=session, client=client, msg_ts="msg_1")
+
         # 첫 실행 후 pending이 있도록 설정
         pending = PendingPrompt(
             prompt="second prompt",
@@ -423,14 +404,7 @@ class TestRunWithLockPendingLoop:
 
         with patch.object(executor, "_handle_success"):
             with patch.object(executor, "_handle_interrupted"):
-                executor._run_with_lock(
-                    session=session,
-                    prompt="first prompt",
-                    msg_ts="msg_1",
-                    channel="C_TEST",
-                    say=MagicMock(),
-                    client=client,
-                )
+                executor._run_with_lock(ctx, "first prompt")
 
         # run이 두 번 호출됨 (첫 번째 + pending)
         assert mock_runner.run_sync.call_count == 2
@@ -455,15 +429,10 @@ class TestRunWithLockPendingLoop:
         client = MagicMock()
         client.chat_postMessage.return_value = {"ts": "msg_1"}
 
+        ctx = _make_ctx(session=session, client=client, msg_ts="msg_1")
+
         with patch.object(executor, "_handle_success"):
-            executor._run_with_lock(
-                session=session,
-                prompt="test",
-                msg_ts="msg_1",
-                channel="C_TEST",
-                say=MagicMock(),
-                client=client,
-            )
+            executor._run_with_lock(ctx, "test")
 
         mark_running.assert_called_once()
         mark_stopped.assert_called_once()
@@ -483,14 +452,8 @@ class TestConsecutiveInterventions:
 
         # A → B → C 순서로 인터벤션
         for i, prompt in enumerate(["A", "B", "C"]):
-            executor._handle_intervention(
-                thread_ts="thread_123",
-                prompt=prompt,
-                msg_ts=f"msg_{i}",
-                channel="C_TEST",
-                say=MagicMock(),
-                client=MagicMock(),
-            )
+            ctx = _make_ctx(msg_ts=f"msg_{i}")
+            executor._handle_intervention(ctx, prompt)
 
         # pending에는 C만 남아있어야 함
         pending = executor._pending_prompts.get("thread_123")
@@ -528,14 +491,8 @@ class TestActiveRunners:
         mock_runner.run_sync.return_value = True
         executor._active_runners["thread_abc"] = mock_runner
 
-        executor._handle_intervention(
-            thread_ts="thread_abc",
-            prompt="interrupt me",
-            msg_ts="msg_1",
-            channel="C1",
-            say=MagicMock(),
-            client=MagicMock(),
-        )
+        ctx = _make_ctx(thread_ts="thread_abc")
+        executor._handle_intervention(ctx, "interrupt me")
 
         mock_runner.interrupt.assert_called_once_with("thread_abc")
 
@@ -549,13 +506,17 @@ class TestNormalSuccessWithReplace:
         result = make_claude_result(output="짧은 응답")
         client = MagicMock()
 
+        ctx = _make_ctx(
+            client=client,
+            channel="C_TEST",
+            thread_ts="thread_1",
+            last_msg_ts="msg_thinking",
+            msg_ts="msg_1",
+            is_thread_reply=True,
+        )
+
         with patch.object(executor, "_replace_thinking_message") as mock_replace:
-            executor._handle_normal_success(
-                result, "짧은 응답",
-                "C_TEST", "thread_1", "msg_1", "msg_thinking",
-                MagicMock(), client,
-                is_thread_reply=True,
-            )
+            executor._handle_normal_success(ctx, result, "짧은 응답", False, None)
 
         mock_replace.assert_called_once()
         # 스레드 내 답글이므로 thread_ts="thread_1"
@@ -568,13 +529,17 @@ class TestNormalSuccessWithReplace:
         result = make_claude_result(output="짧은 응답")
         client = MagicMock()
 
+        ctx = _make_ctx(
+            client=client,
+            channel="C_TEST",
+            thread_ts="thread_1",
+            last_msg_ts="msg_thinking",
+            msg_ts="msg_1",
+            is_thread_reply=False,
+        )
+
         with patch.object(executor, "_replace_thinking_message") as mock_replace:
-            executor._handle_normal_success(
-                result, "짧은 응답",
-                "C_TEST", "thread_1", "msg_1", "msg_thinking",
-                MagicMock(), client,
-                is_thread_reply=False,
-            )
+            executor._handle_normal_success(ctx, result, "짧은 응답", False, None)
 
         mock_replace.assert_called_once()
         call_kwargs = mock_replace.call_args
@@ -594,12 +559,18 @@ class TestTrelloSuccessWithReplace:
         trello_card.has_execute = True
         client = MagicMock()
 
+        ctx = _make_ctx(
+            session=session,
+            client=client,
+            channel="C_TEST",
+            thread_ts="thread_1",
+            main_msg_ts="msg_main",
+            trello_card=trello_card,
+            is_trello_mode=True,
+        )
+
         with patch.object(executor, "_replace_thinking_message") as mock_replace:
-            executor._handle_trello_success(
-                result, "트렐로 응답", session, trello_card,
-                "C_TEST", "thread_1", "msg_main",
-                MagicMock(), client,
-            )
+            executor._handle_trello_success(ctx, result, "트렐로 응답", False, None)
 
         mock_replace.assert_called_once()
         # 트렐로 모드에서는 항상 thread_ts=None
@@ -630,13 +601,18 @@ class TestListRunTrelloSuccessNoDelete:
 
         client = MagicMock()
 
+        ctx = _make_ctx(
+            session=session,
+            client=client,
+            channel="C_TEST",
+            thread_ts="thread_1",
+            main_msg_ts="msg_main",
+            trello_card=trello_card,
+            is_trello_mode=True,
+        )
+
         with patch.object(executor, "_replace_thinking_message") as mock_replace:
-            executor._handle_trello_success(
-                result, "카드 작업 완료", session, trello_card,
-                "C_TEST", "thread_1", "msg_main",
-                MagicMock(), client,
-                is_list_run=True,
-            )
+            executor._handle_trello_success(ctx, result, "카드 작업 완료", True, None)
 
         # _replace_thinking_message가 호출되지 않아야 함 (chat_delete 방지)
         mock_replace.assert_not_called()
@@ -657,18 +633,25 @@ class TestListRunTrelloSuccessNoDelete:
 
         client = MagicMock()
 
+        ctx = _make_ctx(
+            session=session,
+            client=client,
+            channel="C_TEST",
+            thread_ts="thread_1",
+            last_msg_ts="msg_1",
+            main_msg_ts="msg_main",
+            trello_card=trello_card,
+            is_trello_mode=True,
+            is_thread_reply=False,
+        )
+
         with patch.object(executor, "_handle_trello_success") as mock_trello_success:
-            executor._handle_success(
-                result, session, "admin", True, trello_card,
-                "C_TEST", "thread_1", "msg_1", "msg_thinking", "msg_main",
-                MagicMock(), client,
-                is_thread_reply=False,
-            )
+            executor._handle_success(ctx, result)
 
         mock_trello_success.assert_called_once()
         # is_list_run=True로 전달되어야 함
         call_kwargs = mock_trello_success.call_args
-        assert call_kwargs[1].get("is_list_run") is True or call_kwargs.kwargs.get("is_list_run") is True
+        assert call_kwargs[1].get("is_list_run") is True or (len(call_kwargs[0]) >= 4 and call_kwargs[0][3] is True)
 
 
 class TestIntegrationInterventionFinalResponse:
@@ -700,16 +683,11 @@ class TestIntegrationInterventionFinalResponse:
         )
         executor._pending_prompts["thread_123"] = pending
 
+        ctx = _make_ctx(session=session, client=client, msg_ts="msg_A")
+
         with patch.object(executor, "_handle_interrupted") as mock_interrupted:
             with patch.object(executor, "_handle_success") as mock_success:
-                executor._run_with_lock(
-                    session=session,
-                    prompt="A 질문",
-                    msg_ts="msg_A",
-                    channel="C_TEST",
-                    say=MagicMock(),
-                    client=client,
-                )
+                executor._run_with_lock(ctx, "A 질문")
 
         # A는 interrupted로 처리
         mock_interrupted.assert_called_once()
@@ -741,16 +719,11 @@ class TestIntegrationInterventionFinalResponse:
         )
         executor._pending_prompts["thread_123"] = pending_c
 
+        ctx = _make_ctx(session=session, client=client, msg_ts="msg_A")
+
         with patch.object(executor, "_handle_interrupted"):
             with patch.object(executor, "_handle_success") as mock_success:
-                executor._run_with_lock(
-                    session=session,
-                    prompt="A 질문",
-                    msg_ts="msg_A",
-                    channel="C_TEST",
-                    say=MagicMock(),
-                    client=client,
-                )
+                executor._run_with_lock(ctx, "A 질문")
 
         # success는 C에 대해서만 한 번 호출됨
         mock_success.assert_called_once()

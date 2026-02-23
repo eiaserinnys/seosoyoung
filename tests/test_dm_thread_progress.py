@@ -98,7 +98,7 @@ class TestOnProgressDmThread:
 
     def test_dm_progress_always_posts_new_message(self):
         """DM 사고 과정은 항상 chat_postMessage로 새 메시지를 추가해야 함 (chat_update 사용 안 함)"""
-        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.claude.executor import ClaudeExecutor, ExecutionContext
         from seosoyoung.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
@@ -160,22 +160,24 @@ class TestOnProgressDmThread:
         mock_runner.run = MagicMock(side_effect=mock_run)
         mock_runner.run_sync = lambda coro: coro  # coro가 이미 result를 반환
 
+        ctx = ExecutionContext(
+            session=session,
+            channel="C12345",
+            say=MagicMock(),
+            client=mock_client,
+            msg_ts="1234.5678",
+            effective_role="admin",
+            thread_ts="1234.5678",
+            trello_card=trello_card,
+            is_trello_mode=True,
+            is_existing_thread=False,
+            initial_msg_ts=None,
+            dm_channel_id="D_DM_CHANNEL",
+            dm_thread_ts="1111.0000",
+        )
+
         with patch("seosoyoung.claude.executor.get_runner_for_role", return_value=mock_runner):
-            executor._execute_once(
-                session=session,
-                prompt="테스트",
-                msg_ts="1234.5678",
-                channel="C12345",
-                say=MagicMock(),
-                client=mock_client,
-                effective_role="admin",
-                trello_card=trello_card,
-                is_existing_thread=False,
-                initial_msg_ts=None,
-                is_trello_mode=True,
-                dm_channel_id="D_DM_CHANNEL",
-                dm_thread_ts="1111.0000",
-            )
+            executor._execute_once(ctx, "테스트")
 
         # on_progress가 캡처됐는지 확인
         assert captured_on_progress is not None
@@ -212,7 +214,7 @@ class TestOnProgressDmThread:
         버그: dm_sent_length(누적)와 current_text(턴별)를 비교하여
         두 번째 턴 이후 텍스트가 dm_sent_length보다 짧으면 전부 스킵됨.
         """
-        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.claude.executor import ClaudeExecutor, ExecutionContext
         from seosoyoung.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
@@ -272,22 +274,24 @@ class TestOnProgressDmThread:
         mock_runner.run = MagicMock(side_effect=mock_run)
         mock_runner.run_sync = lambda coro: coro
 
+        ctx = ExecutionContext(
+            session=session,
+            channel="C12345",
+            say=MagicMock(),
+            client=mock_client,
+            msg_ts="1234.5678",
+            effective_role="admin",
+            thread_ts="1234.5678",
+            trello_card=trello_card,
+            is_trello_mode=True,
+            is_existing_thread=False,
+            initial_msg_ts=None,
+            dm_channel_id="D_DM_CHANNEL",
+            dm_thread_ts="1111.0000",
+        )
+
         with patch("seosoyoung.claude.executor.get_runner_for_role", return_value=mock_runner):
-            executor._execute_once(
-                session=session,
-                prompt="테스트",
-                msg_ts="1234.5678",
-                channel="C12345",
-                say=MagicMock(),
-                client=mock_client,
-                effective_role="admin",
-                trello_card=trello_card,
-                is_existing_thread=False,
-                initial_msg_ts=None,
-                is_trello_mode=True,
-                dm_channel_id="D_DM_CHANNEL",
-                dm_thread_ts="1111.0000",
-            )
+            executor._execute_once(ctx, "테스트")
 
         assert captured_on_progress is not None
 
@@ -370,7 +374,7 @@ class TestHandleTrelloSuccessWithDm:
 
     def test_dm_last_reply_updated_to_plaintext(self):
         """DM 스레드의 마지막 blockquote가 평문으로 교체됨"""
-        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.claude.executor import ClaudeExecutor, ExecutionContext
         from seosoyoung.claude.agent_runner import ClaudeResult
         from seosoyoung.trello.watcher import TrackedCard
         from seosoyoung.claude.session import Session
@@ -412,20 +416,23 @@ class TestHandleTrelloSuccessWithDm:
             has_execute=True,
         )
 
-        executor._handle_trello_success(
-            result=result,
-            response="작업 완료 응답",
+        ctx = ExecutionContext(
             session=session,
-            trello_card=trello_card,
             channel="C12345",
-            thread_ts="1234.5678",
-            main_msg_ts="1234.5678",
             say=MagicMock(),
             client=mock_client,
+            msg_ts="1234.5678",
+            effective_role="admin",
+            thread_ts="1234.5678",
+            main_msg_ts="1234.5678",
+            trello_card=trello_card,
+            is_trello_mode=True,
             dm_channel_id="D_DM_CHANNEL",
             dm_thread_ts="dm_anchor_ts",
             dm_last_reply_ts="dm_reply_last",
         )
+
+        executor._handle_trello_success(ctx, result, "작업 완료 응답", False, None)
 
         # DM 스레드의 마지막 답글이 평문으로 업데이트되었는지 확인
         dm_update_calls = [
@@ -437,7 +444,7 @@ class TestHandleTrelloSuccessWithDm:
 
     def test_no_dm_params_uses_fallback(self):
         """DM 파라미터가 없으면 기존 동작 유지"""
-        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.claude.executor import ClaudeExecutor, ExecutionContext
         from seosoyoung.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
@@ -476,21 +483,24 @@ class TestHandleTrelloSuccessWithDm:
             has_execute=True,
         )
 
-        # DM 파라미터 없이 호출 → 에러 없이 정상 동작해야 함
-        executor._handle_trello_success(
-            result=result,
-            response="응답",
+        ctx = ExecutionContext(
             session=session,
-            trello_card=trello_card,
             channel="C12345",
-            thread_ts="1234.5678",
-            main_msg_ts="1234.5678",
             say=MagicMock(),
             client=mock_client,
+            msg_ts="1234.5678",
+            effective_role="admin",
+            thread_ts="1234.5678",
+            main_msg_ts="1234.5678",
+            trello_card=trello_card,
+            is_trello_mode=True,
             dm_channel_id=None,
             dm_thread_ts=None,
             dm_last_reply_ts=None,
         )
+
+        # DM 파라미터 없이 호출 → 에러 없이 정상 동작해야 함
+        executor._handle_trello_success(ctx, result, "응답", False, None)
 
         # DM 관련 chat_update가 없어야 함
         dm_calls = [
@@ -505,7 +515,7 @@ class TestHandleInterruptedWithDm:
 
     def test_dm_last_reply_marked_interrupted(self):
         """인터럽트 시 DM 스레드의 마지막 답글이 (중단됨)으로 업데이트"""
-        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.claude.executor import ClaudeExecutor, ExecutionContext
         from seosoyoung.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
@@ -536,17 +546,23 @@ class TestHandleInterruptedWithDm:
         session = MagicMock()
         session.session_id = "sess123"
 
-        executor._handle_interrupted(
+        ctx = ExecutionContext(
+            session=session,
+            channel="C12345",
+            say=MagicMock(),
+            client=mock_client,
+            msg_ts="1234.5678",
+            effective_role="admin",
+            thread_ts="1234.5678",
             last_msg_ts="1234.5678",
             main_msg_ts="1234.5678",
             is_trello_mode=True,
             trello_card=trello_card,
-            session=session,
-            channel="C12345",
-            client=mock_client,
             dm_channel_id="D_DM_CHANNEL",
             dm_last_reply_ts="dm_reply_last",
         )
+
+        executor._handle_interrupted(ctx)
 
         # DM 스레드의 마지막 답글이 (중단됨)으로 업데이트
         dm_update_calls = [
