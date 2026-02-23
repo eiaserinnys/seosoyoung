@@ -166,26 +166,6 @@ class TestClaudeAgentRunnerAsync:
         assert result.update_requested is True
         assert result.restart_requested is False
 
-    async def test_run_timeout(self):
-        """idle 타임아웃 테스트 (SDK가 메시지를 보내지 않고 멈추는 경우)"""
-        runner = ClaudeAgentRunner(timeout=1)
-
-        mock_client = AsyncMock()
-
-        async def mock_receive_slow():
-            yield MockSystemMessage(session_id="timeout-test")
-            await asyncio.sleep(10)
-            yield MockResultMessage(result="이건 도달 안 됨")
-
-        mock_client.receive_response = mock_receive_slow
-
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                result = await runner.run("테스트")
-
-        assert result.success is False
-        assert "타임아웃" in result.error
-
     async def test_run_file_not_found(self):
         """Claude CLI 없음 테스트"""
         runner = ClaudeAgentRunner()

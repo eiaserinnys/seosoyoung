@@ -16,5 +16,5 @@ rescue-bot 환경변수 설정
 
 #### 메서드
 
-- `validate(cls)` (줄 28): 필수 환경변수 검증
-- `get_working_dir()` (줄 41): Claude Code SDK 작업 디렉토리 (메인 봇과 동일)
+- `validate(cls)` (줄 25): 필수 환경변수 검증
+- `get_working_dir()` (줄 38): Claude Code SDK 작업 디렉토리 (메인 봇과 동일)

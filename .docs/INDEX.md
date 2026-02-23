@@ -249,7 +249,7 @@
 - `remove_runner()` (seosoyoung/claude/agent_runner.py:236): 레지스트리에서 러너 제거
 - `async shutdown_all()` (seosoyoung/claude/agent_runner.py:242): 모든 등록된 러너의 클라이언트를 종료
 - `shutdown_all_sync()` (seosoyoung/claude/agent_runner.py:277): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/claude/agent_runner.py:1272): 
+- `async main()` (seosoyoung/claude/agent_runner.py:1243): 
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:14): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:49): 텍스트 내 모든 백틱을 이스케이프
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:68): 트렐로 카드용 슬랙 메시지 헤더 생성
@@ -401,7 +401,7 @@
 - `main()` (seosoyoung/rescue/main.py:664): rescue-bot 진입점
 - `build_context_usage_bar()` (seosoyoung/rescue/message_formatter.py:12): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/rescue/message_formatter.py:41): 텍스트 내 모든 백틱을 이스케이프
-- `get_runner()` (seosoyoung/rescue/runner.py:479): 모듈 레벨 RescueRunner 인스턴스를 반환
+- `get_runner()` (seosoyoung/rescue/runner.py:469): 모듈 레벨 RescueRunner 인스턴스를 반환
 - `build_whoosh()` (seosoyoung/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
 - `build_embeddings()` (seosoyoung/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
 - `build_all()` (seosoyoung/search/build.py:84): Whoosh + 임베딩 인덱스 통합 빌드.

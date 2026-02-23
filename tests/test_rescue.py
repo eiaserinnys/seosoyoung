@@ -288,31 +288,6 @@ class TestRescueRunnerAsync:
             _stderr_file.close()
         assert options.resume == "test-session-123"
 
-    async def test_run_timeout(self):
-        """idle 타임아웃 테스트"""
-        from seosoyoung.rescue.runner import RescueRunner
-
-        runner = RescueRunner()
-
-        mock_client = AsyncMock()
-
-        async def mock_receive_slow():
-            yield MockSystemMessage(session_id="timeout-test")
-            await asyncio.sleep(10)
-            yield MockResultMessage(result="이건 도달 안 됨")
-
-        mock_client.receive_response = mock_receive_slow
-
-        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.rescue.runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.rescue.runner.RescueConfig") as mock_config:
-                    mock_config.CLAUDE_TIMEOUT = 1
-                    mock_config.get_working_dir.return_value = __import__("pathlib").Path.cwd()
-                    result = await runner.run("테스트")
-
-        assert result.success is False
-        assert "타임아웃" in result.error
-
     async def test_run_file_not_found(self):
         """Claude CLI 없음 테스트"""
         from seosoyoung.rescue.runner import RescueRunner

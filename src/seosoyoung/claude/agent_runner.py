@@ -304,7 +304,6 @@ class ClaudeRunner:
         *,
         channel: Optional[str] = None,
         working_dir: Optional[Path] = None,
-        timeout: int = 300,
         allowed_tools: Optional[list[str]] = None,
         disallowed_tools: Optional[list[str]] = None,
         mcp_config_path: Optional[Path] = None,
@@ -312,7 +311,6 @@ class ClaudeRunner:
         self.thread_ts = thread_ts
         self.channel = channel
         self.working_dir = working_dir or Path.cwd()
-        self.timeout = timeout
         self.allowed_tools = allowed_tools or DEFAULT_ALLOWED_TOOLS
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
@@ -957,9 +955,6 @@ class ClaudeRunner:
         collected_messages: list[dict] = []  # OM용 대화 수집
         last_progress_time = asyncio.get_event_loop().time()
         progress_interval = 2.0
-        # idle 타임아웃: 마지막 메시지 수신 후 이 시간이 지나면 강제 종료
-        idle_timeout = self.timeout
-
         # 세션 진단용 추적 변수
         _session_start = datetime.now(timezone.utc)
         _msg_count = 0
@@ -984,7 +979,7 @@ class ClaudeRunner:
             aiter = client.receive_response().__aiter__()
             while True:
                 try:
-                    message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
+                    message = await aiter.__anext__()
                 except StopAsyncIteration:
                     # 출력 없이 종료된 경우 진단 덤프
                     if not result_text and not current_text and channel and thread_ts:
@@ -1146,30 +1141,6 @@ class ClaudeRunner:
                 anchor_ts=anchor_ts,
             )
 
-        except asyncio.TimeoutError:
-            logger.error(f"Claude Code SDK idle 타임아웃 ({idle_timeout}초간 메시지 수신 없음)")
-            if channel and thread_ts:
-                _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                _pid = self.pid
-                dump = _build_session_dump(
-                    reason=f"Idle timeout ({idle_timeout}s)",
-                    pid=_pid,
-                    duration_sec=_dur,
-                    message_count=_msg_count,
-                    last_tool=_last_tool,
-                    current_text_len=len(current_text),
-                    result_text_len=len(result_text),
-                    session_id=result_session_id,
-                    active_clients_count=len(_registry),
-                )
-                _send_debug_to_slack(channel, thread_ts, dump)
-            return ClaudeResult(
-                success=False,
-                output=current_text,
-                session_id=result_session_id,
-                error=f"타임아웃: {idle_timeout}초간 SDK 응답 없음",
-                collected_messages=collected_messages,
-            )
         except FileNotFoundError as e:
             logger.error(f"Claude Code CLI를 찾을 수 없습니다: {e}")
             return ClaudeResult(

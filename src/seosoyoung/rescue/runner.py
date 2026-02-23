@@ -342,8 +342,6 @@ class RescueRunner:
         result_usage: Optional[dict] = None
         last_progress_time = asyncio.get_event_loop().time()
         progress_interval = 2.0
-        idle_timeout = RescueConfig.CLAUDE_TIMEOUT
-
         try:
             client = await self._get_or_create_client(client_key, options=options)
             await client.query(prompt)
@@ -351,7 +349,7 @@ class RescueRunner:
             aiter = client.receive_response().__aiter__()
             while True:
                 try:
-                    message = await asyncio.wait_for(aiter.__anext__(), timeout=idle_timeout)
+                    message = await aiter.__anext__()
                 except StopAsyncIteration:
                     break
                 except MessageParseError as e:
@@ -413,14 +411,6 @@ class RescueRunner:
                 usage=result_usage,
             )
 
-        except asyncio.TimeoutError:
-            logger.error(f"Claude Code SDK 타임아웃 ({idle_timeout}s)")
-            return RescueResult(
-                success=False,
-                output=current_text,
-                session_id=result_session_id,
-                error=f"타임아웃: {idle_timeout}초 초과",
-            )
         except FileNotFoundError as e:
             logger.error(f"Claude Code CLI를 찾을 수 없습니다: {e}")
             return RescueResult(

@@ -18,9 +18,6 @@ class RescueConfig:
     SLACK_BOT_TOKEN: str = os.getenv("RESCUE_SLACK_BOT_TOKEN", "")
     SLACK_APP_TOKEN: str = os.getenv("RESCUE_SLACK_APP_TOKEN", "")
 
-    # Claude Code SDK 설정
-    CLAUDE_TIMEOUT: int = int(os.getenv("RESCUE_CLAUDE_TIMEOUT", "300"))
-
     # 봇 사용자 ID (런타임에 auth.test()로 설정)
     BOT_USER_ID: str | None = None
 
