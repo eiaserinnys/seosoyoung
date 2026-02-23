@@ -3,8 +3,6 @@
 리팩터링 후 각 모듈에서 함수를 import합니다.
 """
 
-from pathlib import Path
-
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -12,7 +10,6 @@ from unittest.mock import MagicMock, patch
 from seosoyoung.handlers.mention import extract_command, get_channel_history
 from seosoyoung.slack.helpers import send_long_message
 from seosoyoung.auth import check_permission, get_user_role
-from seosoyoung.claude.executor import get_runner_for_role
 from seosoyoung.claude.message_formatter import escape_backticks, build_trello_header
 from seosoyoung.trello.watcher import TrackedCard
 
@@ -177,47 +174,6 @@ class TestGetUserRole:
         result = get_user_role("U12345", mock_client)
 
         assert result is None
-
-
-class TestGetRunnerForRole:
-    """get_runner_for_role 함수 테스트"""
-
-    @patch("seosoyoung.claude.executor._get_mcp_config_path", return_value=Path("mcp_config.json"))
-    @patch("seosoyoung.claude.executor.Config")
-    @patch("seosoyoung.claude.executor.get_claude_runner")
-    def test_get_runner_for_admin(self, mock_get_runner, mock_config, mock_mcp_path):
-        """관리자 역할용 runner"""
-        mock_config.ROLE_TOOLS = {
-            "admin": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
-            "viewer": ["Read", "Glob", "Grep"]
-        }
-
-        get_runner_for_role("admin")
-
-        # admin은 disallowed_tools 없이, mcp_config_path + cache_key 포함하여 생성
-        mock_get_runner.assert_called_once_with(
-            allowed_tools=["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
-            mcp_config_path=Path("mcp_config.json"),
-            cache_key="role:admin",
-        )
-
-    @patch("seosoyoung.claude.executor.Config")
-    @patch("seosoyoung.claude.executor.get_claude_runner")
-    def test_get_runner_for_viewer(self, mock_get_runner, mock_config):
-        """일반 사용자 역할용 runner"""
-        mock_config.ROLE_TOOLS = {
-            "admin": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"],
-            "viewer": ["Read", "Glob", "Grep"]
-        }
-
-        get_runner_for_role("viewer")
-
-        # viewer는 수정 도구들이 차단됨
-        mock_get_runner.assert_called_once_with(
-            allowed_tools=["Read", "Glob", "Grep"],
-            disallowed_tools=["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"],
-            cache_key="role:viewer",
-        )
 
 
 class TestGetChannelHistory:

@@ -152,10 +152,14 @@ class TestRunDigest:
         )
 
         with patch(
-            "seosoyoung.memory.channel_scheduler.asyncio.run"
-        ) as mock_asyncio_run:
-            scheduler._run_pipeline("C001")
-            mock_asyncio_run.assert_called_once()
+            "seosoyoung.memory.channel_pipeline.run_channel_pipeline",
+            new_callable=MagicMock,
+        ):
+            with patch(
+                "seosoyoung.memory.channel_scheduler.asyncio.run"
+            ) as mock_asyncio_run:
+                scheduler._run_pipeline("C001")
+                mock_asyncio_run.assert_called_once()
 
     def test_pipeline_error_is_caught(self, mock_deps):
         """파이프라인 실행 오류가 캐치됩니다."""

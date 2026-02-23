@@ -574,8 +574,7 @@ class TestTriggerObservation:
         ):
             runner._trigger_observation("ts_1234", "U12345", "프롬프트", [])
 
-    @pytest.mark.asyncio
-    async def test_trigger_passes_min_turn_tokens(self):
+    def test_trigger_passes_min_turn_tokens(self):
         """트리거 시 min_turn_tokens가 전달되는지 확인"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
@@ -611,8 +610,7 @@ class TestTriggerObservation:
         assert call_kwargs["messages"][1] == {"role": "assistant", "content": "응답"}
 
 
-    @pytest.mark.asyncio
-    async def test_trigger_passes_promoter_and_compactor(self):
+    def test_trigger_passes_promoter_and_compactor(self):
         """트리거 시 Promoter와 Compactor가 생성되어 전달되는지 확인"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
@@ -662,7 +660,7 @@ class TestRunTriggersObservation:
         """성공적인 실행 후 관찰이 트리거됨"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_1234")
 
         mock_result = ClaudeResult(
             success=True,
@@ -673,7 +671,7 @@ class TestRunTriggersObservation:
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
             with patch.object(runner, "_trigger_observation") as mock_trigger:
-                result = await runner.run("테스트", user_id="U12345", thread_ts="ts_1234")
+                result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is True
         mock_trigger.assert_called_once_with(
@@ -729,7 +727,7 @@ class TestRunTriggersObservation:
         """실행 실패 시 관찰을 트리거하지 않음"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner("ts_1234")
 
         mock_result = ClaudeResult(
             success=False,
@@ -739,7 +737,7 @@ class TestRunTriggersObservation:
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
             with patch.object(runner, "_trigger_observation") as mock_trigger:
-                result = await runner.run("테스트", user_id="U12345", thread_ts="ts_1234")
+                result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is False
         mock_trigger.assert_not_called()
@@ -870,8 +868,7 @@ class TestObserveConversationAnchorTs:
 class TestTriggerObservationAnchorTs:
     """_trigger_observation에서 anchor_ts가 observe_conversation에 전달되는지 테스트"""
 
-    @pytest.mark.asyncio
-    async def test_trigger_passes_anchor_ts(self):
+    def test_trigger_passes_anchor_ts(self):
         """anchor_ts가 observe_conversation에 전달됨"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 

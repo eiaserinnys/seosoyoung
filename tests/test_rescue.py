@@ -401,10 +401,11 @@ class TestProcessErrorHandling:
 
         runner = RescueRunner()
 
-        mock_client = AsyncMock()
-        mock_client.connect.side_effect = ProcessError(
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock(side_effect=ProcessError(
             "Command failed with exit code 1", exit_code=1, stderr="Check stderr output for details"
-        )
+        ))
+        mock_client.disconnect = AsyncMock()
 
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
@@ -422,10 +423,11 @@ class TestProcessErrorHandling:
 
         runner = RescueRunner()
 
-        mock_client = AsyncMock()
-        mock_client.connect.side_effect = ProcessError(
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock(side_effect=ProcessError(
             "usage limit reached", exit_code=1, stderr="usage limit"
-        )
+        ))
+        mock_client.disconnect = AsyncMock()
 
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")

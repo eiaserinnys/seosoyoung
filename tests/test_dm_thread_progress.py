@@ -142,7 +142,7 @@ class TestOnProgressDmThread:
         # on_progress를 캡처하기 위해 runner를 모킹
         captured_on_progress = None
 
-        def mock_run(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel, **kwargs):
+        def mock_run(prompt, session_id, on_progress, on_compact, user_id, **kwargs):
             nonlocal captured_on_progress
             captured_on_progress = on_progress
             result = MagicMock()
@@ -176,7 +176,7 @@ class TestOnProgressDmThread:
             dm_thread_ts="1111.0000",
         )
 
-        with patch("seosoyoung.claude.executor.get_runner_for_role", return_value=mock_runner):
+        with patch("seosoyoung.claude.executor.ClaudeRunner", return_value=mock_runner):
             executor._execute_once(ctx, "테스트")
 
         # on_progress가 캡처됐는지 확인
@@ -256,7 +256,7 @@ class TestOnProgressDmThread:
 
         captured_on_progress = None
 
-        def mock_run(prompt, session_id, on_progress, on_compact, user_id, thread_ts, channel, **kwargs):
+        def mock_run(prompt, session_id, on_progress, on_compact, user_id, **kwargs):
             nonlocal captured_on_progress
             captured_on_progress = on_progress
             result = MagicMock()
@@ -290,7 +290,7 @@ class TestOnProgressDmThread:
             dm_thread_ts="1111.0000",
         )
 
-        with patch("seosoyoung.claude.executor.get_runner_for_role", return_value=mock_runner):
+        with patch("seosoyoung.claude.executor.ClaudeRunner", return_value=mock_runner):
             executor._execute_once(ctx, "테스트")
 
         assert captured_on_progress is not None

@@ -176,11 +176,8 @@ class TestMCPE2ETrelloFlow:
         """트렐로 모드: _build_options에서 SLACK_CHANNEL/THREAD_TS가 env에 주입됨"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
-        runner = ClaudeAgentRunner()
-        options, _memory_prompt, _anchor_ts = runner._build_options(
-            channel="C_TRELLO_NOTIFY",
-            thread_ts="2222222222.000001",
-        )
+        runner = ClaudeAgentRunner("2222222222.000001", channel="C_TRELLO_NOTIFY")
+        options, _memory_prompt, _anchor_ts = runner._build_options()
 
         assert options.env["SLACK_CHANNEL"] == "C_TRELLO_NOTIFY"
         assert options.env["SLACK_THREAD_TS"] == "2222222222.000001"
@@ -208,13 +205,13 @@ class TestMCPE2ETrelloFlow:
         finally:
             os.unlink(tmp_path)
 
-    def test_admin_runner_has_mcp_for_trello(self):
-        """admin 역할 runner에 MCP 설정이 있어 트렐로 모드에서도 첨부 가능"""
-        from seosoyoung.claude.executor import get_runner_for_role
+    def test_admin_config_has_mcp_for_trello(self):
+        """admin 역할 config에 MCP 설정이 있어 트렐로 모드에서도 첨부 가능"""
+        from seosoyoung.claude.executor import _get_role_config
 
-        runner = get_runner_for_role("admin")
-        assert runner.mcp_config_path is not None
-        assert "mcp__seosoyoung-attach__slack_attach_file" in runner.allowed_tools
+        config = _get_role_config("admin")
+        assert config["mcp_config_path"] is not None
+        assert "mcp__seosoyoung-attach__slack_attach_file" in config["allowed_tools"]
 
 
 class TestMCPE2EErrorCases:

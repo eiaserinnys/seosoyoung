@@ -13,23 +13,23 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
-class TestGetRunnerForRoleMCP:
-    """get_runner_for_role()이 MCP 설정을 전달하는지 검증"""
+class TestGetRoleConfigMCP:
+    """_get_role_config()이 MCP 설정을 전달하는지 검증"""
 
-    def test_admin_runner_has_mcp_config(self):
-        """admin 역할 runner에 mcp_config_path가 설정됨"""
-        from seosoyoung.claude.executor import get_runner_for_role
+    def test_admin_config_has_mcp_config(self):
+        """admin 역할 config에 mcp_config_path가 설정됨"""
+        from seosoyoung.claude.executor import _get_role_config
 
-        runner = get_runner_for_role("admin")
-        assert runner.mcp_config_path is not None
-        assert runner.mcp_config_path.name == "mcp_config.json"
+        config = _get_role_config("admin")
+        assert config["mcp_config_path"] is not None
+        assert config["mcp_config_path"].name == "mcp_config.json"
 
-    def test_viewer_runner_no_mcp_config(self):
+    def test_viewer_config_no_mcp_config(self):
         """viewer 역할은 MCP 도구를 사용하지 않음"""
-        from seosoyoung.claude.executor import get_runner_for_role
+        from seosoyoung.claude.executor import _get_role_config
 
-        runner = get_runner_for_role("viewer")
-        assert runner.mcp_config_path is None
+        config = _get_role_config("viewer")
+        assert config["mcp_config_path"] is None
 
 
 class TestMCPToolsInAllowedTools:
@@ -66,11 +66,8 @@ class TestBuildOptionsEnvInjection:
         """channel과 thread_ts가 주어지면 env에 포함됨"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
-        runner = ClaudeAgentRunner()
-        options, _memory_prompt, _anchor_ts = runner._build_options(
-            channel="C12345",
-            thread_ts="1234567890.123456",
-        )
+        runner = ClaudeAgentRunner("1234567890.123456", channel="C12345")
+        options, _memory_prompt, _anchor_ts = runner._build_options()
 
         assert options.env is not None
         assert options.env.get("SLACK_CHANNEL") == "C12345"
@@ -80,11 +77,8 @@ class TestBuildOptionsEnvInjection:
         """env는 항상 dict (SDK가 os.environ과 merge하므로)"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
-        runner = ClaudeAgentRunner()
-        options, _memory_prompt, _anchor_ts = runner._build_options(
-            channel="C12345",
-            thread_ts="1234567890.123456",
-        )
+        runner = ClaudeAgentRunner("1234567890.123456", channel="C12345")
+        options, _memory_prompt, _anchor_ts = runner._build_options()
 
         assert isinstance(options.env, dict)
         # SDK가 {**os.environ, **options.env}로 merge하므로
@@ -95,7 +89,7 @@ class TestBuildOptionsEnvInjection:
         """channel/thread_ts가 없으면 env에 슬랙 컨텍스트가 없음"""
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner()  # channel/thread_ts 미지정
         options, _memory_prompt, _anchor_ts = runner._build_options()
 
         assert isinstance(options.env, dict)

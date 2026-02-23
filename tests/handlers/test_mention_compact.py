@@ -170,7 +170,10 @@ class TestCompactCommand:
         mock_result.success = True
         mock_result.session_id = "new-session-id"
 
-        with patch("seosoyoung.claude.get_claude_runner") as mock_get_runner:
+        mock_runner = MagicMock()
+        mock_runner.compact_session = MagicMock()
+
+        with patch("seosoyoung.claude.get_claude_runner", return_value=mock_runner):
             with patch("seosoyoung.handlers.commands.asyncio") as mock_asyncio:
                 mock_asyncio.run.return_value = mock_result
                 handler(event, say, client)

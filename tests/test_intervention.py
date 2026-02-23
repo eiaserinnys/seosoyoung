@@ -4,6 +4,11 @@
 1. interrupt fire → 현재 실행 중단 → pending 실행
 2. 연속 인터벤션 정상 처리
 3. 중단된 실행의 사고 과정 메시지 정리
+
+NOTE: bot-refactor 이후 executor는 _active_runners dict 대신
+모듈 레벨 get_runner()을 사용하여 러너를 조회합니다.
+get_runner_for_role() 대신 ClaudeRunner를 직접 생성합니다.
+interrupt()는 인자 없이 호출됩니다.
 """
 
 import threading
@@ -143,26 +148,27 @@ class TestInterventionHandling:
         assert pending.msg_ts == "msg_456"
 
     def test_intervention_fires_interrupt_with_active_runner(self):
-        """인터벤션 시 _active_runners에 runner가 있으면 interrupt 호출 (동기)"""
+        """인터벤션 시 get_runner가 runner를 반환하면 interrupt 호출 (동기, 인자 없음)"""
         executor = make_executor()
 
-        # 실행 중인 runner 등록
         mock_runner = MagicMock()
         mock_runner.interrupt.return_value = True
-        executor._active_runners["thread_123"] = mock_runner
 
         ctx = _make_ctx()
-        executor._handle_intervention(ctx, "새 질문")
 
-        # interrupt(thread_ts) 직접 호출됨 (이제 동기)
-        mock_runner.interrupt.assert_called_once_with("thread_123")
+        with patch("seosoyoung.claude.executor.get_runner", return_value=mock_runner):
+            executor._handle_intervention(ctx, "새 질문")
+
+        # interrupt()는 인자 없이 호출됨 (per-instance 모델)
+        mock_runner.interrupt.assert_called_once()
 
     def test_intervention_no_runner_no_interrupt(self):
-        """_active_runners에 runner가 없으면 interrupt 호출 안 함"""
+        """get_runner가 None을 반환하면 interrupt 호출 안 함"""
         executor = make_executor()
         ctx = _make_ctx()
 
-        executor._handle_intervention(ctx, "새 질문")
+        with patch("seosoyoung.claude.executor.get_runner", return_value=None):
+            executor._handle_intervention(ctx, "새 질문")
 
         # pending에는 저장됨
         assert "thread_123" in executor._pending_prompts
@@ -267,13 +273,13 @@ class TestInterruptedExecution:
 class TestExecuteOnceWithInterruption:
     """_execute_once에서 interrupted 결과 처리"""
 
-    @patch("seosoyoung.claude.executor.get_runner_for_role")
-    def test_interrupted_result_calls_handle_interrupted(self, mock_get_runner):
+    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    def test_interrupted_result_calls_handle_interrupted(self, MockRunnerClass):
         """result.interrupted=True일 때 _handle_interrupted 호출"""
         interrupted_result = make_claude_result(interrupted=True, success=True)
         mock_runner = MagicMock()
         mock_runner.run_sync.return_value = interrupted_result
-        mock_get_runner.return_value = mock_runner
+        MockRunnerClass.return_value = mock_runner
 
         executor = make_executor()
         session = FakeSession()
@@ -295,13 +301,13 @@ class TestExecuteOnceWithInterruption:
 
             mock_interrupted.assert_called_once()
 
-    @patch("seosoyoung.claude.executor.get_runner_for_role")
-    def test_normal_result_calls_handle_success(self, mock_get_runner):
+    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    def test_normal_result_calls_handle_success(self, MockRunnerClass):
         """result.interrupted=False, success=True일 때 _handle_success 호출"""
         normal_result = make_claude_result(interrupted=False, success=True)
         mock_runner = MagicMock()
         mock_runner.run_sync.return_value = normal_result
-        mock_get_runner.return_value = mock_runner
+        MockRunnerClass.return_value = mock_runner
 
         executor = make_executor()
         session = FakeSession()
@@ -323,13 +329,13 @@ class TestExecuteOnceWithInterruption:
 
             mock_success.assert_called_once()
 
-    @patch("seosoyoung.claude.executor.get_runner_for_role")
-    def test_execute_once_registers_and_unregisters_runner(self, mock_get_runner):
-        """_execute_once에서 runner가 _active_runners에 등록/해제됨"""
+    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    def test_execute_once_creates_runner(self, MockRunnerClass):
+        """_execute_once에서 ClaudeRunner가 생성됨"""
         result = make_claude_result()
         mock_runner = MagicMock()
         mock_runner.run_sync.return_value = result
-        mock_get_runner.return_value = mock_runner
+        MockRunnerClass.return_value = mock_runner
 
         executor = make_executor()
         session = FakeSession()
@@ -349,20 +355,20 @@ class TestExecuteOnceWithInterruption:
         with patch.object(executor, "_handle_success"):
             executor._execute_once(ctx, "test")
 
-        # 실행 완료 후 _active_runners에서 해제됨
-        assert "thread_123" not in executor._active_runners
+        # ClaudeRunner가 생성되었는지 확인
+        MockRunnerClass.assert_called_once()
 
 
 class TestRunWithLockPendingLoop:
     """_run_with_lock의 while 루프로 pending 처리"""
 
-    @patch("seosoyoung.claude.executor.get_runner_for_role")
-    def test_no_pending_single_execution(self, mock_get_runner):
+    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    def test_no_pending_single_execution(self, MockRunnerClass):
         """pending 없으면 한 번만 실행"""
         result = make_claude_result()
         mock_runner = MagicMock()
         mock_runner.run_sync.return_value = result
-        mock_get_runner.return_value = mock_runner
+        MockRunnerClass.return_value = mock_runner
 
         executor = make_executor()
         session = FakeSession()
@@ -374,16 +380,16 @@ class TestRunWithLockPendingLoop:
         with patch.object(executor, "_handle_success"):
             executor._run_with_lock(ctx, "first prompt")
 
-        # run이 한 번만 호출됨
+        # run_sync이 한 번만 호출됨
         assert mock_runner.run_sync.call_count == 1
 
-    @patch("seosoyoung.claude.executor.get_runner_for_role")
-    def test_pending_triggers_second_execution(self, mock_get_runner):
+    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    def test_pending_triggers_second_execution(self, MockRunnerClass):
         """pending이 있으면 두 번 실행"""
         result = make_claude_result()
         mock_runner = MagicMock()
         mock_runner.run_sync.return_value = result
-        mock_get_runner.return_value = mock_runner
+        MockRunnerClass.return_value = mock_runner
 
         executor = make_executor()
         session = FakeSession()
@@ -406,18 +412,18 @@ class TestRunWithLockPendingLoop:
             with patch.object(executor, "_handle_interrupted"):
                 executor._run_with_lock(ctx, "first prompt")
 
-        # run이 두 번 호출됨 (첫 번째 + pending)
+        # run_sync이 두 번 호출됨 (첫 번째 + pending)
         assert mock_runner.run_sync.call_count == 2
         # pending이 비워짐
         assert "thread_123" not in executor._pending_prompts
 
-    @patch("seosoyoung.claude.executor.get_runner_for_role")
-    def test_session_running_stopped_called(self, mock_get_runner):
+    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    def test_session_running_stopped_called(self, MockRunnerClass):
         """mark_session_running/stopped이 호출됨"""
         result = make_claude_result()
         mock_runner = MagicMock()
         mock_runner.run_sync.return_value = result
-        mock_get_runner.return_value = mock_runner
+        MockRunnerClass.return_value = mock_runner
 
         mark_running = MagicMock()
         mark_stopped = MagicMock()
@@ -445,15 +451,15 @@ class TestConsecutiveInterventions:
         """연속 인터벤션 시 pending은 마지막 것만 유지"""
         executor = make_executor()
 
-        # 실행 중인 runner 등록
         mock_runner = MagicMock()
-        mock_runner.run_sync.return_value = True
-        executor._active_runners["thread_123"] = mock_runner
+        mock_runner.interrupt.return_value = True
 
-        # A → B → C 순서로 인터벤션
-        for i, prompt in enumerate(["A", "B", "C"]):
-            ctx = _make_ctx(msg_ts=f"msg_{i}")
-            executor._handle_intervention(ctx, prompt)
+        # get_runner가 mock_runner를 반환하도록 패치
+        with patch("seosoyoung.claude.executor.get_runner", return_value=mock_runner):
+            # A → B → C 순서로 인터벤션
+            for i, prompt in enumerate(["A", "B", "C"]):
+                ctx = _make_ctx(msg_ts=f"msg_{i}")
+                executor._handle_intervention(ctx, prompt)
 
         # pending에는 C만 남아있어야 함
         pending = executor._pending_prompts.get("thread_123")
@@ -476,25 +482,33 @@ class TestAgentRunnerInterruptedFlag:
         assert result.interrupted is True
 
 
-class TestActiveRunners:
-    """_active_runners 추적 테스트"""
+class TestModuleLevelRunnerLookup:
+    """모듈 레벨 get_runner를 통한 인터벤션 테스트"""
 
-    def test_initial_empty(self):
-        executor = make_executor()
-        assert executor._active_runners == {}
-
-    def test_intervention_uses_active_runner_for_interrupt(self):
-        """인터벤션 시 _active_runners에서 runner를 찾아 interrupt 전송"""
+    def test_intervention_uses_get_runner_for_interrupt(self):
+        """인터벤션 시 get_runner로 runner를 찾아 interrupt 전송"""
         executor = make_executor()
 
         mock_runner = MagicMock()
-        mock_runner.run_sync.return_value = True
-        executor._active_runners["thread_abc"] = mock_runner
+        mock_runner.interrupt.return_value = True
 
         ctx = _make_ctx(thread_ts="thread_abc")
-        executor._handle_intervention(ctx, "interrupt me")
 
-        mock_runner.interrupt.assert_called_once_with("thread_abc")
+        with patch("seosoyoung.claude.executor.get_runner", return_value=mock_runner):
+            executor._handle_intervention(ctx, "interrupt me")
+
+        mock_runner.interrupt.assert_called_once()
+
+    def test_intervention_no_runner_found(self):
+        """get_runner가 None이면 interrupt 호출 안 함"""
+        executor = make_executor()
+        ctx = _make_ctx()
+
+        with patch("seosoyoung.claude.executor.get_runner", return_value=None):
+            executor._handle_intervention(ctx, "no runner")
+
+        # pending에는 저장됨
+        assert "thread_123" in executor._pending_prompts
 
 
 class TestNormalSuccessWithReplace:
@@ -579,22 +593,15 @@ class TestTrelloSuccessWithReplace:
 
 
 class TestListRunTrelloSuccessNoDelete:
-    """정주행 카드 실행 시 chat_delete 방지 테스트
-
-    LIST_RUN 정주행 중 개별 카드 실행 시에는 result.list_run이 설정되지 않지만,
-    trello_card.list_key == "list_run"이면 is_list_run=True로 처리되어
-    chat_delete 대신 chat_update만 사용해야 합니다.
-    """
+    """정주행 카드 실행 시 chat_delete 방지 테스트"""
 
     @patch("seosoyoung.claude.executor.build_trello_header", return_value="[Header]")
     def test_list_run_card_uses_chat_update_not_delete(self, mock_header):
         """정주행 카드(list_key='list_run')는 _replace_thinking_message를 호출하지 않음"""
         executor = make_executor()
-        # result.list_run은 None (정주행 개별 카드에는 LIST_RUN 마커 없음)
         result = make_claude_result(output="카드 작업 완료")
         session = FakeSession()
 
-        # 정주행 카드: list_key="list_run", has_execute=True
         trello_card = MagicMock()
         trello_card.has_execute = True
         trello_card.list_key = "list_run"
@@ -619,11 +626,9 @@ class TestListRunTrelloSuccessNoDelete:
         # 대신 chat_update가 호출되어야 함
         client.chat_update.assert_called_once()
 
-    @patch("seosoyoung.claude.executor.get_runner_for_role")
-    def test_handle_success_detects_list_run_from_trello_card(self, mock_get_runner):
+    def test_handle_success_detects_list_run_from_trello_card(self):
         """_handle_success에서 trello_card.list_key=='list_run'이면 is_list_run=True"""
         executor = make_executor()
-        # result.list_run은 None이지만 trello_card.list_key는 "list_run"
         result = make_claude_result(output="완료", list_run=None)
         session = FakeSession()
 
@@ -657,8 +662,8 @@ class TestListRunTrelloSuccessNoDelete:
 class TestIntegrationInterventionFinalResponse:
     """인터벤션 후 최종 응답 위치 통합 테스트"""
 
-    @patch("seosoyoung.claude.executor.get_runner_for_role")
-    def test_interrupted_then_pending_success(self, mock_get_runner):
+    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    def test_interrupted_then_pending_success(self, MockRunnerClass):
         """A 중단 → B 실행 → 최종 응답이 올바른 위치에 표시"""
         # 첫 번째 실행은 interrupted, 두 번째는 성공
         interrupted_result = make_claude_result(interrupted=True, success=True)
@@ -666,7 +671,7 @@ class TestIntegrationInterventionFinalResponse:
 
         mock_runner = MagicMock()
         mock_runner.run_sync.side_effect = [interrupted_result, success_result]
-        mock_get_runner.return_value = mock_runner
+        MockRunnerClass.return_value = mock_runner
 
         executor = make_executor()
         session = FakeSession()
@@ -694,15 +699,15 @@ class TestIntegrationInterventionFinalResponse:
         # B는 success로 처리
         mock_success.assert_called_once()
 
-    @patch("seosoyoung.claude.executor.get_runner_for_role")
-    def test_triple_intervention_only_last_executes(self, mock_get_runner):
+    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    def test_triple_intervention_only_last_executes(self, MockRunnerClass):
         """A→B→C 연속 인터벤션: A 중단, B는 덮어씌워지고, C만 실행"""
         interrupted_result = make_claude_result(interrupted=True, success=True)
         success_result = make_claude_result(interrupted=False, success=True, output="C 응답")
 
         mock_runner = MagicMock()
         mock_runner.run_sync.side_effect = [interrupted_result, success_result]
-        mock_get_runner.return_value = mock_runner
+        MockRunnerClass.return_value = mock_runner
 
         executor = make_executor()
         session = FakeSession()

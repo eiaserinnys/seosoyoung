@@ -90,11 +90,11 @@ class TestExecutorRemoteBranch:
         )
 
     def test_local_mode_uses_runner(self, executor, session):
-        """local 모드에서 get_runner_for_role이 호출되는지 확인"""
+        """local 모드에서 ClaudeRunner가 생성되는지 확인"""
         ctx = _make_ctx(session, initial_msg_ts="1234.0002")
 
         with patch("seosoyoung.claude.executor._is_remote_mode", return_value=False), \
-             patch("seosoyoung.claude.executor.get_runner_for_role") as mock_get_runner:
+             patch("seosoyoung.claude.executor.ClaudeRunner") as MockRunnerClass:
 
             mock_runner = MagicMock()
             mock_result = MagicMock()
@@ -109,11 +109,11 @@ class TestExecutorRemoteBranch:
             mock_result.usage = None
 
             mock_runner.run_sync.return_value = mock_result
-            mock_get_runner.return_value = mock_runner
+            MockRunnerClass.return_value = mock_runner
 
             executor._execute_once(ctx, "hello")
 
-            mock_get_runner.assert_called_once_with("admin")
+            MockRunnerClass.assert_called_once()
 
     def test_remote_mode_uses_adapter(self, executor, session):
         """remote 모드에서 _execute_remote가 호출되는지 확인"""
@@ -188,16 +188,16 @@ class TestInterventionDualPath:
         )
 
     def test_local_intervention_uses_runner(self, executor, session):
-        """local 모드 인터벤션: runner.interrupt 호출 (동기)"""
+        """local 모드 인터벤션: runner.interrupt 호출 (동기, 인자 없음)"""
         mock_runner = MagicMock()
-        executor._active_runners["1234.5678"] = mock_runner
 
         ctx = _make_ctx(session)
 
-        with patch("seosoyoung.claude.executor._is_remote_mode", return_value=False):
+        with patch("seosoyoung.claude.executor._is_remote_mode", return_value=False), \
+             patch("seosoyoung.claude.executor.get_runner", return_value=mock_runner):
             executor._handle_intervention(ctx, "new prompt")
 
-        mock_runner.interrupt.assert_called_once_with("1234.5678")
+        mock_runner.interrupt.assert_called_once()
 
     def test_remote_intervention_uses_adapter(self, executor, session):
         """remote 모드 인터벤션: run_in_new_loop으로 adapter.intervene 호출"""

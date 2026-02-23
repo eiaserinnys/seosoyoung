@@ -645,7 +645,7 @@ class TestPreemptiveCompact:
         mock_result.success = True
         mock_result.session_id = "test-session-abc123"  # 동일 session_id
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeAgentRunner") as MockRunner:
+        with patch("seosoyoung.claude.agent_runner.ClaudeRunner") as MockRunner:
             mock_runner_instance = MagicMock()
             mock_runner_instance.compact_session.return_value = mock_result
             mock_runner_instance.run_sync.return_value = mock_result
@@ -684,7 +684,7 @@ class TestPreemptiveCompact:
             claude_runner_factory=MagicMock(),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeAgentRunner") as MockRunner:
+        with patch("seosoyoung.claude.agent_runner.ClaudeRunner") as MockRunner:
             watcher._preemptive_compact("1234.5678", "C12345", "Test Card")
 
             # Runner가 생성되지 않아야 함
@@ -717,7 +717,7 @@ class TestPreemptiveCompact:
             claude_runner_factory=MagicMock(),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeAgentRunner") as MockRunner:
+        with patch("seosoyoung.claude.agent_runner.ClaudeRunner") as MockRunner:
             mock_runner_instance = MagicMock()
             # compact_session이 예외를 발생시킴
             mock_runner_instance.run_sync.side_effect = RuntimeError("Connection failed")
@@ -757,7 +757,7 @@ class TestPreemptiveCompact:
         mock_result.success = True
         mock_result.session_id = "new-session-id"  # 변경된 session_id
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeAgentRunner") as MockRunner:
+        with patch("seosoyoung.claude.agent_runner.ClaudeRunner") as MockRunner:
             mock_runner_instance = MagicMock()
             mock_runner_instance.run_sync.return_value = mock_result
             MockRunner.return_value = mock_runner_instance

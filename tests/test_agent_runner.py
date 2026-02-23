@@ -1160,20 +1160,6 @@ class TestShutdownAllClients:
         assert count == 0
         mock_force_kill.assert_not_called()
 
-    def test_shutdown_all_sync(self):
-        """동기 버전 shutdown_all_sync 테스트"""
-        _clear_all_client_state()
-
-        mock_client = AsyncMock()
-        runner = ClaudeRunner("thread_sync")
-        runner.client = mock_client
-        register_runner(runner)
-
-        count = shutdown_all_sync()
-
-        assert count == 1
-        mock_client.disconnect.assert_called_once()
-
     async def test_registry_shared_across_runners(self):
         """레지스트리가 모든 러너에서 공유"""
         _clear_all_client_state()
@@ -1256,6 +1242,29 @@ class TestPidTrackingAndForceKill:
         mock_force_kill.assert_not_called()
         assert runner.client is None
         assert runner.pid is None
+
+
+
+class TestShutdownAllSync:
+    """shutdown_all 동기 버전 테스트"""
+
+    def test_shutdown_all_sync(self):
+        """동기 버전 shutdown_all_sync 테스트"""
+        _clear_all_client_state()
+
+        mock_client = AsyncMock()
+        runner = ClaudeRunner("thread_sync")
+        runner.client = mock_client
+        register_runner(runner)
+
+        count = shutdown_all_sync()
+
+        assert count == 1
+        mock_client.disconnect.assert_called_once()
+
+
+class TestForceKillProcess:
+    """_force_kill_process 정적 메서드 테스트 (동기)"""
 
     def test_force_kill_process_terminate_success(self):
         """_force_kill_process: terminate 성공"""
