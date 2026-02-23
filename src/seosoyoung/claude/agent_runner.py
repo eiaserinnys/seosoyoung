@@ -55,14 +55,33 @@ def _send_debug_to_slack(channel: str, thread_ts: str, message: str) -> None:
         logger.warning(f"디버그 메시지 슬랙 전송 실패: {e}")
 
 
-def _read_stderr_tail(n_lines: int = 30) -> str:
-    """cli_stderr.log의 마지막 N줄 읽기"""
+def _read_stderr_tail(n_lines: int = 30, *, thread_ts: Optional[str] = None) -> str:
+    """세션별 cli_stderr 로그의 마지막 N줄 읽기
+
+    세션별 파일(cli_stderr_{thread_ts}.log)을 우선 시도하고,
+    없으면 공유 파일(cli_stderr.log)로 폴백합니다.
+
+    Args:
+        n_lines: 읽을 줄 수
+        thread_ts: 스레드 타임스탬프 (None이면 "default" 사용)
+    """
     from collections import deque
     try:
         runtime_dir = Path(__file__).resolve().parents[3]
-        stderr_path = runtime_dir / "logs" / "cli_stderr.log"
-        if not stderr_path.exists():
-            return "(cli_stderr.log not found)"
+        logs_dir = runtime_dir / "logs"
+
+        # 세션별 파일 경로 결정
+        suffix = thread_ts.replace(".", "_") if thread_ts else "default"
+        session_path = logs_dir / f"cli_stderr_{suffix}.log"
+
+        # 세션별 파일 우선, 없으면 공유 파일로 폴백
+        if session_path.exists():
+            stderr_path = session_path
+        else:
+            stderr_path = logs_dir / "cli_stderr.log"
+            if not stderr_path.exists():
+                return "(cli_stderr.log not found)"
+
         with open(stderr_path, "r", encoding="utf-8", errors="replace") as f:
             tail = list(deque(f, maxlen=n_lines))
         return "".join(tail).strip()
@@ -83,8 +102,13 @@ def _build_session_dump(
     exit_code: Optional[int] = None,
     error_detail: str = "",
     active_clients_count: int = 0,
+    thread_ts: Optional[str] = None,
 ) -> str:
-    """세션 종료 진단 덤프 메시지 생성"""
+    """세션 종료 진단 덤프 메시지 생성
+
+    Args:
+        thread_ts: 스레드 타임스탬프 (세션별 stderr 파일 식별용)
+    """
     parts = [
         f"🔍 *Session Dump* — {reason}",
         f"• PID: `{pid}`",
@@ -100,7 +124,7 @@ def _build_session_dump(
     if error_detail:
         parts.append(f"• Error: `{error_detail[:300]}`")
 
-    stderr_tail = _read_stderr_tail(20)
+    stderr_tail = _read_stderr_tail(20, thread_ts=thread_ts)
     if stderr_tail:
         # 슬랙 메시지 길이 제한 고려
         if len(stderr_tail) > 1500:
@@ -1002,6 +1026,7 @@ class ClaudeRunner:
                             result_text_len=len(result_text),
                             session_id=result_session_id,
                             active_clients_count=len(_registry),
+                            thread_ts=thread_ts,
                         )
                         logger.warning(f"세션 무출력 종료 덤프: thread={thread_ts}, duration={_dur:.1f}s, msgs={_msg_count}, last_tool={_last_tool}")
                         _send_debug_to_slack(channel, thread_ts, dump)
@@ -1174,6 +1199,7 @@ class ClaudeRunner:
                     exit_code=e.exit_code,
                     error_detail=str(e.stderr or e),
                     active_clients_count=len(_registry),
+                    thread_ts=thread_ts,
                 )
                 _send_debug_to_slack(channel, thread_ts, dump)
             return ClaudeResult(

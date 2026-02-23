@@ -18,6 +18,8 @@ from seosoyoung.claude.agent_runner import (
     DEFAULT_ALLOWED_TOOLS,
     DEFAULT_DISALLOWED_TOOLS,
     _classify_process_error,
+    _read_stderr_tail,
+    _build_session_dump,
     _registry,
     _registry_lock,
     get_runner,
@@ -1639,6 +1641,119 @@ class TestPrepareMemoryInjection:
             )
         assert memory_prompt is None
         assert anchor_ts == ""
+
+
+def _make_fake_module_file(tmp_path):
+    """tmp_path를 runtime_dir로 사용하기 위한 가짜 __file__ 경로 생성
+
+    _read_stderr_tail 내부의 Path(__file__).resolve().parents[3]이
+    tmp_path를 가리키도록 4단계 깊이의 경로를 반환합니다.
+    """
+    # parents[3] == tmp_path 가 되려면 파일이 tmp_path/a/b/c/d.py 에 있어야 함
+    fake_file = tmp_path / "a" / "b" / "c" / "d.py"
+    fake_file.parent.mkdir(parents=True, exist_ok=True)
+    fake_file.touch()
+    return str(fake_file)
+
+
+class TestReadStderrTailSessionScoped:
+    """_read_stderr_tail이 세션별 stderr 파일을 우선 읽는지 테스트"""
+
+    def test_reads_session_specific_file(self, tmp_path):
+        """thread_ts가 주어지면 cli_stderr_{thread_ts}.log를 읽음"""
+        thread_ts = "1234567890.123456"
+        suffix = thread_ts.replace(".", "_")
+        session_file = tmp_path / "logs" / f"cli_stderr_{suffix}.log"
+        session_file.parent.mkdir(parents=True, exist_ok=True)
+        session_file.write_text("session-specific error line 1\nsession-specific error line 2\n", encoding="utf-8")
+
+        # 공유 파일도 만들어두되, 세션 파일이 우선되어야 함
+        shared_file = tmp_path / "logs" / "cli_stderr.log"
+        shared_file.write_text("shared error line\n", encoding="utf-8")
+
+        import seosoyoung.claude.agent_runner as ar_module
+        fake_file = _make_fake_module_file(tmp_path)
+        with patch.object(ar_module, "__file__", fake_file):
+            result = _read_stderr_tail(n_lines=10, thread_ts=thread_ts)
+
+        assert "session-specific error line" in result
+        assert "shared error line" not in result
+
+    def test_falls_back_to_shared_file(self, tmp_path):
+        """세션별 파일이 없으면 공유 파일(cli_stderr.log)로 폴백"""
+        shared_file = tmp_path / "logs" / "cli_stderr.log"
+        shared_file.parent.mkdir(parents=True, exist_ok=True)
+        shared_file.write_text("shared fallback error\n", encoding="utf-8")
+
+        import seosoyoung.claude.agent_runner as ar_module
+        fake_file = _make_fake_module_file(tmp_path)
+        with patch.object(ar_module, "__file__", fake_file):
+            result = _read_stderr_tail(n_lines=10, thread_ts="9999.9999")
+
+        assert "shared fallback error" in result
+
+    def test_none_thread_ts_reads_default_file(self, tmp_path):
+        """thread_ts가 None이면 cli_stderr_default.log를 시도"""
+        default_file = tmp_path / "logs" / "cli_stderr_default.log"
+        default_file.parent.mkdir(parents=True, exist_ok=True)
+        default_file.write_text("default stderr line\n", encoding="utf-8")
+
+        import seosoyoung.claude.agent_runner as ar_module
+        fake_file = _make_fake_module_file(tmp_path)
+        with patch.object(ar_module, "__file__", fake_file):
+            result = _read_stderr_tail(n_lines=10, thread_ts=None)
+
+        assert "default stderr line" in result
+
+    def test_no_thread_ts_backward_compatible(self, tmp_path):
+        """thread_ts 인자 없이 호출해도 동작 (하위 호환)"""
+        default_file = tmp_path / "logs" / "cli_stderr_default.log"
+        default_file.parent.mkdir(parents=True, exist_ok=True)
+        default_file.write_text("backward compat line\n", encoding="utf-8")
+
+        import seosoyoung.claude.agent_runner as ar_module
+        fake_file = _make_fake_module_file(tmp_path)
+        with patch.object(ar_module, "__file__", fake_file):
+            # thread_ts 인자 없이 호출 - 기본값 None이므로 cli_stderr_default.log 시도
+            result = _read_stderr_tail(n_lines=10)
+
+        assert "읽기 실패" not in result
+
+
+class TestBuildSessionDumpThreadTs:
+    """_build_session_dump가 thread_ts를 _read_stderr_tail에 전달하는지 테스트"""
+
+    def test_passes_thread_ts_to_read_stderr_tail(self):
+        """_build_session_dump가 thread_ts를 _read_stderr_tail에 전달"""
+        with patch("seosoyoung.claude.agent_runner._read_stderr_tail", return_value="mock stderr") as mock_read:
+            _build_session_dump(
+                reason="test",
+                pid=123,
+                duration_sec=1.0,
+                message_count=0,
+                last_tool="",
+                current_text_len=0,
+                result_text_len=0,
+                session_id=None,
+                thread_ts="1234.5678",
+            )
+            mock_read.assert_called_once_with(20, thread_ts="1234.5678")
+
+    def test_passes_none_thread_ts(self):
+        """thread_ts=None일 때도 정상적으로 전달"""
+        with patch("seosoyoung.claude.agent_runner._read_stderr_tail", return_value="mock stderr") as mock_read:
+            _build_session_dump(
+                reason="test",
+                pid=123,
+                duration_sec=1.0,
+                message_count=0,
+                last_tool="",
+                current_text_len=0,
+                result_text_len=0,
+                session_id=None,
+                thread_ts=None,
+            )
+            mock_read.assert_called_once_with(20, thread_ts=None)
 
 
 if __name__ == "__main__":
