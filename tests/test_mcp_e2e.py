@@ -177,7 +177,7 @@ class TestMCPE2ETrelloFlow:
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner("2222222222.000001", channel="C_TRELLO_NOTIFY")
-        options, _memory_prompt, _anchor_ts = runner._build_options()
+        options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
 
         assert options.env["SLACK_CHANNEL"] == "C_TRELLO_NOTIFY"
         assert options.env["SLACK_THREAD_TS"] == "2222222222.000001"
