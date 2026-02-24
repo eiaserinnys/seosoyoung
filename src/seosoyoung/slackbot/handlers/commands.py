@@ -12,8 +12,8 @@ from pathlib import Path
 
 import psutil
 
-from seosoyoung.config import Config
-from seosoyoung.restart import RestartType
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.restart import RestartType
 
 logger = logging.getLogger(__name__)
 
@@ -417,7 +417,7 @@ def handle_log(*, say, ts, thread_ts, channel, client, user_id, check_permission
 
 def handle_translate(*, text, say, ts, channel, client, **_):
     """번역 명령어 핸들러"""
-    from seosoyoung.translator import detect_language, translate
+    from seosoyoung.slackbot.translator import detect_language, translate
 
     translate_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
     translate_text = re.sub(r"^번역[\s\n]+", "", translate_text, flags=re.IGNORECASE).strip()
@@ -504,7 +504,7 @@ def handle_compact(*, say, ts, thread_ts, session_manager, **_):
 
     say(text="컴팩트 중입니다...", thread_ts=thread_ts)
     try:
-        from seosoyoung.claude import get_claude_runner
+        from seosoyoung.slackbot.claude import get_claude_runner
 
         runner = get_claude_runner()
         compact_result = asyncio.run(runner.compact_session(session.session_id))
@@ -533,7 +533,7 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
         say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts)
         return
 
-    from seosoyoung.profile.manager import ProfileManager
+    from seosoyoung.slackbot.profile.manager import ProfileManager
 
     profiles_dir = Path.cwd() / ".local" / "claude_profiles"
     manager = ProfileManager(profiles_dir=profiles_dir)

@@ -8,10 +8,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from seosoyoung.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
 
 if TYPE_CHECKING:
-    from seosoyoung.handlers.mention_tracker import MentionTracker
+    from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class ChannelMessageCollector:
             return self._bot_user_id
         # Config에서 런타임에 설정된 BOT_USER_ID를 참조
         try:
-            from seosoyoung.config import Config
+            from seosoyoung.slackbot.config import Config
             return Config.slack.bot_user_id
         except Exception:
             return None

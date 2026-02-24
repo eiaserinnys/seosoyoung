@@ -63,10 +63,10 @@ force=True이면 임계치와 무관하게 즉시 트리거합니다.
 
 ## 내부 의존성
 
-- `seosoyoung.claude.get_claude_runner`
-- `seosoyoung.claude.session_context.build_followup_context`
-- `seosoyoung.config.Config`
-- `seosoyoung.handlers.translate.process_translate_message`
-- `seosoyoung.slack.build_file_context`
-- `seosoyoung.slack.download_files_sync`
+- `seosoyoung.slackbot.claude.get_claude_runner`
+- `seosoyoung.slackbot.claude.session_context.build_followup_context`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.handlers.translate.process_translate_message`
+- `seosoyoung.slackbot.slack.build_file_context`
+- `seosoyoung.slackbot.slack.download_files_sync`
 - `seosoyoung.utils.async_bridge.run_in_new_loop`

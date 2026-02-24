@@ -11,11 +11,11 @@ from datetime import datetime, timezone
 
 import openai
 
-from seosoyoung.memory.prompts import (
+from seosoyoung.slackbot.memory.prompts import (
     build_observer_system_prompt,
     build_observer_user_prompt,
 )
-from seosoyoung.memory.store import generate_obs_id
+from seosoyoung.slackbot.memory.store import generate_obs_id
 
 logger = logging.getLogger(__name__)
 

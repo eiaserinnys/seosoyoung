@@ -6,13 +6,13 @@
 import logging
 from typing import Callable, Optional
 
-from seosoyoung.config import Config
-from seosoyoung.claude.message_formatter import (
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.claude.message_formatter import (
     build_context_usage_bar,
     build_trello_header,
 )
-from seosoyoung.slack.formatting import update_message
-from seosoyoung.restart import RestartType
+from seosoyoung.slackbot.slack.formatting import update_message
+from seosoyoung.slackbot.restart import RestartType
 
 logger = logging.getLogger(__name__)
 

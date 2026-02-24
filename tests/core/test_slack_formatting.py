@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock
 
-from seosoyoung.slack.formatting import update_message, build_section_blocks
+from seosoyoung.slackbot.slack.formatting import update_message, build_section_blocks
 
 
 class TestBuildSectionBlocks:

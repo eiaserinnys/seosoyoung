@@ -2,7 +2,7 @@
 
 import pytest
 
-from seosoyoung.handlers.message import build_slack_context
+from seosoyoung.slackbot.handlers.message import build_slack_context
 
 
 class TestBuildSlackContext:

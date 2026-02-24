@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from seosoyoung.handlers.message import _contains_trigger_word
+from seosoyoung.slackbot.handlers.message import _contains_trigger_word
 
 
 class TestContainsTriggerWord:
@@ -12,37 +12,37 @@ class TestContainsTriggerWord:
 
     def test_no_trigger_words_configured(self):
         """트리거 워드가 설정되지 않으면 항상 False"""
-        with patch("seosoyoung.handlers.message.Config") as mock_config:
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
             mock_config.channel_observer.trigger_words = []
             assert _contains_trigger_word("소영아 안녕") is False
 
     def test_match_exact(self):
         """정확히 일치하는 트리거 워드 감지"""
-        with patch("seosoyoung.handlers.message.Config") as mock_config:
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
             mock_config.channel_observer.trigger_words = ["소영"]
             assert _contains_trigger_word("소영") is True
 
     def test_match_substring(self):
         """문장 내에 포함된 트리거 워드 감지"""
-        with patch("seosoyoung.handlers.message.Config") as mock_config:
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
             mock_config.channel_observer.trigger_words = ["소영"]
             assert _contains_trigger_word("소영아 이것 좀 봐줘") is True
 
     def test_no_match(self):
         """트리거 워드가 없는 텍스트"""
-        with patch("seosoyoung.handlers.message.Config") as mock_config:
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
             mock_config.channel_observer.trigger_words = ["소영"]
             assert _contains_trigger_word("오늘 날씨가 좋다") is False
 
     def test_case_insensitive(self):
         """대소문자 무시 매칭"""
-        with patch("seosoyoung.handlers.message.Config") as mock_config:
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
             mock_config.channel_observer.trigger_words = ["SeoSoyoung"]
             assert _contains_trigger_word("seosoyoung is here") is True
 
     def test_multiple_trigger_words(self):
         """여러 트리거 워드 중 하나라도 매칭"""
-        with patch("seosoyoung.handlers.message.Config") as mock_config:
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
             mock_config.channel_observer.trigger_words = ["소영", "서소영", "soyoung"]
             assert _contains_trigger_word("서소영 봇") is True
             assert _contains_trigger_word("안녕 소영") is True
@@ -51,7 +51,7 @@ class TestContainsTriggerWord:
 
     def test_empty_text(self):
         """빈 텍스트"""
-        with patch("seosoyoung.handlers.message.Config") as mock_config:
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
             mock_config.channel_observer.trigger_words = ["소영"]
             assert _contains_trigger_word("") is False
 
@@ -61,7 +61,7 @@ class TestMaybeTriggerDigestForce:
 
     def test_force_bypasses_threshold(self):
         """force=True이면 임계치 미만이어도 파이프라인 트리거"""
-        from seosoyoung.handlers.message import _maybe_trigger_digest
+        from seosoyoung.slackbot.handlers.message import _maybe_trigger_digest
 
         store = MagicMock()
         observer = MagicMock()
@@ -71,9 +71,9 @@ class TestMaybeTriggerDigestForce:
 
         store.count_pending_tokens.return_value = 10  # threshold_A(150)보다 작음
 
-        with patch("seosoyoung.handlers.message.Config") as mock_config, \
-             patch("seosoyoung.handlers.message._digest_running", {}), \
-             patch("seosoyoung.handlers.message.threading") as mock_threading:
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config, \
+             patch("seosoyoung.slackbot.handlers.message._digest_running", {}), \
+             patch("seosoyoung.slackbot.handlers.message.threading") as mock_threading:
             mock_config.channel_observer.threshold_a = 150
             mock_config.channel_observer.threshold_b = 5000
             mock_config.channel_observer.digest_max_tokens = 10000
@@ -92,7 +92,7 @@ class TestMaybeTriggerDigestForce:
 
     def test_no_force_respects_threshold(self):
         """force=False이면 threshold_A 미만일 때 파이프라인 실행 안 함"""
-        from seosoyoung.handlers.message import _maybe_trigger_digest
+        from seosoyoung.slackbot.handlers.message import _maybe_trigger_digest
 
         store = MagicMock()
         observer = MagicMock()
@@ -102,9 +102,9 @@ class TestMaybeTriggerDigestForce:
 
         store.count_pending_tokens.return_value = 10
 
-        with patch("seosoyoung.handlers.message.Config") as mock_config, \
-             patch("seosoyoung.handlers.message._digest_running", {}), \
-             patch("seosoyoung.handlers.message.threading") as mock_threading:
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config, \
+             patch("seosoyoung.slackbot.handlers.message._digest_running", {}), \
+             patch("seosoyoung.slackbot.handlers.message.threading") as mock_threading:
             mock_config.channel_observer.threshold_a = 150
 
             _maybe_trigger_digest(

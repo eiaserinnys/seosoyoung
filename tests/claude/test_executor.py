@@ -1,11 +1,11 @@
 """executor.py 유틸리티 함수 테스트"""
 
 from unittest.mock import MagicMock
-from seosoyoung.claude.message_formatter import (
+from seosoyoung.slackbot.claude.message_formatter import (
     build_context_usage_bar,
 )
-from seosoyoung.claude.executor import ClaudeExecutor, ExecutionContext
-from seosoyoung.claude.session import Session
+from seosoyoung.slackbot.claude.executor import ClaudeExecutor, ExecutionContext
+from seosoyoung.slackbot.claude.session import Session
 
 
 class TestBuildContextUsageBar:

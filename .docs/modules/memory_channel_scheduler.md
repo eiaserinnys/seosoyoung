@@ -31,7 +31,7 @@ threading.Timer를 사용하여 interval_sec 간격으로 실행합니다.
 
 ## 내부 의존성
 
-- `seosoyoung.memory.channel_intervention.InterventionHistory`
-- `seosoyoung.memory.channel_observer.ChannelObserver`
-- `seosoyoung.memory.channel_observer.DigestCompressor`
-- `seosoyoung.memory.channel_store.ChannelStore`
+- `seosoyoung.slackbot.memory.channel_intervention.InterventionHistory`
+- `seosoyoung.slackbot.memory.channel_observer.ChannelObserver`
+- `seosoyoung.slackbot.memory.channel_observer.DigestCompressor`
+- `seosoyoung.slackbot.memory.channel_store.ChannelStore`

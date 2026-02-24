@@ -15,11 +15,11 @@ from whoosh.index import open_dir, exists_in
 from whoosh.qparser import MultifieldParser
 from whoosh.query import Term, And
 
-from seosoyoung.search.embedding_index import (
+from seosoyoung.slackbot.search.embedding_index import (
     cosine_similarity_search,
     load_embedding_index,
 )
-from seosoyoung.search.embedding_cache import EmbeddingCache
+from seosoyoung.slackbot.search.embedding_cache import EmbeddingCache
 
 
 # Context Tracker: 세션 내 이미 읽은 chunk_id 추적 (TTL 30분)

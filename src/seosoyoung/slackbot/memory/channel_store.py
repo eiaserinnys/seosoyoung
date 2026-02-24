@@ -279,7 +279,7 @@ class ChannelStore:
 
     def _count_messages_tokens(self, messages: list[dict]) -> int:
         """메시지 리스트의 총 토큰 수를 계산"""
-        from seosoyoung.memory.token_counter import TokenCounter
+        from seosoyoung.slackbot.memory.token_counter import TokenCounter
 
         counter = TokenCounter()
         total = 0

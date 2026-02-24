@@ -4,7 +4,7 @@ reactions 필드가 있는 메시지의 포맷팅을 검증합니다.
 DisplayNameResolver와 resolver 적용 포맷을 검증합니다.
 """
 
-from seosoyoung.memory.channel_prompts import (
+from seosoyoung.slackbot.memory.channel_prompts import (
     DisplayNameResolver,
     build_channel_intervene_user_prompt,
     _format_channel_messages,

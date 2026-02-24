@@ -15,7 +15,7 @@ class TestDownloadThreadFiles:
     @pytest.mark.asyncio
     async def test_success_with_files(self, tmp_path, monkeypatch):
         """스레드에 파일이 있는 경우 정상 다운로드"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         file_content = b"Hello, World!"
 
@@ -56,7 +56,7 @@ class TestDownloadThreadFiles:
         mock_http.__aexit__ = AsyncMock()
 
         with patch("seosoyoung.mcp.tools.thread_files._get_slack_client", return_value=mock_slack), \
-             patch("seosoyoung.slack.file_handler.httpx.AsyncClient", return_value=mock_http):
+             patch("seosoyoung.slackbot.slack.file_handler.httpx.AsyncClient", return_value=mock_http):
             result = await download_thread_files("C12345", "1234567890.000000")
 
         assert result["success"] is True
@@ -86,7 +86,7 @@ class TestDownloadThreadFiles:
     @pytest.mark.asyncio
     async def test_multiple_files_across_messages(self, tmp_path, monkeypatch):
         """여러 메시지에 걸친 다수의 파일"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         mock_slack = MagicMock()
         mock_slack.conversations_replies.return_value = {
@@ -141,7 +141,7 @@ class TestDownloadThreadFiles:
         mock_http.__aexit__ = AsyncMock()
 
         with patch("seosoyoung.mcp.tools.thread_files._get_slack_client", return_value=mock_slack), \
-             patch("seosoyoung.slack.file_handler.httpx.AsyncClient", return_value=mock_http):
+             patch("seosoyoung.slackbot.slack.file_handler.httpx.AsyncClient", return_value=mock_http):
             result = await download_thread_files("C12345", "1234567890.000000")
 
         assert result["success"] is True
@@ -169,7 +169,7 @@ class TestDownloadThreadFiles:
     @pytest.mark.asyncio
     async def test_partial_download_failure(self, tmp_path, monkeypatch):
         """일부 파일 다운로드 실패 시 성공한 파일만 반환"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         mock_slack = MagicMock()
         mock_slack.conversations_replies.return_value = {
@@ -210,7 +210,7 @@ class TestDownloadThreadFiles:
         mock_http.__aexit__ = AsyncMock()
 
         with patch("seosoyoung.mcp.tools.thread_files._get_slack_client", return_value=mock_slack), \
-             patch("seosoyoung.slack.file_handler.httpx.AsyncClient", return_value=mock_http):
+             patch("seosoyoung.slackbot.slack.file_handler.httpx.AsyncClient", return_value=mock_http):
             result = await download_thread_files("C12345", "1234567890.000000")
 
         assert result["success"] is True
@@ -245,7 +245,7 @@ class TestRoleToolsConsistency:
 
     def test_admin_role_includes_thread_files_tool(self):
         """admin 역할에 thread_files 도구가 포함됨"""
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
 
         tool_name = "mcp__seosoyoung-attach__slack_download_thread_files"
         assert tool_name in Config.auth.role_tools["admin"]

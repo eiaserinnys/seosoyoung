@@ -75,4 +75,4 @@ soul 서버를 경유하지 않는 독립 경량 봇입니다.
 - `seosoyoung.rescue.runner.get_runner`
 - `seosoyoung.rescue.session.Session`
 - `seosoyoung.rescue.session.SessionManager`
-- `seosoyoung.slack.formatting.update_message`
+- `seosoyoung.slackbot.slack.formatting.update_message`

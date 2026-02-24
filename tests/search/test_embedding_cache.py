@@ -5,7 +5,7 @@ import hashlib
 import pytest
 from unittest.mock import patch, MagicMock
 
-from seosoyoung.search.embedding_cache import EmbeddingCache
+from seosoyoung.slackbot.search.embedding_cache import EmbeddingCache
 
 
 class TestEmbeddingCache:

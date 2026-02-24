@@ -90,7 +90,7 @@ Raises:
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
-- `seosoyoung.translator.detector.Language`
-- `seosoyoung.translator.glossary.GlossaryMatchResult`
-- `seosoyoung.translator.glossary.find_relevant_terms_v2`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.translator.detector.Language`
+- `seosoyoung.slackbot.translator.glossary.GlossaryMatchResult`
+- `seosoyoung.slackbot.translator.glossary.find_relevant_terms_v2`

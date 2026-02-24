@@ -35,4 +35,4 @@ Claude Code CLI 래퍼
 
 ## 내부 의존성
 
-- `seosoyoung.claude.security.SecurityError`
+- `seosoyoung.slackbot.claude.security.SecurityError`

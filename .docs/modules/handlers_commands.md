@@ -89,5 +89,5 @@ mention.py의 try_handle_command에서 분리된 개별 명령어 핸들러들�
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
-- `seosoyoung.restart.RestartType`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.restart.RestartType`

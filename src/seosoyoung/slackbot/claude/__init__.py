@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Optional
 
-from seosoyoung.claude.agent_runner import (
+from seosoyoung.slackbot.claude.agent_runner import (
     ClaudeAgentRunner,
     ClaudeResult,
     ClaudeRunner,

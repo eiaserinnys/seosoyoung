@@ -20,7 +20,7 @@ import pytest
 import yaml
 from whoosh.index import create_in
 
-from seosoyoung.search.schema import dialogue_schema, lore_schema
+from seosoyoung.slackbot.search.schema import dialogue_schema, lore_schema
 
 
 @pytest.fixture
@@ -505,7 +505,7 @@ class TestE2EScenario5IndexStatus:
     def test_status_with_mock_watcher(self):
         """watcher 실행 중이면 상태 정보가 정확히 반환."""
         import seosoyoung.mcp.server as srv
-        from seosoyoung.search.git_watcher import IndexStatus
+        from seosoyoung.slackbot.search.git_watcher import IndexStatus
 
         old_watcher = srv._git_watcher
         try:
@@ -542,7 +542,7 @@ class TestE2EScenario5IndexStatus:
     def test_status_during_build(self):
         """빌드 중이면 is_building=True로 보고."""
         import seosoyoung.mcp.server as srv
-        from seosoyoung.search.git_watcher import IndexStatus
+        from seosoyoung.slackbot.search.git_watcher import IndexStatus
 
         old_watcher = srv._git_watcher
         try:
@@ -566,7 +566,7 @@ class TestE2EScenario5IndexStatus:
     def test_status_with_error(self):
         """에러 발생 시 last_error에 에러 메시지 포함."""
         import seosoyoung.mcp.server as srv
-        from seosoyoung.search.git_watcher import IndexStatus
+        from seosoyoung.slackbot.search.git_watcher import IndexStatus
 
         old_watcher = srv._git_watcher
         try:

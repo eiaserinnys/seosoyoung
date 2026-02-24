@@ -21,7 +21,7 @@ _SEOSOYOUNG_SRC = str((Path(__file__).parent.parent.parent / "src").resolve())
 if _SEOSOYOUNG_SRC not in sys.path:
     sys.path.insert(0, _SEOSOYOUNG_SRC)
 
-from seosoyoung.shutdown import start_shutdown_server  # noqa: E402
+from seosoyoung.slackbot.shutdown import start_shutdown_server  # noqa: E402
 
 
 @pytest.fixture

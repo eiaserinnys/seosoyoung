@@ -124,7 +124,7 @@ def build_process_configs() -> list[ProcessConfig]:
     configs.append(ProcessConfig(
         name="bot",
         command=str(paths["venv_python"]),
-        args=["-m", "seosoyoung.main"],
+        args=["-m", "seosoyoung.slackbot"],
         cwd=str(paths["workspace"].resolve()),
         env=bot_env,
         restart_policy=RestartPolicy(

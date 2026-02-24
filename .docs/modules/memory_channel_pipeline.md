@@ -94,19 +94,19 @@ e) pending을 judged로 이동
 
 ## 내부 의존성
 
-- `seosoyoung.memory.channel_intervention.InterventionAction`
-- `seosoyoung.memory.channel_intervention.InterventionHistory`
-- `seosoyoung.memory.channel_intervention.execute_interventions`
-- `seosoyoung.memory.channel_intervention.intervention_probability`
-- `seosoyoung.memory.channel_intervention.send_debug_log`
-- `seosoyoung.memory.channel_intervention.send_intervention_probability_debug_log`
-- `seosoyoung.memory.channel_intervention.send_multi_judge_debug_log`
-- `seosoyoung.memory.channel_observer.ChannelObserver`
-- `seosoyoung.memory.channel_observer.ChannelObserverResult`
-- `seosoyoung.memory.channel_observer.DigestCompressor`
-- `seosoyoung.memory.channel_observer.JudgeItem`
-- `seosoyoung.memory.channel_observer.JudgeResult`
-- `seosoyoung.memory.channel_prompts.build_channel_intervene_user_prompt`
-- `seosoyoung.memory.channel_prompts.get_channel_intervene_system_prompt`
-- `seosoyoung.memory.channel_store.ChannelStore`
-- `seosoyoung.memory.token_counter.TokenCounter`
+- `seosoyoung.slackbot.memory.channel_intervention.InterventionAction`
+- `seosoyoung.slackbot.memory.channel_intervention.InterventionHistory`
+- `seosoyoung.slackbot.memory.channel_intervention.execute_interventions`
+- `seosoyoung.slackbot.memory.channel_intervention.intervention_probability`
+- `seosoyoung.slackbot.memory.channel_intervention.send_debug_log`
+- `seosoyoung.slackbot.memory.channel_intervention.send_intervention_probability_debug_log`
+- `seosoyoung.slackbot.memory.channel_intervention.send_multi_judge_debug_log`
+- `seosoyoung.slackbot.memory.channel_observer.ChannelObserver`
+- `seosoyoung.slackbot.memory.channel_observer.ChannelObserverResult`
+- `seosoyoung.slackbot.memory.channel_observer.DigestCompressor`
+- `seosoyoung.slackbot.memory.channel_observer.JudgeItem`
+- `seosoyoung.slackbot.memory.channel_observer.JudgeResult`
+- `seosoyoung.slackbot.memory.channel_prompts.build_channel_intervene_user_prompt`
+- `seosoyoung.slackbot.memory.channel_prompts.get_channel_intervene_system_prompt`
+- `seosoyoung.slackbot.memory.channel_store.ChannelStore`
+- `seosoyoung.slackbot.memory.token_counter.TokenCounter`

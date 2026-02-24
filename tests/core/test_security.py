@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from seosoyoung.claude.security import SecurityError
+from seosoyoung.slackbot.claude.security import SecurityError
 
 
 class TestSecurityError:

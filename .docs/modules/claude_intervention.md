@@ -35,4 +35,4 @@
 
 ## 내부 의존성
 
-- `seosoyoung.trello.watcher.TrackedCard`
+- `seosoyoung.slackbot.trello.watcher.TrackedCard`

@@ -62,5 +62,5 @@ OM의 processInputStep에 해당하는 부분입니다.
 
 ## 내부 의존성
 
-- `seosoyoung.memory.store.MemoryStore`
-- `seosoyoung.memory.token_counter.TokenCounter`
+- `seosoyoung.slackbot.memory.store.MemoryStore`
+- `seosoyoung.slackbot.memory.token_counter.TokenCounter`

@@ -40,8 +40,8 @@ Claude에 전달할 프롬프트 문자열을 생성합니다.
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
-- `seosoyoung.trello.client.TrelloCard`
-- `seosoyoung.trello.client.TrelloClient`
-- `seosoyoung.trello.formatting.format_checklists`
-- `seosoyoung.trello.formatting.format_comments`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.trello.client.TrelloCard`
+- `seosoyoung.slackbot.trello.client.TrelloClient`
+- `seosoyoung.slackbot.trello.formatting.format_checklists`
+- `seosoyoung.slackbot.trello.formatting.format_comments`

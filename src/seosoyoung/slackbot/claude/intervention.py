@@ -10,7 +10,7 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-from seosoyoung.trello.watcher import TrackedCard
+from seosoyoung.slackbot.trello.watcher import TrackedCard
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class InterventionManager:
 
     def fire_interrupt_local(self, thread_ts: str):
         """Local 모드: 모듈 레지스트리에서 runner를 찾아 interrupt 전송"""
-        from seosoyoung.claude.agent_runner import get_runner
+        from seosoyoung.slackbot.claude.agent_runner import get_runner
 
         runner = get_runner(thread_ts)
         if runner:

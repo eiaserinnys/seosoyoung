@@ -27,7 +27,7 @@ from seosoyoung.mcp.tools.lore_search import (
     lore_chunk_read as _lore_chunk_read,
     reset_indices as _reset_lore_indices,
 )
-from seosoyoung.search.git_watcher import GitWatcher
+from seosoyoung.slackbot.search.git_watcher import GitWatcher
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@
 
 import pytest
 
-from seosoyoung.memory.prompt_loader import (
+from seosoyoung.slackbot.memory.prompt_loader import (
     DEFAULT_PROMPT_DIR,
     PROMPT_DIR,
     _resolve_prompt_path,
@@ -199,7 +199,7 @@ class TestChannelPromptsFromFiles:
 
     def test_channel_observer_system_prompt_has_reactions(self):
         """채널 관찰 시스템 프롬프트에 AVAILABLE REACTIONS 섹션이 포함"""
-        from seosoyoung.memory.channel_prompts import build_channel_observer_system_prompt
+        from seosoyoung.slackbot.memory.channel_prompts import build_channel_observer_system_prompt
 
         prompt = build_channel_observer_system_prompt()
         assert "AVAILABLE REACTIONS" in prompt
@@ -209,7 +209,7 @@ class TestChannelPromptsFromFiles:
 
     def test_channel_intervene_system_prompt(self):
         """채널 개입 응답 시스템 프롬프트가 정상 로드"""
-        from seosoyoung.memory.channel_prompts import get_channel_intervene_system_prompt
+        from seosoyoung.slackbot.memory.channel_prompts import get_channel_intervene_system_prompt
 
         prompt = get_channel_intervene_system_prompt()
         assert "서소영" in prompt
@@ -217,7 +217,7 @@ class TestChannelPromptsFromFiles:
 
     def test_channel_intervene_user_prompt(self):
         """채널 개입 응답 사용자 프롬프트가 정상 구성"""
-        from seosoyoung.memory.channel_prompts import build_channel_intervene_user_prompt
+        from seosoyoung.slackbot.memory.channel_prompts import build_channel_intervene_user_prompt
 
         prompt = build_channel_intervene_user_prompt(
             digest="테스트 다이제스트",
@@ -237,7 +237,7 @@ class TestOMPromptsFromFiles:
 
     def test_observer_system_prompt(self):
         """Observer 시스템 프롬프트가 정상 로드"""
-        from seosoyoung.memory.prompts import build_observer_system_prompt
+        from seosoyoung.slackbot.memory.prompts import build_observer_system_prompt
 
         prompt = build_observer_system_prompt()
         assert "서소영" in prompt
@@ -245,7 +245,7 @@ class TestOMPromptsFromFiles:
 
     def test_reflector_system_prompt(self):
         """Reflector 시스템 프롬프트가 정상 로드"""
-        from seosoyoung.memory.prompts import build_reflector_system_prompt
+        from seosoyoung.slackbot.memory.prompts import build_reflector_system_prompt
 
         prompt = build_reflector_system_prompt()
         assert "서소영" in prompt
@@ -253,7 +253,7 @@ class TestOMPromptsFromFiles:
 
     def test_promoter_prompt(self):
         """Promoter 프롬프트가 정상 로드 및 포매팅"""
-        from seosoyoung.memory.prompts import build_promoter_prompt
+        from seosoyoung.slackbot.memory.prompts import build_promoter_prompt
 
         prompt = build_promoter_prompt(
             existing_persistent="기존 기억",
@@ -264,7 +264,7 @@ class TestOMPromptsFromFiles:
 
     def test_compactor_prompt(self):
         """Compactor 프롬프트가 정상 로드 및 포매팅"""
-        from seosoyoung.memory.prompts import build_compactor_prompt
+        from seosoyoung.slackbot.memory.prompts import build_compactor_prompt
 
         prompt = build_compactor_prompt(
             persistent_memory="장기 기억 내용",

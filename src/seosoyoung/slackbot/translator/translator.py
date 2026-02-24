@@ -8,9 +8,9 @@ import logging
 import anthropic
 import openai
 
-from seosoyoung.config import Config
-from seosoyoung.translator.detector import Language
-from seosoyoung.translator.glossary import find_relevant_terms_v2, GlossaryMatchResult
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.translator.detector import Language
+from seosoyoung.slackbot.translator.glossary import find_relevant_terms_v2, GlossaryMatchResult
 
 logger = logging.getLogger(__name__)
 

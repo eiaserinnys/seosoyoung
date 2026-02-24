@@ -2,8 +2,8 @@
 
 import logging
 
-from seosoyoung.config import Config
-from seosoyoung.restart import RestartType, RestartRequest
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.restart import RestartType, RestartRequest
 
 logger = logging.getLogger(__name__)
 

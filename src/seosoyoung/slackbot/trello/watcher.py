@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Optional
 
-from seosoyoung.config import Config
-from seosoyoung.trello.client import TrelloClient, TrelloCard
-from seosoyoung.trello.prompt_builder import PromptBuilder
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.trello.client import TrelloClient, TrelloCard
+from seosoyoung.slackbot.trello.prompt_builder import PromptBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -772,7 +772,7 @@ class TrelloWatcher:
             return
 
         try:
-            from seosoyoung.claude.agent_runner import ClaudeRunner
+            from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
             runner = ClaudeRunner()
             result = runner.run_sync(runner.compact_session(session.session_id))
 
@@ -869,7 +869,7 @@ class TrelloWatcher:
 
         channel = run_channel or self.notify_channel
 
-        from seosoyoung.trello.list_runner import SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import SessionStatus
 
         session = list_runner.get_session(session_id)
         if not session:

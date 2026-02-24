@@ -253,4 +253,4 @@ git watcher가 실행 중이 아니면 watcher 미실행 상태를 반환합니�
 - `seosoyoung.mcp.tools.thread_files.download_thread_files`
 - `seosoyoung.mcp.tools.user_profile.download_user_avatar`
 - `seosoyoung.mcp.tools.user_profile.get_user_profile`
-- `seosoyoung.search.git_watcher.GitWatcher`
+- `seosoyoung.slackbot.search.git_watcher.GitWatcher`

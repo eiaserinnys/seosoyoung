@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from seosoyoung.translator.translator import (
+from seosoyoung.slackbot.translator.translator import (
     translate,
     _build_context_text,
     _build_prompt,
@@ -12,9 +12,9 @@ from seosoyoung.translator.translator import (
     _translate_openai,
     _translate_anthropic,
 )
-from seosoyoung.translator.detector import Language
-from seosoyoung.translator.glossary import GlossaryMatchResult
-from seosoyoung.handlers.translate import _format_response
+from seosoyoung.slackbot.translator.detector import Language
+from seosoyoung.slackbot.translator.glossary import GlossaryMatchResult
+from seosoyoung.slackbot.handlers.translate import _format_response
 
 
 class TestBuildContextText:
@@ -65,7 +65,7 @@ class TestBuildPrompt:
         assert "<previous_messages>" in prompt
         assert "[Alice]: Previous message" in prompt
 
-    @patch("seosoyoung.translator.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
     def test_with_glossary(self, mock_find_terms_v2):
         """용어집 포함"""
         mock_result = GlossaryMatchResult(
@@ -79,7 +79,7 @@ class TestBuildPrompt:
         assert "펜릭스 → Fenrix" in prompt
         assert terms == [("펜릭스", "Fenrix")]
 
-    @patch("seosoyoung.translator.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
     def test_without_glossary(self, mock_find_terms_v2):
         """관련 용어 없을 때 용어집 섹션 없음"""
         mock_result = GlossaryMatchResult(matched_terms=[], extracted_words=[], debug_info={})
@@ -92,7 +92,7 @@ class TestBuildPrompt:
 class TestBuildGlossarySection:
     """용어집 섹션 생성 테스트"""
 
-    @patch("seosoyoung.translator.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
     def test_builds_glossary_section(self, mock_find_terms_v2):
         """용어집 섹션 생성"""
         mock_result = GlossaryMatchResult(
@@ -108,7 +108,7 @@ class TestBuildGlossarySection:
         assert "아리엘라 → Ariella" in section
         assert terms == [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
 
-    @patch("seosoyoung.translator.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
     def test_empty_when_no_terms(self, mock_find_terms_v2):
         """관련 용어 없으면 빈 튜플"""
         mock_result = GlossaryMatchResult(matched_terms=[], extracted_words=[], debug_info={})
@@ -167,8 +167,8 @@ class TestCalculateCost:
 class TestTranslate:
     """번역 함수 테스트"""
 
-    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_korean_to_english(self, mock_config, mock_anthropic_class):
         """한국어 -> 영어 번역"""
         # Config mock
@@ -192,8 +192,8 @@ class TestTranslate:
         assert isinstance(terms, list)
         mock_client.messages.create.assert_called_once()
 
-    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_english_to_korean(self, mock_config, mock_anthropic_class):
         """영어 -> 한국어 번역"""
         mock_config.translate.api_key = "test-key"
@@ -214,7 +214,7 @@ class TestTranslate:
         assert cost > 0
         assert isinstance(terms, list)
 
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_without_api_key(self, mock_config):
         """API 키 없이 호출 시 에러"""
         mock_config.translate.api_key = None
@@ -222,8 +222,8 @@ class TestTranslate:
         with pytest.raises(ValueError, match="TRANSLATE_API_KEY"):
             translate("Hello", Language.ENGLISH)
 
-    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_with_custom_model(self, mock_config, mock_anthropic_class):
         """커스텀 모델 사용"""
         mock_config.translate.api_key = "test-key"
@@ -243,9 +243,9 @@ class TestTranslate:
         call_args = mock_client.messages.create.call_args
         assert call_args.kwargs["model"] == "custom-model"
 
-    @patch("seosoyoung.translator.translator.find_relevant_terms_v2")
-    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_returns_glossary_terms(self, mock_config, mock_anthropic_class, mock_find_terms_v2):
         """번역 시 참고한 용어 목록 반환"""
         mock_config.translate.api_key = "test-key"
@@ -276,8 +276,8 @@ class TestTranslate:
 class TestTranslateOpenAI:
     """OpenAI 번역 테스트"""
 
-    @patch("seosoyoung.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_openai_korean_to_english(self, mock_config, mock_openai_class):
         """OpenAI backend로 한국어 -> 영어 번역"""
         mock_config.translate.backend = "openai"
@@ -301,8 +301,8 @@ class TestTranslateOpenAI:
         call_args = mock_client.chat.completions.create.call_args
         assert call_args.kwargs["model"] == "gpt-5-mini"
 
-    @patch("seosoyoung.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_openai_without_api_key(self, mock_config, mock_openai_class):
         """OpenAI API 키 없이 호출 시 에러"""
         mock_config.translate.backend = "openai"
@@ -311,8 +311,8 @@ class TestTranslateOpenAI:
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
             translate("Hello", Language.ENGLISH, backend="openai")
 
-    @patch("seosoyoung.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_openai_default_backend(self, mock_config, mock_openai_class):
         """Config.TRANSLATE_BACKEND=openai일 때 자동으로 OpenAI 사용"""
         mock_config.translate.backend = "openai"
@@ -333,8 +333,8 @@ class TestTranslateOpenAI:
         assert text == "Hello"
         mock_client.chat.completions.create.assert_called_once()
 
-    @patch("seosoyoung.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_backend_switch_to_anthropic(self, mock_config, mock_anthropic_class):
         """backend 파라미터로 anthropic 명시적 지정"""
         mock_config.translate.backend = "openai"  # 기본은 openai지만
@@ -357,8 +357,8 @@ class TestTranslateOpenAI:
         assert text == "안녕하세요"
         mock_client.messages.create.assert_called_once()
 
-    @patch("seosoyoung.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_openai_uses_max_completion_tokens(self, mock_config, mock_openai_class):
         """OpenAI API 호출 시 max_completion_tokens 사용 (max_tokens 아님)"""
         mock_config.translate.backend = "openai"
@@ -381,8 +381,8 @@ class TestTranslateOpenAI:
         assert "max_tokens" not in call_args.kwargs
         assert call_args.kwargs["max_completion_tokens"] == 2048
 
-    @patch("seosoyoung.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.translator.translator.Config")
+    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
+    @patch("seosoyoung.slackbot.translator.translator.Config")
     def test_translate_openai_custom_model(self, mock_config, mock_openai_class):
         """OpenAI에서 커스텀 모델 사용"""
         mock_config.translate.backend = "openai"
@@ -407,7 +407,7 @@ class TestTranslateOpenAI:
 class TestFormatResponse:
     """응답 포맷팅 테스트"""
 
-    @patch("seosoyoung.handlers.translate.Config")
+    @patch("seosoyoung.slackbot.handlers.translate.Config")
     def test_korean_to_english_without_glossary(self, mock_config):
         """한국어 -> 영어 (용어집 없음)"""
         mock_config.translate.show_glossary = False
@@ -418,7 +418,7 @@ class TestFormatResponse:
         assert "`~💵$0.0012`" in result
         assert "📖" not in result
 
-    @patch("seosoyoung.handlers.translate.Config")
+    @patch("seosoyoung.slackbot.handlers.translate.Config")
     def test_english_to_korean_without_glossary(self, mock_config):
         """영어 -> 한국어 (용어집 없음)"""
         mock_config.translate.show_glossary = False
@@ -430,7 +430,7 @@ class TestFormatResponse:
         assert "`~💵$0.0012`" in result
         assert "📖" not in result
 
-    @patch("seosoyoung.handlers.translate.Config")
+    @patch("seosoyoung.slackbot.handlers.translate.Config")
     def test_korean_to_english_with_glossary(self, mock_config):
         """한국어 -> 영어 (용어집 있음, 표시 켜짐)"""
         mock_config.translate.show_glossary = True
@@ -441,7 +441,7 @@ class TestFormatResponse:
         assert "`📖 펜릭스 (Fenrix), 아리엘라 (Ariella)`" in result
         assert "`~💵$0.0012`" in result
 
-    @patch("seosoyoung.handlers.translate.Config")
+    @patch("seosoyoung.slackbot.handlers.translate.Config")
     def test_english_to_korean_with_glossary(self, mock_config):
         """영어 -> 한국어 (용어집 있음, 표시 켜짐)"""
         mock_config.translate.show_glossary = True
@@ -452,7 +452,7 @@ class TestFormatResponse:
         assert "`📖 Fenrix (펜릭스)`" in result
         assert "`~💵$0.0012`" in result
 
-    @patch("seosoyoung.handlers.translate.Config")
+    @patch("seosoyoung.slackbot.handlers.translate.Config")
     def test_with_empty_glossary(self, mock_config):
         """빈 용어집"""
         mock_config.translate.show_glossary = True
@@ -460,7 +460,7 @@ class TestFormatResponse:
         result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012, [])
         assert "📖" not in result
 
-    @patch("seosoyoung.handlers.translate.Config")
+    @patch("seosoyoung.slackbot.handlers.translate.Config")
     def test_with_none_glossary(self, mock_config):
         """None 용어집"""
         mock_config.translate.show_glossary = True
@@ -468,7 +468,7 @@ class TestFormatResponse:
         result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012, None)
         assert "📖" not in result
 
-    @patch("seosoyoung.handlers.translate.Config")
+    @patch("seosoyoung.slackbot.handlers.translate.Config")
     def test_glossary_hidden_when_option_off(self, mock_config):
         """용어집 표시 옵션 꺼짐"""
         mock_config.translate.show_glossary = False
@@ -477,7 +477,7 @@ class TestFormatResponse:
         result = _format_response("홍길동", "Fenrix", Language.KOREAN, 0.0012, terms)
         assert "📖" not in result
 
-    @patch("seosoyoung.handlers.translate.Config")
+    @patch("seosoyoung.slackbot.handlers.translate.Config")
     def test_cost_hidden_when_option_off(self, mock_config):
         """비용 표시 옵션 꺼짐"""
         mock_config.translate.show_glossary = False

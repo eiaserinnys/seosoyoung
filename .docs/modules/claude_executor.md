@@ -72,16 +72,16 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.claude.agent_runner.ClaudeRunner`
-- `seosoyoung.claude.intervention.InterventionManager`
-- `seosoyoung.claude.intervention.PendingPrompt`
-- `seosoyoung.claude.message_formatter.format_as_blockquote`
-- `seosoyoung.claude.message_formatter.format_dm_progress`
-- `seosoyoung.claude.message_formatter.format_trello_progress`
-- `seosoyoung.claude.message_formatter.truncate_progress_text`
-- `seosoyoung.claude.result_processor.ResultProcessor`
-- `seosoyoung.claude.session.Session`
-- `seosoyoung.claude.session.SessionManager`
-- `seosoyoung.config.Config`
-- `seosoyoung.slack.formatting.update_message`
-- `seosoyoung.trello.watcher.TrackedCard`
+- `seosoyoung.slackbot.claude.agent_runner.ClaudeRunner`
+- `seosoyoung.slackbot.claude.intervention.InterventionManager`
+- `seosoyoung.slackbot.claude.intervention.PendingPrompt`
+- `seosoyoung.slackbot.claude.message_formatter.format_as_blockquote`
+- `seosoyoung.slackbot.claude.message_formatter.format_dm_progress`
+- `seosoyoung.slackbot.claude.message_formatter.format_trello_progress`
+- `seosoyoung.slackbot.claude.message_formatter.truncate_progress_text`
+- `seosoyoung.slackbot.claude.result_processor.ResultProcessor`
+- `seosoyoung.slackbot.claude.session.Session`
+- `seosoyoung.slackbot.claude.session.SessionManager`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.slack.formatting.update_message`
+- `seosoyoung.slackbot.trello.watcher.TrackedCard`

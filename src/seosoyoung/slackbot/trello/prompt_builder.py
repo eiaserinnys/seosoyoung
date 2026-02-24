@@ -6,9 +6,9 @@ TrelloWatcher가 Claude에 전달할 프롬프트를 생성하는 로직을 담�
 - 리스트 정주행 프롬프트
 """
 
-from seosoyoung.config import Config
-from seosoyoung.trello.client import TrelloClient, TrelloCard
-from seosoyoung.trello.formatting import format_checklists, format_comments
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.trello.client import TrelloClient, TrelloCard
+from seosoyoung.slackbot.trello.formatting import format_checklists, format_comments
 
 
 class PromptBuilder:

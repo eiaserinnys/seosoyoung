@@ -6,7 +6,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from seosoyoung.handlers.commands import (
+from seosoyoung.slackbot.handlers.commands import (
     get_ancestors,
     format_elapsed,
     handle_help,
@@ -19,7 +19,7 @@ from seosoyoung.handlers.commands import (
     handle_profile,
     handle_resume_list_run,
 )
-from seosoyoung.handlers.mention import (
+from seosoyoung.slackbot.handlers.mention import (
     try_handle_command,
     _is_admin_command,
     _COMMAND_DISPATCH,
@@ -47,7 +47,7 @@ class TestFormatElapsed:
 
 
 class TestGetAncestors:
-    @patch("seosoyoung.handlers.commands.psutil")
+    @patch("seosoyoung.slackbot.handlers.commands.psutil")
     def test_returns_ancestor_chain(self, mock_psutil):
         """조상 체인을 올바르게 반환하는지 확인"""
         proc1 = MagicMock()
@@ -61,7 +61,7 @@ class TestGetAncestors:
         result = get_ancestors(200)
         assert result == [100]
 
-    @patch("seosoyoung.handlers.commands.psutil")
+    @patch("seosoyoung.slackbot.handlers.commands.psutil")
     def test_handles_no_such_process(self, mock_psutil):
         """프로세스가 없는 경우 빈 리스트 반환"""
         import psutil
@@ -149,8 +149,8 @@ class TestTryHandleCommandDispatch:
         say = MagicMock()
         client = MagicMock()
         deps = _make_deps()
-        with patch("seosoyoung.translator.detect_language") as mock_detect, \
-             patch("seosoyoung.translator.translate") as mock_translate:
+        with patch("seosoyoung.slackbot.translator.detect_language") as mock_detect, \
+             patch("seosoyoung.slackbot.translator.translate") as mock_translate:
             mock_detect.return_value = MagicMock(value="ko")
             mock_translate.return_value = ("Hello", 0.001, [], None)
             result = try_handle_command(
@@ -162,7 +162,7 @@ class TestTryHandleCommandDispatch:
         """'profile' 프리픽스 매치"""
         say = MagicMock()
         deps = _make_deps()
-        with patch("seosoyoung.profile.manager.ProfileManager") as mock_pm:
+        with patch("seosoyoung.slackbot.profile.manager.ProfileManager") as mock_pm:
             mock_pm.return_value.list_profiles.return_value = []
             result = try_handle_command(
                 "profile list", "", "C1", "ts1", None, "U1", say, MagicMock(), deps
@@ -200,7 +200,7 @@ class TestHandleLog:
         )
         assert "관리자 권한" in say.call_args[1]["text"]
 
-    @patch("seosoyoung.handlers.commands.Path")
+    @patch("seosoyoung.slackbot.handlers.commands.Path")
     def test_no_log_files(self, mock_path):
         say = MagicMock()
         mock_log_dir = MagicMock()
@@ -282,7 +282,7 @@ class TestHandleProfile:
 
     def test_shows_usage_on_bare_profile(self):
         say = MagicMock()
-        with patch("seosoyoung.profile.manager.ProfileManager"):
+        with patch("seosoyoung.slackbot.profile.manager.ProfileManager"):
             handle_profile(
                 command="profile", say=say, thread_ts=None,
                 client=MagicMock(), user_id="U1",

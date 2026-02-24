@@ -174,7 +174,7 @@ class TestMCPE2ETrelloFlow:
 
     def test_runner_env_injection_for_trello(self):
         """트렐로 모드: _build_options에서 SLACK_CHANNEL/THREAD_TS가 env에 주입됨"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner("2222222222.000001", channel="C_TRELLO_NOTIFY")
         options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
@@ -207,7 +207,7 @@ class TestMCPE2ETrelloFlow:
 
     def test_admin_config_has_mcp_for_trello(self):
         """admin 역할 config에 MCP 설정이 있어 트렐로 모드에서도 첨부 가능"""
-        from seosoyoung.claude.executor import _get_role_config
+        from seosoyoung.slackbot.claude.executor import _get_role_config
 
         config = _get_role_config("admin")
         assert config["mcp_config_path"] is not None
@@ -346,7 +346,7 @@ class TestMCPConfigIntegrity:
 
     def test_allowed_tools_match_mcp_tool_names(self):
         """ROLE_TOOLS의 MCP 도구 패턴이 실제 도구 이름과 일치"""
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
         from seosoyoung.mcp.server import mcp
 
         admin_mcp_tools = [
@@ -363,14 +363,14 @@ class TestMCPConfigIntegrity:
 
     def test_admin_tools_include_all_mcp_tools(self):
         """Config.auth.role_tools["admin"]에 MCP 도구 모두 포함"""
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
 
         mcp_tools = [t for t in Config.auth.role_tools["admin"] if "seosoyoung-attach" in t]
         assert len(mcp_tools) == 11
 
     def test_viewer_has_no_mcp_tools(self):
         """viewer 역할에는 MCP 도구 없음"""
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
 
         viewer_tools = Config.auth.role_tools["viewer"]
         mcp_tools = [t for t in viewer_tools if t.startswith("mcp__")]
@@ -390,7 +390,7 @@ class TestMCPConfigIntegrity:
 
     def test_admin_role_includes_npc_tools(self):
         """admin 역할에 NPC 도구 6개 포함"""
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
 
         admin_tools = Config.auth.role_tools["admin"]
         npc_tools = [t for t in admin_tools if "npc_" in t]

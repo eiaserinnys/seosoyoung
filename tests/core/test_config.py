@@ -15,7 +15,7 @@ def reload_config_with_env(env_vars: dict):
     """
     with patch.dict(os.environ, env_vars, clear=True):
         with patch("dotenv.load_dotenv"):
-            import seosoyoung.config as config_module
+            import seosoyoung.slackbot.config as config_module
             importlib.reload(config_module)
             return config_module
 
@@ -68,7 +68,7 @@ class TestConfigConsistency:
 
     def test_path_methods_exist(self):
         """경로 관련 메서드는 여전히 존재해야 함"""
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
 
         # 경로 메서드들은 cwd 기준 계산이 필요하므로 메서드로 유지
         assert callable(Config.get_log_path)
@@ -86,7 +86,7 @@ class TestConfigPaths:
         """LOG_PATH 환경변수 없을 때 기본 경로 반환"""
         with patch.dict(os.environ, {}, clear=True):
             with patch("dotenv.load_dotenv"):
-                import seosoyoung.config as config_module
+                import seosoyoung.slackbot.config as config_module
                 importlib.reload(config_module)
 
                 result = config_module.Config.get_log_path()
@@ -98,7 +98,7 @@ class TestConfigPaths:
         custom_path = "/custom/log/path"
         with patch.dict(os.environ, {"LOG_PATH": custom_path}, clear=True):
             with patch("dotenv.load_dotenv"):
-                import seosoyoung.config as config_module
+                import seosoyoung.slackbot.config as config_module
                 importlib.reload(config_module)
 
                 result = config_module.Config.get_log_path()
@@ -110,13 +110,13 @@ class TestConfigurationError:
 
     def test_configuration_error_exists(self):
         """ConfigurationError 예외 클래스 존재 확인"""
-        from seosoyoung.config import ConfigurationError
+        from seosoyoung.slackbot.config import ConfigurationError
 
         assert issubclass(ConfigurationError, Exception)
 
     def test_configuration_error_with_missing_vars(self):
         """ConfigurationError에 누락된 변수 목록 포함"""
-        from seosoyoung.config import ConfigurationError
+        from seosoyoung.slackbot.config import ConfigurationError
 
         error = ConfigurationError(["VAR1", "VAR2"])
         assert "VAR1" in str(error)

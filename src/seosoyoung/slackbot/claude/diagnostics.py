@@ -148,7 +148,7 @@ def _get_slack_client():
     """슬랙 클라이언트 가져오기 (lazy init)"""
     global _slack_client
     if _slack_client is None:
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
         if Config.slack.bot_token:
             from slack_sdk import WebClient
             _slack_client = WebClient(token=Config.slack.bot_token)

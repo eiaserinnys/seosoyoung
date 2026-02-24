@@ -48,14 +48,14 @@ def _register_and_capture(register_fn, deps):
 class TestDmMessageDetection:
     """message.py에서 DM 메시지 감지 및 라우팅 테스트"""
 
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_message_routed_to_dm_handler(self, mock_config):
         """channel_type == 'im' 메시지가 DM 핸들러로 라우팅됨"""
         mock_config.BOT_USER_ID = "B_BOT"
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         handlers = _register_and_capture(register_message_handlers, deps)
@@ -72,18 +72,18 @@ class TestDmMessageDetection:
         client = MagicMock()
         client.chat_postMessage.return_value = {"ts": "reply_ts"}
 
-        with patch("seosoyoung.handlers.message._handle_dm_message") as mock_dm:
+        with patch("seosoyoung.slackbot.handlers.message._handle_dm_message") as mock_dm:
             handlers["message"](event, say, client)
             mock_dm.assert_called_once()
 
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_regular_channel_message_not_routed_to_dm(self, mock_config):
         """일반 채널 메시지는 DM 핸들러로 라우팅되지 않음"""
         mock_config.BOT_USER_ID = "B_BOT"
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         handlers = _register_and_capture(register_message_handlers, deps)
@@ -99,18 +99,18 @@ class TestDmMessageDetection:
         say = MagicMock()
         client = MagicMock()
 
-        with patch("seosoyoung.handlers.message._handle_dm_message") as mock_dm:
+        with patch("seosoyoung.slackbot.handlers.message._handle_dm_message") as mock_dm:
             handlers["message"](event, say, client)
             mock_dm.assert_not_called()
 
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_bot_message_ignored(self, mock_config):
         """봇의 DM 메시지는 무시됨 (bot_id 체크가 DM 라우팅보다 먼저)"""
         mock_config.BOT_USER_ID = "B_BOT"
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         handlers = _register_and_capture(register_message_handlers, deps)
@@ -126,7 +126,7 @@ class TestDmMessageDetection:
         say = MagicMock()
         client = MagicMock()
 
-        with patch("seosoyoung.handlers.message._handle_dm_message") as mock_dm:
+        with patch("seosoyoung.slackbot.handlers.message._handle_dm_message") as mock_dm:
             handlers["message"](event, say, client)
             mock_dm.assert_not_called()
 
@@ -134,9 +134,9 @@ class TestDmMessageDetection:
 class TestDmFirstMessage:
     """DM 첫 메시지 처리 테스트 (세션 생성 + Claude 실행)"""
 
-    @patch("seosoyoung.handlers.mention._get_channel_messages", return_value=[])
-    @patch("seosoyoung.handlers.mention.Config")
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.mention._get_channel_messages", return_value=[])
+    @patch("seosoyoung.slackbot.handlers.mention.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_first_message_creates_session(
         self, mock_msg_config, mock_mention_config, mock_get_msgs
     ):
@@ -146,7 +146,7 @@ class TestDmFirstMessage:
         mock_msg_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
         mock_mention_config.CHANNEL_OBSERVER_CHANNELS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         mock_session = MagicMock(source_type="thread", last_seen_ts="")
         deps = _make_deps()
@@ -177,14 +177,14 @@ class TestDmFirstMessage:
         # Claude 실행이 호출되어야 함
         deps["run_claude_in_session"].assert_called_once()
 
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_empty_message_ignored(self, mock_config):
         """빈 DM 메시지 → 무시"""
         mock_config.BOT_USER_ID = "B_BOT"
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         handlers = _register_and_capture(register_message_handlers, deps)
@@ -210,8 +210,8 @@ class TestDmFirstMessage:
 class TestDmThreadMessage:
     """DM 스레드 메시지 처리 테스트"""
 
-    @patch("seosoyoung.handlers.message.process_thread_message")
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.process_thread_message")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_thread_message_processes_in_session(
         self, mock_config, mock_process_thread
     ):
@@ -220,7 +220,7 @@ class TestDmThreadMessage:
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         mock_session = MagicMock()
         deps = _make_deps()
@@ -248,8 +248,8 @@ class TestDmThreadMessage:
         assert call_kwargs[0][2] == "1234.5678"  # thread_ts
         assert call_kwargs[1]["log_prefix"] == "DM 메시지"
 
-    @patch("seosoyoung.handlers.message.process_thread_message")
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.process_thread_message")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_thread_message_without_session_ignored(
         self, mock_config, mock_process_thread
     ):
@@ -258,7 +258,7 @@ class TestDmThreadMessage:
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         deps["session_manager"].get.return_value = None
@@ -285,14 +285,14 @@ class TestDmThreadMessage:
 class TestDmAdminCommands:
     """DM 관리자 명령어 테스트"""
 
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_help_command_in_dm(self, mock_config):
         """DM에서 help 명령어"""
         mock_config.BOT_USER_ID = "B_BOT"
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         handlers = _register_and_capture(register_message_handlers, deps)
@@ -318,7 +318,7 @@ class TestDmAdminCommands:
         # 세션이 생성되지 않아야 함
         deps["session_manager"].create.assert_not_called()
 
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_status_command_in_dm(self, mock_config):
         """DM에서 status 명령어"""
         mock_config.BOT_USER_ID = "B_BOT"
@@ -327,7 +327,7 @@ class TestDmAdminCommands:
         mock_config.ADMIN_USERS = ["admin"]
         mock_config.DEBUG = False
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         deps["session_manager"].count.return_value = 3
@@ -354,14 +354,14 @@ class TestDmAdminCommands:
 class TestDmRestartPending:
     """DM 재시작 대기 중 테스트"""
 
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_restart_pending_non_command(self, mock_config):
         """재시작 대기 중 DM 일반 메시지 → 안내 메시지"""
         mock_config.BOT_USER_ID = "B_BOT"
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         deps["restart_manager"].is_pending = True
@@ -383,14 +383,14 @@ class TestDmRestartPending:
         say.assert_called_once()
         assert "재시작" in say.call_args[1]["text"]
 
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_restart_pending_admin_command_still_works(self, mock_config):
         """재시작 대기 중이라도 관리자 명령어(help, status)는 동작"""
         mock_config.BOT_USER_ID = "B_BOT"
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         deps["restart_manager"].is_pending = True
@@ -416,14 +416,14 @@ class TestDmRestartPending:
 class TestDmSubtypeHandling:
     """DM 메시지 subtype 처리 테스트"""
 
-    @patch("seosoyoung.handlers.message.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_message_changed_ignored(self, mock_config):
         """DM message_changed 이벤트는 무시"""
         mock_config.BOT_USER_ID = "B_BOT"
         mock_config.TRANSLATE_CHANNELS = []
         mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
 
-        from seosoyoung.handlers.message import register_message_handlers
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
 
         deps = _make_deps()
         handlers = _register_and_capture(register_message_handlers, deps)

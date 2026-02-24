@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 import requests
 
-from seosoyoung.config import Config
+from seosoyoung.slackbot.config import Config
 
 logger = logging.getLogger(__name__)
 

@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from seosoyoung.memory.observer import (
+from seosoyoung.slackbot.memory.observer import (
     Observer,
     ObserverResult,
     parse_observer_output,
 )
-from seosoyoung.memory.prompts import (
+from seosoyoung.slackbot.memory.prompts import (
     build_observer_system_prompt,
     build_observer_user_prompt,
 )

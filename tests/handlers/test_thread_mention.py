@@ -13,7 +13,7 @@ class TestProcessThreadMessage:
 
     def test_processes_text_message(self):
         """텍스트 메시지 정상 처리"""
-        from seosoyoung.handlers.message import process_thread_message
+        from seosoyoung.slackbot.handlers.message import process_thread_message
 
         event = {"user": "U123", "text": "<@BOT> 질문입니다"}
         session = MagicMock()
@@ -37,7 +37,7 @@ class TestProcessThreadMessage:
 
     def test_skips_empty_message(self):
         """빈 메시지는 처리하지 않음"""
-        from seosoyoung.handlers.message import process_thread_message
+        from seosoyoung.slackbot.handlers.message import process_thread_message
 
         event = {"user": "U123", "text": "<@BOT>"}
         session = MagicMock()
@@ -56,7 +56,7 @@ class TestProcessThreadMessage:
 
     def test_passes_user_role(self):
         """사용자 역할이 올바르게 전달됨"""
-        from seosoyoung.handlers.message import process_thread_message
+        from seosoyoung.slackbot.handlers.message import process_thread_message
 
         event = {"user": "U123", "text": "질문"}
         session = MagicMock()
@@ -76,7 +76,7 @@ class TestProcessThreadMessage:
 
     def test_handles_file_attachment(self):
         """파일 첨부 처리"""
-        from seosoyoung.handlers.message import process_thread_message
+        from seosoyoung.slackbot.handlers.message import process_thread_message
 
         event = {
             "user": "U123",
@@ -89,8 +89,8 @@ class TestProcessThreadMessage:
         get_user_role = MagicMock(return_value={"username": "tester", "role": "user"})
         run_claude = MagicMock()
 
-        with patch("seosoyoung.handlers.message.download_files_sync") as mock_download, \
-             patch("seosoyoung.handlers.message.build_file_context") as mock_context:
+        with patch("seosoyoung.slackbot.handlers.message.download_files_sync") as mock_download, \
+             patch("seosoyoung.slackbot.handlers.message.build_file_context") as mock_context:
             mock_download.return_value = [{"path": "/tmp/test.txt"}]
             mock_context.return_value = "\n파일: test.txt\n내용: hello"
 
@@ -104,7 +104,7 @@ class TestProcessThreadMessage:
 
     def test_user_info_failure(self):
         """사용자 정보 조회 실패 시 에러 메시지"""
-        from seosoyoung.handlers.message import process_thread_message
+        from seosoyoung.slackbot.handlers.message import process_thread_message
 
         event = {"user": "U123", "text": "질문"}
         session = MagicMock()
@@ -156,10 +156,10 @@ class TestMentionHandlerThreadSession:
         session = MagicMock()
         handler_deps["session_manager"].get.return_value = session
 
-        with patch("seosoyoung.handlers.mention.process_thread_message") as mock_process:
+        with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process:
             mock_process.return_value = True
 
-            from seosoyoung.handlers.mention import register_mention_handlers
+            from seosoyoung.slackbot.handlers.mention import register_mention_handlers
 
             app = MagicMock()
             captured_handler = None
@@ -197,10 +197,10 @@ class TestMentionHandlerThreadSession:
         handler_deps["session_manager"].get.return_value = None
         handler_deps["session_manager"].exists.return_value = False
 
-        with patch("seosoyoung.handlers.mention.process_thread_message") as mock_process, \
-             patch("seosoyoung.handlers.mention.get_channel_history", return_value=""):
+        with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process, \
+             patch("seosoyoung.slackbot.handlers.mention.get_channel_history", return_value=""):
 
-            from seosoyoung.handlers.mention import register_mention_handlers
+            from seosoyoung.slackbot.handlers.mention import register_mention_handlers
 
             app = MagicMock()
             captured_handler = None
@@ -238,10 +238,10 @@ class TestMentionHandlerThreadSession:
         """채널 멘션 (thread_ts 없음) → 기존 로직 유지"""
         handler_deps["session_manager"].get.return_value = None
 
-        with patch("seosoyoung.handlers.mention.process_thread_message") as mock_process, \
-             patch("seosoyoung.handlers.mention.get_channel_history", return_value=""):
+        with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process, \
+             patch("seosoyoung.slackbot.handlers.mention.get_channel_history", return_value=""):
 
-            from seosoyoung.handlers.mention import register_mention_handlers
+            from seosoyoung.slackbot.handlers.mention import register_mention_handlers
 
             app = MagicMock()
             captured_handler = None
@@ -281,8 +281,8 @@ class TestMentionHandlerThreadSession:
         handler_deps["session_manager"].get.return_value = session
         handler_deps["restart_manager"].is_pending = True
 
-        with patch("seosoyoung.handlers.mention.process_thread_message") as mock_process:
-            from seosoyoung.handlers.mention import register_mention_handlers
+        with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process:
+            from seosoyoung.slackbot.handlers.mention import register_mention_handlers
 
             app = MagicMock()
             captured_handler = None
@@ -322,8 +322,8 @@ class TestMessageHandlerBotMention:
 
     def test_message_with_bot_mention_returns(self):
         """봇 멘션 포함 메시지는 message.py에서 무시됨 (mention.py에서 처리)"""
-        from seosoyoung.handlers.message import _contains_bot_mention
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.handlers.message import _contains_bot_mention
+        from seosoyoung.slackbot.config import Config
 
         original_bot_id = Config.slack.bot_user_id
         try:

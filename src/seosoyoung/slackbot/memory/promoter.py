@@ -11,9 +11,9 @@ from datetime import datetime, timezone
 
 import openai
 
-from seosoyoung.memory.prompts import build_compactor_prompt, build_promoter_prompt
-from seosoyoung.memory.store import generate_ltm_id
-from seosoyoung.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.memory.prompts import build_compactor_prompt, build_promoter_prompt
+from seosoyoung.slackbot.memory.store import generate_ltm_id
+from seosoyoung.slackbot.memory.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
 

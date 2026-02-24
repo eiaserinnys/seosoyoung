@@ -3,7 +3,7 @@
 config.py의 ROLE_TOOLS가 단일 소스인지 확인합니다.
 """
 
-from seosoyoung.config import Config
+from seosoyoung.slackbot.config import Config
 
 
 class TestRoleToolsSingleSource:
@@ -43,7 +43,7 @@ class TestRoleToolsSingleSource:
 
     def test_agent_runner_uses_config(self):
         """agent_runner가 Config.auth.role_tools를 참조하는지 확인"""
-        from seosoyoung.claude.agent_runner import ClaudeRunner
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
         runner = ClaudeRunner()
         # 기본 allowed_tools가 Config.auth.role_tools["admin"]과 동일
@@ -51,6 +51,6 @@ class TestRoleToolsSingleSource:
 
     def test_no_duplicate_default_allowed_tools(self):
         """agent_runner에 별도 DEFAULT_ALLOWED_TOOLS가 없어야 함"""
-        import seosoyoung.claude.agent_runner as ar
+        import seosoyoung.slackbot.claude.agent_runner as ar
         assert not hasattr(ar, "DEFAULT_ALLOWED_TOOLS"), \
             "DEFAULT_ALLOWED_TOOLS should be removed; use Config.auth.role_tools instead"

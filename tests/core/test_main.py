@@ -7,11 +7,11 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 # 리팩터링된 모듈에서 import
-from seosoyoung.handlers.mention import extract_command, get_channel_history
-from seosoyoung.slack.helpers import send_long_message
-from seosoyoung.auth import check_permission, get_user_role
-from seosoyoung.claude.message_formatter import escape_backticks, build_trello_header
-from seosoyoung.trello.watcher import TrackedCard
+from seosoyoung.slackbot.handlers.mention import extract_command, get_channel_history
+from seosoyoung.slackbot.slack.helpers import send_long_message
+from seosoyoung.slackbot.auth import check_permission, get_user_role
+from seosoyoung.slackbot.claude.message_formatter import escape_backticks, build_trello_header
+from seosoyoung.slackbot.trello.watcher import TrackedCard
 
 
 class TestExtractCommand:
@@ -89,7 +89,7 @@ class TestSendLongMessage:
 class TestCheckPermission:
     """check_permission 함수 테스트"""
 
-    @patch("seosoyoung.auth.Config")
+    @patch("seosoyoung.slackbot.auth.Config")
     def test_check_permission_allowed_user(self, mock_config):
         """허용된 사용자"""
         mock_config.auth.allowed_users = ["testuser"]
@@ -102,7 +102,7 @@ class TestCheckPermission:
         assert result is True
         mock_client.users_info.assert_called_once_with(user="U12345")
 
-    @patch("seosoyoung.auth.Config")
+    @patch("seosoyoung.slackbot.auth.Config")
     def test_check_permission_denied_user(self, mock_config):
         """허용되지 않은 사용자"""
         mock_config.auth.allowed_users = ["allowed_user"]
@@ -127,7 +127,7 @@ class TestCheckPermission:
 class TestGetUserRole:
     """get_user_role 함수 테스트"""
 
-    @patch("seosoyoung.auth.Config")
+    @patch("seosoyoung.slackbot.auth.Config")
     def test_get_user_role_admin(self, mock_config):
         """관리자 사용자 역할"""
         mock_config.auth.admin_users = ["admin_user"]
@@ -147,7 +147,7 @@ class TestGetUserRole:
         assert result["user_id"] == "U12345"
         assert result["allowed_tools"] == ["Read", "Write", "Edit"]
 
-    @patch("seosoyoung.auth.Config")
+    @patch("seosoyoung.slackbot.auth.Config")
     def test_get_user_role_viewer(self, mock_config):
         """일반 사용자 역할 (viewer)"""
         mock_config.auth.admin_users = ["admin_user"]

@@ -32,4 +32,4 @@ Trello API 클라이언트
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
+- `seosoyoung.slackbot.config.Config`

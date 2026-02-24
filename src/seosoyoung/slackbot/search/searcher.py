@@ -229,28 +229,28 @@ def main():
         epilog="""
 Examples:
   # 한글 텍스트 검색
-  python -m seosoyoung.search.searcher -q "악마 사냥"
+  python -m seosoyoung.slackbot.search.searcher -q "악마 사냥"
 
   # 화자 + 텍스트 검색
-  python -m seosoyoung.search.searcher -q "천사" -s fx --limit 10
+  python -m seosoyoung.slackbot.search.searcher -q "천사" -s fx --limit 10
 
   # 레이블로 검색
-  python -m seosoyoung.search.searcher --label prologue_a_1
+  python -m seosoyoung.slackbot.search.searcher --label prologue_a_1
 
   # 액트로 필터링
-  python -m seosoyoung.search.searcher -q "루미" --act act1
+  python -m seosoyoung.slackbot.search.searcher -q "루미" --act act1
 
   # 트리거로 검색
-  python -m seosoyoung.search.searcher --trigger bk_idle --limit 50
+  python -m seosoyoung.slackbot.search.searcher --trigger bk_idle --limit 50
 
   # 리비전으로 필터링
-  python -m seosoyoung.search.searcher -q "천사" --revision _rev2
+  python -m seosoyoung.slackbot.search.searcher -q "천사" --revision _rev2
 
   # 퍼지 검색 (오타 허용)
-  python -m seosoyoung.search.searcher -q "악아" --fuzzy
+  python -m seosoyoung.slackbot.search.searcher -q "악아" --fuzzy
 
   # 하이라이팅 출력
-  python -m seosoyoung.search.searcher -q "악마" --highlight
+  python -m seosoyoung.slackbot.search.searcher -q "악마" --highlight
 """
     )
     parser.add_argument("--index-path", help="Index path")

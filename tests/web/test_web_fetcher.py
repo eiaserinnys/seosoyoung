@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 
-from seosoyoung.web.fetcher import HtmlFetcher
+from seosoyoung.slackbot.web.fetcher import HtmlFetcher
 
 
 class TestHtmlFetcherChromeOptions:
@@ -48,8 +48,8 @@ class TestHtmlFetcherFetch:
         mock_driver = MagicMock()
         mock_driver.execute_script.return_value = "<html><body>Test content " + "x" * 1000 + "</body></html>"
 
-        with patch("seosoyoung.web.fetcher.webdriver.Chrome") as mock_chrome, \
-             patch("seosoyoung.web.fetcher.ChromeDriverManager") as mock_manager:
+        with patch("seosoyoung.slackbot.web.fetcher.webdriver.Chrome") as mock_chrome, \
+             patch("seosoyoung.slackbot.web.fetcher.ChromeDriverManager") as mock_manager:
             mock_manager.return_value.install.return_value = "/path/to/chromedriver"
             mock_chrome.return_value.__enter__ = MagicMock(return_value=mock_driver)
             mock_chrome.return_value.__exit__ = MagicMock(return_value=False)
@@ -77,9 +77,9 @@ class TestHtmlFetcherFetch:
         mock_driver = MagicMock()
         mock_driver.execute_script.side_effect = mock_execute_script
 
-        with patch("seosoyoung.web.fetcher.webdriver.Chrome") as mock_chrome, \
-             patch("seosoyoung.web.fetcher.ChromeDriverManager") as mock_manager, \
-             patch("seosoyoung.web.fetcher.asyncio.sleep", new_callable=AsyncMock):
+        with patch("seosoyoung.slackbot.web.fetcher.webdriver.Chrome") as mock_chrome, \
+             patch("seosoyoung.slackbot.web.fetcher.ChromeDriverManager") as mock_manager, \
+             patch("seosoyoung.slackbot.web.fetcher.asyncio.sleep", new_callable=AsyncMock):
             mock_manager.return_value.install.return_value = "/path/to/chromedriver"
             mock_chrome.return_value = mock_driver
 
@@ -97,8 +97,8 @@ class TestHtmlFetcherFetch:
         mock_driver = MagicMock()
         mock_driver.execute_script.return_value = "<html><body>" + "x" * 1500 + "</body></html>"
 
-        with patch("seosoyoung.web.fetcher.webdriver.Chrome") as mock_chrome, \
-             patch("seosoyoung.web.fetcher.ChromeDriverManager") as mock_manager:
+        with patch("seosoyoung.slackbot.web.fetcher.webdriver.Chrome") as mock_chrome, \
+             patch("seosoyoung.slackbot.web.fetcher.ChromeDriverManager") as mock_manager:
             mock_manager.return_value.install.return_value = "/path/to/chromedriver"
             mock_chrome.return_value = mock_driver
 
@@ -116,9 +116,9 @@ class TestHtmlFetcherFetch:
         # 항상 짧은 콘텐츠만 반환 (타임아웃 유발)
         mock_driver.execute_script.return_value = "<html><body>Short</body></html>"
 
-        with patch("seosoyoung.web.fetcher.webdriver.Chrome") as mock_chrome, \
-             patch("seosoyoung.web.fetcher.ChromeDriverManager") as mock_manager, \
-             patch("seosoyoung.web.fetcher.asyncio.sleep", new_callable=AsyncMock):
+        with patch("seosoyoung.slackbot.web.fetcher.webdriver.Chrome") as mock_chrome, \
+             patch("seosoyoung.slackbot.web.fetcher.ChromeDriverManager") as mock_manager, \
+             patch("seosoyoung.slackbot.web.fetcher.asyncio.sleep", new_callable=AsyncMock):
             mock_manager.return_value.install.return_value = "/path/to/chromedriver"
             mock_chrome.return_value = mock_driver
 
@@ -138,8 +138,8 @@ class TestHtmlFetcherFetch:
         mock_driver = MagicMock()
         mock_driver.get.side_effect = Exception("Network error")
 
-        with patch("seosoyoung.web.fetcher.webdriver.Chrome") as mock_chrome, \
-             patch("seosoyoung.web.fetcher.ChromeDriverManager") as mock_manager:
+        with patch("seosoyoung.slackbot.web.fetcher.webdriver.Chrome") as mock_chrome, \
+             patch("seosoyoung.slackbot.web.fetcher.ChromeDriverManager") as mock_manager:
             mock_manager.return_value.install.return_value = "/path/to/chromedriver"
             mock_chrome.return_value = mock_driver
 

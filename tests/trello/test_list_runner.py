@@ -5,7 +5,7 @@ import pytest
 from pathlib import Path
 import tempfile
 
-import seosoyoung.trello.watcher as _watcher_mod
+import seosoyoung.slackbot.trello.watcher as _watcher_mod
 
 
 class TestListRunSession:
@@ -13,7 +13,7 @@ class TestListRunSession:
 
     def test_create_session(self):
         """세션 생성"""
-        from seosoyoung.trello.list_runner import ListRunSession, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunSession, SessionStatus
 
         session = ListRunSession(
             session_id="session_001",
@@ -34,7 +34,7 @@ class TestListRunSession:
 
     def test_session_status_values(self):
         """세션 상태 값"""
-        from seosoyoung.trello.list_runner import SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import SessionStatus
 
         assert SessionStatus.PENDING.value == "pending"
         assert SessionStatus.RUNNING.value == "running"
@@ -45,7 +45,7 @@ class TestListRunSession:
 
     def test_session_to_dict(self):
         """세션 딕셔너리 변환"""
-        from seosoyoung.trello.list_runner import ListRunSession, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunSession, SessionStatus
 
         session = ListRunSession(
             session_id="session_001",
@@ -66,7 +66,7 @@ class TestListRunSession:
 
     def test_session_from_dict(self):
         """딕셔너리에서 세션 생성"""
-        from seosoyoung.trello.list_runner import ListRunSession, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunSession, SessionStatus
 
         data = {
             "session_id": "session_002",
@@ -94,7 +94,7 @@ class TestListRunner:
 
     def test_create_list_runner(self):
         """ListRunner 생성"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -104,7 +104,7 @@ class TestListRunner:
 
     def test_create_session(self):
         """새 세션 생성"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -123,7 +123,7 @@ class TestListRunner:
 
     def test_get_session(self):
         """세션 조회"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -140,7 +140,7 @@ class TestListRunner:
 
     def test_get_session_not_found(self):
         """존재하지 않는 세션 조회"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -150,7 +150,7 @@ class TestListRunner:
 
     def test_save_and_load_sessions(self):
         """세션 저장 및 로드"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # 세션 생성 및 저장
@@ -174,7 +174,7 @@ class TestListRunner:
 
     def test_update_session_status(self):
         """세션 상태 업데이트"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -190,7 +190,7 @@ class TestListRunner:
 
     def test_get_active_sessions(self):
         """활성 세션 목록 조회"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -215,7 +215,7 @@ class TestListRunner:
 
     def test_mark_card_processed(self):
         """카드 처리 완료 표시"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -237,7 +237,7 @@ class TestListRunner:
 
     def test_get_next_card_id(self):
         """다음 카드 ID 조회"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -265,7 +265,7 @@ class TestListRunnerPersistence:
 
     def test_sessions_file_created_on_save(self):
         """저장 시 파일 생성"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -277,7 +277,7 @@ class TestListRunnerPersistence:
 
     def test_sessions_file_content(self):
         """저장된 파일 내용 검증"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -295,7 +295,7 @@ class TestListRunnerPersistence:
 
     def test_load_from_corrupted_file(self):
         """손상된 파일에서 로드 (빈 상태로 시작)"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             sessions_file = Path(tmpdir) / "list_run_sessions.json"
@@ -311,7 +311,7 @@ class TestStartRunByName:
 
     def test_start_run_by_name_found(self):
         """리스트 이름으로 정주행 시작 - 성공"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
         from unittest.mock import AsyncMock, MagicMock
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -342,7 +342,7 @@ class TestStartRunByName:
 
     def test_start_run_by_name_not_found(self):
         """리스트 이름으로 정주행 시작 - 리스트 없음"""
-        from seosoyoung.trello.list_runner import ListRunner, ListNotFoundError
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, ListNotFoundError
         from unittest.mock import AsyncMock, MagicMock
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -365,7 +365,7 @@ class TestStartRunByName:
 
     def test_start_run_by_name_empty_list(self):
         """리스트 이름으로 정주행 시작 - 빈 리스트"""
-        from seosoyoung.trello.list_runner import ListRunner, EmptyListError
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, EmptyListError
         from unittest.mock import AsyncMock, MagicMock
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -412,7 +412,7 @@ class TestListRunMarkupParsing:
 
     def test_claude_result_has_list_run_field(self):
         """ClaudeResult에 list_run 필드 존재"""
-        from seosoyoung.claude.agent_runner import ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
 
         result = ClaudeResult(
             success=True,
@@ -428,7 +428,7 @@ class TestCardExecution:
 
     def test_process_next_card_returns_card_info(self):
         """다음 카드 처리 시 카드 정보 반환"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
         from unittest.mock import AsyncMock, MagicMock
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -461,7 +461,7 @@ class TestCardExecution:
 
     def test_process_next_card_returns_none_when_done(self):
         """모든 카드 처리 완료 시 None 반환"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
         from unittest.mock import MagicMock
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -484,7 +484,7 @@ class TestCardExecution:
 
     def test_execute_card_calls_workflow(self):
         """카드 실행 시 워크플로우 호출"""
-        from seosoyoung.trello.list_runner import ListRunner, CardExecutionResult
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, CardExecutionResult
         from unittest.mock import AsyncMock, MagicMock
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -522,7 +522,7 @@ class TestCardExecution:
 
     def test_execute_card_handles_failure(self):
         """카드 실행 실패 처리"""
-        from seosoyoung.trello.list_runner import ListRunner, CardExecutionResult
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, CardExecutionResult
         from unittest.mock import AsyncMock, MagicMock
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -563,7 +563,7 @@ class TestValidationSession:
 
     def test_validate_completion_pass(self):
         """검증 세션 통과"""
-        from seosoyoung.trello.list_runner import (
+        from seosoyoung.slackbot.trello.list_runner import (
             ListRunner, ValidationResult, ValidationStatus
         )
         from unittest.mock import AsyncMock, MagicMock
@@ -603,7 +603,7 @@ class TestValidationSession:
 
     def test_validate_completion_fail(self):
         """검증 세션 실패"""
-        from seosoyoung.trello.list_runner import (
+        from seosoyoung.slackbot.trello.list_runner import (
             ListRunner, ValidationResult, ValidationStatus
         )
         from unittest.mock import AsyncMock, MagicMock
@@ -643,7 +643,7 @@ class TestValidationSession:
 
     def test_validate_completion_no_marker(self):
         """검증 결과 마커가 없는 경우 UNKNOWN 처리"""
-        from seosoyoung.trello.list_runner import (
+        from seosoyoung.slackbot.trello.list_runner import (
             ListRunner, ValidationResult, ValidationStatus
         )
         from unittest.mock import AsyncMock, MagicMock
@@ -686,7 +686,7 @@ class TestValidationResultParsing:
 
     def test_parse_validation_result_pass(self):
         """PASS 결과 파싱"""
-        from seosoyoung.trello.list_runner import ListRunner, ValidationStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, ValidationStatus
 
         output = "검증 완료.\nVALIDATION_RESULT: PASS\n모든 테스트 통과"
         result = ListRunner._parse_validation_result(output)
@@ -694,7 +694,7 @@ class TestValidationResultParsing:
 
     def test_parse_validation_result_fail(self):
         """FAIL 결과 파싱"""
-        from seosoyoung.trello.list_runner import ListRunner, ValidationStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, ValidationStatus
 
         output = "VALIDATION_RESULT: FAIL\n일부 테스트 실패"
         result = ListRunner._parse_validation_result(output)
@@ -702,7 +702,7 @@ class TestValidationResultParsing:
 
     def test_parse_validation_result_case_insensitive(self):
         """대소문자 구분 없이 파싱"""
-        from seosoyoung.trello.list_runner import ListRunner, ValidationStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, ValidationStatus
 
         output1 = "validation_result: pass"
         output2 = "VALIDATION_RESULT: pass"
@@ -714,7 +714,7 @@ class TestValidationResultParsing:
 
     def test_parse_validation_result_unknown(self):
         """마커가 없는 경우 UNKNOWN"""
-        from seosoyoung.trello.list_runner import ListRunner, ValidationStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, ValidationStatus
 
         output = "검증을 수행했지만 결과 마커가 없습니다."
         result = ListRunner._parse_validation_result(output)
@@ -726,7 +726,7 @@ class TestFullExecutionFlow:
 
     def test_run_next_with_validation(self):
         """카드 실행 후 검증까지 전체 플로우"""
-        from seosoyoung.trello.list_runner import (
+        from seosoyoung.slackbot.trello.list_runner import (
             ListRunner, SessionStatus, ValidationStatus
         )
         from unittest.mock import AsyncMock, MagicMock
@@ -778,7 +778,7 @@ class TestPauseRun:
 
     def test_pause_run_changes_status_to_paused(self):
         """pause_run 호출 시 상태가 PAUSED로 변경"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -801,7 +801,7 @@ class TestPauseRun:
 
     def test_pause_run_invalid_session(self):
         """존재하지 않는 세션 중단 시도"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -815,7 +815,7 @@ class TestPauseRun:
 
     def test_pause_run_from_verifying_state(self):
         """VERIFYING 상태에서도 중단 가능"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -836,7 +836,7 @@ class TestPauseRun:
 
     def test_pause_run_from_completed_state_fails(self):
         """COMPLETED 상태에서는 중단 불가"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -862,7 +862,7 @@ class TestResumeRun:
 
     def test_resume_run_changes_status_to_running(self):
         """resume_run 호출 시 상태가 RUNNING으로 변경"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -883,7 +883,7 @@ class TestResumeRun:
 
     def test_resume_run_invalid_session(self):
         """존재하지 않는 세션 재개 시도"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -894,7 +894,7 @@ class TestResumeRun:
 
     def test_resume_run_from_running_state_fails(self):
         """이미 RUNNING 상태에서는 재개 불가 (이미 실행 중)"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -911,7 +911,7 @@ class TestResumeRun:
 
     def test_resume_run_from_completed_state_fails(self):
         """COMPLETED 상태에서는 재개 불가"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -928,7 +928,7 @@ class TestResumeRun:
 
     def test_resume_run_from_failed_state(self):
         """FAILED 상태에서도 재개 가능 (재시도)"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -950,7 +950,7 @@ class TestGetPausedSessions:
 
     def test_get_paused_sessions(self):
         """PAUSED 상태인 세션만 조회"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -978,7 +978,7 @@ class TestFindSessionByListName:
 
     def test_find_session_by_list_name(self):
         """리스트 이름으로 활성 세션 검색"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -997,7 +997,7 @@ class TestFindSessionByListName:
 
     def test_find_session_by_list_name_not_found(self):
         """존재하지 않는 리스트 이름 검색"""
-        from seosoyoung.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -1008,7 +1008,7 @@ class TestFindSessionByListName:
 
     def test_find_session_by_list_name_excludes_completed(self):
         """COMPLETED 세션은 검색 제외"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -1030,7 +1030,7 @@ class TestStateTransitions:
 
     def test_valid_state_transitions(self):
         """유효한 상태 전환"""
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
 
         with tempfile.TemporaryDirectory() as tmpdir:
             runner = ListRunner(data_dir=Path(tmpdir))
@@ -1071,7 +1071,7 @@ class TestRunNextWithPause:
 
     def test_run_next_pauses_on_validation_fail(self):
         """검증 실패 시 자동으로 세션 중단"""
-        from seosoyoung.trello.list_runner import (
+        from seosoyoung.slackbot.trello.list_runner import (
             ListRunner, SessionStatus, ValidationStatus
         )
         from unittest.mock import AsyncMock, MagicMock
@@ -1123,8 +1123,8 @@ class TestRunListLabelTrigger:
 
     def test_has_run_list_label_returns_true(self):
         """🏃 Run List 레이블 있는 카드 감지"""
-        from seosoyoung.trello.watcher import TrelloWatcher
-        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
         from unittest.mock import MagicMock
 
         watcher = TrelloWatcher(
@@ -1148,8 +1148,8 @@ class TestRunListLabelTrigger:
 
     def test_has_run_list_label_returns_false(self):
         """🏃 Run List 레이블 없는 카드"""
-        from seosoyoung.trello.watcher import TrelloWatcher
-        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
         from unittest.mock import MagicMock
 
         watcher = TrelloWatcher(
@@ -1177,7 +1177,7 @@ class TestTrelloClientRemoveLabel:
 
     def test_remove_label_from_card_success(self):
         """카드에서 레이블 제거 성공"""
-        from seosoyoung.trello.client import TrelloClient
+        from seosoyoung.slackbot.trello.client import TrelloClient
         from unittest.mock import MagicMock, patch
 
         client = TrelloClient(api_key="test_key", token="test_token")
@@ -1195,7 +1195,7 @@ class TestTrelloClientRemoveLabel:
 
     def test_remove_label_from_card_failure(self):
         """카드에서 레이블 제거 실패"""
-        from seosoyoung.trello.client import TrelloClient
+        from seosoyoung.slackbot.trello.client import TrelloClient
         from unittest.mock import MagicMock, patch
 
         client = TrelloClient(api_key="test_key", token="test_token")
@@ -1213,8 +1213,8 @@ class TestCheckRunListLabels:
 
     def test_check_run_list_labels_triggers_list_run(self):
         """🏃 Run List 레이블 발견 시 리스트 정주행 시작"""
-        from seosoyoung.trello.watcher import TrelloWatcher
-        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
         from unittest.mock import MagicMock, patch
 
         mock_trello = MagicMock()
@@ -1270,8 +1270,8 @@ class TestCheckRunListLabels:
 
     def test_check_run_list_labels_removes_label(self):
         """레이블 감지 후 첫 카드에서 레이블 제거"""
-        from seosoyoung.trello.watcher import TrelloWatcher
-        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
         from unittest.mock import MagicMock, patch
 
         mock_trello = MagicMock()
@@ -1307,8 +1307,8 @@ class TestCheckRunListLabels:
 
     def test_check_run_list_labels_no_trigger(self):
         """🏃 Run List 레이블 없으면 정주행 시작 안 함"""
-        from seosoyoung.trello.watcher import TrelloWatcher
-        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
         from unittest.mock import MagicMock, patch
 
         mock_trello = MagicMock()
@@ -1345,9 +1345,9 @@ class TestStartListRunIntegration:
 
     def test_start_list_run_creates_session(self):
         """_start_list_run 호출 시 ListRunner 세션 생성"""
-        from seosoyoung.trello.watcher import TrelloWatcher
-        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
-        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.client import TrelloCard
         from unittest.mock import MagicMock, patch
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1397,8 +1397,8 @@ class TestStartListRunIntegration:
 
     def test_start_list_run_without_list_runner(self):
         """ListRunner 없이 _start_list_run 호출 시 경고 로그"""
-        from seosoyoung.trello.watcher import TrelloWatcher
-        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
         from unittest.mock import MagicMock
 
         watcher = TrelloWatcher(
@@ -1424,9 +1424,9 @@ class TestStartListRunIntegration:
 
     def test_start_list_run_sends_slack_notification(self):
         """_start_list_run 호출 시 슬랙 알림 전송"""
-        from seosoyoung.trello.watcher import TrelloWatcher
-        from seosoyoung.trello.list_runner import ListRunner
-        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.client import TrelloCard
         from unittest.mock import MagicMock, patch, call
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1471,10 +1471,10 @@ class TestHandleListRunMarkerIntegration:
 
     def test_handle_list_run_marker_starts_list_run(self):
         """LIST_RUN 마커 처리 시 정주행 시작"""
-        from seosoyoung.claude.executor import ClaudeExecutor
-        from seosoyoung.trello.watcher import TrelloWatcher
-        from seosoyoung.trello.list_runner import ListRunner
-        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.client import TrelloCard
         from unittest.mock import MagicMock, patch
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1529,7 +1529,7 @@ class TestHandleListRunMarkerIntegration:
 
     def test_handle_list_run_marker_without_watcher(self):
         """TrelloWatcher 없이 LIST_RUN 마커 처리 시 에러 메시지"""
-        from seosoyoung.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
         from unittest.mock import MagicMock
 
         executor = ClaudeExecutor(
@@ -1562,8 +1562,8 @@ class TestHandleListRunMarkerIntegration:
 
     def test_handle_list_run_marker_list_not_found(self):
         """존재하지 않는 리스트로 LIST_RUN 마커 처리 시 에러 메시지"""
-        from seosoyoung.claude.executor import ClaudeExecutor
-        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
         from unittest.mock import MagicMock
 
         mock_trello = MagicMock()

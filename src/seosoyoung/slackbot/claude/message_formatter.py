@@ -10,7 +10,7 @@ Claude 응답을 슬랙 메시지 형식으로 변환하는 함수들을 제공�
 import logging
 from typing import Optional
 
-from seosoyoung.trello.watcher import TrackedCard
+from seosoyoung.slackbot.trello.watcher import TrackedCard
 
 logger = logging.getLogger(__name__)
 

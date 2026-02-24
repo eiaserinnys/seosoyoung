@@ -10,8 +10,8 @@ import logging
 import re
 from typing import Awaitable, Callable, Optional
 
-from seosoyoung.claude.agent_runner import ClaudeResult
-from seosoyoung.claude.service_client import (
+from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+from seosoyoung.slackbot.claude.service_client import (
     SoulServiceClient,
     SoulServiceError,
     TaskConflictError,

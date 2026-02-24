@@ -8,24 +8,24 @@ import signal
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from seosoyoung.config import Config
-from seosoyoung.logging_config import setup_logging
-from seosoyoung.auth import check_permission, get_user_role
-from seosoyoung.claude.session import SessionManager, SessionRuntime
-from seosoyoung.claude.executor import ClaudeExecutor
-from seosoyoung.claude.agent_runner import shutdown_all_sync
-from seosoyoung.slack.helpers import send_long_message
-from seosoyoung.handlers import register_all_handlers
-from seosoyoung.handlers.actions import send_restart_confirmation
-from seosoyoung.restart import RestartManager, RestartType
-from seosoyoung.trello.watcher import TrelloWatcher
-from seosoyoung.trello.list_runner import ListRunner
-from seosoyoung.handlers.channel_collector import ChannelMessageCollector
-from seosoyoung.handlers.mention_tracker import MentionTracker
-from seosoyoung.memory.channel_store import ChannelStore
-from seosoyoung.memory.channel_intervention import InterventionHistory
-from seosoyoung.memory.channel_observer import ChannelObserver, DigestCompressor
-from seosoyoung.memory.channel_scheduler import ChannelDigestScheduler
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.logging_config import setup_logging
+from seosoyoung.slackbot.auth import check_permission, get_user_role
+from seosoyoung.slackbot.claude.session import SessionManager, SessionRuntime
+from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+from seosoyoung.slackbot.claude.agent_runner import shutdown_all_sync
+from seosoyoung.slackbot.slack.helpers import send_long_message
+from seosoyoung.slackbot.handlers import register_all_handlers
+from seosoyoung.slackbot.handlers.actions import send_restart_confirmation
+from seosoyoung.slackbot.restart import RestartManager, RestartType
+from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+from seosoyoung.slackbot.trello.list_runner import ListRunner
+from seosoyoung.slackbot.handlers.channel_collector import ChannelMessageCollector
+from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.channel_intervention import InterventionHistory
+from seosoyoung.slackbot.memory.channel_observer import ChannelObserver, DigestCompressor
+from seosoyoung.slackbot.memory.channel_scheduler import ChannelDigestScheduler
 
 # 로깅 설정
 logger = setup_logging()

@@ -46,6 +46,6 @@ LLM이 id를 반환한 경우 그 ID를 우선 사용합니다.
 
 ## 내부 의존성
 
-- `seosoyoung.memory.prompts.build_observer_system_prompt`
-- `seosoyoung.memory.prompts.build_observer_user_prompt`
-- `seosoyoung.memory.store.generate_obs_id`
+- `seosoyoung.slackbot.memory.prompts.build_observer_system_prompt`
+- `seosoyoung.slackbot.memory.prompts.build_observer_user_prompt`
+- `seosoyoung.slackbot.memory.store.generate_obs_id`

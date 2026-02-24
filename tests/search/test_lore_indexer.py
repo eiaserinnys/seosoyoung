@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pathlib import Path
 
-from seosoyoung.search.lore_indexer import LoreIndexer
+from seosoyoung.slackbot.search.lore_indexer import LoreIndexer
 
 
 @pytest.fixture

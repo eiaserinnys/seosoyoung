@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, call
 
-from seosoyoung.restart import RestartManager, RestartRequest, RestartType
+from seosoyoung.slackbot.restart import RestartManager, RestartRequest, RestartType
 
 
 class TestRestartType:

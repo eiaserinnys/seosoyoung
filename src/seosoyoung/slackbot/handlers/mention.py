@@ -6,10 +6,10 @@
 import re
 import logging
 
-from seosoyoung.config import Config
-from seosoyoung.slack import download_files_sync, build_file_context
-from seosoyoung.handlers.message import process_thread_message, build_slack_context
-from seosoyoung.handlers.commands import (
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.slack import download_files_sync, build_file_context
+from seosoyoung.slackbot.handlers.message import process_thread_message, build_slack_context
+from seosoyoung.slackbot.handlers.commands import (
     handle_help,
     handle_status,
     handle_cleanup,
@@ -20,7 +20,7 @@ from seosoyoung.handlers.commands import (
     handle_profile,
     handle_resume_list_run,
 )
-from seosoyoung.claude.session_context import build_initial_context, format_hybrid_context
+from seosoyoung.slackbot.claude.session_context import build_initial_context, format_hybrid_context
 
 logger = logging.getLogger(__name__)
 

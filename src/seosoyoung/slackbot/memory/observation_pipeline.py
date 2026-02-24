@@ -16,16 +16,16 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from seosoyoung.config import Config
-from seosoyoung.memory.context_builder import (
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.memory.context_builder import (
     render_observation_items,
     render_persistent_items,
 )
-from seosoyoung.memory.observer import Observer
-from seosoyoung.memory.promoter import Compactor, Promoter
-from seosoyoung.memory.reflector import Reflector
-from seosoyoung.memory.store import MemoryRecord, MemoryStore
-from seosoyoung.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.memory.observer import Observer
+from seosoyoung.slackbot.memory.promoter import Compactor, Promoter
+from seosoyoung.slackbot.memory.reflector import Reflector
+from seosoyoung.slackbot.memory.store import MemoryRecord, MemoryStore
+from seosoyoung.slackbot.memory.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 def _send_debug_log(channel: str, text: str, thread_ts: str = "") -> str:
     """OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환."""
     try:
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
         from slack_sdk import WebClient
 
         client = WebClient(token=Config.slack.bot_token)
@@ -52,7 +52,7 @@ def _update_debug_log(channel: str, ts: str, text: str) -> None:
     if not ts:
         return
     try:
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
         from slack_sdk import WebClient
 
         client = WebClient(token=Config.slack.bot_token)

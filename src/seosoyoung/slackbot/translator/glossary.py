@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from seosoyoung.config import Config
+from seosoyoung.slackbot.config import Config
 
 # 영어 불용어 (관사, 전치사, 접속사 등) - 개별 매칭에서 제외
 ENGLISH_STOPWORDS = frozenset({

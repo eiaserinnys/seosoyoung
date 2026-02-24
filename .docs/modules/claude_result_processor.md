@@ -32,8 +32,8 @@ Claude 실행 결과 처리
 
 ## 내부 의존성
 
-- `seosoyoung.claude.message_formatter.build_context_usage_bar`
-- `seosoyoung.claude.message_formatter.build_trello_header`
-- `seosoyoung.config.Config`
-- `seosoyoung.restart.RestartType`
-- `seosoyoung.slack.formatting.update_message`
+- `seosoyoung.slackbot.claude.message_formatter.build_context_usage_bar`
+- `seosoyoung.slackbot.claude.message_formatter.build_trello_header`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.restart.RestartType`
+- `seosoyoung.slackbot.slack.formatting.update_message`

@@ -23,12 +23,12 @@ from claude_code_sdk.types import (
     ToolUseBlock,
 )
 
-from seosoyoung.claude.diagnostics import (
+from seosoyoung.slackbot.claude.diagnostics import (
     build_session_dump,
     classify_process_error,
     send_debug_to_slack,
 )
-from seosoyoung.memory.injector import (
+from seosoyoung.slackbot.memory.injector import (
     create_or_load_debug_anchor,
     prepare_memory_injection,
     send_injection_debug_log,
@@ -160,7 +160,7 @@ class ClaudeRunner:
         disallowed_tools: Optional[list[str]] = None,
         mcp_config_path: Optional[Path] = None,
     ):
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
 
         self.thread_ts = thread_ts
         self.channel = channel
@@ -309,9 +309,9 @@ class ClaudeRunner:
             # OM: 컴팩션 시 다음 요청에 관찰 로그 재주입하도록 플래그 설정
             if thread_ts:
                 try:
-                    from seosoyoung.config import Config
+                    from seosoyoung.slackbot.config import Config
                     if Config.om.enabled:
-                        from seosoyoung.memory.store import MemoryStore
+                        from seosoyoung.slackbot.memory.store import MemoryStore
                         store = MemoryStore(Config.get_memory_path())
                         record = store.get_record(thread_ts)
                         if record and record.observations.strip():

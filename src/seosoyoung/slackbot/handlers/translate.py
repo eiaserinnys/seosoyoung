@@ -6,8 +6,8 @@
 import logging
 from slack_bolt import App
 
-from seosoyoung.config import Config
-from seosoyoung.translator import detect_language, translate, Language, GlossaryMatchResult
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.translator import detect_language, translate, Language, GlossaryMatchResult
 
 logger = logging.getLogger(__name__)
 

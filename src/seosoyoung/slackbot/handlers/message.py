@@ -4,12 +4,12 @@ import re
 import logging
 import threading
 
-from seosoyoung.config import Config
+from seosoyoung.slackbot.config import Config
 from seosoyoung.utils.async_bridge import run_in_new_loop
-from seosoyoung.handlers.translate import process_translate_message
-from seosoyoung.slack import download_files_sync, build_file_context
-from seosoyoung.claude import get_claude_runner
-from seosoyoung.claude.session_context import build_followup_context
+from seosoyoung.slackbot.handlers.translate import process_translate_message
+from seosoyoung.slackbot.slack import download_files_sync, build_file_context
+from seosoyoung.slackbot.claude import get_claude_runner
+from seosoyoung.slackbot.claude.session_context import build_followup_context
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ def _handle_dm_message(event, say, client, dependencies):
     - 첫 메시지 (thread_ts 없음): 명령어 처리 또는 세션 생성 + Claude 실행
     - 스레드 메시지 (thread_ts 있음): 기존 세션에서 후속 처리
     """
-    from seosoyoung.handlers.mention import (
+    from seosoyoung.slackbot.handlers.mention import (
         extract_command,
         try_handle_command,
         create_session_and_run_claude,
@@ -530,8 +530,8 @@ def _maybe_trigger_digest(
     def run():
         _digest_running[channel_id] = True
         try:
-            from seosoyoung.memory.channel_pipeline import run_channel_pipeline
-            from seosoyoung.claude import get_claude_runner
+            from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
+            from seosoyoung.slackbot.claude import get_claude_runner
 
             runner = get_claude_runner()
 
@@ -569,7 +569,7 @@ def _send_collect_log(client, channel_id, store, event):
     if not debug_channel:
         return
     try:
-        from seosoyoung.memory.channel_intervention import send_collect_debug_log
+        from seosoyoung.slackbot.memory.channel_intervention import send_collect_debug_log
 
         # message_changed subtype: 실제 내용은 event["message"] 안에 있음
         if event.get("subtype") == "message_changed":

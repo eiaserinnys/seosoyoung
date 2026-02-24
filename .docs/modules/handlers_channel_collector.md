@@ -24,4 +24,4 @@
 
 ## 내부 의존성
 
-- `seosoyoung.memory.channel_store.ChannelStore`
+- `seosoyoung.slackbot.memory.channel_store.ChannelStore`

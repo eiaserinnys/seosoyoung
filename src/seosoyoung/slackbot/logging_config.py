@@ -38,7 +38,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from seosoyoung.config import Config
+from seosoyoung.slackbot.config import Config
 
 
 def setup_logging() -> logging.Logger:

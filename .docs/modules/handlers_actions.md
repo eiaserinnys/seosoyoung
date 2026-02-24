@@ -30,6 +30,6 @@ Args:
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
-- `seosoyoung.restart.RestartRequest`
-- `seosoyoung.restart.RestartType`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.restart.RestartRequest`
+- `seosoyoung.slackbot.restart.RestartType`

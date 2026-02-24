@@ -1,9 +1,9 @@
 """Slack 이벤트 핸들러 패키지"""
 
-from seosoyoung.handlers.mention import register_mention_handlers
-from seosoyoung.handlers.message import register_message_handlers
-from seosoyoung.handlers.actions import register_action_handlers
-from seosoyoung.handlers.translate import register_translate_handler
+from seosoyoung.slackbot.handlers.mention import register_mention_handlers
+from seosoyoung.slackbot.handlers.message import register_message_handlers
+from seosoyoung.slackbot.handlers.actions import register_action_handlers
+from seosoyoung.slackbot.handlers.translate import register_translate_handler
 
 
 def register_all_handlers(app, dependencies: dict):

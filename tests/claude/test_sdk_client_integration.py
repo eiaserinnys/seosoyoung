@@ -20,7 +20,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner
 
 
 # Mock 메시지 타입
@@ -83,7 +83,7 @@ class TestClientLifecycle:
         runner = ClaudeAgentRunner("thread-1")
 
         mock_client = AsyncMock()
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             client = await runner._get_or_create_client()
 
         assert client is mock_client
@@ -150,11 +150,11 @@ class TestRunWithSDKClient:
             MockResultMessage(result="완료됨", session_id="sdk-session-1"),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
-                    with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                        with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
                             result = await runner.run("테스트")
 
         assert result.success is True
@@ -171,8 +171,8 @@ class TestRunWithSDKClient:
             MockResultMessage(result="done", session_id="test"),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.run("테스트")
 
         assert result.success is True
@@ -206,11 +206,11 @@ class TestRunWithSDKClient:
         mock_loop = MagicMock()
         mock_loop.time = mock_time
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
-                    with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                        with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
                             with patch("asyncio.get_event_loop", return_value=mock_loop):
                                 result = await runner.run(
                                     "테스트",
@@ -229,11 +229,11 @@ class TestRunWithSDKClient:
             MockResultMessage(result="완료", session_id="om-test"),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
-                    with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                        with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
                             result = await runner.run(
                                 "테스트",
                                 user_id="user-1",
@@ -249,7 +249,7 @@ class TestRunWithSDKClient:
         mock_client = AsyncMock()
         mock_client.connect.side_effect = FileNotFoundError("claude not found")
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -368,8 +368,8 @@ class TestRunWithSessionResume:
             captured_options.append(opts)
             return opts
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 with patch.object(runner, "_build_options", side_effect=capture_build):
                     result = await runner.run(
                         "테스트",

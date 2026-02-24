@@ -29,10 +29,10 @@ SoulServiceClient로 실행하고 ClaudeResult로 변환합니다.
 
 ## 내부 의존성
 
-- `seosoyoung.claude.agent_runner.ClaudeResult`
-- `seosoyoung.claude.service_client.RateLimitError`
-- `seosoyoung.claude.service_client.SoulServiceClient`
-- `seosoyoung.claude.service_client.SoulServiceError`
-- `seosoyoung.claude.service_client.TaskConflictError`
-- `seosoyoung.claude.service_client.TaskNotFoundError`
-- `seosoyoung.claude.service_client.TaskNotRunningError`
+- `seosoyoung.slackbot.claude.agent_runner.ClaudeResult`
+- `seosoyoung.slackbot.claude.service_client.RateLimitError`
+- `seosoyoung.slackbot.claude.service_client.SoulServiceClient`
+- `seosoyoung.slackbot.claude.service_client.SoulServiceError`
+- `seosoyoung.slackbot.claude.service_client.TaskConflictError`
+- `seosoyoung.slackbot.claude.service_client.TaskNotFoundError`
+- `seosoyoung.slackbot.claude.service_client.TaskNotRunningError`

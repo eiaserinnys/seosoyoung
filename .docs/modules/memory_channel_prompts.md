@@ -95,4 +95,4 @@
 
 ## 내부 의존성
 
-- `seosoyoung.memory.prompt_loader.load_prompt_cached`
+- `seosoyoung.slackbot.memory.prompt_loader.load_prompt_cached`

@@ -8,7 +8,7 @@ Mastra의 Observational Memory 프롬프트를 서소영 컨텍스트에 맞게 
 import json
 from datetime import datetime, timezone
 
-from seosoyoung.memory.prompt_loader import load_prompt_cached
+from seosoyoung.slackbot.memory.prompt_loader import load_prompt_cached
 
 
 def _load(filename: str) -> str:

@@ -556,7 +556,7 @@ class MemoryStore:
 
     def count_all_candidate_tokens(self) -> int:
         """전체 후보의 content 필드 토큰 합산."""
-        from seosoyoung.memory.token_counter import TokenCounter
+        from seosoyoung.slackbot.memory.token_counter import TokenCounter
 
         candidates = self.load_all_candidates()
         if not candidates:

@@ -11,7 +11,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from seosoyoung.claude.agent_runner import (
+from seosoyoung.slackbot.claude.agent_runner import (
     ClaudeAgentRunner,
     ClaudeRunner,
     ClaudeResult,
@@ -24,13 +24,13 @@ from seosoyoung.claude.agent_runner import (
     shutdown_all,
     shutdown_all_sync,
 )
-from seosoyoung.claude.diagnostics import classify_process_error
-from seosoyoung.memory.injector import (
+from seosoyoung.slackbot.claude.diagnostics import classify_process_error
+from seosoyoung.slackbot.memory.injector import (
     create_or_load_debug_anchor,
     prepare_memory_injection,
     send_injection_debug_log,
 )
-from seosoyoung.config import Config
+from seosoyoung.slackbot.config import Config
 from claude_code_sdk._errors import MessageParseError, ProcessError
 
 
@@ -151,11 +151,11 @@ class TestClaudeAgentRunnerAsync:
             MockResultMessage(result="완료되었습니다.", session_id="test-sdk-123"),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
-                    with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                        with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
                             result = await runner.run("테스트 프롬프트")
 
         assert result.success is True
@@ -173,8 +173,8 @@ class TestClaudeAgentRunnerAsync:
             ),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.run("테스트")
 
         assert result.success is True
@@ -188,7 +188,7 @@ class TestClaudeAgentRunnerAsync:
         mock_client = AsyncMock()
         mock_client.connect.side_effect = FileNotFoundError("claude not found")
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -201,7 +201,7 @@ class TestClaudeAgentRunnerAsync:
         mock_client = AsyncMock()
         mock_client.connect.side_effect = RuntimeError("SDK error")
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -215,8 +215,8 @@ class TestClaudeAgentRunnerAsync:
             MockResultMessage(result="Compacted.", session_id="compact-123"),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.compact_session("test-session-id")
 
         assert result.success is True
@@ -260,11 +260,11 @@ class TestClaudeAgentRunnerProgress:
         mock_loop = MagicMock()
         mock_loop.time = mock_time
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
-                    with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                        with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
                             with patch("asyncio.get_event_loop", return_value=mock_loop):
                                 result = await runner.run("테스트", on_progress=on_progress)
 
@@ -318,11 +318,11 @@ class TestClaudeAgentRunnerCompact:
                 })
             return options, memory_prompt, anchor, stderr_f
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
-                    with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                        with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
                             with patch.object(runner, "_build_options", patched_build):
                                 result = await runner.run(
                                     "테스트", on_compact=on_compact
@@ -360,8 +360,8 @@ class TestClaudeAgentRunnerCompact:
                 })
             return options, memory_prompt, anchor, stderr_f
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 with patch.object(runner, "_build_options", patched_build):
                     result = await runner.run("테스트", on_compact=on_compact)
 
@@ -392,8 +392,8 @@ class TestClaudeAgentRunnerCompact:
                 })
             return options, memory_prompt, anchor, stderr_f
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 with patch.object(runner, "_build_options", patched_build):
                     result = await runner.run("테스트", on_compact=failing_compact)
 
@@ -408,8 +408,8 @@ class TestClaudeAgentRunnerCompact:
             MockResultMessage(result="완료", session_id="test"),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.run("테스트")
 
         assert result.success is True
@@ -487,7 +487,7 @@ class TestProcessErrorHandling:
             "Command failed with exit code 1", exit_code=1, stderr="Check stderr output for details"
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -505,7 +505,7 @@ class TestProcessErrorHandling:
             "usage limit reached", exit_code=1, stderr="usage limit"
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -536,7 +536,7 @@ class TestRateLimitEventHandling:
 
         mock_client.receive_response = MagicMock(return_value=RateLimitThenStop())
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         # rate_limit_event로 while loop가 break되어 정상 종료 (output 없음)
@@ -558,7 +558,7 @@ class TestRateLimitEventHandling:
             {"type": "rate_limit_event"}
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -580,7 +580,7 @@ class TestRateLimitEventHandling:
             {"type": "some_unknown_type"}
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -593,7 +593,7 @@ class TestBuildOptionsChannelObservation:
 
     def test_channel_observation_injected_for_observed_channel(self, tmp_path):
         """관찰 대상 채널에서 새 세션일 때 채널 관찰 컨텍스트가 주입되는지 확인"""
-        from seosoyoung.memory.channel_store import ChannelStore
+        from seosoyoung.slackbot.memory.channel_store import ChannelStore
 
         # 채널 데이터 준비
         ch_store = ChannelStore(base_dir=tmp_path)
@@ -609,11 +609,11 @@ class TestBuildOptionsChannelObservation:
 
         runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
-            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
                 mock_build.return_value = MagicMock(
                     prompt="<channel-observation>test</channel-observation>",
                     persistent_tokens=0,
@@ -642,11 +642,11 @@ class TestBuildOptionsChannelObservation:
 
         runner = ClaudeAgentRunner("ts_1", channel="C_OTHER")
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
-            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
                 mock_build.return_value = MagicMock(
                     prompt=None,
                     persistent_tokens=0,
@@ -671,11 +671,11 @@ class TestBuildOptionsChannelObservation:
 
         runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
-            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
                 mock_build.return_value = MagicMock(
                     prompt=None,
                     persistent_tokens=0,
@@ -710,11 +710,11 @@ class TestBuildOptionsAnchorTs:
 
         runner = ClaudeAgentRunner("ts_1")
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
-            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
                 mock_build.return_value = MagicMock(
                     prompt=None,
                     persistent_tokens=0,
@@ -726,7 +726,7 @@ class TestBuildOptionsAnchorTs:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anchor_ts_123") as mock_send:
+                with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log", return_value="anchor_ts_123") as mock_send:
                     _, _, anchor_ts, _ = runner._build_options(
                         prompt="테스트 프롬프트입니다",
                     )
@@ -740,7 +740,7 @@ class TestBuildOptionsAnchorTs:
 
     def test_anchor_ts_not_created_for_resumed_session(self, tmp_path):
         """기존 세션 재개 시 새 앵커 미생성, MemoryRecord에서 기존 anchor_ts 로드"""
-        from seosoyoung.memory.store import MemoryRecord, MemoryStore
+        from seosoyoung.slackbot.memory.store import MemoryRecord, MemoryStore
 
         # 사전 조건: MemoryRecord에 이전 세션의 anchor_ts가 저장되어 있음
         pre_store = MemoryStore(base_dir=tmp_path)
@@ -757,11 +757,11 @@ class TestBuildOptionsAnchorTs:
 
         runner = ClaudeAgentRunner("ts_1")
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
-            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
                 mock_build.return_value = MagicMock(
                     prompt=None,
                     persistent_tokens=0,
@@ -773,7 +773,7 @@ class TestBuildOptionsAnchorTs:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+                with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log") as mock_send:
                     _, _, anchor_ts, _ = runner._build_options(
                         session_id="existing-session",
                         prompt="테스트",
@@ -795,11 +795,11 @@ class TestBuildOptionsAnchorTs:
 
         runner = ClaudeAgentRunner("ts_no_record")
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
-            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
                 mock_build.return_value = MagicMock(
                     prompt=None,
                     persistent_tokens=0,
@@ -821,7 +821,7 @@ class TestBuildOptionsAnchorTs:
 
     def test_new_session_saves_anchor_ts_to_record(self, tmp_path):
         """새 세션 시 생성된 anchor_ts가 MemoryRecord에 저장되는지 확인"""
-        from seosoyoung.memory.store import MemoryStore
+        from seosoyoung.slackbot.memory.store import MemoryStore
 
         config_patches = {
             "om.enabled": True,
@@ -833,11 +833,11 @@ class TestBuildOptionsAnchorTs:
 
         runner = ClaudeAgentRunner("ts_new")
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
-            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
                 mock_build.return_value = MagicMock(
                     prompt=None,
                     persistent_tokens=0,
@@ -849,7 +849,7 @@ class TestBuildOptionsAnchorTs:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="new_anchor_456"):
+                with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log", return_value="new_anchor_456"):
                     _, _, anchor_ts, _ = runner._build_options(
                         prompt="새 세션 테스트",
                     )
@@ -879,7 +879,7 @@ class TestInjectionDebugLogSkipsWithoutAnchor:
             new_observation_content="새 관찰",
         )
 
-        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+        with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log") as mock_send:
             send_injection_debug_log(
                 thread_ts="ts_1234",
                 result=mock_result,
@@ -901,9 +901,9 @@ class TestInjectionDebugLogSkipsWithoutAnchor:
             persistent_content="장기 기억",
         )
 
-        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
-            with patch("seosoyoung.memory.observation_pipeline._format_tokens", return_value="100"):
-                with patch("seosoyoung.memory.observation_pipeline._blockquote", return_value=">장기 기억"):
+        with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log") as mock_send:
+            with patch("seosoyoung.slackbot.memory.observation_pipeline._format_tokens", return_value="100"):
+                with patch("seosoyoung.slackbot.memory.observation_pipeline._blockquote", return_value=">장기 기억"):
                     send_injection_debug_log(
                         thread_ts="ts_1234",
                         result=mock_result,
@@ -942,10 +942,10 @@ class TestObserverUserMessage:
             MockResultMessage(result="완료", session_id="obs-test"),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
                         result = await runner.run(
                             prompt="채널 히스토리 20개 + 사용자 질문",
                             user_id="U123",
@@ -968,10 +968,10 @@ class TestObserverUserMessage:
             MockResultMessage(result="완료", session_id="obs-test-2"),
         )
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
                         result = await runner.run(
                             prompt="전체 프롬프트",
                             user_id="U123",
@@ -1000,7 +1000,7 @@ class TestTriggerObservationToolFilter:
             {"role": "tool", "content": "편집 성공", "timestamp": "t6"},
         ]
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             MockConfig.om.enabled = True
             MockConfig.om.openai_api_key = "test"
             MockConfig.om.model = "gpt-4.1-mini"
@@ -1014,12 +1014,12 @@ class TestTriggerObservationToolFilter:
             async def mock_observe_conversation(**kwargs):
                 captured_messages.extend(kwargs.get("messages", []))
 
-            with patch("seosoyoung.memory.observation_pipeline.observe_conversation", mock_observe_conversation):
-                with patch("seosoyoung.memory.store.MemoryStore"):
-                    with patch("seosoyoung.memory.observer.Observer"):
-                        with patch("seosoyoung.memory.reflector.Reflector"):
-                            with patch("seosoyoung.memory.promoter.Promoter"):
-                                with patch("seosoyoung.memory.promoter.Compactor"):
+            with patch("seosoyoung.slackbot.memory.observation_pipeline.observe_conversation", mock_observe_conversation):
+                with patch("seosoyoung.slackbot.memory.store.MemoryStore"):
+                    with patch("seosoyoung.slackbot.memory.observer.Observer"):
+                        with patch("seosoyoung.slackbot.memory.reflector.Reflector"):
+                            with patch("seosoyoung.slackbot.memory.promoter.Promoter"):
+                                with patch("seosoyoung.slackbot.memory.promoter.Compactor"):
                                     # _trigger_observation은 별도 스레드에서 asyncio.run을 실행하므로
                                     # 직접 필터 로직만 테스트
                                     pass
@@ -1198,7 +1198,7 @@ class TestPidTrackingAndForceKill:
         mock_client = AsyncMock()
         mock_client._transport = mock_transport
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             client = await runner._get_or_create_client()
 
         assert runner.pid == 54321
@@ -1211,7 +1211,7 @@ class TestPidTrackingAndForceKill:
         mock_client = AsyncMock()
         mock_client._transport = None
 
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             client = await runner._get_or_create_client()
 
         assert runner.pid is None
@@ -1277,7 +1277,7 @@ class TestForceKillProcess:
         mock_proc = MagicMock()
 
         # agent_runner 모듈 내부에서 psutil을 import하므로 해당 경로로 패치
-        with patch("seosoyoung.claude.agent_runner.psutil") as mock_psutil:
+        with patch("seosoyoung.slackbot.claude.agent_runner.psutil") as mock_psutil:
             mock_psutil.Process.return_value = mock_proc
             ClaudeAgentRunner._force_kill_process(12345, "test_thread")
 
@@ -1288,7 +1288,7 @@ class TestForceKillProcess:
         """_force_kill_process: terminate 타임아웃 시 kill 사용"""
         mock_proc = MagicMock()
 
-        with patch("seosoyoung.claude.agent_runner.psutil") as mock_psutil:
+        with patch("seosoyoung.slackbot.claude.agent_runner.psutil") as mock_psutil:
             # TimeoutExpired 예외 시뮬레이션
             mock_psutil.TimeoutExpired = type("TimeoutExpired", (Exception,), {})
             mock_proc.wait.side_effect = [mock_psutil.TimeoutExpired(3), None]
@@ -1301,7 +1301,7 @@ class TestForceKillProcess:
 
     def test_force_kill_process_no_such_process(self):
         """_force_kill_process: 프로세스가 이미 종료된 경우"""
-        with patch("seosoyoung.claude.agent_runner.psutil") as mock_psutil:
+        with patch("seosoyoung.slackbot.claude.agent_runner.psutil") as mock_psutil:
             # NoSuchProcess 예외 시뮬레이션
             mock_psutil.NoSuchProcess = type("NoSuchProcess", (Exception,), {})
             mock_psutil.Process.side_effect = mock_psutil.NoSuchProcess(12345)
@@ -1311,7 +1311,7 @@ class TestForceKillProcess:
     def test_force_kill_process_general_error(self):
         """_force_kill_process: 일반 오류 발생 시 로깅만"""
         import psutil as real_psutil
-        with patch("seosoyoung.claude.agent_runner.psutil") as mock_psutil:
+        with patch("seosoyoung.slackbot.claude.agent_runner.psutil") as mock_psutil:
             # 실제 예외 클래스들을 유지
             mock_psutil.NoSuchProcess = real_psutil.NoSuchProcess
             mock_psutil.TimeoutExpired = real_psutil.TimeoutExpired
@@ -1325,7 +1325,7 @@ class TestServiceFactory:
 
     def test_factory_returns_agent_runner(self):
         """팩토리가 항상 ClaudeAgentRunner를 반환"""
-        from seosoyoung.claude import get_claude_runner
+        from seosoyoung.slackbot.claude import get_claude_runner
         runner = get_claude_runner()
         assert isinstance(runner, ClaudeAgentRunner)
 
@@ -1335,7 +1335,7 @@ class TestGetRoleConfig:
 
     def test_viewer_role_has_correct_disallowed_tools(self):
         """viewer 역할은 수정/실행 도구가 차단됨"""
-        from seosoyoung.claude.executor import _get_role_config
+        from seosoyoung.slackbot.claude.executor import _get_role_config
 
         config = _get_role_config("viewer")
 
@@ -1346,7 +1346,7 @@ class TestGetRoleConfig:
 
     def test_admin_role_has_mcp_config(self):
         """admin 역할은 MCP 설정을 사용 (설정 파일 존재 시)"""
-        from seosoyoung.claude.executor import _get_role_config, _get_mcp_config_path
+        from seosoyoung.slackbot.claude.executor import _get_role_config, _get_mcp_config_path
 
         config = _get_role_config("admin")
 
@@ -1358,14 +1358,14 @@ class TestGetRoleConfig:
 
     def test_admin_role_has_no_disallowed_tools(self):
         """admin 역할은 disallowed_tools가 None"""
-        from seosoyoung.claude.executor import _get_role_config
+        from seosoyoung.slackbot.claude.executor import _get_role_config
 
         config = _get_role_config("admin")
         assert config["disallowed_tools"] is None
 
     def test_returns_dict_with_required_keys(self):
         """반환값이 필수 키를 포함"""
-        from seosoyoung.claude.executor import _get_role_config
+        from seosoyoung.slackbot.claude.executor import _get_role_config
 
         config = _get_role_config("admin")
         assert "allowed_tools" in config
@@ -1466,12 +1466,12 @@ class TestCreateOrLoadDebugAnchor:
 
     def test_creates_anchor_for_new_session(self, tmp_path):
         """새 세션(session_id=None) 시 앵커 메시지 생성 + MemoryRecord 저장"""
-        from seosoyoung.memory.store import MemoryStore
+        from seosoyoung.slackbot.memory.store import MemoryStore
         store = MemoryStore(base_dir=tmp_path)
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             MockConfig.emoji.text_session_start = "🟢"
-            with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anchor_new_123"):
+            with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log", return_value="anchor_new_123"):
                 anchor_ts = create_or_load_debug_anchor(
                     thread_ts="ts_new", session_id=None, store=store,
                     prompt="테스트 프롬프트입니다", debug_channel="C_DEBUG",
@@ -1484,7 +1484,7 @@ class TestCreateOrLoadDebugAnchor:
 
     def test_loads_existing_anchor_for_resumed_session(self, tmp_path):
         """기존 세션 재개 시 MemoryRecord에서 anchor_ts 로드"""
-        from seosoyoung.memory.store import MemoryStore, MemoryRecord
+        from seosoyoung.slackbot.memory.store import MemoryStore, MemoryRecord
         store = MemoryStore(base_dir=tmp_path)
         record = MemoryRecord(thread_ts="ts_existing", anchor_ts="saved_anchor_456")
         store.save_record(record)
@@ -1497,7 +1497,7 @@ class TestCreateOrLoadDebugAnchor:
 
     def test_returns_empty_for_resumed_session_no_record(self, tmp_path):
         """기존 세션 재개 시 MemoryRecord가 없으면 빈 문자열"""
-        from seosoyoung.memory.store import MemoryStore
+        from seosoyoung.slackbot.memory.store import MemoryStore
         store = MemoryStore(base_dir=tmp_path)
 
         anchor_ts = create_or_load_debug_anchor(
@@ -1508,13 +1508,13 @@ class TestCreateOrLoadDebugAnchor:
 
     def test_truncates_long_prompt_preview(self, tmp_path):
         """80자 초과 프롬프트가 잘려서 앵커에 포함"""
-        from seosoyoung.memory.store import MemoryStore
+        from seosoyoung.slackbot.memory.store import MemoryStore
         store = MemoryStore(base_dir=tmp_path)
         long_prompt = "A" * 100
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             MockConfig.emoji.text_session_start = "🟢"
-            with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anc") as mock_send:
+            with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log", return_value="anc") as mock_send:
                 create_or_load_debug_anchor(
                     thread_ts="ts_long", session_id=None, store=store,
                     prompt=long_prompt, debug_channel="C_DEBUG",
@@ -1537,7 +1537,7 @@ class TestPrepareMemoryInjection:
 
     def test_returns_none_when_om_disabled(self):
         """OM 비활성 시 (None, '') 반환"""
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             MockConfig.om.enabled = False
             memory_prompt, anchor_ts = prepare_memory_injection(
                 thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
@@ -1555,11 +1555,11 @@ class TestPrepareMemoryInjection:
             "om.debug_channel": "",
         }
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
-            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
                 mock_build.return_value = MagicMock(
                     prompt="<long-term-memory>기억</long-term-memory>",
                     persistent_tokens=50,
@@ -1588,11 +1588,11 @@ class TestPrepareMemoryInjection:
             "om.debug_channel": "C_DEBUG",
         }
 
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
-            with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
+            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
                 mock_build.return_value = MagicMock(
                     prompt=None,
                     persistent_tokens=0,
@@ -1604,7 +1604,7 @@ class TestPrepareMemoryInjection:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                with patch("seosoyoung.memory.injector.create_or_load_debug_anchor", return_value="anc_789") as mock_anchor:
+                with patch("seosoyoung.slackbot.memory.injector.create_or_load_debug_anchor", return_value="anc_789") as mock_anchor:
                     _, anchor_ts = prepare_memory_injection(
                         thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
                     )
@@ -1614,7 +1614,7 @@ class TestPrepareMemoryInjection:
 
     def test_exception_returns_none_gracefully(self):
         """OM 내부 예외 발생 시 (None, '') 반환 (무시)"""
-        with patch("seosoyoung.config.Config") as MockConfig:
+        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             MockConfig.om.enabled = True
             MockConfig.get_memory_path.side_effect = RuntimeError("boom")
             memory_prompt, anchor_ts = prepare_memory_injection(

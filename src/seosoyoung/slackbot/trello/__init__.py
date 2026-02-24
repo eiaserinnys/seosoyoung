@@ -1,8 +1,8 @@
 """Trello 연동 모듈"""
 
-from seosoyoung.trello.client import TrelloClient
-from seosoyoung.trello.watcher import TrelloWatcher
-from seosoyoung.trello.list_runner import ListRunner, ListRunSession, SessionStatus
+from seosoyoung.slackbot.trello.client import TrelloClient
+from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+from seosoyoung.slackbot.trello.list_runner import ListRunner, ListRunSession, SessionStatus
 
 __all__ = [
     "TrelloClient",

@@ -7,7 +7,7 @@ import yaml
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from seosoyoung.search.embedding_index import (
+from seosoyoung.slackbot.search.embedding_index import (
     EmbeddingIndexBuilder,
     cosine_similarity_search,
     load_embedding_index,
@@ -17,7 +17,7 @@ from seosoyoung.search.embedding_index import (
 @pytest.fixture(autouse=True)
 def _mock_openai_client():
     """OpenAI 클라이언트 생성을 mock하여 API 키 없이도 테스트 가능하게 함."""
-    with patch("seosoyoung.search.embedding_cache.OpenAI"):
+    with patch("seosoyoung.slackbot.search.embedding_cache.OpenAI"):
         yield
 
 

@@ -1,7 +1,7 @@
 """문장 분할기 테스트."""
 
 import pytest
-from seosoyoung.search.sentence_splitter import split_sentences
+from seosoyoung.slackbot.search.sentence_splitter import split_sentences
 
 
 class TestSplitSentences:

@@ -12,7 +12,7 @@ from typing import Optional, Callable
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
-from seosoyoung.config import Config
+from seosoyoung.slackbot.config import Config
 
 logger = logging.getLogger(__name__)
 

@@ -6,14 +6,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import seosoyoung.config as _cfg_mod
-import seosoyoung.memory.observation_pipeline as _op_mod
-from seosoyoung.memory.observation_pipeline import (
+import seosoyoung.slackbot.config as _cfg_mod
+import seosoyoung.slackbot.memory.observation_pipeline as _op_mod
+from seosoyoung.slackbot.memory.observation_pipeline import (
     _extract_new_observations,
     observe_conversation,
 )
-from seosoyoung.memory.observer import ObserverResult
-from seosoyoung.memory.store import MemoryRecord, MemoryStore
+from seosoyoung.slackbot.memory.observer import ObserverResult
+from seosoyoung.slackbot.memory.store import MemoryRecord, MemoryStore
 
 
 @pytest.fixture
@@ -507,7 +507,7 @@ class TestReflector:
         )
 
         mock_reflector = AsyncMock()
-        from seosoyoung.memory.reflector import ReflectorResult
+        from seosoyoung.slackbot.memory.reflector import ReflectorResult
         compressed_items = _make_obs_items([("🔴", "압축된 관찰")])
         mock_reflector.reflect.return_value = ReflectorResult(
             observations=compressed_items,
@@ -537,11 +537,11 @@ class TestTriggerObservation:
     @pytest.mark.asyncio
     async def test_trigger_creates_thread(self):
         """trigger_observation이 별도 스레드를 생성하는지 확인"""
-        from seosoyoung.memory.injector import trigger_observation
+        from seosoyoung.slackbot.memory.injector import trigger_observation
 
         messages = [{"role": "assistant", "content": "응답"}]
 
-        with patch("seosoyoung.memory.injector.threading.Thread") as mock_thread:
+        with patch("seosoyoung.slackbot.memory.injector.threading.Thread") as mock_thread:
             mock_thread.return_value.start = MagicMock()
             with patch.object(_cfg_mod.Config.om, 'enabled', True):
                 trigger_observation("ts_1234", "U12345", "프롬프트", messages)
@@ -552,9 +552,9 @@ class TestTriggerObservation:
     @pytest.mark.asyncio
     async def test_trigger_disabled_when_om_off(self):
         """OM이 비활성화되면 트리거하지 않음"""
-        from seosoyoung.memory.injector import trigger_observation
+        from seosoyoung.slackbot.memory.injector import trigger_observation
 
-        with patch("seosoyoung.memory.injector.threading.Thread") as mock_thread:
+        with patch("seosoyoung.slackbot.memory.injector.threading.Thread") as mock_thread:
             with patch.object(_cfg_mod.Config.om, 'enabled', False):
                 trigger_observation("ts_1234", "U12345", "프롬프트", [])
 
@@ -563,7 +563,7 @@ class TestTriggerObservation:
     @pytest.mark.asyncio
     async def test_trigger_error_does_not_propagate(self):
         """트리거 오류가 전파되지 않음"""
-        from seosoyoung.memory.injector import trigger_observation
+        from seosoyoung.slackbot.memory.injector import trigger_observation
 
         with patch.object(
             type(_cfg_mod.Config.om), 'enabled',
@@ -573,7 +573,7 @@ class TestTriggerObservation:
 
     def test_trigger_passes_min_turn_tokens(self):
         """트리거 시 min_turn_tokens가 전달되는지 확인"""
-        from seosoyoung.memory.injector import trigger_observation
+        from seosoyoung.slackbot.memory.injector import trigger_observation
 
         collected = [{"role": "assistant", "content": "응답"}]
 
@@ -585,14 +585,14 @@ class TestTriggerObservation:
         with patch.object(_cfg_mod.Config.om, 'enabled', True):
             with patch.object(_cfg_mod.Config.om, 'openai_api_key', "test-key"):
                 with patch.object(_cfg_mod.Config.om, 'model', "gpt-4.1-mini"):
-                    with patch("seosoyoung.config.Config.get_memory_path", return_value="/tmp/test"):
+                    with patch("seosoyoung.slackbot.config.Config.get_memory_path", return_value="/tmp/test"):
                         with patch.object(_cfg_mod.Config.om, 'min_turn_tokens', 200):
                             with patch(
-                                "seosoyoung.memory.observation_pipeline.observe_conversation",
+                                "seosoyoung.slackbot.memory.observation_pipeline.observe_conversation",
                                 new_callable=AsyncMock,
                             ) as mock_obs:
                                 with patch(
-                                    "seosoyoung.memory.injector.threading.Thread",
+                                    "seosoyoung.slackbot.memory.injector.threading.Thread",
                                     side_effect=run_thread_target_directly,
                                 ):
                                     trigger_observation("ts_1234", "U12345", "테스트 프롬프트", collected)
@@ -608,7 +608,7 @@ class TestTriggerObservation:
 
     def test_trigger_passes_promoter_and_compactor(self):
         """트리거 시 Promoter와 Compactor가 생성되어 전달되는지 확인"""
-        from seosoyoung.memory.injector import trigger_observation
+        from seosoyoung.slackbot.memory.injector import trigger_observation
 
         collected = [{"role": "assistant", "content": "응답"}]
 
@@ -624,14 +624,14 @@ class TestTriggerObservation:
                         with patch.object(_cfg_mod.Config.om, 'promotion_threshold', 5000):
                             with patch.object(_cfg_mod.Config.om, 'persistent_compaction_threshold', 15000):
                                 with patch.object(_cfg_mod.Config.om, 'persistent_compaction_target', 8000):
-                                    with patch("seosoyoung.config.Config.get_memory_path", return_value="/tmp/test"):
+                                    with patch("seosoyoung.slackbot.config.Config.get_memory_path", return_value="/tmp/test"):
                                         with patch.object(_cfg_mod.Config.om, 'min_turn_tokens', 200):
                                             with patch(
-                                                "seosoyoung.memory.observation_pipeline.observe_conversation",
+                                                "seosoyoung.slackbot.memory.observation_pipeline.observe_conversation",
                                                 new_callable=AsyncMock,
                                             ) as mock_obs:
                                                 with patch(
-                                                    "seosoyoung.memory.injector.threading.Thread",
+                                                    "seosoyoung.slackbot.memory.injector.threading.Thread",
                                                     side_effect=run_thread_target_directly,
                                                 ):
                                                     trigger_observation("ts_1234", "U12345", "테스트", collected)
@@ -639,7 +639,7 @@ class TestTriggerObservation:
         mock_obs.assert_called_once()
         call_kwargs = mock_obs.call_args.kwargs
         # Promoter와 Compactor 인스턴스가 전달되었는지 확인
-        from seosoyoung.memory.promoter import Compactor, Promoter
+        from seosoyoung.slackbot.memory.promoter import Compactor, Promoter
         assert isinstance(call_kwargs["promoter"], Promoter)
         assert isinstance(call_kwargs["compactor"], Compactor)
         assert call_kwargs["promotion_threshold"] == 5000
@@ -653,7 +653,7 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_triggers_observation_on_success(self):
         """성공적인 실행 후 관찰이 트리거됨"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner("ts_1234")
 
@@ -665,7 +665,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
+            with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
                 result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is True
@@ -680,7 +680,7 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_without_user_id(self):
         """user_id 없으면 관찰을 트리거하지 않음"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
@@ -691,7 +691,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
+            with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
                 result = await runner.run("테스트")
 
         assert result.success is True
@@ -700,7 +700,7 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_without_thread_ts(self):
         """thread_ts 없으면 관찰을 트리거하지 않음"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner()
 
@@ -711,7 +711,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
+            with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
                 result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is True
@@ -720,7 +720,7 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_on_failure(self):
         """실행 실패 시 관찰을 트리거하지 않음"""
-        from seosoyoung.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
 
         runner = ClaudeAgentRunner("ts_1234")
 
@@ -731,7 +731,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
+            with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
                 result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is False
@@ -743,7 +743,7 @@ class TestSendDebugLogThreadTs:
 
     def test_send_debug_log_without_thread_ts(self):
         """thread_ts 없이 호출하면 thread_ts가 kwargs에 포함되지 않음"""
-        from seosoyoung.memory.observation_pipeline import _send_debug_log
+        from seosoyoung.slackbot.memory.observation_pipeline import _send_debug_log
 
         with patch("slack_sdk.WebClient") as MockClient:
             mock_instance = MagicMock()
@@ -759,7 +759,7 @@ class TestSendDebugLogThreadTs:
 
     def test_send_debug_log_with_thread_ts(self):
         """thread_ts가 있으면 kwargs에 포함됨"""
-        from seosoyoung.memory.observation_pipeline import _send_debug_log
+        from seosoyoung.slackbot.memory.observation_pipeline import _send_debug_log
 
         with patch("slack_sdk.WebClient") as MockClient:
             mock_instance = MagicMock()
@@ -775,7 +775,7 @@ class TestSendDebugLogThreadTs:
 
     def test_send_debug_log_empty_thread_ts_not_included(self):
         """thread_ts가 빈 문자열이면 kwargs에 포함되지 않음"""
-        from seosoyoung.memory.observation_pipeline import _send_debug_log
+        from seosoyoung.slackbot.memory.observation_pipeline import _send_debug_log
 
         with patch("slack_sdk.WebClient") as MockClient:
             mock_instance = MagicMock()
@@ -799,9 +799,9 @@ class TestObserveConversationAnchorTs:
             observations=_make_obs_items([("🟢", "관찰 내용")]),
         )
 
-        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+        with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log") as mock_send:
             mock_send.return_value = "debug_ts_123"
-            with patch("seosoyoung.memory.observation_pipeline._update_debug_log"):
+            with patch("seosoyoung.slackbot.memory.observation_pipeline._update_debug_log"):
                 await observe_conversation(
                     store=store,
                     observer=mock_observer,
@@ -824,9 +824,9 @@ class TestObserveConversationAnchorTs:
             observations=_make_obs_items([("🟢", "관찰 내용")]),
         )
 
-        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+        with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log") as mock_send:
             mock_send.return_value = "debug_ts"
-            with patch("seosoyoung.memory.observation_pipeline._update_debug_log"):
+            with patch("seosoyoung.slackbot.memory.observation_pipeline._update_debug_log"):
                 await observe_conversation(
                     store=store,
                     observer=mock_observer,
@@ -843,7 +843,7 @@ class TestObserveConversationAnchorTs:
     @pytest.mark.asyncio
     async def test_anchor_ts_passed_on_skip(self, store, mock_observer):
         """스킵 시에도 anchor_ts가 _send_debug_log에 전달됨"""
-        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+        with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log") as mock_send:
             mock_send.return_value = ""
             await observe_conversation(
                 store=store,
@@ -865,7 +865,7 @@ class TestTriggerObservationAnchorTs:
 
     def test_trigger_passes_anchor_ts(self):
         """anchor_ts가 observe_conversation에 전달됨"""
-        from seosoyoung.memory.injector import trigger_observation
+        from seosoyoung.slackbot.memory.injector import trigger_observation
 
         collected = [{"role": "assistant", "content": "응답"}]
 
@@ -877,14 +877,14 @@ class TestTriggerObservationAnchorTs:
         with patch.object(_cfg_mod.Config.om, 'enabled', True):
             with patch.object(_cfg_mod.Config.om, 'openai_api_key', "test-key"):
                 with patch.object(_cfg_mod.Config.om, 'model', "gpt-4.1-mini"):
-                    with patch("seosoyoung.config.Config.get_memory_path", return_value="/tmp/test"):
+                    with patch("seosoyoung.slackbot.config.Config.get_memory_path", return_value="/tmp/test"):
                         with patch.object(_cfg_mod.Config.om, 'min_turn_tokens', 200):
                             with patch(
-                                "seosoyoung.memory.observation_pipeline.observe_conversation",
+                                "seosoyoung.slackbot.memory.observation_pipeline.observe_conversation",
                                 new_callable=AsyncMock,
                             ) as mock_obs:
                                 with patch(
-                                    "seosoyoung.memory.injector.threading.Thread",
+                                    "seosoyoung.slackbot.memory.injector.threading.Thread",
                                     side_effect=run_thread_target_directly,
                                 ):
                                     trigger_observation(
@@ -906,9 +906,9 @@ class TestObserveConversationSkipsDebugWithoutAnchor:
             observations=_make_obs_items([("🟢", "관찰 내용")]),
         )
 
-        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+        with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log") as mock_send:
             mock_send.return_value = ""
-            with patch("seosoyoung.memory.observation_pipeline._update_debug_log"):
+            with patch("seosoyoung.slackbot.memory.observation_pipeline._update_debug_log"):
                 await observe_conversation(
                     store=store,
                     observer=mock_observer,
@@ -926,7 +926,7 @@ class TestObserveConversationSkipsDebugWithoutAnchor:
     @pytest.mark.asyncio
     async def test_skips_debug_on_skip_when_anchor_ts_empty(self, store, mock_observer):
         """스킵 시에도 anchor_ts가 빈 문자열이면 디버그 로그를 발송하지 않음"""
-        with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
+        with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log") as mock_send:
             mock_send.return_value = ""
             await observe_conversation(
                 store=store,

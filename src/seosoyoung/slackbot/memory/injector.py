@@ -36,12 +36,12 @@ def prepare_memory_injection(
         return None, ""
 
     try:
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
         if not Config.om.enabled:
             return None, ""
 
-        from seosoyoung.memory.context_builder import ContextBuilder, InjectionResult
-        from seosoyoung.memory.store import MemoryStore
+        from seosoyoung.slackbot.memory.context_builder import ContextBuilder, InjectionResult
+        from seosoyoung.slackbot.memory.store import MemoryStore
 
         store = MemoryStore(Config.get_memory_path())
         is_new_session = session_id is None
@@ -56,7 +56,7 @@ def prepare_memory_injection(
             and channel
             and channel in Config.channel_observer.channels
         ):
-            from seosoyoung.memory.channel_store import ChannelStore
+            from seosoyoung.slackbot.memory.channel_store import ChannelStore
             channel_store = ChannelStore(Config.get_memory_path())
             include_channel_obs = True
 
@@ -130,9 +130,9 @@ def create_or_load_debug_anchor(
 
     # 새 세션: 앵커 메시지 생성
     try:
-        from seosoyoung.config import Config
-        from seosoyoung.memory.observation_pipeline import _send_debug_log
-        from seosoyoung.memory.store import MemoryRecord
+        from seosoyoung.slackbot.config import Config
+        from seosoyoung.slackbot.memory.observation_pipeline import _send_debug_log
+        from seosoyoung.slackbot.memory.store import MemoryRecord
 
         safe_prompt = prompt or ""
         preview = safe_prompt[:80]
@@ -181,8 +181,8 @@ def send_injection_debug_log(
         return
 
     try:
-        from seosoyoung.config import Config
-        from seosoyoung.memory.observation_pipeline import (
+        from seosoyoung.slackbot.config import Config
+        from seosoyoung.slackbot.memory.observation_pipeline import (
             _blockquote,
             _format_tokens,
             _send_debug_log,
@@ -251,7 +251,7 @@ def trigger_observation(
     별도 스레드에서 새 이벤트 루프를 생성하여 OM 파이프라인을 실행합니다.
     """
     try:
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
         if not Config.om.enabled:
             return
 
@@ -267,13 +267,13 @@ def trigger_observation(
 
         def _run_in_thread():
             try:
-                from seosoyoung.memory.observation_pipeline import (
+                from seosoyoung.slackbot.memory.observation_pipeline import (
                     observe_conversation,
                 )
-                from seosoyoung.memory.observer import Observer
-                from seosoyoung.memory.promoter import Compactor, Promoter
-                from seosoyoung.memory.reflector import Reflector
-                from seosoyoung.memory.store import MemoryStore
+                from seosoyoung.slackbot.memory.observer import Observer
+                from seosoyoung.slackbot.memory.promoter import Compactor, Promoter
+                from seosoyoung.slackbot.memory.reflector import Reflector
+                from seosoyoung.slackbot.memory.store import MemoryStore
 
                 debug_channel = Config.om.debug_channel
 
@@ -314,7 +314,7 @@ def trigger_observation(
             except Exception as e:
                 logger.error(f"OM 관찰 파이프라인 비동기 실행 오류 (무시): {e}")
                 try:
-                    from seosoyoung.memory.observation_pipeline import _send_debug_log
+                    from seosoyoung.slackbot.memory.observation_pipeline import _send_debug_log
                     if Config.om.debug_channel:
                         _send_debug_log(
                             Config.om.debug_channel,

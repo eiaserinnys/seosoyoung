@@ -34,4 +34,4 @@ Returns:
 ## 내부 의존성
 
 - `seosoyoung.mcp.config.SLACK_BOT_TOKEN`
-- `seosoyoung.slack.file_handler.download_file`
+- `seosoyoung.slackbot.slack.file_handler.download_file`

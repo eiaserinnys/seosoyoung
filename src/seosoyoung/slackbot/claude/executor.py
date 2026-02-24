@@ -15,19 +15,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from seosoyoung.config import Config
-from seosoyoung.claude.agent_runner import ClaudeRunner
-from seosoyoung.claude.intervention import InterventionManager, PendingPrompt
-from seosoyoung.claude.result_processor import ResultProcessor
-from seosoyoung.claude.session import Session, SessionManager
-from seosoyoung.claude.message_formatter import (
+from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
+from seosoyoung.slackbot.claude.intervention import InterventionManager, PendingPrompt
+from seosoyoung.slackbot.claude.result_processor import ResultProcessor
+from seosoyoung.slackbot.claude.session import Session, SessionManager
+from seosoyoung.slackbot.claude.message_formatter import (
     truncate_progress_text,
     format_as_blockquote,
     format_trello_progress,
     format_dm_progress,
 )
-from seosoyoung.slack.formatting import update_message
-from seosoyoung.trello.watcher import TrackedCard
+from seosoyoung.slackbot.slack.formatting import update_message
+from seosoyoung.slackbot.trello.watcher import TrackedCard
 
 logger = logging.getLogger(__name__)
 
@@ -399,8 +399,8 @@ class ClaudeExecutor:
         if self._service_adapter is None:
             with self._adapter_lock:
                 if self._service_adapter is None:
-                    from seosoyoung.claude.service_client import SoulServiceClient
-                    from seosoyoung.claude.service_adapter import ClaudeServiceAdapter
+                    from seosoyoung.slackbot.claude.service_client import SoulServiceClient
+                    from seosoyoung.slackbot.claude.service_adapter import ClaudeServiceAdapter
                     client = SoulServiceClient(
                         base_url=Config.claude.soul_url,
                         token=Config.claude.soul_token,
@@ -413,7 +413,7 @@ class ClaudeExecutor:
 
     def _execute_remote(self, ctx: ExecutionContext, prompt: str):
         """Remote 모드: soul 서버에 실행을 위임"""
-        from seosoyoung.claude.agent_runner import run_in_new_loop
+        from seosoyoung.slackbot.claude.agent_runner import run_in_new_loop
 
         adapter = self._get_service_adapter()
         original_thread_ts = ctx.original_thread_ts

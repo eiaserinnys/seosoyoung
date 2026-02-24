@@ -46,7 +46,7 @@ async def get_article(
     """
     # 기본 캐시 디렉토리
     if cache_dir is None:
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
         cache_dir = Config.get_web_cache_path()
 
     # API 키 (계정 과금 모드 - RECALL_API_KEY 사용)

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from seosoyoung.memory.reflector import Reflector, ReflectorResult, _parse_reflector_output
+from seosoyoung.slackbot.memory.reflector import Reflector, ReflectorResult, _parse_reflector_output
 
 
 def _make_obs_items(items_data):
@@ -173,7 +173,7 @@ class TestPipelineReflectorIntegration:
 
     @pytest.fixture
     def store(self, tmp_path):
-        from seosoyoung.memory.store import MemoryStore
+        from seosoyoung.slackbot.memory.store import MemoryStore
         return MemoryStore(base_dir=tmp_path)
 
     @pytest.fixture
@@ -191,8 +191,8 @@ class TestPipelineReflectorIntegration:
         self, store, mock_observer, mock_reflector
     ):
         """관찰 토큰이 임계치 초과 시 Reflector 호출"""
-        from seosoyoung.memory.observation_pipeline import observe_conversation
-        from seosoyoung.memory.observer import ObserverResult
+        from seosoyoung.slackbot.memory.observation_pipeline import observe_conversation
+        from seosoyoung.slackbot.memory.observer import ObserverResult
 
         # 긴 관찰 결과
         long_observations = [
@@ -232,8 +232,8 @@ class TestPipelineReflectorIntegration:
         self, store, mock_observer, mock_reflector
     ):
         """관찰 토큰이 임계치 이하면 Reflector 미호출"""
-        from seosoyoung.memory.observation_pipeline import observe_conversation
-        from seosoyoung.memory.observer import ObserverResult
+        from seosoyoung.slackbot.memory.observation_pipeline import observe_conversation
+        from seosoyoung.slackbot.memory.observer import ObserverResult
 
         mock_observer.observe.return_value = ObserverResult(
             observations=_make_obs_items([("🔴", "짧은 관찰")]),
@@ -257,8 +257,8 @@ class TestPipelineReflectorIntegration:
         self, store, mock_observer
     ):
         """Reflector 미전달 시 압축 건너뜀"""
-        from seosoyoung.memory.observation_pipeline import observe_conversation
-        from seosoyoung.memory.observer import ObserverResult
+        from seosoyoung.slackbot.memory.observation_pipeline import observe_conversation
+        from seosoyoung.slackbot.memory.observer import ObserverResult
 
         long_obs = [
             {"id": f"obs_20260210_{i:03d}", "priority": "🟢",
@@ -287,8 +287,8 @@ class TestPipelineReflectorIntegration:
         self, store, mock_observer, mock_reflector
     ):
         """Reflector 실패 시 원본 관찰 유지"""
-        from seosoyoung.memory.observation_pipeline import observe_conversation
-        from seosoyoung.memory.observer import ObserverResult
+        from seosoyoung.slackbot.memory.observation_pipeline import observe_conversation
+        from seosoyoung.slackbot.memory.observer import ObserverResult
 
         long_obs = [
             {"id": f"obs_20260210_{i:03d}", "priority": "🟢",

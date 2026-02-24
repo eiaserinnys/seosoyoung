@@ -8,9 +8,9 @@ import asyncio
 import logging
 import threading
 
-from seosoyoung.memory.channel_intervention import InterventionHistory
-from seosoyoung.memory.channel_observer import ChannelObserver, DigestCompressor
-from seosoyoung.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.channel_intervention import InterventionHistory
+from seosoyoung.slackbot.memory.channel_observer import ChannelObserver, DigestCompressor
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +118,9 @@ class ChannelDigestScheduler:
 
     def _run_pipeline(self, channel_id: str) -> None:
         """소화/판단 파이프라인을 실행합니다."""
-        from seosoyoung.memory.channel_pipeline import run_channel_pipeline
-        from seosoyoung.claude import get_claude_runner
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
+        from seosoyoung.slackbot.claude import get_claude_runner
+        from seosoyoung.slackbot.config import Config
 
         runner = get_claude_runner()
 

@@ -8,13 +8,13 @@ import threading
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
-from seosoyoung.claude.executor import (
+from seosoyoung.slackbot.claude.executor import (
     ClaudeExecutor,
     ExecutionContext,
     PendingPrompt,
     _is_remote_mode,
 )
-from seosoyoung.claude.session import Session, SessionManager
+from seosoyoung.slackbot.claude.session import Session, SessionManager
 
 
 # === _is_remote_mode 테스트 ===
@@ -24,19 +24,19 @@ class TestIsRemoteMode:
 
     def test_default_is_local(self):
         """기본값은 local"""
-        with patch("seosoyoung.claude.executor.Config") as mock_config:
+        with patch("seosoyoung.slackbot.claude.executor.Config") as mock_config:
             mock_config.claude.execution_mode = "local"
             assert _is_remote_mode() is False
 
     def test_remote_mode(self):
         """CLAUDE_EXECUTION_MODE=remote"""
-        with patch("seosoyoung.claude.executor.Config") as mock_config:
+        with patch("seosoyoung.slackbot.claude.executor.Config") as mock_config:
             mock_config.claude.execution_mode = "remote"
             assert _is_remote_mode() is True
 
     def test_invalid_value_is_not_remote(self):
         """잘못된 값은 remote가 아님"""
-        with patch("seosoyoung.claude.executor.Config") as mock_config:
+        with patch("seosoyoung.slackbot.claude.executor.Config") as mock_config:
             mock_config.claude.execution_mode = "unknown"
             assert _is_remote_mode() is False
 
@@ -92,8 +92,8 @@ class TestExecutorRemoteBranch:
         """local 모드에서 ClaudeRunner가 생성되는지 확인"""
         ctx = _make_ctx(session, initial_msg_ts="1234.0002")
 
-        with patch("seosoyoung.claude.executor._is_remote_mode", return_value=False), \
-             patch("seosoyoung.claude.executor.ClaudeRunner") as MockRunnerClass:
+        with patch("seosoyoung.slackbot.claude.executor._is_remote_mode", return_value=False), \
+             patch("seosoyoung.slackbot.claude.executor.ClaudeRunner") as MockRunnerClass:
 
             mock_runner = MagicMock()
             mock_result = MagicMock()
@@ -118,7 +118,7 @@ class TestExecutorRemoteBranch:
         """remote 모드에서 _execute_remote가 호출되는지 확인"""
         ctx = _make_ctx(session, initial_msg_ts="1234.0002")
 
-        with patch("seosoyoung.claude.executor._is_remote_mode", return_value=True), \
+        with patch("seosoyoung.slackbot.claude.executor._is_remote_mode", return_value=True), \
              patch.object(executor, "_execute_remote") as mock_execute_remote:
 
             executor._execute_once(ctx, "hello")
@@ -145,7 +145,7 @@ class TestGetServiceAdapter:
 
     def test_lazy_init(self, executor):
         """첫 호출 시 adapter가 생성되고 이후 재사용"""
-        with patch("seosoyoung.claude.executor.Config") as mock_config:
+        with patch("seosoyoung.slackbot.claude.executor.Config") as mock_config:
             mock_config.claude.soul_url = "http://localhost:3105"
             mock_config.claude.soul_token = "test-token"
             mock_config.claude.soul_client_id = "test_bot"
@@ -190,8 +190,8 @@ class TestInterventionDualPath:
 
         ctx = _make_ctx(session)
 
-        with patch("seosoyoung.claude.executor._is_remote_mode", return_value=False), \
-             patch("seosoyoung.claude.agent_runner.get_runner", return_value=mock_runner):
+        with patch("seosoyoung.slackbot.claude.executor._is_remote_mode", return_value=False), \
+             patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=mock_runner):
             executor._handle_intervention(ctx, "new prompt")
 
         mock_runner.interrupt.assert_called_once()
@@ -204,7 +204,7 @@ class TestInterventionDualPath:
 
         ctx = _make_ctx(session)
 
-        with patch("seosoyoung.claude.executor._is_remote_mode", return_value=True), \
+        with patch("seosoyoung.slackbot.claude.executor._is_remote_mode", return_value=True), \
              patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
 
             mock_run.return_value = True
@@ -217,7 +217,7 @@ class TestInterventionDualPath:
         """인터벤션 시 pending에 프롬프트가 저장되는지 확인"""
         ctx = _make_ctx(session)
 
-        with patch("seosoyoung.claude.executor._is_remote_mode", return_value=False):
+        with patch("seosoyoung.slackbot.claude.executor._is_remote_mode", return_value=False):
             executor._handle_intervention(ctx, "new prompt")
 
         assert "1234.5678" in executor._pending_prompts
@@ -231,14 +231,14 @@ class TestConfigEnvVars:
         """기본 실행 모드는 local"""
         with patch.dict("os.environ", {}, clear=True):
             # Config는 모듈 로드 시 평가되므로 직접 확인
-            from seosoyoung.config import Config
+            from seosoyoung.slackbot.config import Config
             # 환경변수가 없을 때 기본값 확인
             assert Config.claude.execution_mode in ("local", "remote")
 
     def test_soul_url_default(self):
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
         assert "localhost" in Config.claude.soul_url or Config.claude.soul_url != ""
 
     def test_soul_client_id_default(self):
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
         assert Config.claude.soul_client_id == "seosoyoung_bot"

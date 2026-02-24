@@ -56,6 +56,6 @@ Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
 - `seosoyoung.rescue.config.RescueConfig`
+- `seosoyoung.slackbot.config.Config`
 - `seosoyoung.utils.async_bridge.run_in_new_loop`

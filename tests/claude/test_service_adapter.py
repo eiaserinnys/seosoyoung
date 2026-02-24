@@ -6,9 +6,9 @@ SoulServiceClient를 mock하여 adapter의 ClaudeResult 변환을 검증합니�
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from seosoyoung.claude.agent_runner import ClaudeResult
-from seosoyoung.claude.service_adapter import ClaudeServiceAdapter
-from seosoyoung.claude.service_client import (
+from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+from seosoyoung.slackbot.claude.service_adapter import ClaudeServiceAdapter
+from seosoyoung.slackbot.claude.service_client import (
     SoulServiceClient,
     SoulServiceError,
     TaskConflictError,
@@ -204,7 +204,7 @@ class TestIntervene:
 
     @pytest.mark.asyncio
     async def test_intervene_not_found(self, adapter, mock_client):
-        from seosoyoung.claude.service_client import TaskNotFoundError
+        from seosoyoung.slackbot.claude.service_client import TaskNotFoundError
         mock_client.intervene.side_effect = TaskNotFoundError("not found")
 
         result = await adapter.intervene("thread-1", "hello", "user1")

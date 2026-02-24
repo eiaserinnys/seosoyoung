@@ -13,7 +13,7 @@ import math
 from datetime import datetime, timezone
 from typing import Callable, Optional, TYPE_CHECKING
 
-from seosoyoung.memory.channel_intervention import (
+from seosoyoung.slackbot.memory.channel_intervention import (
     InterventionAction,
     InterventionHistory,
     execute_interventions,
@@ -22,22 +22,22 @@ from seosoyoung.memory.channel_intervention import (
     send_intervention_probability_debug_log,
     send_multi_judge_debug_log,
 )
-from seosoyoung.memory.channel_observer import (
+from seosoyoung.slackbot.memory.channel_observer import (
     ChannelObserver,
     ChannelObserverResult,
     DigestCompressor,
     JudgeItem,
     JudgeResult,
 )
-from seosoyoung.memory.channel_prompts import (
+from seosoyoung.slackbot.memory.channel_prompts import (
     build_channel_intervene_user_prompt,
     get_channel_intervene_system_prompt,
 )
-from seosoyoung.memory.channel_store import ChannelStore
-from seosoyoung.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.token_counter import TokenCounter
 
 if TYPE_CHECKING:
-    from seosoyoung.claude.agent_runner import ClaudeAgentRunner
+    from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner
 
 logger = logging.getLogger(__name__)
 

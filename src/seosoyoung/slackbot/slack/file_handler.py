@@ -11,7 +11,7 @@ from typing import TypedDict
 
 import httpx
 
-from seosoyoung.config import Config
+from seosoyoung.slackbot.config import Config
 
 logger = logging.getLogger(__name__)
 

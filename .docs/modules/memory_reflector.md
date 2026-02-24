@@ -36,7 +36,7 @@ OpenAI API를 사용하여 관찰 로그를 요약하고, JSON 형식으로 결�
 
 ## 내부 의존성
 
-- `seosoyoung.memory.prompts.build_reflector_retry_prompt`
-- `seosoyoung.memory.prompts.build_reflector_system_prompt`
-- `seosoyoung.memory.store.generate_obs_id`
-- `seosoyoung.memory.token_counter.TokenCounter`
+- `seosoyoung.slackbot.memory.prompts.build_reflector_retry_prompt`
+- `seosoyoung.slackbot.memory.prompts.build_reflector_system_prompt`
+- `seosoyoung.slackbot.memory.store.generate_obs_id`
+- `seosoyoung.slackbot.memory.token_counter.TokenCounter`

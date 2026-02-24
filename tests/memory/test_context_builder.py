@@ -5,14 +5,14 @@ from datetime import datetime, timezone
 
 import pytest
 
-from seosoyoung.memory.channel_store import ChannelStore
-from seosoyoung.memory.context_builder import (
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.context_builder import (
     ContextBuilder,
     InjectionResult,
     add_relative_time,
     optimize_for_context,
 )
-from seosoyoung.memory.store import MemoryRecord, MemoryStore
+from seosoyoung.slackbot.memory.store import MemoryRecord, MemoryStore
 
 
 def _make_obs_items(items_data, session_date="2026-02-10"):

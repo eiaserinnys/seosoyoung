@@ -1,18 +1,18 @@
 """번역 기능 CLI 테스트
 
 사용법:
-    python -m seosoyoung.translator "번역할 텍스트"
-    python -m seosoyoung.translator -f en "Translate this to Korean"
-    python -m seosoyoung.translator --detect "자동 감지 테스트"
+    python -m seosoyoung.slackbot.translator "번역할 텍스트"
+    python -m seosoyoung.slackbot.translator -f en "Translate this to Korean"
+    python -m seosoyoung.slackbot.translator --detect "자동 감지 테스트"
 """
 
 import argparse
 import json
 import sys
 
-from seosoyoung.translator.detector import detect_language, Language
-from seosoyoung.translator.translator import translate
-from seosoyoung.translator.glossary import find_relevant_terms_v2
+from seosoyoung.slackbot.translator.detector import detect_language, Language
+from seosoyoung.slackbot.translator.translator import translate
+from seosoyoung.slackbot.translator.glossary import find_relevant_terms_v2
 
 
 def main():
@@ -21,10 +21,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
-  python -m seosoyoung.translator "펜릭스는 악마사냥꾼이다"
-  python -m seosoyoung.translator -f en "Fenrix is a demon hunter"
-  python -m seosoyoung.translator --detect "자동 감지"
-  python -m seosoyoung.translator --glossary "아리엘라와 펜릭스"
+  python -m seosoyoung.slackbot.translator "펜릭스는 악마사냥꾼이다"
+  python -m seosoyoung.slackbot.translator -f en "Fenrix is a demon hunter"
+  python -m seosoyoung.slackbot.translator --detect "자동 감지"
+  python -m seosoyoung.slackbot.translator --glossary "아리엘라와 펜릭스"
         """
     )
     parser.add_argument("text", nargs="?", help="번역할 텍스트")
