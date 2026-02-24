@@ -11,24 +11,24 @@ SeoSoyoung 슬랙 봇 메인
 ## 함수
 
 ### `_perform_restart(restart_type)`
-- 위치: 줄 47
+- 위치: 줄 48
 - 설명: 실제 재시작 수행
 
 모든 ClaudeSDKClient를 정리한 후 프로세스를 종료합니다.
 이로써 고아 프로세스(Claude Code CLI)가 남지 않습니다.
 
 ### `_check_restart_on_session_stop()`
-- 위치: 줄 71
+- 위치: 줄 72
 - 설명: 세션 종료 시 재시작 확인
 
 ### `_signal_handler(signum, frame)`
-- 위치: 줄 81
+- 위치: 줄 82
 - 설명: 시그널 수신 시 graceful shutdown 수행
 
 SIGTERM, SIGINT 수신 시 모든 클라이언트를 정리하고 프로세스를 종료합니다.
 
 ### `_init_channel_observer(slack_client, mention_tracker)`
-- 위치: 줄 116
+- 위치: 줄 117
 - 설명: 채널 관찰 시스템 초기화
 
 Returns:
@@ -36,31 +36,31 @@ Returns:
            비활성화 시 모두 None.
 
 ### `_build_dependencies()`
-- 위치: 줄 183
+- 위치: 줄 184
 - 설명: 핸들러 의존성 딕셔너리 빌드
 
 ### `notify_startup()`
-- 위치: 줄 209
+- 위치: 줄 210
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 220
+- 위치: 줄 221
 - 설명: 봇 종료 알림
 
 ### `start_trello_watcher()`
-- 위치: 줄 231
+- 위치: 줄 232
 - 설명: Trello 워처 시작
 
 ### `start_list_runner()`
-- 위치: 줄 251
+- 위치: 줄 252
 - 설명: 리스트 러너 초기화
 
 ### `init_bot_user_id()`
-- 위치: 줄 261
+- 위치: 줄 262
 - 설명: 봇 사용자 ID 초기화
 
 ### `main()`
-- 위치: 줄 271
+- 위치: 줄 272
 - 설명: 봇 메인 진입점
 
 ## 내부 의존성

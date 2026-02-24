@@ -79,4 +79,4 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.slackbot.trello.watcher.TrackedCard`
+- `seosoyoung.slackbot.claude.types.CardInfo`

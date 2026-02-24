@@ -11,6 +11,7 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.logging_config import setup_logging
 from seosoyoung.slackbot.auth import check_permission, get_user_role
+from pathlib import Path
 from seosoyoung.slackbot.claude.session import SessionManager, SessionRuntime
 from seosoyoung.slackbot.claude.executor import ClaudeExecutor
 from seosoyoung.slackbot.claude.agent_runner import shutdown_all_sync
@@ -34,7 +35,7 @@ logger = setup_logging()
 app = App(token=Config.slack.bot_token, logger=logger)
 
 # 세션 관리
-session_manager = SessionManager()
+session_manager = SessionManager(session_dir=Path(Config.get_session_path()))
 session_runtime = SessionRuntime()
 
 # Trello 워처 (나중에 초기화)

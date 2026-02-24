@@ -26,8 +26,10 @@ from seosoyoung.slackbot.claude.message_formatter import (
     format_trello_progress,
     format_dm_progress,
 )
+from seosoyoung.slackbot.claude.types import (
+    CardInfo, SlackClient, SayFunction, ProgressCallback, CompactCallback,
+)
 from seosoyoung.slackbot.slack.formatting import update_message
-from seosoyoung.slackbot.trello.watcher import TrackedCard
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +74,8 @@ class ExecutionContext:
     """
     session: Session
     channel: str
-    say: object
-    client: object
+    say: SayFunction
+    client: SlackClient
     msg_ts: str
     effective_role: str
     # Slack 메시지 ts 추적
@@ -81,7 +83,7 @@ class ExecutionContext:
     last_msg_ts: Optional[str] = None
     main_msg_ts: Optional[str] = None  # 트렐로 모드 메인 메시지 ts
     # 트렐로 관련
-    trello_card: Optional[TrackedCard] = None
+    trello_card: Optional[CardInfo] = None
     is_trello_mode: bool = False
     # 스레드 관련
     is_existing_thread: bool = False
@@ -94,8 +96,8 @@ class ExecutionContext:
     # 사용자 메시지
     user_message: Optional[str] = None
     # 콜백 (실행 중 설정)
-    on_progress: Optional[Callable] = field(default=None, repr=False)
-    on_compact: Optional[Callable] = field(default=None, repr=False)
+    on_progress: Optional[ProgressCallback] = field(default=None, repr=False)
+    on_compact: Optional[CompactCallback] = field(default=None, repr=False)
 
     @property
     def original_thread_ts(self) -> str:
@@ -145,6 +147,7 @@ class ClaudeExecutor:
             get_running_session_count=get_running_session_count,
             send_restart_confirmation=send_restart_confirmation,
             trello_watcher_ref=trello_watcher_ref,
+            show_context_usage=Config.claude.show_context_usage,
         )
         # Remote 모드: ClaudeServiceAdapter (lazy 초기화)
         self._service_adapter: Optional[object] = None
@@ -161,7 +164,7 @@ class ClaudeExecutor:
         say,
         client,
         role: str = None,
-        trello_card: TrackedCard = None,
+        trello_card: CardInfo = None,
         is_existing_thread: bool = False,
         initial_msg_ts: str = None,
         dm_channel_id: str = None,
@@ -369,12 +372,17 @@ class ClaudeExecutor:
         else:
             # === Local 모드: thread_ts 단위 runner 생성 ===
             role_config = _get_role_config(ctx.effective_role)
+
+            def _debug_send(ch: str, ts: str, msg: str) -> None:
+                ctx.client.chat_postMessage(channel=ch, thread_ts=ts, text=msg)
+
             runner = ClaudeRunner(
                 thread_ts,
                 channel=ctx.channel,
                 allowed_tools=role_config["allowed_tools"],
                 disallowed_tools=role_config["disallowed_tools"],
                 mcp_config_path=role_config["mcp_config_path"],
+                debug_send_fn=_debug_send,
             )
             logger.info(f"Claude 실행 (local): thread={thread_ts}, role={ctx.effective_role}")
 

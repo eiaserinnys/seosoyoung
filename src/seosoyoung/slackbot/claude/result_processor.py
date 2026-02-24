@@ -6,7 +6,6 @@
 import logging
 from typing import Callable, Optional
 
-from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.claude.message_formatter import (
     build_context_usage_bar,
     build_trello_header,
@@ -31,12 +30,14 @@ class ResultProcessor:
         get_running_session_count: Callable,
         send_restart_confirmation: Callable,
         trello_watcher_ref: Optional[Callable] = None,
+        show_context_usage: bool = False,
     ):
         self.send_long_message = send_long_message
         self.restart_manager = restart_manager
         self.get_running_session_count = get_running_session_count
         self.send_restart_confirmation = send_restart_confirmation
         self.trello_watcher_ref = trello_watcher_ref
+        self.show_context_usage = show_context_usage
 
     def replace_thinking_message(
         self, client, channel: str, old_msg_ts: str,
@@ -80,7 +81,7 @@ class ResultProcessor:
             return
 
         usage_bar = None
-        if Config.claude.show_context_usage:
+        if self.show_context_usage:
             usage_bar = build_context_usage_bar(result.usage)
 
         is_list_run_from_marker = bool(ctx.effective_role == "admin" and result.list_run)

@@ -35,4 +35,6 @@
 
 ## 내부 의존성
 
-- `seosoyoung.slackbot.trello.watcher.TrackedCard`
+- `seosoyoung.slackbot.claude.types.CardInfo`
+- `seosoyoung.slackbot.claude.types.SayFunction`
+- `seosoyoung.slackbot.claude.types.SlackClient`

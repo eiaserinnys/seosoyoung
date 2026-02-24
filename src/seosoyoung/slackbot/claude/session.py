@@ -12,8 +12,6 @@ from typing import Optional, Callable
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
-from seosoyoung.slackbot.config import Config
-
 logger = logging.getLogger(__name__)
 
 
@@ -47,10 +45,11 @@ class SessionManager:
     세션 정보는 sessions/ 폴더에 JSON 파일로 저장됩니다.
     """
 
-    def __init__(self, session_dir: Optional[Path] = None):
-        self.session_dir = session_dir or Path(Config.get_session_path())
+    def __init__(self, session_dir: Path):
+        self.session_dir = session_dir
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, Session] = {}
+        self._cache_lock = threading.Lock()
 
     def _get_session_file(self, thread_ts: str) -> Path:
         """세션 파일 경로 반환"""
@@ -58,13 +57,11 @@ class SessionManager:
         safe_name = thread_ts.replace(".", "_")
         return self.session_dir / f"session_{safe_name}.json"
 
-    def get(self, thread_ts: str) -> Optional[Session]:
-        """스레드 ID로 세션 조회"""
-        # 캐시 확인
+    def _get_unlocked(self, thread_ts: str) -> Optional[Session]:
+        """캐시에서 세션 조회 (내부 전용, 호출자가 _cache_lock 보유 필수)"""
         if thread_ts in self._cache:
             return self._cache[thread_ts]
 
-        # 파일에서 로드
         file_path = self._get_session_file(thread_ts)
         if file_path.exists():
             try:
@@ -76,6 +73,11 @@ class SessionManager:
                 logger.error(f"세션 로드 실패: {file_path}, {e}")
 
         return None
+
+    def get(self, thread_ts: str) -> Optional[Session]:
+        """스레드 ID로 세션 조회"""
+        with self._cache_lock:
+            return self._get_unlocked(thread_ts)
 
     def create(
         self,
@@ -97,20 +99,22 @@ class SessionManager:
             source_type=source_type,
             last_seen_ts=last_seen_ts,
         )
-        self._save(session)
-        self._cache[thread_ts] = session
+        with self._cache_lock:
+            self._save(session)
+            self._cache[thread_ts] = session
         logger.info(f"세션 생성: thread_ts={thread_ts}, user={username}, role={role}")
         return session
 
     def update_session_id(self, thread_ts: str, session_id: str) -> Optional[Session]:
         """Claude Code 세션 ID 업데이트"""
-        session = self.get(thread_ts)
-        if session:
-            session.session_id = session_id
-            session.updated_at = datetime.now().isoformat()
-            self._save(session)
-            logger.info(f"세션 ID 업데이트: thread_ts={thread_ts}, session_id={session_id}")
-        return session
+        with self._cache_lock:
+            session = self._get_unlocked(thread_ts)
+            if session:
+                session.session_id = session_id
+                session.updated_at = datetime.now().isoformat()
+                self._save(session)
+                logger.info(f"세션 ID 업데이트: thread_ts={thread_ts}, session_id={session_id}")
+            return session
 
     def update_thread_ts(self, old_thread_ts: str, new_thread_ts: str) -> Optional[Session]:
         """세션의 thread_ts 변경 (멘션 응답 시 사용)
@@ -125,38 +129,40 @@ class SessionManager:
         Returns:
             업데이트된 Session 또는 None
         """
-        session = self.get(old_thread_ts)
-        if not session:
-            return None
+        with self._cache_lock:
+            session = self._get_unlocked(old_thread_ts)
+            if not session:
+                return None
 
-        # 기존 파일 삭제
-        old_file = self._get_session_file(old_thread_ts)
-        if old_file.exists():
-            old_file.unlink()
+            # 기존 파일 삭제
+            old_file = self._get_session_file(old_thread_ts)
+            if old_file.exists():
+                old_file.unlink()
 
-        # 캐시에서도 제거
-        self._cache.pop(old_thread_ts, None)
+            # 캐시에서도 제거
+            self._cache.pop(old_thread_ts, None)
 
-        # 새 thread_ts로 업데이트
-        session.thread_ts = new_thread_ts
-        session.updated_at = datetime.now().isoformat()
+            # 새 thread_ts로 업데이트
+            session.thread_ts = new_thread_ts
+            session.updated_at = datetime.now().isoformat()
 
-        # 새 파일로 저장 및 캐시
-        self._save(session)
-        self._cache[new_thread_ts] = session
+            # 새 파일로 저장 및 캐시
+            self._save(session)
+            self._cache[new_thread_ts] = session
 
         logger.info(f"세션 thread_ts 변경: {old_thread_ts} -> {new_thread_ts}")
         return session
 
     def update_last_seen_ts(self, thread_ts: str, last_seen_ts: str) -> Optional[Session]:
         """세션의 last_seen_ts 업데이트"""
-        session = self.get(thread_ts)
-        if session:
-            session.last_seen_ts = last_seen_ts
-            session.updated_at = datetime.now().isoformat()
-            self._save(session)
-            logger.debug(f"last_seen_ts 업데이트: thread_ts={thread_ts}, last_seen_ts={last_seen_ts}")
-        return session
+        with self._cache_lock:
+            session = self._get_unlocked(thread_ts)
+            if session:
+                session.last_seen_ts = last_seen_ts
+                session.updated_at = datetime.now().isoformat()
+                self._save(session)
+                logger.debug(f"last_seen_ts 업데이트: thread_ts={thread_ts}, last_seen_ts={last_seen_ts}")
+            return session
 
     def update_user(
         self,
@@ -166,28 +172,30 @@ class SessionManager:
         role: str = "",
     ) -> Optional[Session]:
         """세션의 사용자 정보 업데이트 (개입 세션 → 멘션 시 승격)"""
-        session = self.get(thread_ts)
-        if not session:
-            return None
-        if user_id:
-            session.user_id = user_id
-        if username:
-            session.username = username
-        if role:
-            session.role = role
-        session.updated_at = datetime.now().isoformat()
-        self._save(session)
+        with self._cache_lock:
+            session = self._get_unlocked(thread_ts)
+            if not session:
+                return None
+            if user_id:
+                session.user_id = user_id
+            if username:
+                session.username = username
+            if role:
+                session.role = role
+            session.updated_at = datetime.now().isoformat()
+            self._save(session)
         logger.info(f"세션 사용자 업데이트: thread_ts={thread_ts}, user={username}, role={role}")
         return session
 
     def increment_message_count(self, thread_ts: str) -> Optional[Session]:
         """메시지 카운트 증가"""
-        session = self.get(thread_ts)
-        if session:
-            session.message_count += 1
-            session.updated_at = datetime.now().isoformat()
-            self._save(session)
-        return session
+        with self._cache_lock:
+            session = self._get_unlocked(thread_ts)
+            if session:
+                session.message_count += 1
+                session.updated_at = datetime.now().isoformat()
+                self._save(session)
+            return session
 
     def _save(self, session: Session) -> None:
         """세션을 파일에 저장"""
@@ -202,7 +210,8 @@ class SessionManager:
 
     def exists(self, thread_ts: str) -> bool:
         """세션 존재 여부 확인"""
-        return self.get(thread_ts) is not None
+        with self._cache_lock:
+            return self._get_unlocked(thread_ts) is not None
 
     def list_active(self) -> list[Session]:
         """모든 활성 세션 목록"""
@@ -231,21 +240,22 @@ class SessionManager:
         cleaned = 0
         now = datetime.now()
 
-        for file_path in self.session_dir.glob("session_*.json"):
-            try:
-                data = json.loads(file_path.read_text(encoding="utf-8"))
-                created_at = datetime.fromisoformat(data.get("created_at", ""))
-                age_hours = (now - created_at).total_seconds() / 3600
+        with self._cache_lock:
+            for file_path in self.session_dir.glob("session_*.json"):
+                try:
+                    data = json.loads(file_path.read_text(encoding="utf-8"))
+                    created_at = datetime.fromisoformat(data.get("created_at", ""))
+                    age_hours = (now - created_at).total_seconds() / 3600
 
-                if age_hours >= threshold_hours:
-                    thread_ts = data.get("thread_ts")
-                    file_path.unlink()
-                    if thread_ts and thread_ts in self._cache:
-                        del self._cache[thread_ts]
-                    cleaned += 1
-                    logger.info(f"세션 정리: thread_ts={thread_ts}, age={age_hours:.1f}h")
-            except Exception as e:
-                logger.error(f"세션 정리 실패: {file_path}, {e}")
+                    if age_hours >= threshold_hours:
+                        thread_ts = data.get("thread_ts")
+                        file_path.unlink()
+                        if thread_ts and thread_ts in self._cache:
+                            del self._cache[thread_ts]
+                        cleaned += 1
+                        logger.info(f"세션 정리: thread_ts={thread_ts}, age={age_hours:.1f}h")
+                except Exception as e:
+                    logger.error(f"세션 정리 실패: {file_path}, {e}")
 
         return cleaned
 

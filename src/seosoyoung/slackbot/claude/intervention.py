@@ -10,7 +10,7 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-from seosoyoung.slackbot.trello.watcher import TrackedCard
+from seosoyoung.slackbot.claude.types import CardInfo, SlackClient, SayFunction
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +21,10 @@ class PendingPrompt:
     prompt: str
     msg_ts: str
     channel: str
-    say: object
-    client: object
+    say: SayFunction
+    client: SlackClient
     role: Optional[str] = None
-    trello_card: Optional[TrackedCard] = None
+    trello_card: Optional[CardInfo] = None
     is_existing_thread: bool = False
     initial_msg_ts: Optional[str] = None
     dm_channel_id: Optional[str] = None

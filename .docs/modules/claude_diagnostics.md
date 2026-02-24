@@ -48,9 +48,11 @@ Returns:
     "⚠️ 주간 사용량 중 51%를 넘었습니다" 형태의 안내문
 
 ### `send_debug_to_slack(channel, thread_ts, message)`
-- 위치: 줄 151
+- 위치: 줄 155
 - 설명: 슬랙에 디버그 메시지 전송 (별도 메시지로)
 
-### `_get_slack_client()`
-- 위치: 줄 169
-- 설명: 슬랙 클라이언트 가져오기 (lazy init)
+Args:
+    channel: 슬랙 채널 ID
+    thread_ts: 스레드 타임스탬프
+    message: 전송할 메시지
+    send_fn: 외부에서 주입된 전송 콜백. None이면 전송하지 않음.

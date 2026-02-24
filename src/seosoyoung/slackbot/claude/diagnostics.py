@@ -7,7 +7,7 @@ ProcessError 분류, 세션 덤프 생성, stderr 캡처 등을 담당합니다.
 import logging
 from collections import deque
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from claude_code_sdk._errors import ProcessError
 
@@ -148,30 +148,28 @@ def format_rate_limit_warning(rate_limit_info: dict) -> str:
     return f"⚠️ {type_ko} 사용량 중 {pct}%를 넘었습니다"
 
 
-def send_debug_to_slack(channel: str, thread_ts: str, message: str) -> None:
-    """슬랙에 디버그 메시지 전송 (별도 메시지로)"""
+# 디버그 메시지 전송 콜백 타입: (channel, thread_ts, message) -> None
+DebugSendFn = Callable[[str, str, str], None]
+
+
+def send_debug_to_slack(
+    channel: str,
+    thread_ts: str,
+    message: str,
+    *,
+    send_fn: Optional[DebugSendFn] = None,
+) -> None:
+    """슬랙에 디버그 메시지 전송 (별도 메시지로)
+
+    Args:
+        channel: 슬랙 채널 ID
+        thread_ts: 스레드 타임스탬프
+        message: 전송할 메시지
+        send_fn: 외부에서 주입된 전송 콜백. None이면 전송하지 않음.
+    """
+    if not send_fn or not channel or not thread_ts:
+        return
     try:
-        client = _get_slack_client()
-        if client and channel and thread_ts:
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=message,
-            )
+        send_fn(channel, thread_ts, message)
     except Exception as e:
         logger.warning(f"디버그 메시지 슬랙 전송 실패: {e}")
-
-
-# 디버그 메시지용 슬랙 클라이언트 (lazy init)
-_slack_client = None
-
-
-def _get_slack_client():
-    """슬랙 클라이언트 가져오기 (lazy init)"""
-    global _slack_client
-    if _slack_client is None:
-        from seosoyoung.slackbot.config import Config
-        if Config.slack.bot_token:
-            from slack_sdk import WebClient
-            _slack_client = WebClient(token=Config.slack.bot_token)
-    return _slack_client

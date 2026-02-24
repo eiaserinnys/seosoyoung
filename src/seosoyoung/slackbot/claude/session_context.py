@@ -5,9 +5,17 @@
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class ChannelStoreProtocol(Protocol):
+    """ChannelStore가 구현해야 하는 인터페이스"""
+
+    def load_judged(self, channel_id: str) -> list[dict]: ...
+    def load_pending(self, channel_id: str) -> list[dict]: ...
 
 MAX_INITIAL_MESSAGES = 7
 
@@ -16,7 +24,7 @@ def build_initial_context(
     channel_id: str,
     slack_messages: list[dict],
     monitored_channels: list[str],
-    channel_store: Optional[object],
+    channel_store: Optional[ChannelStoreProtocol],
 ) -> dict:
     """세션 최초 생성 시 채널 컨텍스트를 구성합니다.
 
@@ -67,7 +75,7 @@ MAX_FOLLOWUP_MESSAGES = 10
 def build_followup_context(
     channel_id: str,
     last_seen_ts: str,
-    channel_store: Optional[object],
+    channel_store: Optional[ChannelStoreProtocol],
     monitored_channels: list[str],
 ) -> dict:
     """후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
