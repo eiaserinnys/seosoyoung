@@ -52,11 +52,11 @@ executor 내부 메서드들이 공유하는 상태를 하나의 객체로 캡�
 - `_handle_interrupted(self, ctx)` (줄 573): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
 - `_handle_success(self, ctx, result)` (줄 614): 성공 결과 처리
 - `_handle_trello_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 652): 트렐로 모드 성공 처리
-- `_handle_normal_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 707): 일반 모드(멘션) 성공 처리
-- `_handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 787): 재기동 마커 처리
-- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 810): LIST_RUN 마커 처리 - 정주행 시작
-- `_handle_error(self, ctx, error)` (줄 879): 오류 결과 처리
-- `_handle_exception(self, ctx, e)` (줄 923): 예외 처리
+- `_handle_normal_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 709): 일반 모드(멘션) 성공 처리
+- `_handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 790): 재기동 마커 처리
+- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 813): LIST_RUN 마커 처리 - 정주행 시작
+- `_handle_error(self, ctx, error)` (줄 882): 오류 결과 처리
+- `_handle_exception(self, ctx, e)` (줄 921): 예외 처리
 
 ## 함수
 
