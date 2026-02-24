@@ -250,7 +250,7 @@
 - `remove_runner()` (seosoyoung/claude/agent_runner.py:260): 레지스트리에서 러너 제거
 - `async shutdown_all()` (seosoyoung/claude/agent_runner.py:266): 모든 등록된 러너의 클라이언트를 종료
 - `shutdown_all_sync()` (seosoyoung/claude/agent_runner.py:301): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/claude/agent_runner.py:1318): 
+- `async main()` (seosoyoung/claude/agent_runner.py:1323): 
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:14): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:49): 텍스트 내 모든 백틱을 이스케이프
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:68): 트렐로 카드용 슬랙 메시지 헤더 생성

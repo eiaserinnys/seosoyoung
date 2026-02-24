@@ -1136,6 +1136,10 @@ class ClaudeRunner:
                                 logger.warning(f"컴팩션 콜백 오류: {e}")
                         compact_notified_count = len(compact_events)
 
+                # PreCompact 훅 콜백은 SDK 내부에서 start_soon()으로 스케줄되므로
+                # 이벤트 루프에 제어를 양보해야 콜백이 실행되어 compact_events가 갱신됨
+                await asyncio.sleep(0)
+
                 # 내부 루프 종료 후: compact가 발생했는지 확인
                 if len(compact_events) > compact_before and compact_retry_count < MAX_COMPACT_RETRIES:
                     # compact 발생 → compact 알림 발송 (아직 안 한 경우)
@@ -1154,6 +1158,7 @@ class ClaudeRunner:
                         f"session_id={result_session_id})"
                     )
                     # compact 전 결과를 초기화하고 재수신
+                    current_text = ""
                     result_text = ""
                     result_is_error = False
                     continue  # 외부 루프 계속 → receive_response() 재호출

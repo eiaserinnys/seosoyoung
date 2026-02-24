@@ -36,7 +36,7 @@ thread_ts 단위 인스턴스: 각 인스턴스가 자신의 client/pid/executio
 - `async run(self, prompt, session_id, on_progress, on_compact, user_id, user_message)` (줄 825): Claude Code 실행
 - `_trigger_observation(self, thread_ts, user_id, prompt, collected_messages, anchor_ts)` (줄 855): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
 - `async _execute(self, prompt, session_id, on_progress, on_compact, user_id)` (줄 948): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 1284): 세션 컴팩트 처리
+- `async compact_session(self, session_id)` (줄 1289): 세션 컴팩트 처리
 
 ## 함수
 
@@ -112,4 +112,4 @@ Returns:
     종료된 클라이언트 수
 
 ### `async main()`
-- 위치: 줄 1318
+- 위치: 줄 1323
