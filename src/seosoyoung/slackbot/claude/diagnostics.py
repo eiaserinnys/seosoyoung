@@ -126,6 +126,28 @@ def classify_process_error(e: ProcessError) -> str:
     return f"Claude Code 실행 중 오류가 발생했습니다 (exit code: {e.exit_code})"
 
 
+_RATE_LIMIT_TYPE_KO = {
+    "seven_day": "주간",
+    "five_hour": "5시간",
+}
+
+
+def format_rate_limit_warning(rate_limit_info: dict) -> str:
+    """allowed_warning용 사람이 읽을 수 있는 안내문 생성.
+
+    Args:
+        rate_limit_info: rate_limit_event의 rate_limit_info 딕셔너리
+
+    Returns:
+        "⚠️ 주간 사용량 중 51%를 넘었습니다" 형태의 안내문
+    """
+    raw_type = rate_limit_info.get("rateLimitType", "")
+    type_ko = _RATE_LIMIT_TYPE_KO.get(raw_type, raw_type)
+    utilization = rate_limit_info.get("utilization", 0)
+    pct = int(utilization * 100)
+    return f"⚠️ {type_ko} 사용량 중 {pct}%를 넘었습니다"
+
+
 def send_debug_to_slack(channel: str, thread_ts: str, message: str) -> None:
     """슬랙에 디버그 메시지 전송 (별도 메시지로)"""
     try:

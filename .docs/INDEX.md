@@ -123,8 +123,8 @@
 - `RescueRunner` (seosoyoung/rescue/runner.py:92): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
-- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:50): Claude Code 실행 결과
-- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:147): Claude Code SDK 기반 실행기
+- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:51): Claude Code 실행 결과
+- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:148): Claude Code SDK 기반 실행기
 - `ExecutionContext` (seosoyoung/slackbot/claude/executor.py:68): 실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
 - `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:106): Claude Code 실행기
 - `PendingPrompt` (seosoyoung/slackbot/claude/intervention.py:19): 인터벤션 대기 중인 프롬프트 정보
@@ -305,20 +305,21 @@
 - `main()` (seosoyoung/rescue/main.py:616): rescue-bot 진입점
 - `build_context_usage_bar()` (seosoyoung/rescue/message_formatter.py:12): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/rescue/message_formatter.py:41): 텍스트 내 모든 백틱을 이스케이프
-- `get_runner()` (seosoyoung/rescue/runner.py:462): 모듈 레벨 RescueRunner 인스턴스를 반환
+- `get_runner()` (seosoyoung/rescue/runner.py:472): 모듈 레벨 RescueRunner 인스턴스를 반환
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/slackbot/claude/__init__.py:18): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:72): 레지스트리에서 러너 조회
-- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:78): 레지스트리에 러너 등록
-- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:84): 레지스트리에서 러너 제거
-- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:90): 모든 등록된 러너의 클라이언트를 종료
-- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:125): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:760): 
+- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:73): 레지스트리에서 러너 조회
+- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:79): 레지스트리에 러너 등록
+- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:85): 레지스트리에서 러너 제거
+- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:91): 모든 등록된 러너의 클라이언트를 종료
+- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:126): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:768): 
 - `read_stderr_tail()` (seosoyoung/slackbot/claude/diagnostics.py:17): 세션별 cli_stderr 로그의 마지막 N줄 읽기
 - `build_session_dump()` (seosoyoung/slackbot/claude/diagnostics.py:50): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/slackbot/claude/diagnostics.py:95): ProcessError를 사용자 친화적 메시지로 변환.
-- `send_debug_to_slack()` (seosoyoung/slackbot/claude/diagnostics.py:129): 슬랙에 디버그 메시지 전송 (별도 메시지로)
+- `format_rate_limit_warning()` (seosoyoung/slackbot/claude/diagnostics.py:135): allowed_warning용 사람이 읽을 수 있는 안내문 생성.
+- `send_debug_to_slack()` (seosoyoung/slackbot/claude/diagnostics.py:151): 슬랙에 디버그 메시지 전송 (별도 메시지로)
 - `build_context_usage_bar()` (seosoyoung/slackbot/claude/message_formatter.py:21): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/slackbot/claude/message_formatter.py:56): 텍스트 내 모든 백틱을 이스케이프
 - `build_trello_header()` (seosoyoung/slackbot/claude/message_formatter.py:75): 트렐로 카드용 슬랙 메시지 헤더 생성

@@ -26,6 +26,7 @@ from claude_code_sdk.types import (
 from seosoyoung.slackbot.claude.diagnostics import (
     build_session_dump,
     classify_process_error,
+    format_rate_limit_warning,
     send_debug_to_slack,
 )
 from seosoyoung.slackbot.memory.injector import (
@@ -495,6 +496,13 @@ class ClaudeRunner:
                             status = rate_limit_info.get("status", "")
 
                             if status == "allowed":
+                                continue
+
+                            if status == "allowed_warning":
+                                warning_msg = format_rate_limit_warning(rate_limit_info)
+                                logger.info(f"rate_limit allowed_warning: {warning_msg}")
+                                if channel and thread_ts:
+                                    send_debug_to_slack(channel, thread_ts, warning_msg)
                                 continue
 
                             if channel and thread_ts:

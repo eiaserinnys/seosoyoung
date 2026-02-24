@@ -587,6 +587,78 @@ class TestRateLimitEventHandling:
         assert "오류가 발생했습니다" in result.error
         assert "Unknown message type" not in result.error
 
+    async def test_allowed_warning_continues_processing(self):
+        """allowed_warning status는 break하지 않고 continue"""
+        runner = ClaudeAgentRunner()
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        call_count = 0
+
+        class WarningThenText:
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise MessageParseError(
+                        "Unknown message type: rate_limit_event",
+                        {
+                            "type": "rate_limit_event",
+                            "rate_limit_info": {
+                                "status": "allowed_warning",
+                                "rateLimitType": "seven_day",
+                                "utilization": 0.51,
+                            },
+                        },
+                    )
+                raise StopAsyncIteration
+
+        mock_client.receive_response = MagicMock(return_value=WarningThenText())
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            result = await runner.run("테스트")
+
+        # allowed_warning은 break하지 않으므로 정상 종료
+        assert result.success is True
+        # 2번 호출: 1번째 allowed_warning → continue, 2번째 StopAsyncIteration → break
+        assert call_count == 2
+
+
+class TestFormatRateLimitWarning:
+    """format_rate_limit_warning 헬퍼 함수 테스트"""
+
+    def test_seven_day(self):
+        from seosoyoung.slackbot.claude.diagnostics import format_rate_limit_warning
+        msg = format_rate_limit_warning({
+            "rateLimitType": "seven_day",
+            "utilization": 0.51,
+        })
+        assert "주간" in msg
+        assert "51%" in msg
+
+    def test_five_hour(self):
+        from seosoyoung.slackbot.claude.diagnostics import format_rate_limit_warning
+        msg = format_rate_limit_warning({
+            "rateLimitType": "five_hour",
+            "utilization": 0.90,
+        })
+        assert "5시간" in msg
+        assert "90%" in msg
+
+    def test_unknown_type_uses_raw(self):
+        from seosoyoung.slackbot.claude.diagnostics import format_rate_limit_warning
+        msg = format_rate_limit_warning({
+            "rateLimitType": "daily",
+            "utilization": 0.75,
+        })
+        assert "daily" in msg
+        assert "75%" in msg
+
 
 class TestBuildOptionsChannelObservation:
     """_build_options에서 채널 관찰 컨텍스트 주입 테스트"""

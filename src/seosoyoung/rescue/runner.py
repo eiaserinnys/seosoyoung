@@ -347,7 +347,17 @@ class RescueRunner:
                     break
                 except MessageParseError as e:
                     if e.data and e.data.get("type") == "rate_limit_event":
-                        logger.warning(f"rate_limit_event 수신, graceful 종료")
+                        rate_limit_info = e.data.get("rate_limit_info", {})
+                        status = rate_limit_info.get("status", "")
+                        if status in ("allowed", "allowed_warning"):
+                            if status == "allowed_warning":
+                                logger.info(
+                                    f"rate_limit allowed_warning: "
+                                    f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
+                                    f"utilization={rate_limit_info.get('utilization')}"
+                                )
+                            continue
+                        logger.warning(f"rate_limit_event 수신 (status={status}), graceful 종료")
                         break
                     raise
 

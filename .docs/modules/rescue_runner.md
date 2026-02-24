@@ -51,7 +51,7 @@ Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
 - 설명: ProcessError를 사용자 친화적 메시지로 변환.
 
 ### `get_runner()`
-- 위치: 줄 462
+- 위치: 줄 472
 - 설명: 모듈 레벨 RescueRunner 인스턴스를 반환
 
 ## 내부 의존성

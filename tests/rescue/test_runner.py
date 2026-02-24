@@ -1,7 +1,9 @@
 """Phase 1 테스트: runner.py (RescueRunner)"""
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
+
+from claude_code_sdk._errors import MessageParseError
 
 from seosoyoung.rescue.runner import (
     RescueRunner,
@@ -128,3 +130,80 @@ class TestClassifyProcessError:
         err = self._make_process_error(exit_code=1, stderr="unknown error")
         result = _classify_process_error(err)
         assert "비정상 종료" in result
+
+
+@pytest.mark.asyncio
+class TestRescueRateLimitEventHandling:
+    """RescueRunner rate_limit_event 스트림 처리 테스트"""
+
+    async def test_allowed_warning_continues(self):
+        """allowed_warning status는 break하지 않고 continue"""
+        runner = RescueRunner()
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        call_count = 0
+
+        class WarningThenStop:
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise MessageParseError(
+                        "Unknown message type: rate_limit_event",
+                        {
+                            "type": "rate_limit_event",
+                            "rate_limit_info": {
+                                "status": "allowed_warning",
+                                "rateLimitType": "seven_day",
+                                "utilization": 0.51,
+                            },
+                        },
+                    )
+                raise StopAsyncIteration
+
+        mock_client.receive_response = MagicMock(return_value=WarningThenStop())
+
+        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
+            result = await runner.run("테스트")
+
+        assert result.success is True
+        assert call_count == 2
+
+    async def test_blocked_status_breaks(self):
+        """blocked status는 break하여 종료"""
+        runner = RescueRunner()
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        class BlockedEvent:
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                raise MessageParseError(
+                    "Unknown message type: rate_limit_event",
+                    {
+                        "type": "rate_limit_event",
+                        "rate_limit_info": {
+                            "status": "blocked",
+                            "rateLimitType": "seven_day",
+                            "utilization": 1.0,
+                        },
+                    },
+                )
+
+        mock_client.receive_response = MagicMock(return_value=BlockedEvent())
+
+        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
+            result = await runner.run("테스트")
+
+        assert result.success is True
+        assert result.output == ""
