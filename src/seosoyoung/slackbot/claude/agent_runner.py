@@ -355,7 +355,7 @@ class ClaudeRunner:
 
         # CLI stderr를 세션별 파일에 캡처
         import sys as _sys
-        _runtime_dir = Path(__file__).resolve().parents[3]
+        _runtime_dir = Path(__file__).resolve().parents[4]
         _stderr_suffix = thread_ts.replace(".", "_") if thread_ts else "default"
         _stderr_log_path = _runtime_dir / "logs" / f"cli_stderr_{_stderr_suffix}.log"
         logger.info(f"[DEBUG] CLI stderr 로그 경로: {_stderr_log_path}")

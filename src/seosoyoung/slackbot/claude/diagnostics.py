@@ -25,7 +25,7 @@ def read_stderr_tail(n_lines: int = 30, *, thread_ts: Optional[str] = None) -> s
         thread_ts: 스레드 타임스탬프 (None이면 "default" 사용)
     """
     try:
-        runtime_dir = Path(__file__).resolve().parents[3]
+        runtime_dir = Path(__file__).resolve().parents[4]
         logs_dir = runtime_dir / "logs"
 
         # 세션별 파일 경로 결정

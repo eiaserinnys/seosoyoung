@@ -39,7 +39,7 @@ def _is_remote_mode() -> bool:
 
 def _get_mcp_config_path() -> Optional[Path]:
     """MCP 설정 파일 경로 반환 (없으면 None)"""
-    config_path = Path(__file__).resolve().parents[3] / "mcp_config.json"
+    config_path = Path(__file__).resolve().parents[4] / "mcp_config.json"
     return config_path if config_path.exists() else None
 
 
