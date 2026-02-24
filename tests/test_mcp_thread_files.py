@@ -248,11 +248,5 @@ class TestRoleToolsConsistency:
         from seosoyoung.config import Config
 
         tool_name = "mcp__seosoyoung-attach__slack_download_thread_files"
-        assert tool_name in Config.ROLE_TOOLS["admin"]
+        assert tool_name in Config.auth.role_tools["admin"]
 
-    def test_default_allowed_tools_includes_thread_files(self):
-        """DEFAULT_ALLOWED_TOOLS에 thread_files 도구가 포함됨"""
-        from seosoyoung.claude.agent_runner import DEFAULT_ALLOWED_TOOLS
-
-        tool_name = "mcp__seosoyoung-attach__slack_download_thread_files"
-        assert tool_name in DEFAULT_ALLOWED_TOOLS

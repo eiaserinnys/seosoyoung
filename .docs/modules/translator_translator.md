@@ -7,7 +7,7 @@
 번역 모듈
 
 Anthropic 또는 OpenAI API를 호출하여 번역합니다.
-backend 설정(Config.TRANSLATE_BACKEND)에 따라 분기합니다.
+backend 설정(Config.translate.backend)에 따라 분기합니다.
 
 ## 함수
 
@@ -80,7 +80,7 @@ Args:
     source_lang: 원본 언어
     context_messages: 이전 대화 컨텍스트
     model: 사용할 모델 (기본값: backend에 따라 Config에서 결정)
-    backend: 번역 백엔드 ("anthropic" | "openai", 기본값: Config.TRANSLATE_BACKEND)
+    backend: 번역 백엔드 ("anthropic" | "openai", 기본값: Config.translate.backend)
 
 Returns:
     (번역된 텍스트, 예상 비용 USD, 참고한 용어 목록, 매칭 결과 객체)

@@ -3,9 +3,9 @@
 import re
 import logging
 import threading
-import asyncio
 
 from seosoyoung.config import Config
+from seosoyoung.utils.async_bridge import run_in_new_loop
 from seosoyoung.handlers.translate import process_translate_message
 from seosoyoung.slack import download_files_sync, build_file_context
 from seosoyoung.claude import get_claude_runner
@@ -91,7 +91,7 @@ def process_thread_message(
             channel_id=channel,
             last_seen_ts=session.last_seen_ts,
             channel_store=channel_store,
-            monitored_channels=Config.CHANNEL_OBSERVER_CHANNELS,
+            monitored_channels=Config.channel_observer.channels,
         )
         if followup["messages"]:
             lines = []
@@ -133,10 +133,10 @@ def process_thread_message(
 
 def _contains_bot_mention(text: str) -> bool:
     """텍스트에 봇 멘션이 포함되어 있는지 확인"""
-    if not Config.BOT_USER_ID:
+    if not Config.slack.bot_user_id:
         # 봇 ID를 알 수 없으면 안전하게 모든 멘션을 봇 멘션으로 간주
         return "<@" in text
-    return f"<@{Config.BOT_USER_ID}>" in text
+    return f"<@{Config.slack.bot_user_id}>" in text
 
 
 def _handle_dm_message(event, say, client, dependencies):
@@ -277,7 +277,7 @@ def register_message_handlers(app, dependencies: dict):
             logger.warning(f"DM 채널인데 channel_type 불일치: channel={channel}, channel_type={channel_type!r}, thread_ts={event.get('thread_ts')}, user={event.get('user')}")
 
         # 번역 채널인 경우: 멘션이 없으면 번역, 멘션이 있으면 기존 로직 (handle_mention에서 처리)
-        if channel in Config.TRANSLATE_CHANNELS:
+        if channel in Config.translate.channels:
             if "<@" not in text:
                 process_translate_message(event, client)
             return
@@ -343,7 +343,7 @@ def register_message_handlers(app, dependencies: dict):
         user_id = event.get("user", "")
 
         # 1. 실행 리액션인지 확인
-        if reaction != Config.EXECUTE_EMOJI:
+        if reaction != Config.emoji.execute:
             return
 
         logger.info(f"실행 리액션 감지: {reaction} on {item_ts} by {user_id}")
@@ -433,7 +433,7 @@ def register_message_handlers(app, dependencies: dict):
                         )
 
                         runner = get_claude_runner()
-                        compact_result = asyncio.run(runner.compact_session(session.session_id))
+                        compact_result = run_in_new_loop(runner.compact_session(session.session_id))
 
                         if compact_result.success:
                             logger.info(f"세션 컴팩트 성공: {session.session_id}")
@@ -500,10 +500,10 @@ def register_message_handlers(app, dependencies: dict):
 
 def _contains_trigger_word(text: str) -> bool:
     """텍스트에 트리거 워드가 포함되어 있는지 확인합니다."""
-    if not Config.CHANNEL_OBSERVER_TRIGGER_WORDS:
+    if not Config.channel_observer.trigger_words:
         return False
     text_lower = text.lower()
-    return any(word.lower() in text_lower for word in Config.CHANNEL_OBSERVER_TRIGGER_WORDS)
+    return any(word.lower() in text_lower for word in Config.channel_observer.trigger_words)
 
 
 def _maybe_trigger_digest(
@@ -518,14 +518,14 @@ def _maybe_trigger_digest(
         return
 
     pending_tokens = store.count_pending_tokens(channel_id)
-    if not force and pending_tokens < Config.CHANNEL_OBSERVER_THRESHOLD_A:
+    if not force and pending_tokens < Config.channel_observer.threshold_a:
         return
 
     # 이미 실행 중이면 스킵
     if _digest_running.get(channel_id):
         return
 
-    threshold_a = 1 if force else Config.CHANNEL_OBSERVER_THRESHOLD_A
+    threshold_a = 1 if force else Config.channel_observer.threshold_a
 
     def run():
         _digest_running[channel_id] = True
@@ -535,7 +535,7 @@ def _maybe_trigger_digest(
 
             runner = get_claude_runner()
 
-            asyncio.run(
+            run_in_new_loop(
                 run_channel_pipeline(
                     store=store,
                     observer=observer,
@@ -543,14 +543,14 @@ def _maybe_trigger_digest(
                     slack_client=client,
                     cooldown=cooldown,
                     threshold_a=threshold_a,
-                    threshold_b=Config.CHANNEL_OBSERVER_THRESHOLD_B,
+                    threshold_b=Config.channel_observer.threshold_b,
                     compressor=compressor,
-                    digest_max_tokens=Config.CHANNEL_OBSERVER_DIGEST_MAX_TOKENS,
-                    digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
-                    debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
-                    intervention_threshold=Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD,
+                    digest_max_tokens=Config.channel_observer.digest_max_tokens,
+                    digest_target_tokens=Config.channel_observer.digest_target_tokens,
+                    debug_channel=Config.channel_observer.debug_channel,
+                    intervention_threshold=Config.channel_observer.intervention_threshold,
                     claude_runner=runner,
-                    bot_user_id=Config.BOT_USER_ID,
+                    bot_user_id=Config.slack.bot_user_id,
                     mention_tracker=mention_tracker,
                 )
             )
@@ -565,7 +565,7 @@ def _maybe_trigger_digest(
 
 def _send_collect_log(client, channel_id, store, event):
     """수집 디버그 로그를 전송합니다."""
-    debug_channel = Config.CHANNEL_OBSERVER_DEBUG_CHANNEL
+    debug_channel = Config.channel_observer.debug_channel
     if not debug_channel:
         return
     try:
@@ -583,7 +583,7 @@ def _send_collect_log(client, channel_id, store, event):
             debug_channel=debug_channel,
             source_channel=channel_id,
             buffer_tokens=buffer_tokens,
-            threshold=Config.CHANNEL_OBSERVER_THRESHOLD_A,
+            threshold=Config.channel_observer.threshold_a,
             message_text=source.get("text", ""),
             user=source.get("user", ""),
             is_thread=bool(source.get("thread_ts") or event.get("thread_ts")),

@@ -15,11 +15,7 @@ from seosoyoung.claude.agent_runner import (
     ClaudeAgentRunner,
     ClaudeRunner,
     ClaudeResult,
-    DEFAULT_ALLOWED_TOOLS,
     DEFAULT_DISALLOWED_TOOLS,
-    _classify_process_error,
-    _read_stderr_tail,
-    _build_session_dump,
     _registry,
     _registry_lock,
     get_runner,
@@ -28,6 +24,13 @@ from seosoyoung.claude.agent_runner import (
     shutdown_all,
     shutdown_all_sync,
 )
+from seosoyoung.claude.diagnostics import classify_process_error
+from seosoyoung.memory.injector import (
+    create_or_load_debug_anchor,
+    prepare_memory_injection,
+    send_injection_debug_log,
+)
+from seosoyoung.config import Config
 from claude_code_sdk._errors import MessageParseError, ProcessError
 
 
@@ -53,6 +56,16 @@ class MockResultMessage:
     session_id: str = None
 
 
+def _apply_mock_config(mock_config, patches):
+    """중첩 Config mock에 패치 적용 (dot 경로 지원)"""
+    for k, v in patches.items():
+        parts = k.split(".")
+        obj = mock_config
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        setattr(obj, parts[-1], v)
+
+
 def _make_mock_client(*messages):
     """mock_receive async generator를 설정한 mock client를 생성하는 헬퍼"""
     mock_client = AsyncMock()
@@ -71,25 +84,21 @@ class TestClaudeAgentRunnerUnit:
     def test_build_options_basic(self):
         """기본 옵션 생성 테스트"""
         runner = ClaudeAgentRunner()
-        options, memory_prompt, anchor_ts, stderr_file = runner._build_options()
+        options, memory_prompt, anchor_ts, _ = runner._build_options()
 
-        assert options.allowed_tools == DEFAULT_ALLOWED_TOOLS
+        assert options.allowed_tools == Config.auth.role_tools["admin"]
         assert options.disallowed_tools == DEFAULT_DISALLOWED_TOOLS
         assert options.permission_mode == "bypassPermissions"
         assert options.resume is None
         assert memory_prompt is None
         assert anchor_ts == ""
-        if stderr_file is not None:
-            stderr_file.close()
 
     def test_build_options_with_session(self):
         """세션 ID가 있을 때 resume 옵션 추가"""
         runner = ClaudeAgentRunner()
-        options, _, _, stderr_file = runner._build_options(session_id="abc-123")
+        options, _, _, _ = runner._build_options(session_id="abc-123")
 
         assert options.resume == "abc-123"
-        if stderr_file is not None:
-            stderr_file.close()
 
     def test_build_options_custom_tools(self):
         """커스텀 도구 설정 테스트"""
@@ -97,12 +106,10 @@ class TestClaudeAgentRunnerUnit:
             allowed_tools=["Read", "Glob"],
             disallowed_tools=["Bash"]
         )
-        options, _, _, stderr_file = runner._build_options()
+        options, _, _, _ = runner._build_options()
 
         assert options.allowed_tools == ["Read", "Glob"]
         assert options.disallowed_tools == ["Bash"]
-        if stderr_file is not None:
-            stderr_file.close()
 
     def test_build_options_with_mcp_config(self):
         """MCP 설정 파일 경로가 저장되는지 테스트"""
@@ -112,10 +119,8 @@ class TestClaudeAgentRunnerUnit:
         assert runner.mcp_config_path == mcp_path
 
         # _build_options는 mcp_servers를 직접 설정하지 않음 (pm2 외부 관리)
-        options, _, _, stderr_file = runner._build_options()
+        options, _, _, _ = runner._build_options()
         assert isinstance(options.mcp_servers, dict)
-        if stderr_file is not None:
-            stderr_file.close()
 
 
 class TestClaudeResultMarkers:
@@ -274,7 +279,7 @@ class TestClaudeAgentRunnerCompact:
         """compact_events 전달 시 PreCompact 훅이 등록되는지 확인"""
         runner = ClaudeAgentRunner()
         compact_events = []
-        options, _, _, stderr_file = runner._build_options(compact_events=compact_events)
+        options, _, _, _ = runner._build_options(compact_events=compact_events)
 
         assert options.hooks is not None
         assert "PreCompact" in options.hooks
@@ -284,11 +289,9 @@ class TestClaudeAgentRunnerCompact:
     async def test_build_options_without_compact_events(self):
         """compact_events 미전달 시 hooks가 None인지 확인"""
         runner = ClaudeAgentRunner()
-        options, _, _, stderr_file = runner._build_options()
+        options, _, _, _ = runner._build_options()
 
         assert options.hooks is None
-        if stderr_file is not None:
-            stderr_file.close()
 
     async def test_compact_callback_called(self):
         """컴팩션 발생 시 on_compact 콜백이 호출되는지 확인"""
@@ -307,13 +310,13 @@ class TestClaudeAgentRunnerCompact:
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_file = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+            options, memory_prompt, anchor, stderr_f = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: auto)",
                 })
-            return options, memory_prompt, anchor, stderr_file
+            return options, memory_prompt, anchor, stderr_f
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
@@ -345,7 +348,7 @@ class TestClaudeAgentRunnerCompact:
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_file = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+            options, memory_prompt, anchor, stderr_f = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -355,7 +358,7 @@ class TestClaudeAgentRunnerCompact:
                     "trigger": "manual",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: manual)",
                 })
-            return options, memory_prompt, anchor, stderr_file
+            return options, memory_prompt, anchor, stderr_f
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -381,13 +384,13 @@ class TestClaudeAgentRunnerCompact:
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_file = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+            options, memory_prompt, anchor, stderr_f = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컴팩트 실행됨",
                 })
-            return options, memory_prompt, anchor, stderr_file
+            return options, memory_prompt, anchor, stderr_f
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -418,56 +421,56 @@ class TestClassifyProcessError:
     def test_usage_limit_keyword(self):
         """usage limit 키워드 감지"""
         e = ProcessError("Command failed", exit_code=1, stderr="usage limit reached")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "사용량 제한" in msg
 
     def test_rate_limit_keyword(self):
         """rate limit 키워드 감지"""
         e = ProcessError("rate limit exceeded", exit_code=1, stderr=None)
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "사용량 제한" in msg
 
     def test_429_status(self):
         """429 상태 코드 감지"""
         e = ProcessError("Command failed", exit_code=1, stderr="HTTP 429 Too Many Requests")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "사용량 제한" in msg
 
     def test_unauthorized_401(self):
         """401 인증 오류 감지"""
         e = ProcessError("Command failed", exit_code=1, stderr="401 Unauthorized")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "인증" in msg
 
     def test_forbidden_403(self):
         """403 권한 오류 감지"""
         e = ProcessError("Command failed", exit_code=1, stderr="403 Forbidden")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "인증" in msg
 
     def test_network_error(self):
         """네트워크 오류 감지"""
         e = ProcessError("Connection refused", exit_code=1, stderr="ECONNREFUSED")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "네트워크" in msg
 
     def test_generic_exit_code_1(self):
         """exit code 1 일반 폴백"""
         e = ProcessError("Command failed with exit code 1", exit_code=1, stderr="Check stderr output for details")
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "비정상 종료" in msg
         assert "잠시 후" in msg
 
     def test_other_exit_code(self):
         """기타 exit code"""
         e = ProcessError("Command failed", exit_code=137, stderr=None)
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "exit code: 137" in msg
 
     def test_none_stderr(self):
         """stderr가 None인 경우"""
         e = ProcessError("Command failed", exit_code=1, stderr=None)
-        msg = _classify_process_error(e)
+        msg = classify_process_error(e)
         assert "비정상 종료" in msg
 
 
@@ -597,18 +600,17 @@ class TestBuildOptionsChannelObservation:
         ch_store.save_digest("C_OBS", content="채널에서 재미있는 일이 있었다", meta={})
 
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": True,
-            "CHANNEL_OBSERVER_CHANNELS": ["C_OBS"],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "",
+            "om.enabled": True,
+            "channel_observer.enabled": True,
+            "channel_observer.channels": ["C_OBS"],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "",
         }
 
         runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -631,18 +633,17 @@ class TestBuildOptionsChannelObservation:
     def test_channel_observation_not_injected_for_non_observed_channel(self, tmp_path):
         """관찰 대상이 아닌 채널에서는 채널 관찰 컨텍스트가 주입되지 않음"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": True,
-            "CHANNEL_OBSERVER_CHANNELS": ["C_OBS"],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "",
+            "om.enabled": True,
+            "channel_observer.enabled": True,
+            "channel_observer.channels": ["C_OBS"],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "",
         }
 
         runner = ClaudeAgentRunner("ts_1", channel="C_OTHER")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -661,18 +662,17 @@ class TestBuildOptionsChannelObservation:
     def test_channel_observation_not_injected_when_disabled(self, tmp_path):
         """CHANNEL_OBSERVER_ENABLED=False면 채널 관찰 미주입"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": ["C_OBS"],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": ["C_OBS"],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "",
         }
 
         runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -701,18 +701,17 @@ class TestBuildOptionsAnchorTs:
     def test_anchor_ts_created_for_new_session(self, tmp_path):
         """새 세션 + OM 활성 시 앵커 메시지가 생성되어 anchor_ts 반환"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         runner = ClaudeAgentRunner("ts_1")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -749,18 +748,17 @@ class TestBuildOptionsAnchorTs:
         pre_store.save_record(pre_record)
 
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         runner = ClaudeAgentRunner("ts_1")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -788,18 +786,17 @@ class TestBuildOptionsAnchorTs:
     def test_anchor_ts_empty_when_no_saved_record(self, tmp_path):
         """기존 세션 재개 시 MemoryRecord가 없으면 anchor_ts 빈 문자열"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         runner = ClaudeAgentRunner("ts_no_record")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -827,18 +824,17 @@ class TestBuildOptionsAnchorTs:
         from seosoyoung.memory.store import MemoryStore
 
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         runner = ClaudeAgentRunner("ts_new")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -868,11 +864,10 @@ class TestBuildOptionsAnchorTs:
 
 
 class TestInjectionDebugLogSkipsWithoutAnchor:
-    """anchor_ts가 빈 문자열일 때 _send_injection_debug_log가 디버그 로그를 스킵하는지 테스트"""
+    """anchor_ts가 빈 문자열일 때 send_injection_debug_log가 디버그 로그를 스킵하는지 테스트"""
 
     def test_skips_debug_log_when_anchor_ts_empty(self):
         """anchor_ts가 빈 문자열이면 디버그 로그를 발송하지 않음 (채널 본문 오염 방지)"""
-        runner = ClaudeAgentRunner()
         mock_result = MagicMock(
             persistent_tokens=100,
             session_tokens=50,
@@ -885,7 +880,7 @@ class TestInjectionDebugLogSkipsWithoutAnchor:
         )
 
         with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
-            runner._send_injection_debug_log(
+            send_injection_debug_log(
                 thread_ts="ts_1234",
                 result=mock_result,
                 debug_channel="C_DEBUG",
@@ -897,7 +892,6 @@ class TestInjectionDebugLogSkipsWithoutAnchor:
 
     def test_sends_debug_log_when_anchor_ts_present(self):
         """anchor_ts가 있으면 정상적으로 디버그 로그를 발송"""
-        runner = ClaudeAgentRunner()
         mock_result = MagicMock(
             persistent_tokens=100,
             session_tokens=0,
@@ -910,7 +904,7 @@ class TestInjectionDebugLogSkipsWithoutAnchor:
         with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
             with patch("seosoyoung.memory.observation_pipeline._format_tokens", return_value="100"):
                 with patch("seosoyoung.memory.observation_pipeline._blockquote", return_value=">장기 기억"):
-                    runner._send_injection_debug_log(
+                    send_injection_debug_log(
                         thread_ts="ts_1234",
                         result=mock_result,
                         debug_channel="C_DEBUG",
@@ -951,7 +945,7 @@ class TestObserverUserMessage:
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch.object(runner, "_trigger_observation") as mock_trigger:
+                    with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
                         result = await runner.run(
                             prompt="채널 히스토리 20개 + 사용자 질문",
                             user_id="U123",
@@ -977,7 +971,7 @@ class TestObserverUserMessage:
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch.object(runner, "_trigger_observation") as mock_trigger:
+                    with patch("seosoyoung.claude.agent_runner.trigger_observation") as mock_trigger:
                         result = await runner.run(
                             prompt="전체 프롬프트",
                             user_id="U123",
@@ -1007,11 +1001,11 @@ class TestTriggerObservationToolFilter:
         ]
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.OM_ENABLED = True
-            MockConfig.OPENAI_API_KEY = "test"
-            MockConfig.OM_MODEL = "gpt-4.1-mini"
-            MockConfig.OM_PROMOTER_MODEL = "gpt-4.1-mini"
-            MockConfig.OM_DEBUG_CHANNEL = ""
+            MockConfig.om.enabled = True
+            MockConfig.om.openai_api_key = "test"
+            MockConfig.om.model = "gpt-4.1-mini"
+            MockConfig.om.promoter_model = "gpt-4.1-mini"
+            MockConfig.om.debug_channel = ""
             MockConfig.get_memory_path.return_value = "/tmp/test"
 
             # observe_conversation을 모킹하여 전달된 messages를 캡처
@@ -1460,12 +1454,11 @@ class TestBuildCompactHook:
 
 
 class TestCreateOrLoadDebugAnchor:
-    """_create_or_load_debug_anchor 메서드 단위 테스트"""
+    """create_or_load_debug_anchor 함수 단위 테스트"""
 
     def test_returns_empty_when_no_debug_channel(self):
         """debug_channel이 빈 문자열이면 빈 문자열 반환"""
-        runner = ClaudeAgentRunner()
-        anchor_ts = runner._create_or_load_debug_anchor(
+        anchor_ts = create_or_load_debug_anchor(
             thread_ts="ts_1", session_id=None, store=MagicMock(),
             prompt="test", debug_channel="",
         )
@@ -1475,18 +1468,16 @@ class TestCreateOrLoadDebugAnchor:
         """새 세션(session_id=None) 시 앵커 메시지 생성 + MemoryRecord 저장"""
         from seosoyoung.memory.store import MemoryStore
         store = MemoryStore(base_dir=tmp_path)
-        runner = ClaudeAgentRunner()
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.EMOJI_TEXT_SESSION_START = "🟢"
+            MockConfig.emoji.text_session_start = "🟢"
             with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anchor_new_123"):
-                anchor_ts = runner._create_or_load_debug_anchor(
+                anchor_ts = create_or_load_debug_anchor(
                     thread_ts="ts_new", session_id=None, store=store,
                     prompt="테스트 프롬프트입니다", debug_channel="C_DEBUG",
                 )
 
         assert anchor_ts == "anchor_new_123"
-        # MemoryRecord에 저장되었는지 확인
         record = store.get_record("ts_new")
         assert record is not None
         assert record.anchor_ts == "anchor_new_123"
@@ -1498,8 +1489,7 @@ class TestCreateOrLoadDebugAnchor:
         record = MemoryRecord(thread_ts="ts_existing", anchor_ts="saved_anchor_456")
         store.save_record(record)
 
-        runner = ClaudeAgentRunner()
-        anchor_ts = runner._create_or_load_debug_anchor(
+        anchor_ts = create_or_load_debug_anchor(
             thread_ts="ts_existing", session_id="session_abc", store=store,
             prompt="test", debug_channel="C_DEBUG",
         )
@@ -1510,8 +1500,7 @@ class TestCreateOrLoadDebugAnchor:
         from seosoyoung.memory.store import MemoryStore
         store = MemoryStore(base_dir=tmp_path)
 
-        runner = ClaudeAgentRunner()
-        anchor_ts = runner._create_or_load_debug_anchor(
+        anchor_ts = create_or_load_debug_anchor(
             thread_ts="ts_no_record", session_id="session_xyz", store=store,
             prompt="test", debug_channel="C_DEBUG",
         )
@@ -1521,13 +1510,12 @@ class TestCreateOrLoadDebugAnchor:
         """80자 초과 프롬프트가 잘려서 앵커에 포함"""
         from seosoyoung.memory.store import MemoryStore
         store = MemoryStore(base_dir=tmp_path)
-        runner = ClaudeAgentRunner()
         long_prompt = "A" * 100
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.EMOJI_TEXT_SESSION_START = "🟢"
+            MockConfig.emoji.text_session_start = "🟢"
             with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anc") as mock_send:
-                runner._create_or_load_debug_anchor(
+                create_or_load_debug_anchor(
                     thread_ts="ts_long", session_id=None, store=store,
                     prompt=long_prompt, debug_channel="C_DEBUG",
                 )
@@ -1537,42 +1525,38 @@ class TestCreateOrLoadDebugAnchor:
 
 
 class TestPrepareMemoryInjection:
-    """_prepare_memory_injection 메서드 단위 테스트"""
+    """prepare_memory_injection 함수 단위 테스트"""
 
     def test_returns_none_when_no_thread_ts(self):
-        """thread_ts가 None이면 (None, '') 반환"""
-        runner = ClaudeAgentRunner()
-        memory_prompt, anchor_ts = runner._prepare_memory_injection(
-            session_id=None, prompt="test",
+        """thread_ts가 빈 문자열이면 (None, '') 반환"""
+        memory_prompt, anchor_ts = prepare_memory_injection(
+            thread_ts="", channel=None, session_id=None, prompt="test",
         )
         assert memory_prompt is None
         assert anchor_ts == ""
 
     def test_returns_none_when_om_disabled(self):
         """OM 비활성 시 (None, '') 반환"""
-        runner = ClaudeAgentRunner(thread_ts="ts_1", channel="C1")
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.OM_ENABLED = False
-            memory_prompt, anchor_ts = runner._prepare_memory_injection(
-                session_id=None, prompt="test",
+            MockConfig.om.enabled = False
+            memory_prompt, anchor_ts = prepare_memory_injection(
+                thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
             )
         assert memory_prompt is None
         assert anchor_ts == ""
 
     def test_returns_memory_prompt_when_available(self, tmp_path):
         """OM 활성 + 메모리 존재 시 memory_prompt 반환"""
-        runner = ClaudeAgentRunner(thread_ts="ts_1", channel="C1")
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "",
         }
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -1587,27 +1571,25 @@ class TestPrepareMemoryInjection:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                memory_prompt, anchor_ts = runner._prepare_memory_injection(
-                    session_id=None, prompt="test",
+                memory_prompt, anchor_ts = prepare_memory_injection(
+                    thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
                 )
 
         assert memory_prompt is not None
         assert "기억" in memory_prompt
 
     def test_calls_create_or_load_debug_anchor(self, tmp_path):
-        """_create_or_load_debug_anchor가 내부적으로 호출되는지 확인"""
-        runner = ClaudeAgentRunner(thread_ts="ts_1", channel="C1")
+        """create_or_load_debug_anchor가 내부적으로 호출되는지 확인"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -1622,9 +1604,9 @@ class TestPrepareMemoryInjection:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                with patch.object(runner, "_create_or_load_debug_anchor", return_value="anc_789") as mock_anchor:
-                    _, anchor_ts = runner._prepare_memory_injection(
-                        session_id=None, prompt="test",
+                with patch("seosoyoung.memory.injector.create_or_load_debug_anchor", return_value="anc_789") as mock_anchor:
+                    _, anchor_ts = prepare_memory_injection(
+                        thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
                     )
 
         mock_anchor.assert_called_once()
@@ -1632,408 +1614,14 @@ class TestPrepareMemoryInjection:
 
     def test_exception_returns_none_gracefully(self):
         """OM 내부 예외 발생 시 (None, '') 반환 (무시)"""
-        runner = ClaudeAgentRunner(thread_ts="ts_err", channel="C1")
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.OM_ENABLED = True
+            MockConfig.om.enabled = True
             MockConfig.get_memory_path.side_effect = RuntimeError("boom")
-            memory_prompt, anchor_ts = runner._prepare_memory_injection(
-                session_id=None, prompt="test",
+            memory_prompt, anchor_ts = prepare_memory_injection(
+                thread_ts="ts_err", channel="C1", session_id=None, prompt="test",
             )
         assert memory_prompt is None
         assert anchor_ts == ""
-
-
-def _make_fake_module_file(tmp_path):
-    """tmp_path를 runtime_dir로 사용하기 위한 가짜 __file__ 경로 생성
-
-    _read_stderr_tail 내부의 Path(__file__).resolve().parents[3]이
-    tmp_path를 가리키도록 4단계 깊이의 경로를 반환합니다.
-    """
-    # parents[3] == tmp_path 가 되려면 파일이 tmp_path/a/b/c/d.py 에 있어야 함
-    fake_file = tmp_path / "a" / "b" / "c" / "d.py"
-    fake_file.parent.mkdir(parents=True, exist_ok=True)
-    fake_file.touch()
-    return str(fake_file)
-
-
-class TestReadStderrTailSessionScoped:
-    """_read_stderr_tail이 세션별 stderr 파일을 우선 읽는지 테스트"""
-
-    def test_reads_session_specific_file(self, tmp_path):
-        """thread_ts가 주어지면 cli_stderr_{thread_ts}.log를 읽음"""
-        thread_ts = "1234567890.123456"
-        suffix = thread_ts.replace(".", "_")
-        session_file = tmp_path / "logs" / f"cli_stderr_{suffix}.log"
-        session_file.parent.mkdir(parents=True, exist_ok=True)
-        session_file.write_text("session-specific error line 1\nsession-specific error line 2\n", encoding="utf-8")
-
-        # 공유 파일도 만들어두되, 세션 파일이 우선되어야 함
-        shared_file = tmp_path / "logs" / "cli_stderr.log"
-        shared_file.write_text("shared error line\n", encoding="utf-8")
-
-        import seosoyoung.claude.agent_runner as ar_module
-        fake_file = _make_fake_module_file(tmp_path)
-        with patch.object(ar_module, "__file__", fake_file):
-            result = _read_stderr_tail(n_lines=10, thread_ts=thread_ts)
-
-        assert "session-specific error line" in result
-        assert "shared error line" not in result
-
-    def test_falls_back_to_shared_file(self, tmp_path):
-        """세션별 파일이 없으면 공유 파일(cli_stderr.log)로 폴백"""
-        shared_file = tmp_path / "logs" / "cli_stderr.log"
-        shared_file.parent.mkdir(parents=True, exist_ok=True)
-        shared_file.write_text("shared fallback error\n", encoding="utf-8")
-
-        import seosoyoung.claude.agent_runner as ar_module
-        fake_file = _make_fake_module_file(tmp_path)
-        with patch.object(ar_module, "__file__", fake_file):
-            result = _read_stderr_tail(n_lines=10, thread_ts="9999.9999")
-
-        assert "shared fallback error" in result
-
-    def test_none_thread_ts_reads_default_file(self, tmp_path):
-        """thread_ts가 None이면 cli_stderr_default.log를 시도"""
-        default_file = tmp_path / "logs" / "cli_stderr_default.log"
-        default_file.parent.mkdir(parents=True, exist_ok=True)
-        default_file.write_text("default stderr line\n", encoding="utf-8")
-
-        import seosoyoung.claude.agent_runner as ar_module
-        fake_file = _make_fake_module_file(tmp_path)
-        with patch.object(ar_module, "__file__", fake_file):
-            result = _read_stderr_tail(n_lines=10, thread_ts=None)
-
-        assert "default stderr line" in result
-
-    def test_no_thread_ts_backward_compatible(self, tmp_path):
-        """thread_ts 인자 없이 호출해도 동작 (하위 호환)"""
-        default_file = tmp_path / "logs" / "cli_stderr_default.log"
-        default_file.parent.mkdir(parents=True, exist_ok=True)
-        default_file.write_text("backward compat line\n", encoding="utf-8")
-
-        import seosoyoung.claude.agent_runner as ar_module
-        fake_file = _make_fake_module_file(tmp_path)
-        with patch.object(ar_module, "__file__", fake_file):
-            # thread_ts 인자 없이 호출 - 기본값 None이므로 cli_stderr_default.log 시도
-            result = _read_stderr_tail(n_lines=10)
-
-        assert "읽기 실패" not in result
-
-
-class TestBuildSessionDumpThreadTs:
-    """_build_session_dump가 thread_ts를 _read_stderr_tail에 전달하는지 테스트"""
-
-    def test_passes_thread_ts_to_read_stderr_tail(self):
-        """_build_session_dump가 thread_ts를 _read_stderr_tail에 전달"""
-        with patch("seosoyoung.claude.agent_runner._read_stderr_tail", return_value="mock stderr") as mock_read:
-            _build_session_dump(
-                reason="test",
-                pid=123,
-                duration_sec=1.0,
-                message_count=0,
-                last_tool="",
-                current_text_len=0,
-                result_text_len=0,
-                session_id=None,
-                thread_ts="1234.5678",
-            )
-            mock_read.assert_called_once_with(20, thread_ts="1234.5678")
-
-    def test_passes_none_thread_ts(self):
-        """thread_ts=None일 때도 정상적으로 전달"""
-        with patch("seosoyoung.claude.agent_runner._read_stderr_tail", return_value="mock stderr") as mock_read:
-            _build_session_dump(
-                reason="test",
-                pid=123,
-                duration_sec=1.0,
-                message_count=0,
-                last_tool="",
-                current_text_len=0,
-                result_text_len=0,
-                session_id=None,
-                thread_ts=None,
-            )
-            mock_read.assert_called_once_with(20, thread_ts=None)
-
-
-@pytest.mark.asyncio
-class TestAutocompactRetry:
-    """autocompact가 세션을 조기 종료하는 버그 수정 테스트
-
-    Bug: autocompact가 현재 턴의 ResultMessage를 발생시키면
-    receive_response()가 즉시 return되어 compact 후의 응답을 수신하지 못함.
-    Fix: receive_response() 완료 후 compact 이벤트가 감지되면 재호출하여
-    post-compact 응답을 수신.
-    """
-
-    async def test_retry_after_autocompact(self):
-        """autocompact 발생 시 receive_response()를 재호출하여 post-compact 응답 수신"""
-        runner = ClaudeAgentRunner()
-
-        # compact_events 리스트를 캡처하기 위해 _build_options를 가로채서
-        # compact_events 참조를 저장
-        captured_compact_events = [None]
-        original_build = runner._build_options
-
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_file = original_build(
-                session_id=session_id, compact_events=compact_events,
-                user_id=user_id, prompt=prompt,
-            )
-            if compact_events is not None:
-                captured_compact_events[0] = compact_events
-            return options, memory_prompt, anchor, stderr_file
-
-        # 첫 번째 receive_response(): compact 발생 중 ResultMessage로 종료
-        # 두 번째 receive_response(): compact 후 최종 응답
-        call_count = [0]
-
-        async def mock_receive_first():
-            """첫 번째: SystemMessage → (compact 훅이 이벤트 추가) → ResultMessage"""
-            yield MockSystemMessage(session_id="compact-retry-test")
-            # compact 이벤트를 수신 도중에 주입 (PreCompact 훅 시뮬레이션)
-            if captured_compact_events[0] is not None:
-                captured_compact_events[0].append({
-                    "trigger": "auto",
-                    "message": "컨텍스트 컴팩트 실행됨 (트리거: auto)",
-                })
-            yield MockResultMessage(result="", session_id="compact-retry-test")
-
-        async def mock_receive_second():
-            """두 번째: compact 후 최종 응답"""
-            yield MockAssistantMessage(content=[MockTextBlock(text="compact 후 응답")])
-            yield MockResultMessage(result="compact 후 최종 응답입니다.", session_id="compact-retry-test")
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        def make_receive():
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return mock_receive_first()
-            return mock_receive_second()
-
-        mock_client.receive_response = make_receive
-
-        compact_calls = []
-
-        async def on_compact(trigger: str, message: str):
-            compact_calls.append({"trigger": trigger, "message": message})
-
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
-                    with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                        with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
-                            with patch.object(runner, "_build_options", patched_build):
-                                result = await runner.run(
-                                    "테스트", on_compact=on_compact
-                                )
-
-        # compact 후 최종 응답을 수신해야 함
-        assert result.success is True
-        assert "compact 후 최종 응답" in result.output
-        assert call_count[0] == 2  # receive_response()가 2번 호출됨
-        assert len(compact_calls) == 1
-
-    async def test_compact_callback_on_stop_async_iteration(self):
-        """StopAsyncIteration 발생 시에도 compact_events가 확인되고 콜백이 호출되어야 함"""
-        runner = ClaudeAgentRunner()
-
-        # compact_events 참조 캡처
-        captured_compact_events = [None]
-        original_build = runner._build_options
-
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_file = original_build(
-                session_id=session_id, compact_events=compact_events,
-                user_id=user_id, prompt=prompt,
-            )
-            if compact_events is not None:
-                captured_compact_events[0] = compact_events
-            return options, memory_prompt, anchor, stderr_file
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        call_count = [0]
-
-        async def mock_receive_empty():
-            """빈 응답에 compact 이벤트 주입 후 즉시 종료"""
-            # compact 이벤트를 주입 (PreCompact 훅 시뮬레이션)
-            if captured_compact_events[0] is not None:
-                captured_compact_events[0].append({
-                    "trigger": "auto",
-                    "message": "컴팩트됨",
-                })
-            return
-            yield  # make it a generator  # noqa: E117 (unreachable)
-
-        async def mock_receive_final():
-            """compact 후 최종 응답"""
-            yield MockResultMessage(result="compact 후 응답", session_id="test-123")
-
-        def make_receive():
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return mock_receive_empty()
-            return mock_receive_final()
-
-        mock_client.receive_response = make_receive
-
-        compact_calls = []
-
-        async def on_compact(trigger: str, message: str):
-            compact_calls.append({"trigger": trigger, "message": message})
-
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                with patch.object(runner, "_build_options", patched_build):
-                    result = await runner.run("테스트", on_compact=on_compact)
-
-        # compact 콜백이 호출되어야 함
-        assert len(compact_calls) == 1
-        # compact 후 재시도로 최종 응답을 받아야 함
-        assert result.success is True
-        assert "compact 후 응답" in result.output
-
-    async def test_max_compact_retries_prevents_infinite_loop(self):
-        """compact가 무한 반복되지 않도록 최대 재시도 횟수 제한"""
-        runner = ClaudeAgentRunner()
-
-        # compact_events 참조 캡처
-        captured_compact_events = [None]
-        original_build = runner._build_options
-
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_file = original_build(
-                session_id=session_id, compact_events=compact_events,
-                user_id=user_id, prompt=prompt,
-            )
-            if compact_events is not None:
-                captured_compact_events[0] = compact_events
-            return options, memory_prompt, anchor, stderr_file
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        call_count = [0]
-
-        async def mock_receive_with_compact():
-            """매 호출마다 compact 이벤트를 추가하고 빈 응답 반환"""
-            if captured_compact_events[0] is not None:
-                captured_compact_events[0].append({
-                    "trigger": "auto",
-                    "message": f"컴팩트 #{call_count[0]}",
-                })
-            return
-            yield  # noqa: E117
-
-        def make_receive():
-            call_count[0] += 1
-            return mock_receive_with_compact()
-
-        mock_client.receive_response = make_receive
-
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch.object(runner, "_build_options", patched_build):
-                result = await runner.run("테스트")
-
-        # 최대 재시도 횟수(MAX_COMPACT_RETRIES=3) 이내에서 종료해야 함
-        # 초기 1회 + 재시도 최대 3회 = 최대 4회
-        assert call_count[0] <= 4
-        assert result.success is True
-
-    async def test_no_retry_when_no_compact_events(self):
-        """compact 이벤트 없이 정상 종료 시 재시도하지 않음"""
-        runner = ClaudeAgentRunner()
-
-        call_count = [0]
-
-        async def mock_receive():
-            yield MockSystemMessage(session_id="no-compact-test")
-            yield MockResultMessage(result="정상 완료", session_id="no-compact-test")
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        def make_receive():
-            call_count[0] += 1
-            return mock_receive()
-
-        mock_client.receive_response = make_receive
-
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                    result = await runner.run("테스트")
-
-        assert result.success is True
-        assert "정상 완료" in result.output
-        assert call_count[0] == 1  # 재시도 없이 1번만 호출
-
-    async def test_result_text_reset_after_compact(self):
-        """compact 후 재시도 시 result_text가 초기화되어야 함"""
-        runner = ClaudeAgentRunner()
-
-        # compact_events 참조 캡처
-        captured_compact_events = [None]
-        original_build = runner._build_options
-
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_file = original_build(
-                session_id=session_id, compact_events=compact_events,
-                user_id=user_id, prompt=prompt,
-            )
-            if compact_events is not None:
-                captured_compact_events[0] = compact_events
-            return options, memory_prompt, anchor, stderr_file
-
-        call_count = [0]
-
-        async def mock_receive_pre_compact():
-            yield MockSystemMessage(session_id="reset-test")
-            # compact 이벤트 주입 (PreCompact 훅 시뮬레이션)
-            if captured_compact_events[0] is not None:
-                captured_compact_events[0].append({
-                    "trigger": "auto",
-                    "message": "컴팩트 실행됨",
-                })
-            yield MockResultMessage(result="compact 전 불완전한 텍스트", session_id="reset-test")
-
-        async def mock_receive_post_compact():
-            yield MockResultMessage(result="compact 후 완성된 응답", session_id="reset-test")
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        def make_receive():
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return mock_receive_pre_compact()
-            return mock_receive_post_compact()
-
-        mock_client.receive_response = make_receive
-
-        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch.object(runner, "_build_options", patched_build):
-                        result = await runner.run("테스트")
-
-        # compact 전 텍스트가 아닌 compact 후 텍스트가 최종 결과여야 함
-        assert "compact 후 완성된 응답" in result.output
-        assert "compact 전 불완전한 텍스트" not in result.output
 
 
 if __name__ == "__main__":

@@ -247,7 +247,7 @@ def create_session_and_run_claude(
     initial_ctx = build_initial_context(
         channel_id=channel,
         slack_messages=slack_messages,
-        monitored_channels=Config.CHANNEL_OBSERVER_CHANNELS,
+        monitored_channels=Config.channel_observer.channels,
         channel_store=channel_store,
     )
 

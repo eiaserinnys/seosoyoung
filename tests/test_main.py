@@ -92,7 +92,7 @@ class TestCheckPermission:
     @patch("seosoyoung.auth.Config")
     def test_check_permission_allowed_user(self, mock_config):
         """허용된 사용자"""
-        mock_config.ALLOWED_USERS = ["testuser"]
+        mock_config.auth.allowed_users = ["testuser"]
 
         mock_client = MagicMock()
         mock_client.users_info.return_value = {"user": {"name": "testuser"}}
@@ -105,7 +105,7 @@ class TestCheckPermission:
     @patch("seosoyoung.auth.Config")
     def test_check_permission_denied_user(self, mock_config):
         """허용되지 않은 사용자"""
-        mock_config.ALLOWED_USERS = ["allowed_user"]
+        mock_config.auth.allowed_users = ["allowed_user"]
 
         mock_client = MagicMock()
         mock_client.users_info.return_value = {"user": {"name": "not_allowed"}}
@@ -130,8 +130,8 @@ class TestGetUserRole:
     @patch("seosoyoung.auth.Config")
     def test_get_user_role_admin(self, mock_config):
         """관리자 사용자 역할"""
-        mock_config.ADMIN_USERS = ["admin_user"]
-        mock_config.ROLE_TOOLS = {
+        mock_config.auth.admin_users = ["admin_user"]
+        mock_config.auth.role_tools = {
             "admin": ["Read", "Write", "Edit"],
             "viewer": ["Read"]
         }
@@ -150,8 +150,8 @@ class TestGetUserRole:
     @patch("seosoyoung.auth.Config")
     def test_get_user_role_viewer(self, mock_config):
         """일반 사용자 역할 (viewer)"""
-        mock_config.ADMIN_USERS = ["admin_user"]
-        mock_config.ROLE_TOOLS = {
+        mock_config.auth.admin_users = ["admin_user"]
+        mock_config.auth.role_tools = {
             "admin": ["Read", "Write", "Edit"],
             "viewer": ["Read"]
         }

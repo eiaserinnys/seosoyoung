@@ -49,7 +49,7 @@ def setup_logging() -> logging.Logger:
     log_file = log_dir / f"bot_{datetime.now().strftime('%Y%m%d')}.log"
 
     logging.basicConfig(
-        level=logging.DEBUG if Config.DEBUG else logging.INFO,
+        level=logging.DEBUG if Config.debug else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
             logging.FileHandler(log_file, encoding="utf-8"),
@@ -59,7 +59,7 @@ def setup_logging() -> logging.Logger:
 
     # urllib3 HTTP 요청 로그 제어
     # TRELLO_POLLING_DEBUG=true일 때만 DEBUG 로그 출력
-    if not Config.TRELLO_POLLING_DEBUG:
+    if not Config.trello.polling_debug:
         logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     return logging.getLogger(__name__)

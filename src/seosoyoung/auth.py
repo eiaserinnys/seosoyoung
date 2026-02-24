@@ -15,7 +15,7 @@ def check_permission(user_id: str, client) -> bool:
     try:
         result = client.users_info(user=user_id)
         username = result["user"]["name"]
-        allowed = username in Config.ALLOWED_USERS
+        allowed = username in Config.auth.allowed_users
         logger.debug(f"권한 체크: user_id={user_id}, username={username}, allowed={allowed}")
         return allowed
     except Exception as e:
@@ -32,12 +32,12 @@ def get_user_role(user_id: str, client) -> dict | None:
     try:
         result = client.users_info(user=user_id)
         username = result["user"]["name"]
-        role = "admin" if username in Config.ADMIN_USERS else "viewer"
+        role = "admin" if username in Config.auth.admin_users else "viewer"
         return {
             "user_id": user_id,
             "username": username,
             "role": role,
-            "allowed_tools": Config.ROLE_TOOLS[role]
+            "allowed_tools": Config.auth.role_tools[role]
         }
     except Exception as e:
         logger.error(f"사용자 역할 조회 실패: user_id={user_id}, error={e}")

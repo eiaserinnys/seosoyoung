@@ -33,7 +33,7 @@ def send_restart_confirmation(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"현재 *{running_count}개*의 대화가 진행 중입니다. {Config.EMOJI_TEXT_RESTART_TROUBLE}\n"
+                "text": f"현재 *{running_count}개*의 대화가 진행 중입니다. {Config.emoji.text_restart_trouble}\n"
                         f"지금 다시 시작하면 진행 중이던 대화가 끊깁니다.\n"
                         f"그래도 {type_name}할까요?"
             }

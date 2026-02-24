@@ -34,20 +34,13 @@ from seosoyoung.rescue.config import RescueConfig
 
 logger = logging.getLogger(__name__)
 
-# 허용 도구: 기본 도구 + 슬랙 MCP 도구 (NPC 제외)
+from seosoyoung.config import Config
+
+# 허용 도구: Config.auth.role_tools["admin"]에서 NPC 도구를 제외한 서브셋
+_NPC_TOOL_PREFIX = "mcp__seosoyoung-attach__npc_"
 ALLOWED_TOOLS = [
-    "Read",
-    "Write",
-    "Edit",
-    "Glob",
-    "Grep",
-    "Bash",
-    "TodoWrite",
-    "mcp__seosoyoung-attach__slack_attach_file",
-    "mcp__seosoyoung-attach__slack_get_context",
-    "mcp__seosoyoung-attach__slack_post_message",
-    "mcp__seosoyoung-attach__slack_download_thread_files",
-    "mcp__seosoyoung-attach__slack_generate_image",
+    t for t in Config.auth.role_tools["admin"]
+    if not t.startswith(_NPC_TOOL_PREFIX)
 ]
 
 DISALLOWED_TOOLS = [
@@ -81,7 +74,7 @@ def _classify_process_error(e: ProcessError) -> str:
     return f"Claude Code 실행 중 오류가 발생했습니다 (exit code: {e.exit_code})"
 
 
-from seosoyoung.claude.agent_runner import run_in_new_loop as _run_in_new_loop
+from seosoyoung.utils.async_bridge import run_in_new_loop as _run_in_new_loop
 
 
 @dataclass

@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-import os
 import re
 import threading
 from dataclasses import dataclass, field
@@ -23,172 +22,21 @@ from claude_code_sdk.types import (
     ToolResultBlock,
     ToolUseBlock,
 )
-from slack_sdk import WebClient
+
+from seosoyoung.claude.diagnostics import (
+    build_session_dump,
+    classify_process_error,
+    send_debug_to_slack,
+)
+from seosoyoung.memory.injector import (
+    create_or_load_debug_anchor,
+    prepare_memory_injection,
+    send_injection_debug_log,
+    trigger_observation,
+)
+from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
-
-# 디버그 메시지용 슬랙 클라이언트 (lazy init)
-_slack_client: Optional[WebClient] = None
-
-
-def _get_slack_client() -> Optional[WebClient]:
-    """슬랙 클라이언트 가져오기 (lazy init)"""
-    global _slack_client
-    if _slack_client is None:
-        from seosoyoung.config import Config
-        if Config.SLACK_BOT_TOKEN:
-            _slack_client = WebClient(token=Config.SLACK_BOT_TOKEN)
-    return _slack_client
-
-
-def _send_debug_to_slack(channel: str, thread_ts: str, message: str) -> None:
-    """슬랙에 디버그 메시지 전송 (별도 메시지로)"""
-    try:
-        client = _get_slack_client()
-        if client and channel and thread_ts:
-            client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=message,
-            )
-    except Exception as e:
-        logger.warning(f"디버그 메시지 슬랙 전송 실패: {e}")
-
-
-def _read_stderr_tail(n_lines: int = 30, *, thread_ts: Optional[str] = None) -> str:
-    """세션별 cli_stderr 로그의 마지막 N줄 읽기
-
-    세션별 파일(cli_stderr_{thread_ts}.log)을 우선 시도하고,
-    없으면 공유 파일(cli_stderr.log)로 폴백합니다.
-
-    Args:
-        n_lines: 읽을 줄 수
-        thread_ts: 스레드 타임스탬프 (None이면 "default" 사용)
-    """
-    from collections import deque
-    try:
-        runtime_dir = Path(__file__).resolve().parents[3]
-        logs_dir = runtime_dir / "logs"
-
-        # 세션별 파일 경로 결정
-        suffix = thread_ts.replace(".", "_") if thread_ts else "default"
-        session_path = logs_dir / f"cli_stderr_{suffix}.log"
-
-        # 세션별 파일 우선, 없으면 공유 파일로 폴백
-        if session_path.exists():
-            stderr_path = session_path
-        else:
-            stderr_path = logs_dir / "cli_stderr.log"
-            if not stderr_path.exists():
-                return "(cli_stderr.log not found)"
-
-        with open(stderr_path, "r", encoding="utf-8", errors="replace") as f:
-            tail = list(deque(f, maxlen=n_lines))
-        return "".join(tail).strip()
-    except Exception as e:
-        return f"(stderr 읽기 실패: {e})"
-
-
-def _build_session_dump(
-    *,
-    reason: str,
-    pid: Optional[int],
-    duration_sec: float,
-    message_count: int,
-    last_tool: str,
-    current_text_len: int,
-    result_text_len: int,
-    session_id: Optional[str],
-    exit_code: Optional[int] = None,
-    error_detail: str = "",
-    active_clients_count: int = 0,
-    thread_ts: Optional[str] = None,
-) -> str:
-    """세션 종료 진단 덤프 메시지 생성
-
-    Args:
-        thread_ts: 스레드 타임스탬프 (세션별 stderr 파일 식별용)
-    """
-    parts = [
-        f"🔍 *Session Dump* — {reason}",
-        f"• PID: `{pid}`",
-        f"• Duration: `{duration_sec:.1f}s`",
-        f"• Messages received: `{message_count}`",
-        f"• Last tool: `{last_tool or '(none)'}`",
-        f"• Output: current_text=`{current_text_len}` chars, result_text=`{result_text_len}` chars",
-        f"• Session ID: `{session_id or '(none)'}`",
-        f"• Active clients: `{active_clients_count}`",
-    ]
-    if exit_code is not None:
-        parts.append(f"• Exit code: `{exit_code}`")
-    if error_detail:
-        parts.append(f"• Error: `{error_detail[:300]}`")
-
-    stderr_tail = _read_stderr_tail(20, thread_ts=thread_ts)
-    if stderr_tail:
-        # 슬랙 메시지 길이 제한 고려
-        if len(stderr_tail) > 1500:
-            stderr_tail = stderr_tail[-1500:]
-        parts.append(f"• stderr tail:\n```\n{stderr_tail}\n```")
-
-    return "\n".join(parts)
-
-
-def _classify_process_error(e: ProcessError) -> str:
-    """ProcessError를 사용자 친화적 메시지로 변환.
-
-    Claude Code CLI는 다양한 이유로 exit code 1을 반환하지만,
-    SDK가 stderr를 캡처하지 않아 원인 구분이 어렵습니다.
-    exit_code와 stderr 패턴을 기반으로 최대한 분류합니다.
-    """
-    error_str = str(e).lower()
-    stderr = (e.stderr or "").lower()
-    combined = f"{error_str} {stderr}"
-
-    # 사용량 제한 관련 패턴
-    if any(kw in combined for kw in ["usage limit", "rate limit", "quota", "too many requests", "429"]):
-        return "사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요."
-
-    # 인증 관련 패턴
-    if any(kw in combined for kw in ["unauthorized", "401", "auth", "token", "credentials", "forbidden", "403"]):
-        return "인증에 실패했습니다. 관리자에게 문의해주세요."
-
-    # 네트워크 관련 패턴
-    if any(kw in combined for kw in ["network", "connection", "timeout", "econnrefused", "dns"]):
-        return "네트워크 연결에 문제가 있습니다. 잠시 후 다시 시도해주세요."
-
-    # exit code 1인데 구체적인 원인을 알 수 없는 경우
-    if e.exit_code == 1:
-        return (
-            "Claude Code가 비정상 종료했습니다. "
-            "사용량 제한이나 일시적 오류일 수 있으니 잠시 후 다시 시도해주세요."
-        )
-
-    # 기타
-    return f"Claude Code 실행 중 오류가 발생했습니다 (exit code: {e.exit_code})"
-
-
-# Claude Code 기본 허용 도구
-DEFAULT_ALLOWED_TOOLS = [
-    "Read",
-    "Write",
-    "Edit",
-    "Glob",
-    "Grep",
-    "Bash",
-    "TodoWrite",
-    "mcp__seosoyoung-attach__slack_attach_file",
-    "mcp__seosoyoung-attach__slack_get_context",
-    "mcp__seosoyoung-attach__slack_post_message",
-    "mcp__seosoyoung-attach__slack_download_thread_files",
-    "mcp__seosoyoung-attach__slack_generate_image",
-    "mcp__seosoyoung-attach__npc_list_characters",
-    "mcp__seosoyoung-attach__npc_open_session",
-    "mcp__seosoyoung-attach__npc_talk",
-    "mcp__seosoyoung-attach__npc_set_situation",
-    "mcp__seosoyoung-attach__npc_close_session",
-    "mcp__seosoyoung-attach__npc_get_history",
-]
 
 # Claude Code 기본 금지 도구
 DEFAULT_DISALLOWED_TOOLS = [
@@ -212,30 +60,6 @@ class ClaudeResult:
     interrupted: bool = False  # interrupt로 중단된 경우 True
     usage: Optional[dict] = None  # ResultMessage.usage (input_tokens, output_tokens 등)
     anchor_ts: str = ""  # OM 디버그 채널 세션 스레드 앵커 ts
-
-
-def run_in_new_loop(coro):
-    """별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
-
-    각 호출마다 격리된 이벤트 루프를 생성하여
-    이전 실행의 anyio 잔여물이 영향을 미치지 않도록 합니다.
-    """
-    result_box = [None]
-    error_box = [None]
-
-    def _run():
-        try:
-            result_box[0] = asyncio.run(coro)
-        except BaseException as e:
-            error_box[0] = e
-
-    thread = threading.Thread(target=_run, name="claude-run-sync")
-    thread.start()
-    thread.join()
-
-    if error_box[0] is not None:
-        raise error_box[0]
-    return result_box[0]
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +140,10 @@ def shutdown_all_sync() -> int:
         return 0
 
 
+# 하위 호환 alias
+_classify_process_error = classify_process_error
+
+
 class ClaudeRunner:
     """Claude Code SDK 기반 실행기
 
@@ -332,10 +160,12 @@ class ClaudeRunner:
         disallowed_tools: Optional[list[str]] = None,
         mcp_config_path: Optional[Path] = None,
     ):
+        from seosoyoung.config import Config
+
         self.thread_ts = thread_ts
         self.channel = channel
         self.working_dir = working_dir or Path.cwd()
-        self.allowed_tools = allowed_tools or DEFAULT_ALLOWED_TOOLS
+        self.allowed_tools = allowed_tools or Config.auth.role_tools["admin"]
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
 
@@ -343,7 +173,6 @@ class ClaudeRunner:
         self.client: Optional[ClaudeSDKClient] = None
         self.pid: Optional[int] = None
         self.execution_loop: Optional[asyncio.AbstractEventLoop] = None
-
 
     @classmethod
     async def shutdown_all_clients(cls) -> int:
@@ -356,22 +185,14 @@ class ClaudeRunner:
         return shutdown_all_sync()
 
     def run_sync(self, coro):
-        """동기 컨텍스트에서 코루틴을 실행하는 브릿지
-
-        Slack 이벤트 핸들러(동기)에서 async 함수를 호출할 때 사용.
-        별도 스레드에서 새 이벤트 루프를 생성하여 코루틴을 실행합니다.
-        """
+        """동기 컨텍스트에서 코루틴을 실행하는 브릿지"""
         return run_in_new_loop(coro)
 
     async def _get_or_create_client(
         self,
         options: Optional[ClaudeCodeOptions] = None,
     ) -> ClaudeSDKClient:
-        """ClaudeSDKClient를 가져오거나 새로 생성
-
-        Args:
-            options: ClaudeCodeOptions (새 클라이언트 생성 시 사용)
-        """
+        """ClaudeSDKClient를 가져오거나 새로 생성"""
         if self.client is not None:
             logger.info(f"[DEBUG-CLIENT] 기존 클라이언트 재사용: thread={self.thread_ts}")
             return self.client
@@ -388,14 +209,13 @@ class ClaudeRunner:
         except Exception as e:
             elapsed = _time.monotonic() - t0
             logger.error(f"[DEBUG-CLIENT] connect() 실패: {elapsed:.2f}s, error={e}")
-            # connect 실패 시 서브프로세스 정리 — 좀비 방지
             try:
                 await client.disconnect()
             except Exception:
                 pass
             raise
 
-        # subprocess PID 추출 (SDK 내부 구조: client._transport._process.pid)
+        # subprocess PID 추출
         pid: Optional[int] = None
         try:
             transport = getattr(client, "_transport", None)
@@ -414,11 +234,7 @@ class ClaudeRunner:
         return client
 
     async def _remove_client(self) -> None:
-        """이 러너의 ClaudeSDKClient를 정리
-
-        disconnect 후 인스턴스 변수를 초기화합니다.
-        disconnect 실패 시 psutil로 강제 종료합니다.
-        """
+        """이 러너의 ClaudeSDKClient를 정리"""
         client = self.client
         pid = self.pid
         self.client = None
@@ -437,12 +253,7 @@ class ClaudeRunner:
 
     @staticmethod
     def _force_kill_process(pid: int, thread_ts: str) -> None:
-        """psutil을 사용하여 프로세스를 강제 종료
-
-        Args:
-            pid: 종료할 프로세스 ID
-            thread_ts: 로깅용 스레드 식별자
-        """
+        """psutil을 사용하여 프로세스를 강제 종료"""
         try:
             proc = psutil.Process(pid)
             proc.terminate()
@@ -450,7 +261,6 @@ class ClaudeRunner:
                 proc.wait(timeout=3)
                 logger.info(f"프로세스 강제 종료 성공 (terminate): PID {pid}, thread={thread_ts}")
             except psutil.TimeoutExpired:
-                # terminate가 실패하면 kill로 강제 종료
                 proc.kill()
                 proc.wait(timeout=2)
                 logger.info(f"프로세스 강제 종료 성공 (kill): PID {pid}, thread={thread_ts}")
@@ -460,11 +270,7 @@ class ClaudeRunner:
             logger.error(f"프로세스 강제 종료 실패: PID {pid}, thread={thread_ts}, {kill_error}")
 
     def interrupt(self) -> bool:
-        """이 러너에 인터럽트 전송 (동기)
-
-        Returns:
-            True: 인터럽트 성공, False: 클라이언트 없음 또는 실패
-        """
+        """이 러너에 인터럽트 전송 (동기)"""
         client = self.client
         loop = self.execution_loop
         if client is None or loop is None or not loop.is_running():
@@ -482,14 +288,7 @@ class ClaudeRunner:
         self,
         compact_events: Optional[list],
     ) -> Optional[dict]:
-        """PreCompact 훅을 생성합니다.
-
-        Args:
-            compact_events: 컴팩션 이벤트를 수집할 리스트. None이면 훅 미설정.
-
-        Returns:
-            hooks dict 또는 None
-        """
+        """PreCompact 훅을 생성합니다."""
         if compact_events is None:
             return None
 
@@ -511,7 +310,7 @@ class ClaudeRunner:
             if thread_ts:
                 try:
                     from seosoyoung.config import Config
-                    if Config.OM_ENABLED:
+                    if Config.om.enabled:
                         from seosoyoung.memory.store import MemoryStore
                         store = MemoryStore(Config.get_memory_path())
                         record = store.get_record(thread_ts)
@@ -521,153 +320,13 @@ class ClaudeRunner:
                 except Exception as e:
                     logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
 
-            return HookJSONOutput()  # 빈 응답 = 컴팩션 진행 허용
+            return HookJSONOutput()
 
         return {
             "PreCompact": [
                 HookMatcher(matcher=None, hooks=[on_pre_compact])
             ]
         }
-
-    def _create_or_load_debug_anchor(
-        self,
-        thread_ts: str,
-        session_id: Optional[str],
-        store: "MemoryStore",
-        prompt: Optional[str],
-        debug_channel: str,
-    ) -> str:
-        """디버그 앵커 메시지를 생성하거나 기존 앵커를 로드합니다.
-
-        새 세션이면 앵커 메시지를 생성하고 MemoryRecord에 저장합니다.
-        기존 세션이면 MemoryRecord에서 저장된 anchor_ts를 로드합니다.
-
-        Args:
-            thread_ts: 스레드 타임스탬프
-            session_id: 세션 ID (None이면 새 세션)
-            store: MemoryStore 인스턴스
-            prompt: 사용자 프롬프트 (앵커 미리보기용)
-            debug_channel: 디버그 채널 ID
-
-        Returns:
-            anchor_ts (빈 문자열이면 앵커 없음)
-        """
-        if not debug_channel:
-            return ""
-
-        # 기존 세션: MemoryRecord에서 저장된 anchor_ts 로드
-        if session_id is not None:
-            record = store.get_record(thread_ts)
-            return getattr(record, "anchor_ts", "") or ""
-
-        # 새 세션: 앵커 메시지 생성
-        try:
-            from seosoyoung.config import Config
-            from seosoyoung.memory.observation_pipeline import _send_debug_log
-            from seosoyoung.memory.store import MemoryRecord
-
-            safe_prompt = prompt or ""
-            preview = safe_prompt[:80]
-            if len(safe_prompt) > 80:
-                preview += "…"
-            anchor_ts = _send_debug_log(
-                debug_channel,
-                f"{Config.EMOJI_TEXT_SESSION_START} *OM | 세션 시작 감지* `{thread_ts}`\n>{preview}",
-            )
-            if anchor_ts:
-                record = store.get_record(thread_ts)
-                if record is None:
-                    record = MemoryRecord(thread_ts=thread_ts)
-                record.anchor_ts = anchor_ts
-                store.save_record(record)
-            return anchor_ts or ""
-        except Exception as e:
-            logger.warning(f"OM 앵커 메시지 생성 실패 (무시): {e}")
-            return ""
-
-    def _prepare_memory_injection(
-        self,
-        session_id: Optional[str],
-        prompt: Optional[str],
-    ) -> tuple[Optional[str], str]:
-        """OM 메모리 주입을 준비합니다.
-
-        장기 기억, 세션 관찰, 채널 관찰 등을 수집하여
-        첫 번째 query 메시지에 프리픽스로 주입할 프롬프트를 생성합니다.
-
-        Args:
-            session_id: 세션 ID (None이면 새 세션)
-            prompt: 사용자 프롬프트 (앵커 미리보기용)
-
-        Returns:
-            (memory_prompt, anchor_ts) 튜플
-        """
-        thread_ts = self.thread_ts
-        channel = self.channel
-        if not thread_ts:
-            return None, ""
-
-        try:
-            from seosoyoung.config import Config
-            if not Config.OM_ENABLED:
-                return None, ""
-
-            from seosoyoung.memory.context_builder import ContextBuilder, InjectionResult
-            from seosoyoung.memory.store import MemoryStore
-
-            store = MemoryStore(Config.get_memory_path())
-            is_new_session = session_id is None
-            should_inject_session = store.check_and_clear_inject_flag(thread_ts)
-
-            # 채널 관찰: 관찰 대상 채널에서 멘션될 때만 주입
-            channel_store = None
-            include_channel_obs = False
-            if (
-                is_new_session
-                and Config.CHANNEL_OBSERVER_ENABLED
-                and channel
-                and channel in Config.CHANNEL_OBSERVER_CHANNELS
-            ):
-                from seosoyoung.memory.channel_store import ChannelStore
-                channel_store = ChannelStore(Config.get_memory_path())
-                include_channel_obs = True
-
-            builder = ContextBuilder(store, channel_store=channel_store)
-            result: InjectionResult = builder.build_memory_prompt(
-                thread_ts,
-                max_tokens=Config.OM_MAX_OBSERVATION_TOKENS,
-                include_persistent=is_new_session,
-                include_session=should_inject_session,
-                include_channel_observation=include_channel_obs,
-                channel_id=channel,
-                include_new_observations=True,
-            )
-
-            memory_prompt: Optional[str] = None
-            if result.prompt:
-                memory_prompt = result.prompt
-                logger.info(
-                    f"OM 주입 준비 완료 (thread={thread_ts}, "
-                    f"LTM={result.persistent_tokens} tok, "
-                    f"새관찰={result.new_observation_tokens} tok, "
-                    f"세션={result.session_tokens} tok, "
-                    f"채널={result.channel_digest_tokens}+{result.channel_buffer_tokens} tok)"
-                )
-
-            # 앵커 ts: 새 세션이면 생성, 기존 세션이면 MemoryRecord에서 로드
-            anchor_ts = self._create_or_load_debug_anchor(
-                thread_ts, session_id, store, prompt, Config.OM_DEBUG_CHANNEL,
-            )
-
-            # 디버그 로그 이벤트 #7, #8: 주입 정보
-            self._send_injection_debug_log(
-                thread_ts, result, Config.OM_DEBUG_CHANNEL, anchor_ts=anchor_ts,
-            )
-
-            return memory_prompt, anchor_ts
-        except Exception as e:
-            logger.warning(f"OM 주입 실패 (무시): {e}")
-            return None, ""
 
     def _build_options(
         self,
@@ -683,11 +342,6 @@ class ClaudeRunner:
             - memory_prompt는 첫 번째 query에 프리픽스로 주입합니다.
             - anchor_ts는 디버그 채널의 세션 스레드 앵커 메시지 ts입니다.
             - stderr_file은 호출자가 닫아야 함 (sys.stderr이면 None)
-
-        참고: env 파라미터를 명시적으로 전달하지 않으면
-        Claude Code CLI가 현재 프로세스의 환경변수를 상속받습니다.
-        channel과 thread_ts가 모두 제공되면 env에 SLACK_CHANNEL, SLACK_THREAD_TS를
-        명시적으로 설정합니다.
         """
         thread_ts = self.thread_ts
         channel = self.channel
@@ -695,9 +349,9 @@ class ClaudeRunner:
 
         # 슬랙 컨텍스트가 있으면 env에 주입 (MCP 서버용)
         env: dict[str, str] = {}
-        if channel and thread_ts:
-            env["SLACK_CHANNEL"] = channel
-            env["SLACK_THREAD_TS"] = thread_ts
+        if self.channel and self.thread_ts:
+            env["SLACK_CHANNEL"] = self.channel
+            env["SLACK_THREAD_TS"] = self.thread_ts
 
         # CLI stderr를 세션별 파일에 캡처
         import sys as _sys
@@ -732,95 +386,11 @@ class ClaudeRunner:
         if session_id:
             options.resume = session_id
 
-        memory_prompt, anchor_ts = self._prepare_memory_injection(
-            session_id, prompt,
+        memory_prompt, anchor_ts = prepare_memory_injection(
+            self.thread_ts, self.channel, session_id, prompt,
         )
 
         return options, memory_prompt, anchor_ts, _stderr_file
-
-    @staticmethod
-    def _send_injection_debug_log(
-        thread_ts: str,
-        result: "InjectionResult",
-        debug_channel: str,
-        anchor_ts: str = "",
-    ) -> None:
-        """디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
-
-        LTM/세션 각각 별도 메시지로 발송하며, 주입 내용을 blockquote로 표시.
-        anchor_ts가 있으면 해당 스레드에 답글로 발송.
-        anchor_ts가 비었으면 채널 본문 오염 방지를 위해 스킵.
-        """
-        if not debug_channel:
-            return
-        if not anchor_ts:
-            return
-        has_any = (
-            result.persistent_tokens
-            or result.session_tokens
-            or result.channel_digest_tokens
-            or result.channel_buffer_tokens
-            or result.new_observation_tokens
-        )
-        if not has_any:
-            return
-
-        try:
-            from seosoyoung.config import Config
-            from seosoyoung.memory.observation_pipeline import (
-                _blockquote,
-                _format_tokens,
-                _send_debug_log,
-            )
-
-            sid = thread_ts
-
-            # LTM 주입
-            if result.persistent_tokens:
-                ltm_quote = _blockquote(result.persistent_content)
-                _send_debug_log(
-                    debug_channel,
-                    f"{Config.EMOJI_TEXT_LTM_INJECT} *OM 장기 기억 주입* `{sid}`\n"
-                    f">`LTM {_format_tokens(result.persistent_tokens)} tok`\n"
-                    f"{ltm_quote}",
-                    thread_ts=anchor_ts,
-                )
-
-            # 새 관찰 주입
-            if result.new_observation_tokens:
-                new_obs_quote = _blockquote(result.new_observation_content)
-                _send_debug_log(
-                    debug_channel,
-                    f"{Config.EMOJI_TEXT_NEW_OBS_INJECT} *OM 새 관찰 주입* `{sid}`\n"
-                    f">`새관찰 {_format_tokens(result.new_observation_tokens)} tok`\n"
-                    f"{new_obs_quote}",
-                    thread_ts=anchor_ts,
-                )
-
-            # 세션 관찰 주입
-            if result.session_tokens:
-                session_quote = _blockquote(result.session_content)
-                _send_debug_log(
-                    debug_channel,
-                    f"{Config.EMOJI_TEXT_SESSION_OBS_INJECT} *OM 세션 관찰 주입* `{sid}`\n"
-                    f">`세션 {_format_tokens(result.session_tokens)} tok`\n"
-                    f"{session_quote}",
-                    thread_ts=anchor_ts,
-                )
-
-            # 채널 관찰 주입
-            if result.channel_digest_tokens or result.channel_buffer_tokens:
-                ch_total = result.channel_digest_tokens + result.channel_buffer_tokens
-                _send_debug_log(
-                    debug_channel,
-                    f"{Config.EMOJI_TEXT_CHANNEL_OBS_INJECT} *채널 관찰 주입* `{sid}`\n"
-                    f">`digest {_format_tokens(result.channel_digest_tokens)} tok + "
-                    f"buffer {_format_tokens(result.channel_buffer_tokens)} tok = "
-                    f"총 {_format_tokens(ch_total)} tok`",
-                    thread_ts=anchor_ts,
-                )
-        except Exception as e:
-            logger.warning(f"OM 주입 디버그 로그 실패 (무시): {e}")
 
     async def run(
         self,
@@ -831,119 +401,16 @@ class ClaudeRunner:
         user_id: Optional[str] = None,
         user_message: Optional[str] = None,
     ) -> ClaudeResult:
-        """Claude Code 실행
-
-        Args:
-            prompt: 실행할 프롬프트
-            session_id: 이어갈 세션 ID (선택)
-            on_progress: 진행 상황 콜백 (선택)
-            on_compact: 컴팩션 발생 콜백 (선택) - (trigger, message) 전달
-            user_id: 사용자 ID (OM 관찰 로그 주입용, 선택)
-            user_message: 사용자 원본 메시지 (OM Observer용, 선택). 미지정 시 prompt 사용.
-        """
+        """Claude Code 실행"""
         thread_ts = self.thread_ts
         result = await self._execute(prompt, session_id, on_progress, on_compact, user_id)
 
         # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
-        # user_message가 지정되면 사용자 원본 질문만 전달 (채널 히스토리 제외)
         if result.success and user_id and thread_ts and result.collected_messages:
             observation_input = user_message if user_message is not None else prompt
-            self._trigger_observation(thread_ts, user_id, observation_input, result.collected_messages, anchor_ts=result.anchor_ts)
+            trigger_observation(thread_ts, user_id, observation_input, result.collected_messages, anchor_ts=result.anchor_ts)
 
         return result
-
-    def _trigger_observation(
-        self,
-        thread_ts: str,
-        user_id: str,
-        prompt: str,
-        collected_messages: list[dict],
-        anchor_ts: str = "",
-    ) -> None:
-        """관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
-
-        공유 이벤트 루프에서 ClaudeSDKClient가 실행되므로,
-        별도 스레드에서 새 이벤트 루프를 생성하여 OM 파이프라인을 실행합니다.
-        """
-        try:
-            from seosoyoung.config import Config
-            if not Config.OM_ENABLED:
-                return
-
-            # tool_use/tool_result 메시지를 필터링하여 순수 user/assistant 텍스트만 전달
-            # tool 메시지가 포함되면 턴 토큰이 항상 min_turn_tokens를 초과하여
-            # Observer 스킵 로직이 작동하지 않는 문제를 방지
-            text_messages = [
-                m for m in collected_messages
-                if m.get("role") != "tool"
-                and not (m.get("content", "").startswith("[tool_use:"))
-            ]
-            messages = [{"role": "user", "content": prompt}] + text_messages
-
-            def _run_in_thread():
-                try:
-                    from seosoyoung.memory.observation_pipeline import (
-                        observe_conversation,
-                    )
-                    from seosoyoung.memory.observer import Observer
-                    from seosoyoung.memory.promoter import Compactor, Promoter
-                    from seosoyoung.memory.reflector import Reflector
-                    from seosoyoung.memory.store import MemoryStore
-
-                    debug_channel = Config.OM_DEBUG_CHANNEL
-
-                    store = MemoryStore(Config.get_memory_path())
-                    observer = Observer(
-                        api_key=Config.OPENAI_API_KEY,
-                        model=Config.OM_MODEL,
-                    )
-                    reflector = Reflector(
-                        api_key=Config.OPENAI_API_KEY,
-                        model=Config.OM_MODEL,
-                    )
-                    promoter = Promoter(
-                        api_key=Config.OPENAI_API_KEY,
-                        model=Config.OM_PROMOTER_MODEL,
-                    )
-                    compactor = Compactor(
-                        api_key=Config.OPENAI_API_KEY,
-                        model=Config.OM_PROMOTER_MODEL,
-                    )
-                    asyncio.run(observe_conversation(
-                        store=store,
-                        observer=observer,
-                        thread_ts=thread_ts,
-                        user_id=user_id,
-                        messages=messages,
-                        min_turn_tokens=Config.OM_MIN_TURN_TOKENS,
-                        reflector=reflector,
-                        reflection_threshold=Config.OM_REFLECTION_THRESHOLD,
-                        promoter=promoter,
-                        promotion_threshold=Config.OM_PROMOTION_THRESHOLD,
-                        compactor=compactor,
-                        compaction_threshold=Config.OM_PERSISTENT_COMPACTION_THRESHOLD,
-                        compaction_target=Config.OM_PERSISTENT_COMPACTION_TARGET,
-                        debug_channel=debug_channel,
-                        anchor_ts=anchor_ts,
-                    ))
-                except Exception as e:
-                    logger.error(f"OM 관찰 파이프라인 비동기 실행 오류 (무시): {e}")
-                    try:
-                        from seosoyoung.memory.observation_pipeline import _send_debug_log
-                        if Config.OM_DEBUG_CHANNEL:
-                            _send_debug_log(
-                                Config.OM_DEBUG_CHANNEL,
-                                f"❌ *OM 스레드 오류*\n• user: `{user_id}`\n• thread: `{thread_ts}`\n• error: `{e}`",
-                                thread_ts=anchor_ts,
-                            )
-                    except Exception:
-                        pass
-
-            thread = threading.Thread(target=_run_in_thread, daemon=True)
-            thread.start()
-            logger.info(f"OM 관찰 파이프라인 트리거됨 (user={user_id}, thread={thread_ts})")
-        except Exception as e:
-            logger.warning(f"OM 관찰 트리거 실패 (무시): {e}")
 
     async def _execute(
         self,
@@ -959,7 +426,6 @@ class ClaudeRunner:
         compact_events: list[dict] = []
         compact_notified_count = 0
         options, memory_prompt, anchor_ts, stderr_file = self._build_options(session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
-        # DEBUG: SDK에 전달되는 options 상세 로그
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
         logger.info(f"[DEBUG-OPTIONS] permission_mode={options.permission_mode}")
         logger.info(f"[DEBUG-OPTIONS] cwd={options.cwd}")
@@ -981,12 +447,11 @@ class ClaudeRunner:
         result_session_id = None
         current_text = ""
         result_text = ""
-        result_is_error = False  # ResultMessage.is_error 추적
-        result_usage: Optional[dict] = None  # ResultMessage.usage 추적
-        collected_messages: list[dict] = []  # OM용 대화 수집
+        result_is_error = False
+        result_usage: Optional[dict] = None
+        collected_messages: list[dict] = []
         last_progress_time = asyncio.get_event_loop().time()
         progress_interval = 2.0
-        # 세션 진단용 추적 변수
         _session_start = datetime.now(timezone.utc)
         _msg_count = 0
         _last_tool = ""
@@ -995,7 +460,6 @@ class ClaudeRunner:
             client = await self._get_or_create_client(options=options)
 
             # OM 메모리를 첫 번째 메시지에 프리픽스로 주입
-            # CLI 인자 크기 제한을 회피하기 위해 append_system_prompt 대신 이 방식 사용
             effective_prompt = prompt
             if memory_prompt:
                 effective_prompt = (
@@ -1040,7 +504,7 @@ class ClaudeRunner:
                                     f"• data: `{json.dumps(e.data, ensure_ascii=False)[:500]}`\n"
                                     f"• current_text: {len(current_text)} chars"
                                 )
-                                _send_debug_to_slack(channel, thread_ts, debug_msg)
+                                send_debug_to_slack(channel, thread_ts, debug_msg)
 
                             logger.warning(
                                 f"rate_limit_event 발생 (status={status}): "
@@ -1064,14 +528,12 @@ class ClaudeRunner:
                                 if isinstance(block, TextBlock):
                                     current_text = block.text
 
-                                    # OM용 대화 수집
                                     collected_messages.append({
                                         "role": "assistant",
                                         "content": block.text,
                                         "timestamp": datetime.now(timezone.utc).isoformat(),
                                     })
 
-                                    # 진행 상황 콜백 (2초 간격)
                                     if on_progress:
                                         current_time = asyncio.get_event_loop().time()
                                         if current_time - last_progress_time >= progress_interval:
@@ -1085,7 +547,6 @@ class ClaudeRunner:
                                                 logger.warning(f"진행 상황 콜백 오류: {e}")
 
                                 elif isinstance(block, ToolUseBlock):
-                                    # 도구 호출 로깅
                                     tool_input = ""
                                     if block.input:
                                         tool_input = json.dumps(block.input, ensure_ascii=False)
@@ -1093,7 +554,6 @@ class ClaudeRunner:
                                             tool_input = tool_input[:2000] + "..."
                                     _last_tool = block.name
                                     logger.info(f"[TOOL_USE] {block.name}: {tool_input[:500]}")
-                                    # OM용: 도구 호출 수집
                                     collected_messages.append({
                                         "role": "assistant",
                                         "content": f"[tool_use: {block.name}] {tool_input}",
@@ -1101,7 +561,6 @@ class ClaudeRunner:
                                     })
 
                                 elif isinstance(block, ToolResultBlock):
-                                    # 도구 결과 수집 (내용이 긴 경우 truncate)
                                     content = ""
                                     if isinstance(block.content, str):
                                         content = block.content[:2000]
@@ -1120,14 +579,12 @@ class ClaudeRunner:
                             result_is_error = message.is_error
                         if hasattr(message, 'result'):
                             result_text = message.result
-                        # ResultMessage에서도 세션 ID 추출 시도
                         if hasattr(message, 'session_id') and message.session_id:
                             result_session_id = message.session_id
-                        # usage 정보 추출
                         if hasattr(message, 'usage') and message.usage:
                             result_usage = message.usage
 
-                    # 컴팩션 이벤트 확인 (PreCompact 훅에서 추가된 이벤트)
+                    # 컴팩션 이벤트 확인
                     if on_compact and len(compact_events) > compact_notified_count:
                         for event in compact_events[compact_notified_count:]:
                             try:
@@ -1142,7 +599,6 @@ class ClaudeRunner:
 
                 # 내부 루프 종료 후: compact가 발생했는지 확인
                 if len(compact_events) > compact_before and compact_retry_count < MAX_COMPACT_RETRIES:
-                    # compact 발생 → compact 알림 발송 (아직 안 한 경우)
                     if on_compact and len(compact_events) > compact_notified_count:
                         for event in compact_events[compact_notified_count:]:
                             try:
@@ -1157,20 +613,17 @@ class ClaudeRunner:
                         f"(retry={compact_retry_count}/{MAX_COMPACT_RETRIES}, "
                         f"session_id={result_session_id})"
                     )
-                    # compact 전 결과를 초기화하고 재수신
                     current_text = ""
                     result_text = ""
                     result_is_error = False
                     continue  # 외부 루프 계속 → receive_response() 재호출
 
                 # compact가 아닌 정상 종료 또는 재시도 한도 초과
-                # 출력 없이 종료된 경우 진단 덤프
                 if not result_text and not current_text and channel and thread_ts:
                     _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                    _pid = self.pid
-                    dump = _build_session_dump(
+                    dump = build_session_dump(
                         reason="CLI exited with no output (StopAsyncIteration)",
-                        pid=_pid,
+                        pid=self.pid,
                         duration_sec=_dur,
                         message_count=_msg_count,
                         last_tool=_last_tool,
@@ -1181,17 +634,13 @@ class ClaudeRunner:
                         thread_ts=thread_ts,
                     )
                     logger.warning(f"세션 무출력 종료 덤프: thread={thread_ts}, duration={_dur:.1f}s, msgs={_msg_count}, last_tool={_last_tool}")
-                    _send_debug_to_slack(channel, thread_ts, dump)
+                    send_debug_to_slack(channel, thread_ts, dump)
                 break  # 외부 루프 종료
 
             # 정상 완료
             output = result_text or current_text
-
-            # 마커 추출
             update_requested = "<!-- UPDATE -->" in output
             restart_requested = "<!-- RESTART -->" in output
-
-            # LIST_RUN 마커 추출
             list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
             list_run = list_run_match.group(1).strip() if list_run_match else None
 
@@ -1223,15 +672,13 @@ class ClaudeRunner:
                 error="Claude Code CLI를 찾을 수 없습니다. claude 명령어가 PATH에 있는지 확인하세요."
             )
         except ProcessError as e:
-            friendly_msg = _classify_process_error(e)
+            friendly_msg = classify_process_error(e)
             logger.error(f"Claude Code CLI 프로세스 오류: exit_code={e.exit_code}, stderr={e.stderr}, friendly={friendly_msg}")
-            # 진단 덤프
             if channel and thread_ts:
                 _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                _pid = self.pid
-                dump = _build_session_dump(
+                dump = build_session_dump(
                     reason="ProcessError",
-                    pid=_pid,
+                    pid=self.pid,
                     duration_sec=_dur,
                     message_count=_msg_count,
                     last_tool=_last_tool,
@@ -1243,7 +690,7 @@ class ClaudeRunner:
                     active_clients_count=len(_registry),
                     thread_ts=thread_ts,
                 )
-                _send_debug_to_slack(channel, thread_ts, dump)
+                send_debug_to_slack(channel, thread_ts, dump)
             return ClaudeResult(
                 success=False,
                 output=current_text,
@@ -1275,7 +722,6 @@ class ClaudeRunner:
                 error=str(e)
             )
         finally:
-            # 응답 완료 또는 에러 시 클라이언트 정리
             await self._remove_client()
             self.execution_loop = None
             if thread_ts:
@@ -1287,16 +733,7 @@ class ClaudeRunner:
                     pass
 
     async def compact_session(self, session_id: str) -> ClaudeResult:
-        """세션 컴팩트 처리
-
-        세션의 대화 내역을 압축하여 토큰 사용량을 줄입니다.
-
-        Args:
-            session_id: 컴팩트할 세션 ID
-
-        Returns:
-            ClaudeResult (compact 결과)
-        """
+        """세션 컴팩트 처리"""
         if not session_id:
             return ClaudeResult(
                 success=False,

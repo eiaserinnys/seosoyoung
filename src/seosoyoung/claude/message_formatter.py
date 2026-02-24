@@ -1,11 +1,18 @@
 """슬랙 메시지 포맷팅 유틸리티
 
 Claude 응답을 슬랙 메시지 형식으로 변환하는 함수들을 제공합니다.
+- 컨텍스트 사용량 바
+- 백틱 이스케이프
+- 트렐로 헤더
+- 진행 상황(on_progress) 포맷팅
 """
 
+import logging
 from typing import Optional
 
 from seosoyoung.trello.watcher import TrackedCard
+
+logger = logging.getLogger(__name__)
 
 # Claude 모델별 컨텍스트 윈도우 (tokens)
 CONTEXT_WINDOW = 200_000
@@ -79,3 +86,40 @@ def build_trello_header(card: TrackedCard, session_id: str = "") -> str:
     """
     session_display = f" | #️⃣ {session_id[:8]}" if session_id else ""
     return f"*🎫 <{card.card_url}|{card.card_name}>{session_display}*"
+
+
+# 진행 상황 메시지 길이 제한
+PROGRESS_MAX_LEN = 3800
+DM_MSG_MAX_LEN = 3000
+
+
+def truncate_progress_text(text: str) -> str:
+    """진행 상황 텍스트를 표시용으로 정리"""
+    display_text = text.lstrip("\n")
+    if not display_text:
+        return ""
+    if len(display_text) > PROGRESS_MAX_LEN:
+        display_text = "...\n" + display_text[-PROGRESS_MAX_LEN:]
+    return display_text
+
+
+def format_as_blockquote(text: str) -> str:
+    """텍스트를 슬랙 blockquote 형식으로 변환"""
+    escaped = escape_backticks(text)
+    lines = [f"> {line}" for line in escaped.split("\n")]
+    return "\n".join(lines)
+
+
+def format_trello_progress(text: str, card: TrackedCard, session_id: str) -> str:
+    """트렐로 모드 채널 진행 상황 포맷"""
+    header = build_trello_header(card, session_id)
+    escaped = escape_backticks(text)
+    return f"{header}\n\n```\n{escaped}\n```"
+
+
+def format_dm_progress(text: str, max_len: int = DM_MSG_MAX_LEN) -> str:
+    """DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)"""
+    escaped = escape_backticks(text)
+    if len(escaped) > max_len:
+        escaped = escaped[-max_len:]
+    return format_as_blockquote(escaped)

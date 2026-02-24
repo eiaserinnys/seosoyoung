@@ -129,17 +129,17 @@ class TestConfigBoolParsing:
     def test_debug_true(self):
         """DEBUG=true 파싱"""
         config_module = reload_config_with_env({"DEBUG": "true"})
-        assert config_module.Config.DEBUG is True
+        assert config_module.Config.debug is True
 
     def test_debug_false(self):
         """DEBUG=false 파싱"""
         config_module = reload_config_with_env({"DEBUG": "false"})
-        assert config_module.Config.DEBUG is False
+        assert config_module.Config.debug is False
 
     def test_debug_default(self):
         """DEBUG 미설정 시 기본값 False"""
         config_module = reload_config_with_env({})
-        assert config_module.Config.DEBUG is False
+        assert config_module.Config.debug is False
 
 
 class TestConfigListParsing:
@@ -148,18 +148,18 @@ class TestConfigListParsing:
     def test_translate_channels_empty(self):
         """TRANSLATE_CHANNELS 미설정 시 빈 리스트"""
         config_module = reload_config_with_env({})
-        assert config_module.Config.TRANSLATE_CHANNELS == []
+        assert config_module.Config.translate.channels == []
 
     def test_translate_channels_with_values(self):
         """TRANSLATE_CHANNELS 설정 시 쉼표로 구분된 리스트"""
         config_module = reload_config_with_env({
             "TRANSLATE_CHANNELS": "C123,C456,C789"
         })
-        assert config_module.Config.TRANSLATE_CHANNELS == ["C123", "C456", "C789"]
+        assert config_module.Config.translate.channels == ["C123", "C456", "C789"]
 
     def test_translate_channels_trims_whitespace(self):
         """TRANSLATE_CHANNELS 값의 공백 제거"""
         config_module = reload_config_with_env({
             "TRANSLATE_CHANNELS": "C123 , C456 , C789"
         })
-        assert config_module.Config.TRANSLATE_CHANNELS == ["C123", "C456", "C789"]
+        assert config_module.Config.translate.channels == ["C123", "C456", "C789"]

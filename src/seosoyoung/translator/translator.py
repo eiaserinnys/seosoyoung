@@ -1,7 +1,7 @@
 """번역 모듈
 
 Anthropic 또는 OpenAI API를 호출하여 번역합니다.
-backend 설정(Config.TRANSLATE_BACKEND)에 따라 분기합니다.
+backend 설정(Config.translate.backend)에 따라 분기합니다.
 """
 
 import logging
@@ -180,7 +180,7 @@ def translate(
         source_lang: 원본 언어
         context_messages: 이전 대화 컨텍스트
         model: 사용할 모델 (기본값: backend에 따라 Config에서 결정)
-        backend: 번역 백엔드 ("anthropic" | "openai", 기본값: Config.TRANSLATE_BACKEND)
+        backend: 번역 백엔드 ("anthropic" | "openai", 기본값: Config.translate.backend)
 
     Returns:
         (번역된 텍스트, 예상 비용 USD, 참고한 용어 목록, 매칭 결과 객체)
@@ -188,18 +188,18 @@ def translate(
     Raises:
         ValueError: API 키 미설정 또는 잘못된 backend
     """
-    backend = backend or Config.TRANSLATE_BACKEND
+    backend = backend or Config.translate.backend
 
     if backend == "openai":
-        api_key = Config.OPENAI_API_KEY
+        api_key = Config.om.openai_api_key
         if not api_key:
             raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다.")
-        model = model or Config.TRANSLATE_OPENAI_MODEL
+        model = model or Config.translate.openai_model
     else:
-        api_key = Config.TRANSLATE_API_KEY
+        api_key = Config.translate.api_key
         if not api_key:
             raise ValueError("TRANSLATE_API_KEY가 설정되지 않았습니다.")
-        model = model or Config.TRANSLATE_MODEL
+        model = model or Config.translate.model
 
     prompt, glossary_terms, match_result = _build_prompt(text, source_lang, context_messages)
 
