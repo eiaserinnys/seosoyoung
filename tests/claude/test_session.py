@@ -2,7 +2,9 @@
 
 import json
 import tempfile
+import threading
 from pathlib import Path
+from unittest.mock import MagicMock
 import pytest
 
 import sys
@@ -334,6 +336,164 @@ class TestSessionManager:
         finally:
             # 권한 복원
             os.chmod(readonly_dir, stat.S_IRWXU)
+
+
+class TestSessionRuntime:
+    """SessionRuntime 세션 종료 콜백 테스트"""
+
+    def test_on_session_stopped_callback_called(self):
+        """개별 세션 종료 시 on_session_stopped 콜백 호출"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        callback = MagicMock()
+        runtime = SessionRuntime(on_session_stopped=callback)
+
+        runtime.mark_session_running("thread_1")
+        runtime.mark_session_stopped("thread_1")
+
+        callback.assert_called_once()
+
+    def test_on_session_stopped_called_each_time(self):
+        """여러 세션이 종료되면 각각 콜백 호출"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        callback = MagicMock()
+        runtime = SessionRuntime(on_session_stopped=callback)
+
+        runtime.mark_session_running("thread_1")
+        runtime.mark_session_running("thread_2")
+        runtime.mark_session_stopped("thread_1")
+        runtime.mark_session_stopped("thread_2")
+
+        assert callback.call_count == 2
+
+    def test_set_on_session_stopped(self):
+        """set_on_session_stopped로 콜백 설정"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        callback = MagicMock()
+        runtime = SessionRuntime()
+
+        runtime.set_on_session_stopped(callback)
+        runtime.mark_session_running("thread_1")
+        runtime.mark_session_stopped("thread_1")
+
+        callback.assert_called_once()
+
+    def test_no_callback_no_error(self):
+        """콜백 미설정 시 오류 없이 동작"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        runtime = SessionRuntime()
+        runtime.mark_session_running("thread_1")
+        runtime.mark_session_stopped("thread_1")  # 오류 없이 통과
+
+    def test_get_running_session_count(self):
+        """실행 중인 세션 수 추적"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        runtime = SessionRuntime()
+
+        assert runtime.get_running_session_count() == 0
+        runtime.mark_session_running("thread_1")
+        assert runtime.get_running_session_count() == 1
+        runtime.mark_session_running("thread_2")
+        assert runtime.get_running_session_count() == 2
+        runtime.mark_session_stopped("thread_1")
+        assert runtime.get_running_session_count() == 1
+
+
+class TestSessionManagerThreadSafety:
+    """SessionManager 스레드 안전성 테스트"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def manager(self, temp_dir):
+        return SessionManager(session_dir=temp_dir)
+
+    def test_concurrent_create(self, manager):
+        """여러 스레드에서 동시에 세션 생성"""
+        errors = []
+
+        def create_session(i):
+            try:
+                manager.create(
+                    thread_ts=f"{i}.000000",
+                    channel_id=f"C{i}",
+                )
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=create_session, args=(i,)) for i in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        assert manager.count() == 20
+
+    def test_concurrent_read_write(self, manager):
+        """읽기와 쓰기가 동시에 발생해도 안전"""
+        manager.create(thread_ts="1.000000", channel_id="C1")
+        errors = []
+
+        def reader():
+            try:
+                for _ in range(50):
+                    manager.get("1.000000")
+            except Exception as e:
+                errors.append(e)
+
+        def writer():
+            try:
+                for i in range(50):
+                    manager.increment_message_count("1.000000")
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=reader) for _ in range(5)]
+        threads += [threading.Thread(target=writer) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        session = manager.get("1.000000")
+        assert session.message_count == 250  # 5 writers * 50 increments
+
+    def test_concurrent_update_user(self, manager):
+        """여러 스레드에서 사용자 정보를 동시 업데이트"""
+        manager.create(thread_ts="1.000000", channel_id="C1")
+        errors = []
+
+        def updater(i):
+            try:
+                manager.update_user(
+                    "1.000000",
+                    user_id=f"U{i}",
+                    username=f"user{i}",
+                    role="admin",
+                )
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=updater, args=(i,)) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        session = manager.get("1.000000")
+        # 마지막 쓰기가 이긴다 — 중요한 건 데이터 손상이 없는 것
+        assert session.user_id.startswith("U")
+        assert session.role == "admin"
 
 
 if __name__ == "__main__":

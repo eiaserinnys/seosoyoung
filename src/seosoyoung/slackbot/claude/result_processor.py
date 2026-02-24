@@ -4,15 +4,13 @@
 """
 
 import logging
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
-from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.claude.message_formatter import (
     build_context_usage_bar,
     build_trello_header,
 )
-from seosoyoung.slackbot.slack.formatting import update_message
-from seosoyoung.slackbot.restart import RestartType
+from seosoyoung.slackbot.claude.types import UpdateMessageFn
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +28,29 @@ class ResultProcessor:
         restart_manager,
         get_running_session_count: Callable,
         send_restart_confirmation: Callable,
+        update_message_fn: UpdateMessageFn,
+        *,
         trello_watcher_ref: Optional[Callable] = None,
+        show_context_usage: bool = False,
+        restart_type_update: Any = None,
+        restart_type_restart: Any = None,
     ):
         self.send_long_message = send_long_message
         self.restart_manager = restart_manager
         self.get_running_session_count = get_running_session_count
         self.send_restart_confirmation = send_restart_confirmation
+        self.update_message_fn = update_message_fn
         self.trello_watcher_ref = trello_watcher_ref
+        self.show_context_usage = show_context_usage
+        self.restart_type_update = restart_type_update
+        self.restart_type_restart = restart_type_restart
 
     def replace_thinking_message(
         self, client, channel: str, old_msg_ts: str,
         new_text: str, new_blocks: list, thread_ts: str = None
     ) -> str:
         """사고 과정 메시지를 최종 응답으로 교체 (chat_update)"""
-        update_message(client, channel, old_msg_ts, new_text, blocks=new_blocks)
+        self.update_message_fn(client, channel, old_msg_ts, new_text, blocks=new_blocks)
         return old_msg_ts
 
     def handle_interrupted(self, ctx):
@@ -51,7 +58,7 @@ class ResultProcessor:
         try:
             if ctx.dm_channel_id and ctx.dm_last_reply_ts:
                 try:
-                    update_message(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
+                    self.update_message_fn(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
                                    "> (중단됨)")
                 except Exception as e:
                     logger.warning(f"DM 중단 메시지 업데이트 실패: {e}")
@@ -66,7 +73,7 @@ class ResultProcessor:
             else:
                 interrupted_text = "> (중단됨)"
 
-            update_message(ctx.client, ctx.channel, target_ts, interrupted_text)
+            self.update_message_fn(ctx.client, ctx.channel, target_ts, interrupted_text)
             logger.info(f"중단된 실행 메시지 업데이트: ts={target_ts}")
         except Exception as e:
             logger.warning(f"중단 메시지 업데이트 실패: {e}")
@@ -80,7 +87,7 @@ class ResultProcessor:
             return
 
         usage_bar = None
-        if Config.claude.show_context_usage:
+        if self.show_context_usage:
             usage_bar = build_context_usage_bar(result.usage)
 
         is_list_run_from_marker = bool(ctx.effective_role == "admin" and result.list_run)
@@ -113,7 +120,7 @@ class ResultProcessor:
         if ctx.dm_channel_id and ctx.dm_last_reply_ts:
             try:
                 dm_final = response[:3800] if len(response) > 3800 else response
-                update_message(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts, dm_final)
+                self.update_message_fn(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts, dm_final)
             except Exception as e:
                 logger.warning(f"DM 스레드 최종 메시지 업데이트 실패: {e}")
 
@@ -138,7 +145,7 @@ class ResultProcessor:
         }]
 
         if is_list_run:
-            update_message(ctx.client, ctx.channel, ctx.main_msg_ts,
+            self.update_message_fn(ctx.client, ctx.channel, ctx.main_msg_ts,
                            final_text, blocks=final_blocks)
         else:
             self.replace_thinking_message(
@@ -179,7 +186,7 @@ class ResultProcessor:
                 }]
 
                 if is_list_run:
-                    update_message(ctx.client, ctx.channel, ctx.last_msg_ts,
+                    self.update_message_fn(ctx.client, ctx.channel, ctx.last_msg_ts,
                                    final_text, blocks=final_blocks)
                 else:
                     self.replace_thinking_message(
@@ -227,7 +234,7 @@ class ResultProcessor:
 
     def handle_restart_marker(self, result, session, channel, thread_ts, say):
         """재기동 마커 처리"""
-        restart_type = RestartType.UPDATE if result.update_requested else RestartType.RESTART
+        restart_type = self.restart_type_update if result.update_requested else self.restart_type_restart
         type_name = "업데이트" if result.update_requested else "재시작"
 
         running_count = self.get_running_session_count() - 1
@@ -306,49 +313,38 @@ class ResultProcessor:
             )
 
     def handle_error(self, ctx, error):
-        """오류 결과 처리"""
+        """오류 결과 처리
+
+        ClaudeResult.error 또는 Exception에서 발생한 오류를 처리합니다.
+        update_message 실패 시 ctx.say 폴백을 사용합니다.
+        """
         error_msg = f"오류가 발생했습니다: {error}"
 
         if ctx.dm_channel_id and ctx.dm_last_reply_ts:
             try:
-                update_message(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
+                self.update_message_fn(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
                                f"❌ {error_msg}")
             except Exception as e:
                 logger.warning(f"DM 에러 메시지 업데이트 실패: {e}")
 
         if ctx.is_trello_mode:
-            header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
-            error_text = f"{header}\n\n❌ {error_msg}"
-            update_message(ctx.client, ctx.channel, ctx.main_msg_ts, error_text,
-                           blocks=[{"type": "section",
-                                    "text": {"type": "mrkdwn", "text": error_text}}])
-        else:
-            error_text = f"❌ {error_msg}"
-            update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text,
-                           blocks=[{"type": "section",
-                                    "text": {"type": "mrkdwn", "text": error_text}}])
-
-    def handle_exception(self, ctx, e: Exception):
-        """예외 처리"""
-        error_msg = f"오류가 발생했습니다: {str(e)}"
-
-        if ctx.dm_channel_id and ctx.dm_last_reply_ts:
-            try:
-                update_message(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
-                               f"❌ {error_msg}")
-            except Exception:
-                pass
-
-        if ctx.is_trello_mode:
             try:
                 header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
-                update_message(ctx.client, ctx.channel, ctx.main_msg_ts,
-                               f"{header}\n\n❌ {error_msg}")
+                error_text = f"{header}\n\n❌ {error_msg}"
+                self.update_message_fn(ctx.client, ctx.channel, ctx.main_msg_ts, error_text,
+                               blocks=[{"type": "section",
+                                        "text": {"type": "mrkdwn", "text": error_text}}])
             except Exception:
                 ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)
         else:
             try:
                 error_text = f"❌ {error_msg}"
-                update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text)
+                self.update_message_fn(ctx.client, ctx.channel, ctx.last_msg_ts, error_text,
+                               blocks=[{"type": "section",
+                                        "text": {"type": "mrkdwn", "text": error_text}}])
             except Exception:
                 ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)
+
+    def handle_exception(self, ctx, e: Exception):
+        """예외 처리 — handle_error에 위임"""
+        self.handle_error(ctx, str(e))

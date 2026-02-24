@@ -379,6 +379,145 @@ class TestHandleSSEEvents:
         assert result.result == "after keepalive"
 
 
+class TestSSEReconnection:
+    """SSE 연결 끊김 시 자동 재연결 테스트"""
+
+    @pytest.fixture
+    def client(self):
+        return SoulServiceClient(base_url="http://localhost:3105", token="test")
+
+    @pytest.mark.asyncio
+    async def test_connection_lost_triggers_reconnect(self, client):
+        """연결 끊김 시 reconnect_stream()으로 재연결하여 결과를 받는다"""
+        import aiohttp
+
+        # 첫 번째 응답: SSE 스트림 도중 연결 끊김
+        broken_reader = AsyncMock()
+        broken_reader.readline = AsyncMock(
+            side_effect=aiohttp.ClientPayloadError("Connection lost")
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = broken_reader
+        client._session = _mock_session(mock_response)
+
+        # reconnect_stream mock: 성공 결과 반환
+        reconnect_result = ExecuteResult(
+            success=True,
+            result="reconnected result",
+            claude_session_id="sess-reconnect",
+        )
+        client.reconnect_stream = AsyncMock(return_value=reconnect_result)
+
+        result = await client.execute("client1", "req1", "hello")
+
+        assert result.success is True
+        assert result.result == "reconnected result"
+        assert result.claude_session_id == "sess-reconnect"
+        client.reconnect_stream.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_reconnect_retries_with_backoff(self, client):
+        """재연결이 여러 번 실패하면 백오프 후 재시도한다"""
+        import aiohttp
+
+        # 첫 번째 응답: 연결 끊김
+        broken_reader = AsyncMock()
+        broken_reader.readline = AsyncMock(
+            side_effect=aiohttp.ClientPayloadError("Connection lost")
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = broken_reader
+        client._session = _mock_session(mock_response)
+
+        # reconnect_stream: 처음 2회 실패, 3번째 성공
+        success_result = ExecuteResult(
+            success=True,
+            result="finally connected",
+            claude_session_id="sess-final",
+        )
+        client.reconnect_stream = AsyncMock(
+            side_effect=[
+                ConnectionLostError("fail 1"),
+                ConnectionLostError("fail 2"),
+                success_result,
+            ]
+        )
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await client.execute("client1", "req1", "hello")
+
+        assert result.success is True
+        assert result.result == "finally connected"
+        assert client.reconnect_stream.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_reconnect_all_retries_exhausted(self, client):
+        """재연결 재시도를 모두 소진하면 실패 결과를 반환한다"""
+        import aiohttp
+
+        broken_reader = AsyncMock()
+        broken_reader.readline = AsyncMock(
+            side_effect=aiohttp.ClientPayloadError("Connection lost")
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = broken_reader
+        client._session = _mock_session(mock_response)
+
+        # reconnect_stream: 항상 실패
+        client.reconnect_stream = AsyncMock(
+            side_effect=ConnectionLostError("still disconnected")
+        )
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await client.execute("client1", "req1", "hello")
+
+        assert result.success is False
+        assert "재시도 실패" in result.error
+
+    @pytest.mark.asyncio
+    async def test_reconnect_task_not_found(self, client):
+        """재연결 시 태스크가 이미 종료된 경우"""
+        import aiohttp
+
+        broken_reader = AsyncMock()
+        broken_reader.readline = AsyncMock(
+            side_effect=aiohttp.ClientPayloadError("Connection lost")
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = broken_reader
+        client._session = _mock_session(mock_response)
+
+        client.reconnect_stream = AsyncMock(
+            side_effect=TaskNotFoundError("task gone")
+        )
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await client.execute("client1", "req1", "hello")
+
+        assert result.success is False
+        assert "태스크가 이미 종료됨" in result.error
+
+    @pytest.mark.asyncio
+    async def test_parse_sse_stream_raises_connection_lost(self, client):
+        """_parse_sse_stream이 ClientError 발생 시 ConnectionLostError를 raise한다"""
+        import aiohttp
+
+        broken_reader = AsyncMock()
+        broken_reader.readline = AsyncMock(
+            side_effect=aiohttp.ClientPayloadError("broken pipe")
+        )
+        mock_response = MagicMock()
+        mock_response.content = broken_reader
+
+        with pytest.raises(ConnectionLostError, match="broken pipe"):
+            async for _ in client._parse_sse_stream(mock_response):
+                pass
+
+
 class TestParseError:
     """_parse_error 테스트"""
 

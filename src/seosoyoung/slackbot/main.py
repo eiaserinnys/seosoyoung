@@ -11,13 +11,16 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.logging_config import setup_logging
 from seosoyoung.slackbot.auth import check_permission, get_user_role
+from pathlib import Path
 from seosoyoung.slackbot.claude.session import SessionManager, SessionRuntime
 from seosoyoung.slackbot.claude.executor import ClaudeExecutor
 from seosoyoung.slackbot.claude.agent_runner import shutdown_all_sync
 from seosoyoung.slackbot.slack.helpers import send_long_message
+from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers
 from seosoyoung.slackbot.handlers.actions import send_restart_confirmation
 from seosoyoung.slackbot.restart import RestartManager, RestartType
+from seosoyoung.slackbot.memory.injector import prepare_memory_injection, trigger_observation
 from seosoyoung.slackbot.trello.watcher import TrelloWatcher
 from seosoyoung.slackbot.trello.list_runner import ListRunner
 from seosoyoung.slackbot.handlers.channel_collector import ChannelMessageCollector
@@ -34,7 +37,7 @@ logger = setup_logging()
 app = App(token=Config.slack.bot_token, logger=logger)
 
 # 세션 관리
-session_manager = SessionManager()
+session_manager = SessionManager(session_dir=Path(Config.get_session_path()))
 session_runtime = SessionRuntime()
 
 # Trello 워처 (나중에 초기화)
@@ -75,7 +78,7 @@ def _check_restart_on_session_stop():
 
 
 # 세션 종료 콜백 설정
-session_runtime.set_on_all_sessions_stopped(_check_restart_on_session_stop)
+session_runtime.set_on_session_stopped(_check_restart_on_session_stop)
 
 
 def _signal_handler(signum, frame):
@@ -95,18 +98,37 @@ signal.signal(signal.SIGINT, _signal_handler)
 if hasattr(signal, 'SIGTERM'):
     signal.signal(signal.SIGTERM, _signal_handler)
 
+def _on_compact_om_flag(thread_ts: str) -> None:
+    """PreCompact 훅에서 OM inject 플래그 설정"""
+    if Config.om.enabled:
+        from seosoyoung.slackbot.memory.store import MemoryStore
+        store = MemoryStore(Config.get_memory_path())
+        record = store.get_record(thread_ts)
+        if record and record.observations.strip():
+            store.set_inject_flag(thread_ts)
+
+
 # Claude 실행기
 executor = ClaudeExecutor(
     session_manager=session_manager,
-    get_session_lock=session_runtime.get_session_lock,
-    mark_session_running=session_runtime.mark_session_running,
-    mark_session_stopped=session_runtime.mark_session_stopped,
-    get_running_session_count=session_runtime.get_running_session_count,
+    session_runtime=session_runtime,
     restart_manager=restart_manager,
     send_long_message=send_long_message,
     send_restart_confirmation=send_restart_confirmation,
+    update_message_fn=update_message,
+    execution_mode=Config.claude.execution_mode,
+    role_tools=Config.auth.role_tools,
+    show_context_usage=Config.claude.show_context_usage,
+    soul_url=Config.claude.soul_url,
+    soul_token=Config.claude.soul_token,
+    soul_client_id=Config.claude.soul_client_id,
+    restart_type_update=RestartType.UPDATE,
+    restart_type_restart=RestartType.RESTART,
     trello_watcher_ref=lambda: trello_watcher,
     list_runner_ref=lambda: list_runner,
+    prepare_memory_fn=prepare_memory_injection,
+    trigger_observation_fn=trigger_observation,
+    on_compact_om_flag=_on_compact_om_flag,
 )
 
 # 멘션 트래커 (채널 관찰자-멘션 핸들러 통합용)

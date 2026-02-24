@@ -16,7 +16,10 @@ from seosoyoung.slackbot.claude.agent_runner import (
     ClaudeRunner,
     ClaudeResult,
     COMPACT_RETRY_READ_TIMEOUT,
+    CompactRetryState,
     DEFAULT_DISALLOWED_TOOLS,
+    MAX_COMPACT_RETRIES,
+    MessageState,
     _extract_last_assistant_text,
     _registry,
     _registry_lock,
@@ -56,6 +59,7 @@ class MockAssistantMessage:
 class MockResultMessage:
     result: str = ""
     session_id: str = None
+    is_error: bool = False
 
 
 def _apply_mock_config(mock_config, patches):
@@ -85,10 +89,10 @@ class TestClaudeAgentRunnerUnit:
 
     def test_build_options_basic(self):
         """기본 옵션 생성 테스트"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeAgentRunner(allowed_tools=["Read", "Glob"])
         options, memory_prompt, anchor_ts, _ = runner._build_options()
 
-        assert options.allowed_tools == Config.auth.role_tools["admin"]
+        assert options.allowed_tools == ["Read", "Glob"]
         assert options.disallowed_tools == DEFAULT_DISALLOWED_TOOLS
         assert options.permission_mode == "bypassPermissions"
         assert options.resume is None
@@ -681,7 +685,7 @@ class TestBuildOptionsChannelObservation:
             "om.debug_channel": "",
         }
 
-        runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
+        runner = ClaudeAgentRunner("ts_1", channel="C_OBS", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -714,7 +718,7 @@ class TestBuildOptionsChannelObservation:
             "om.debug_channel": "",
         }
 
-        runner = ClaudeAgentRunner("ts_1", channel="C_OTHER")
+        runner = ClaudeAgentRunner("ts_1", channel="C_OTHER", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -743,7 +747,7 @@ class TestBuildOptionsChannelObservation:
             "om.debug_channel": "",
         }
 
-        runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
+        runner = ClaudeAgentRunner("ts_1", channel="C_OBS", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -782,7 +786,7 @@ class TestBuildOptionsAnchorTs:
             "om.debug_channel": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner("ts_1")
+        runner = ClaudeAgentRunner("ts_1", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -829,7 +833,7 @@ class TestBuildOptionsAnchorTs:
             "om.debug_channel": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner("ts_1")
+        runner = ClaudeAgentRunner("ts_1", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -867,7 +871,7 @@ class TestBuildOptionsAnchorTs:
             "om.debug_channel": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner("ts_no_record")
+        runner = ClaudeAgentRunner("ts_no_record", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -905,7 +909,7 @@ class TestBuildOptionsAnchorTs:
             "om.debug_channel": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner("ts_new")
+        runner = ClaudeAgentRunner("ts_new", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -1009,7 +1013,8 @@ class TestObserverUserMessage:
 
     async def test_trigger_observation_uses_user_message(self):
         """user_message가 지정되면 prompt 대신 user_message가 Observer에 전달"""
-        runner = ClaudeAgentRunner("ts_1")
+        mock_trigger = MagicMock()
+        runner = ClaudeAgentRunner("ts_1", trigger_observation_fn=mock_trigger)
 
         mock_client = _make_mock_client(
             MockSystemMessage(session_id="obs-test"),
@@ -1019,12 +1024,11 @@ class TestObserverUserMessage:
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
-                        result = await runner.run(
-                            prompt="채널 히스토리 20개 + 사용자 질문",
-                            user_id="U123",
-                            user_message="사용자 원본 질문만",
-                        )
+                    result = await runner.run(
+                        prompt="채널 히스토리 20개 + 사용자 질문",
+                        user_id="U123",
+                        user_message="사용자 원본 질문만",
+                    )
 
         if mock_trigger.called:
             call_args = mock_trigger.call_args
@@ -1035,7 +1039,8 @@ class TestObserverUserMessage:
 
     async def test_trigger_observation_falls_back_to_prompt(self):
         """user_message가 None이면 prompt가 Observer에 전달 (하위 호환)"""
-        runner = ClaudeAgentRunner("ts_2")
+        mock_trigger = MagicMock()
+        runner = ClaudeAgentRunner("ts_2", trigger_observation_fn=mock_trigger)
 
         mock_client = _make_mock_client(
             MockSystemMessage(session_id="obs-test-2"),
@@ -1045,12 +1050,11 @@ class TestObserverUserMessage:
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
-                    with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
-                        result = await runner.run(
-                            prompt="전체 프롬프트",
-                            user_id="U123",
-                            # user_message 미지정
-                        )
+                    result = await runner.run(
+                        prompt="전체 프롬프트",
+                        user_id="U123",
+                        # user_message 미지정
+                    )
 
         if mock_trigger.called:
             call_args = mock_trigger.call_args
@@ -1405,13 +1409,28 @@ class TestServiceFactory:
 
 
 class TestGetRoleConfig:
-    """_get_role_config 함수 테스트"""
+    """_get_role_config 인스턴스 메서드 테스트"""
+
+    def _make_executor(self, role_tools=None):
+        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+        return ClaudeExecutor(
+            session_manager=MagicMock(),
+            session_runtime=MagicMock(spec=SessionRuntime),
+            restart_manager=MagicMock(),
+            send_long_message=MagicMock(),
+            send_restart_confirmation=MagicMock(),
+            update_message_fn=MagicMock(),
+            role_tools=role_tools or {
+                "admin": ["Read", "Write", "Edit", "Bash"],
+                "viewer": ["Read", "Glob"],
+            },
+        )
 
     def test_viewer_role_has_correct_disallowed_tools(self):
         """viewer 역할은 수정/실행 도구가 차단됨"""
-        from seosoyoung.slackbot.claude.executor import _get_role_config
-
-        config = _get_role_config("viewer")
+        executor = self._make_executor()
+        config = executor._get_role_config("viewer")
 
         assert "Write" in config["disallowed_tools"]
         assert "Edit" in config["disallowed_tools"]
@@ -1420,9 +1439,10 @@ class TestGetRoleConfig:
 
     def test_admin_role_has_mcp_config(self):
         """admin 역할은 MCP 설정을 사용 (설정 파일 존재 시)"""
-        from seosoyoung.slackbot.claude.executor import _get_role_config, _get_mcp_config_path
+        from seosoyoung.slackbot.claude.executor import _get_mcp_config_path
 
-        config = _get_role_config("admin")
+        executor = self._make_executor()
+        config = executor._get_role_config("admin")
 
         expected_path = _get_mcp_config_path()
         if expected_path:
@@ -1432,16 +1452,14 @@ class TestGetRoleConfig:
 
     def test_admin_role_has_no_disallowed_tools(self):
         """admin 역할은 disallowed_tools가 None"""
-        from seosoyoung.slackbot.claude.executor import _get_role_config
-
-        config = _get_role_config("admin")
+        executor = self._make_executor()
+        config = executor._get_role_config("admin")
         assert config["disallowed_tools"] is None
 
     def test_returns_dict_with_required_keys(self):
         """반환값이 필수 키를 포함"""
-        from seosoyoung.slackbot.claude.executor import _get_role_config
-
-        config = _get_role_config("admin")
+        executor = self._make_executor()
+        config = executor._get_role_config("admin")
         assert "allowed_tools" in config
         assert "disallowed_tools" in config
         assert "mcp_config_path" in config
@@ -1978,6 +1996,79 @@ class TestCompactRetryHangFix:
         # timeout으로 인해 무한 대기 없이 종료
         assert result.success is True
         assert call_idx[0] == 2  # 1차 + retry 1회
+
+
+class TestClaudeResultIsError:
+    """ClaudeResult.is_error 필드 테스트"""
+
+    def test_is_error_default_false(self):
+        """is_error 기본값은 False"""
+        result = ClaudeResult(success=True, output="test")
+        assert result.is_error is False
+
+    def test_is_error_set_true(self):
+        """is_error를 True로 설정"""
+        result = ClaudeResult(success=False, output="error", is_error=True)
+        assert result.is_error is True
+
+    def test_interrupted_and_is_error_independent(self):
+        """interrupted와 is_error는 독립적"""
+        result = ClaudeResult(success=False, output="", interrupted=True, is_error=False)
+        assert result.interrupted is True
+        assert result.is_error is False
+
+        result2 = ClaudeResult(success=False, output="", interrupted=False, is_error=True)
+        assert result2.interrupted is False
+        assert result2.is_error is True
+
+
+@pytest.mark.asyncio
+class TestClaudeRunnerIsErrorFromResultMessage:
+    """ResultMessage.is_error가 ClaudeResult.is_error로 정확히 매핑되는지 테스트"""
+
+    async def test_result_message_is_error_sets_is_error(self):
+        """ResultMessage.is_error=True → ClaudeResult.is_error=True, success=False"""
+        runner = ClaudeAgentRunner()
+
+        error_result = MockResultMessage(
+            result="오류가 발생했습니다",
+            session_id="error-test",
+            is_error=True,
+        )
+        mock_client = _make_mock_client(
+            MockSystemMessage(session_id="error-test"),
+            error_result,
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    result = await runner.run("테스트")
+
+        assert result.is_error is True
+        assert result.success is False
+        assert result.interrupted is False
+        assert result.output == "오류가 발생했습니다"
+
+    async def test_result_message_not_error_sets_success(self):
+        """ResultMessage.is_error=False → ClaudeResult.success=True, is_error=False"""
+        runner = ClaudeAgentRunner()
+
+        mock_client = _make_mock_client(
+            MockResultMessage(
+                result="정상 응답",
+                session_id="ok-test",
+                is_error=False,
+            ),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                result = await runner.run("테스트")
+
+        assert result.is_error is False
+        assert result.success is True
+        assert result.interrupted is False
 
 
 if __name__ == "__main__":

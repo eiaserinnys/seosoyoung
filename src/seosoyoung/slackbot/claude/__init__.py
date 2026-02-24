@@ -3,6 +3,13 @@
 from pathlib import Path
 from typing import Optional
 
+from seosoyoung.slackbot.claude.types import (
+    CardInfo,
+    SlackClient,
+    SayFunction,
+    ProgressCallback,
+    CompactCallback,
+)
 from seosoyoung.slackbot.claude.agent_runner import (
     ClaudeAgentRunner,
     ClaudeResult,
@@ -53,4 +60,9 @@ __all__ = [
     "remove_runner",
     "shutdown_all",
     "shutdown_all_sync",
+    "CardInfo",
+    "SlackClient",
+    "SayFunction",
+    "ProgressCallback",
+    "CompactCallback",
 ]
