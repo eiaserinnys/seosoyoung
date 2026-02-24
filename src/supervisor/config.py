@@ -44,6 +44,8 @@ def _resolve_paths() -> dict[str, Path]:
         "venv_python": runtime / "venv" / "Scripts" / "python.exe",
         "mcp_venv_python": runtime / "mcp_venv" / "Scripts" / "python.exe",
         "logs": runtime / "logs",
+        "eb_lore": workspace / ".projects" / "eb_lore",
+        "eb_narrative": workspace / ".projects" / "eb_narrative",
     }
 
 
@@ -145,7 +147,7 @@ def build_process_configs() -> list[ProcessConfig]:
         cwd=str(paths["workspace"].resolve()),
         env={
             "PYTHONUTF8": "1",
-            "PYTHONPATH": str(paths["workspace"] / "seosoyoung" / "src"),
+            "PYTHONPATH": str(paths["workspace"] / ".projects" / "seosoyoung" / "src"),
         },
         restart_policy=RestartPolicy(
             use_exit_codes=False,
@@ -155,6 +157,30 @@ def build_process_configs() -> list[ProcessConfig]:
         log_dir=str(paths["logs"]),
         port=3104,
     ))
+
+    # --- 선택적: mcp-eb-lore ---
+    # eb_lore 리포의 lore_mcp 패키지가 존재할 때만 등록
+    eb_lore_mcp_pkg = paths["eb_lore"] / "lore_mcp"
+    if eb_lore_mcp_pkg.is_dir():
+        configs.append(ProcessConfig(
+            name="mcp-eb-lore",
+            command=str(paths["mcp_venv_python"]),
+            args=["-m", "lore_mcp", "--transport=sse", "--port=3108"],
+            cwd=str(paths["eb_lore"].resolve()),
+            env={
+                "PYTHONUTF8": "1",
+                "EB_NARRATIVE_PATH": str(paths["eb_narrative"].resolve()),
+            },
+            restart_policy=RestartPolicy(
+                use_exit_codes=False,
+                auto_restart=True,
+                restart_delay=3.0,
+            ),
+            log_dir=str(paths["logs"]),
+            port=3108,
+        ))
+    else:
+        logger.info("mcp-eb-lore 설정 건너뜀: lore_mcp 패키지 없음 (%s)", eb_lore_mcp_pkg)
 
     # --- 필수: seosoyoung-soul ---
     # Claude Code 실행 서비스 (FastAPI + uvicorn)
