@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 from typing import Optional, Callable
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class Session:
     last_seen_ts: str = ""  # 마지막으로 세션에 전달된 메시지의 ts
 
     def __post_init__(self):
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         if not self.created_at:
             self.created_at = now
         if not self.updated_at:
@@ -111,7 +111,7 @@ class SessionManager:
             session = self._get_unlocked(thread_ts)
             if session:
                 session.session_id = session_id
-                session.updated_at = datetime.now().isoformat()
+                session.updated_at = datetime.now(timezone.utc).isoformat()
                 self._save(session)
                 logger.info(f"세션 ID 업데이트: thread_ts={thread_ts}, session_id={session_id}")
             return session
@@ -144,7 +144,7 @@ class SessionManager:
 
             # 새 thread_ts로 업데이트
             session.thread_ts = new_thread_ts
-            session.updated_at = datetime.now().isoformat()
+            session.updated_at = datetime.now(timezone.utc).isoformat()
 
             # 새 파일로 저장 및 캐시
             self._save(session)
@@ -159,7 +159,7 @@ class SessionManager:
             session = self._get_unlocked(thread_ts)
             if session:
                 session.last_seen_ts = last_seen_ts
-                session.updated_at = datetime.now().isoformat()
+                session.updated_at = datetime.now(timezone.utc).isoformat()
                 self._save(session)
                 logger.debug(f"last_seen_ts 업데이트: thread_ts={thread_ts}, last_seen_ts={last_seen_ts}")
             return session
@@ -182,7 +182,7 @@ class SessionManager:
                 session.username = username
             if role:
                 session.role = role
-            session.updated_at = datetime.now().isoformat()
+            session.updated_at = datetime.now(timezone.utc).isoformat()
             self._save(session)
         logger.info(f"세션 사용자 업데이트: thread_ts={thread_ts}, user={username}, role={role}")
         return session
@@ -193,7 +193,7 @@ class SessionManager:
             session = self._get_unlocked(thread_ts)
             if session:
                 session.message_count += 1
-                session.updated_at = datetime.now().isoformat()
+                session.updated_at = datetime.now(timezone.utc).isoformat()
                 self._save(session)
             return session
 
@@ -238,7 +238,7 @@ class SessionManager:
             정리된 세션 수
         """
         cleaned = 0
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         with self._cache_lock:
             for file_path in self.session_dir.glob("session_*.json"):

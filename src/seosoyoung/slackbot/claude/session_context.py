@@ -5,6 +5,7 @@
 """
 
 import logging
+from decimal import Decimal
 from typing import Optional, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
@@ -53,8 +54,8 @@ def build_initial_context(
         source_type = "thread"
         all_messages = list(slack_messages)
 
-    # 시간순 정렬
-    all_messages.sort(key=lambda m: float(m.get("ts", "0")))
+    # 시간순 정렬 (Decimal로 float 정밀도 손실 방지)
+    all_messages.sort(key=lambda m: Decimal(m.get("ts", "0")))
 
     # 최대 7개로 제한 (가장 최근)
     if len(all_messages) > MAX_INITIAL_MESSAGES:
@@ -105,15 +106,15 @@ def build_followup_context(
     pending = channel_store.load_pending(channel_id)
     all_messages = _merge_messages(judged, pending)
 
-    # last_seen_ts 이후 메시지만 필터링
-    cutoff = float(last_seen_ts)
-    unseen = [m for m in all_messages if float(m.get("ts", "0")) > cutoff]
+    # last_seen_ts 이후 메시지만 필터링 (Decimal로 float 정밀도 손실 방지)
+    cutoff = Decimal(last_seen_ts)
+    unseen = [m for m in all_messages if Decimal(m.get("ts", "0")) > cutoff]
 
     # linked 체인 정보: unseen 메시지가 참조하는 이전 메시지도 포함
     linked_ts_set = set()
     for msg in unseen:
         linked_ts = msg.get("linked_message_ts")
-        if linked_ts and float(linked_ts) <= cutoff:
+        if linked_ts and Decimal(linked_ts) <= cutoff:
             linked_ts_set.add(linked_ts)
 
     # linked 메시지 수집 (already seen이지만 참조 대상으로 포함)
@@ -125,7 +126,7 @@ def build_followup_context(
 
     # 병합 후 시간순 정렬
     combined = _merge_messages(linked_messages, unseen)
-    combined.sort(key=lambda m: float(m.get("ts", "0")))
+    combined.sort(key=lambda m: Decimal(m.get("ts", "0")))
 
     # 최대 제한
     if len(combined) > MAX_FOLLOWUP_MESSAGES:

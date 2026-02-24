@@ -653,9 +653,10 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_triggers_observation_on_success(self):
         """성공적인 실행 후 관찰이 트리거됨"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner("ts_1234")
+        mock_trigger = MagicMock()
+        runner = ClaudeRunner("ts_1234", trigger_observation_fn=mock_trigger)
 
         mock_result = ClaudeResult(
             success=True,
@@ -665,8 +666,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
-                result = await runner.run("테스트", user_id="U12345")
+            result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is True
         mock_trigger.assert_called_once_with(
@@ -680,9 +680,10 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_without_user_id(self):
         """user_id 없으면 관찰을 트리거하지 않음"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner()
+        mock_trigger = MagicMock()
+        runner = ClaudeRunner(trigger_observation_fn=mock_trigger)
 
         mock_result = ClaudeResult(
             success=True,
@@ -691,8 +692,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
-                result = await runner.run("테스트")
+            result = await runner.run("테스트")
 
         assert result.success is True
         mock_trigger.assert_not_called()
@@ -700,9 +700,10 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_without_thread_ts(self):
         """thread_ts 없으면 관찰을 트리거하지 않음"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner()
+        mock_trigger = MagicMock()
+        runner = ClaudeRunner(trigger_observation_fn=mock_trigger)
 
         mock_result = ClaudeResult(
             success=True,
@@ -711,8 +712,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
-                result = await runner.run("테스트", user_id="U12345")
+            result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is True
         mock_trigger.assert_not_called()
@@ -720,9 +720,10 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_on_failure(self):
         """실행 실패 시 관찰을 트리거하지 않음"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner("ts_1234")
+        mock_trigger = MagicMock()
+        runner = ClaudeRunner("ts_1234", trigger_observation_fn=mock_trigger)
 
         mock_result = ClaudeResult(
             success=False,
@@ -731,8 +732,7 @@ class TestRunTriggersObservation:
         )
 
         with patch.object(runner, "_execute", new_callable=AsyncMock, return_value=mock_result):
-            with patch("seosoyoung.slackbot.claude.agent_runner.trigger_observation") as mock_trigger:
-                result = await runner.run("테스트", user_id="U12345")
+            result = await runner.run("테스트", user_id="U12345")
 
         assert result.success is False
         mock_trigger.assert_not_called()

@@ -41,13 +41,12 @@ class TestRoleToolsSingleSource:
         assert "Write" not in viewer_tools
         assert "Bash" not in viewer_tools
 
-    def test_agent_runner_uses_config(self):
-        """agent_runner가 Config.auth.role_tools를 참조하는지 확인"""
+    def test_agent_runner_default_allowed_tools_is_none(self):
+        """인자 없이 생성한 ClaudeRunner의 allowed_tools는 None (caller가 주입)"""
         from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
         runner = ClaudeRunner()
-        # 기본 allowed_tools가 Config.auth.role_tools["admin"]과 동일
-        assert runner.allowed_tools == Config.auth.role_tools["admin"]
+        assert runner.allowed_tools is None
 
     def test_no_duplicate_default_allowed_tools(self):
         """agent_runner에 별도 DEFAULT_ALLOWED_TOOLS가 없어야 함"""

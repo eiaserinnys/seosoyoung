@@ -189,7 +189,7 @@ class TestHandleNormalSuccessNoContinuationHint:
         ctx = _make_ctx(is_thread_reply=False)
         result = _make_result(output="한 줄 응답입니다.")
 
-        executor._handle_normal_success(ctx, result, "한 줄 응답입니다.", False, None)
+        executor._result_processor.handle_normal_success(ctx, result, "한 줄 응답입니다.", False, None)
 
         # update_message_fn에 전달된 text에 continuation_hint가 없어야 함
         update_call = executor.update_message_fn.call_args
@@ -205,7 +205,7 @@ class TestHandleNormalSuccessNoContinuationHint:
         long_response = "\n".join([f"line {i}" for i in range(10)])
         result = _make_result(output=long_response)
 
-        executor._handle_normal_success(ctx, result, long_response, False, None)
+        executor._result_processor.handle_normal_success(ctx, result, long_response, False, None)
 
         # update_message_fn에 전달된 text에 continuation_hint가 없어야 함
         update_call = executor.update_message_fn.call_args
@@ -220,7 +220,7 @@ class TestHandleNormalSuccessNoContinuationHint:
         ctx = _make_ctx(is_thread_reply=True)
         result = _make_result(output="스레드 답변")
 
-        executor._handle_normal_success(ctx, result, "스레드 답변", False, None)
+        executor._result_processor.handle_normal_success(ctx, result, "스레드 답변", False, None)
 
         update_call = executor.update_message_fn.call_args
         assert update_call is not None
@@ -239,7 +239,7 @@ class TestHandleNormalSuccessShortResponseNoDuplicate:
         response = "짧은 응답입니다."
         result = _make_result(output=response)
 
-        executor._handle_normal_success(ctx, result, response, False, None)
+        executor._result_processor.handle_normal_success(ctx, result, response, False, None)
 
         executor.send_long_message.assert_not_called()
 
@@ -250,7 +250,7 @@ class TestHandleNormalSuccessShortResponseNoDuplicate:
         response = "첫째 줄\n둘째 줄\n셋째 줄"
         result = _make_result(output=response)
 
-        executor._handle_normal_success(ctx, result, response, False, None)
+        executor._result_processor.handle_normal_success(ctx, result, response, False, None)
 
         executor.send_long_message.assert_not_called()
 
@@ -261,7 +261,7 @@ class TestHandleNormalSuccessShortResponseNoDuplicate:
         response = "첫째 줄\n둘째 줄\n셋째 줄\n넷째 줄"
         result = _make_result(output=response)
 
-        executor._handle_normal_success(ctx, result, response, False, None)
+        executor._result_processor.handle_normal_success(ctx, result, response, False, None)
 
         executor.send_long_message.assert_called_once()
 
@@ -272,7 +272,7 @@ class TestHandleNormalSuccessShortResponseNoDuplicate:
         response = "\n".join([f"line {i}" for i in range(20)])
         result = _make_result(output=response)
 
-        executor._handle_normal_success(ctx, result, response, False, None)
+        executor._result_processor.handle_normal_success(ctx, result, response, False, None)
 
         executor.send_long_message.assert_called_once()
         # 전문이 전달되어야 함
@@ -287,7 +287,7 @@ class TestHandleNormalSuccessShortResponseNoDuplicate:
         response = "\n".join(lines)
         result = _make_result(output=response)
 
-        executor._handle_normal_success(ctx, result, response, False, None)
+        executor._result_processor.handle_normal_success(ctx, result, response, False, None)
 
         update_call = executor.update_message_fn.call_args
         updated_text = update_call.args[3]  # (client, channel, ts, text)
@@ -308,7 +308,7 @@ class TestProcessResult3WayBranch:
         ctx = _make_ctx()
         result = _make_result(interrupted=True)
 
-        with patch.object(executor, "_handle_interrupted") as mock_handler:
+        with patch.object(executor._result_processor, "handle_interrupted") as mock_handler:
             executor._process_result(ctx, result)
 
         mock_handler.assert_called_once_with(ctx)
@@ -322,7 +322,7 @@ class TestProcessResult3WayBranch:
             output="Claude가 오류를 보고했습니다",
         )
 
-        with patch.object(executor, "_handle_error") as mock_handler:
+        with patch.object(executor._result_processor, "handle_error") as mock_handler:
             executor._process_result(ctx, result)
 
         mock_handler.assert_called_once_with(ctx, "Claude가 오류를 보고했습니다")
@@ -336,7 +336,7 @@ class TestProcessResult3WayBranch:
             output="", error="에러 메시지",
         )
 
-        with patch.object(executor, "_handle_error") as mock_handler:
+        with patch.object(executor._result_processor, "handle_error") as mock_handler:
             executor._process_result(ctx, result)
 
         mock_handler.assert_called_once_with(ctx, "에러 메시지")
@@ -347,7 +347,7 @@ class TestProcessResult3WayBranch:
         ctx = _make_ctx()
         result = _make_result(success=True)
 
-        with patch.object(executor, "_handle_success") as mock_handler:
+        with patch.object(executor._result_processor, "handle_success") as mock_handler:
             executor._process_result(ctx, result)
 
         mock_handler.assert_called_once_with(ctx, result)
@@ -358,7 +358,7 @@ class TestProcessResult3WayBranch:
         ctx = _make_ctx()
         result = _make_result(success=False, error="프로세스 오류")
 
-        with patch.object(executor, "_handle_error") as mock_handler:
+        with patch.object(executor._result_processor, "handle_error") as mock_handler:
             executor._process_result(ctx, result)
 
         mock_handler.assert_called_once_with(ctx, "프로세스 오류")
@@ -369,8 +369,8 @@ class TestProcessResult3WayBranch:
         ctx = _make_ctx()
         result = _make_result(interrupted=True, is_error=True)
 
-        with patch.object(executor, "_handle_interrupted") as mock_interrupted:
-            with patch.object(executor, "_handle_error") as mock_error:
+        with patch.object(executor._result_processor, "handle_interrupted") as mock_interrupted:
+            with patch.object(executor._result_processor, "handle_error") as mock_error:
                 executor._process_result(ctx, result)
 
         mock_interrupted.assert_called_once()
@@ -387,7 +387,7 @@ class TestHandleExceptionDelegatesToHandleError:
         error = RuntimeError("테스트 예외")
 
         with patch.object(executor._result_processor, "handle_error") as mock_handler:
-            executor._handle_exception(ctx, error)
+            executor._result_processor.handle_exception(ctx, error)
 
         mock_handler.assert_called_once_with(ctx, "테스트 예외")
 

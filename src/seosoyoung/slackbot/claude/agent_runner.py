@@ -3,7 +3,9 @@
 import asyncio
 import json
 import logging
+import os
 import re
+import time as _time
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -142,9 +144,6 @@ def shutdown_all_sync() -> int:
         return 0
 
 
-# 하위 호환 alias
-_classify_process_error = classify_process_error
-
 # Compact retry 상수
 COMPACT_RETRY_READ_TIMEOUT = 30  # 초: retry 시 receive_response() 읽기 타임아웃
 MAX_COMPACT_RETRIES = 3  # compact 재시도 최대 횟수
@@ -227,7 +226,7 @@ class ClaudeRunner:
         self.thread_ts = thread_ts
         self.channel = channel
         self.working_dir = working_dir or Path.cwd()
-        self.allowed_tools = allowed_tools or DEFAULT_DISALLOWED_TOOLS  # fallback to safe default
+        self.allowed_tools = allowed_tools
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
         self.debug_send_fn = debug_send_fn
@@ -424,7 +423,7 @@ class ClaudeRunner:
 
         # CLI stderr를 세션별 파일에 캡처
         import sys as _sys
-        _runtime_dir = Path(__file__).resolve().parents[4]
+        _runtime_dir = Path(os.environ.get("SEOSOYOUNG_RUNTIME", Path(__file__).resolve().parents[4]))
         _stderr_suffix = thread_ts.replace(".", "_") if thread_ts else "default"
         _stderr_log_path = _runtime_dir / "logs" / f"cli_stderr_{_stderr_suffix}.log"
         logger.info(f"[DEBUG] CLI stderr 로그 경로: {_stderr_log_path}")
@@ -568,7 +567,7 @@ class ClaudeRunner:
                             })
 
                             if on_progress:
-                                current_time = asyncio.get_event_loop().time()
+                                current_time = _time.monotonic()
                                 if current_time - msg_state.last_progress_time >= progress_interval:
                                     try:
                                         display_text = msg_state.current_text
@@ -731,7 +730,7 @@ class ClaudeRunner:
         if thread_ts:
             register_runner(self)
 
-        msg_state = MessageState(last_progress_time=asyncio.get_event_loop().time())
+        msg_state = MessageState(last_progress_time=_time.monotonic())
         _session_start = datetime.now(timezone.utc)
 
         try:
@@ -906,9 +905,6 @@ class ClaudeRunner:
 
         return result
 
-
-# 하위 호환 alias
-ClaudeAgentRunner = ClaudeRunner
 
 
 # 테스트용

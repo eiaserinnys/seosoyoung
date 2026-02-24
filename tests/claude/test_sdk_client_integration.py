@@ -1,6 +1,6 @@
 """ClaudeSDKClient 기반 전환 테스트 (Phase 2)
 
-ClaudeAgentRunner(= ClaudeRunner)가 ClaudeSDKClient를 사용하여:
+ClaudeRunner(= ClaudeRunner)가 ClaudeSDKClient를 사용하여:
 - 인스턴스별 클라이언트 생명주기 관리
 - query + receive_response 기반 실행
 - interrupt 동작
@@ -20,7 +20,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner
+from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
 
 # Mock 메시지 타입
@@ -74,13 +74,13 @@ class TestClientLifecycle:
 
     def test_client_initially_none(self):
         """생성 직후 client는 None"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
         assert runner.client is None
 
     @pytest.mark.asyncio
     async def test_get_or_create_client_creates_new(self):
         """새 클라이언트를 생성하는지 확인"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = AsyncMock()
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
@@ -93,7 +93,7 @@ class TestClientLifecycle:
     @pytest.mark.asyncio
     async def test_get_or_create_client_reuses_existing(self):
         """이미 있는 클라이언트를 재사용하는지 확인"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = AsyncMock()
         runner.client = mock_client
@@ -106,7 +106,7 @@ class TestClientLifecycle:
     @pytest.mark.asyncio
     async def test_remove_client_disconnects_and_clears(self):
         """_remove_client가 disconnect 후 client를 None으로 설정하는지 확인"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = AsyncMock()
         runner.client = mock_client
@@ -119,14 +119,14 @@ class TestClientLifecycle:
     @pytest.mark.asyncio
     async def test_remove_client_when_none_no_error(self):
         """client가 None일 때 _remove_client 호출 시 에러 없이 무시"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
         await runner._remove_client()
         # 에러 없이 통과
 
     @pytest.mark.asyncio
     async def test_remove_client_handles_disconnect_error(self):
         """disconnect 실패 시에도 client가 None으로 설정"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = AsyncMock()
         mock_client.disconnect.side_effect = Exception("disconnect error")
@@ -142,7 +142,7 @@ class TestRunWithSDKClient:
 
     async def test_run_uses_sdk_client(self):
         """run()이 ClaudeSDKClient를 사용하는지 확인"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = _make_mock_client(
             MockSystemMessage(session_id="sdk-session-1"),
@@ -165,7 +165,7 @@ class TestRunWithSDKClient:
 
     async def test_run_creates_and_removes_client(self):
         """run() 완료 후 클라이언트가 정리되는지 확인"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = _make_mock_client(
             MockResultMessage(result="done", session_id="test"),
@@ -182,7 +182,7 @@ class TestRunWithSDKClient:
 
     async def test_run_preserves_on_progress_callback(self):
         """run()에서 on_progress 콜백이 동작하는지 확인"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
         progress_calls = []
 
         async def on_progress(text):
@@ -221,7 +221,7 @@ class TestRunWithSDKClient:
 
     async def test_run_preserves_om_collection(self):
         """run()에서 OM 대화 수집이 유지되는지 확인"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = _make_mock_client(
             MockSystemMessage(session_id="om-test"),
@@ -244,7 +244,7 @@ class TestRunWithSDKClient:
 
     async def test_run_handles_connect_error(self):
         """connect() 실패 처리 확인"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = AsyncMock()
         mock_client.connect.side_effect = FileNotFoundError("claude not found")
@@ -261,7 +261,7 @@ class TestInterrupt:
 
     def test_interrupt_calls_client_interrupt(self):
         """interrupt()가 클라이언트에 interrupt를 호출하는지 확인"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = AsyncMock()
 
@@ -284,14 +284,14 @@ class TestInterrupt:
 
     def test_interrupt_no_client_returns_false(self):
         """클라이언트가 없으면 False 반환"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         result = runner.interrupt()
         assert result is False
 
     def test_interrupt_with_client_returns_true(self):
         """클라이언트가 있으면 True 반환"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = AsyncMock()
 
@@ -313,7 +313,7 @@ class TestInterrupt:
 
     def test_interrupt_handles_client_error(self):
         """클라이언트 interrupt 실패 시 False 반환"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = AsyncMock()
         mock_client.interrupt.side_effect = Exception("interrupt failed")
@@ -336,7 +336,7 @@ class TestInterrupt:
 
     def test_interrupt_no_loop_returns_false(self):
         """클라이언트는 있지만 루프가 없으면 False 반환"""
-        runner = ClaudeAgentRunner("thread-1")
+        runner = ClaudeRunner("thread-1")
 
         mock_client = AsyncMock()
         runner.client = mock_client
@@ -354,7 +354,7 @@ class TestRunWithSessionResume:
 
     async def test_run_with_session_id_sets_resume(self):
         """session_id가 있으면 options.resume에 설정되는지 확인"""
-        runner = ClaudeAgentRunner("thread-1", channel="C12345")
+        runner = ClaudeRunner("thread-1", channel="C12345")
 
         captured_options = []
         mock_client = _make_mock_client(

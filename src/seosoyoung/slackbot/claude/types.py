@@ -58,5 +58,9 @@ PrepareMemoryFn = Callable[
     [str, Optional[str], Optional[str], Optional[str]],
     tuple[Optional[str], str],
 ]  # (thread_ts, channel, session_id, prompt) -> (memory_prompt, anchor_ts)
-TriggerObservationFn = Callable[..., None]  # (thread_ts, user_id, prompt, collected, anchor_ts) -> None
+TriggerObservationFn = Callable[
+    [str, str, str, list[dict]],
+    None,
+]  # (thread_ts, user_id, prompt, collected_messages, *, anchor_ts) -> None
+# Note: anchor_ts는 호출부에서 keyword로 전달됨 (Callable로 표현 불가)
 OnCompactOMFlagFn = Callable[[str], None]  # (thread_ts) -> None
