@@ -167,10 +167,14 @@ def build_process_configs() -> list[ProcessConfig]:
             name="mcp-eb-lore",
             command=str(paths["mcp_venv_python"]),
             args=["-m", "lore_mcp", "--transport=sse", "--port=3108"],
-            cwd=str(paths["eb_lore"].resolve()),
+            cwd=str(paths["workspace"].resolve()),
             env={
                 "PYTHONUTF8": "1",
+                "PYTHONPATH": str(paths["eb_lore"].resolve()),
                 "EB_NARRATIVE_PATH": str(paths["eb_narrative"].resolve()),
+                "EB_INDEX_ROOT": str(
+                    paths["workspace"].resolve() / ".local" / "index"
+                ),
             },
             restart_policy=RestartPolicy(
                 use_exit_codes=False,
