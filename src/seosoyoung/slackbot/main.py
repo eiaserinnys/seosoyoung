@@ -75,7 +75,7 @@ def _check_restart_on_session_stop():
 
 
 # 세션 종료 콜백 설정
-session_runtime.set_on_all_sessions_stopped(_check_restart_on_session_stop)
+session_runtime.set_on_session_stopped(_check_restart_on_session_stop)
 
 
 def _signal_handler(signum, frame):

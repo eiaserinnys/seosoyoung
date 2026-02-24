@@ -59,6 +59,7 @@ class ClaudeResult:
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
     collected_messages: list[dict] = field(default_factory=list)  # OM용 대화 수집
     interrupted: bool = False  # interrupt로 중단된 경우 True
+    is_error: bool = False  # ResultMessage.is_error가 True인 경우
     usage: Optional[dict] = None  # ResultMessage.usage (input_tokens, output_tokens 등)
     anchor_ts: str = ""  # OM 디버그 채널 세션 스레드 앵커 ts
 
@@ -732,14 +733,14 @@ class ClaudeRunner:
                 logger.info(f"리스트 정주행 요청 마커 감지: {list_run}")
 
             return ClaudeResult(
-                success=True,
+                success=not result_is_error,
                 output=output,
                 session_id=result_session_id,
                 update_requested=update_requested,
                 restart_requested=restart_requested,
                 list_run=list_run,
                 collected_messages=collected_messages,
-                interrupted=result_is_error,
+                is_error=result_is_error,
                 usage=result_usage,
                 anchor_ts=anchor_ts,
             )

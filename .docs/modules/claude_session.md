@@ -51,12 +51,12 @@ Claude Code 세션 관리
 
 #### 메서드
 
-- `__init__(self, on_all_sessions_stopped)` (줄 259): Args:
+- `__init__(self, on_session_stopped)` (줄 259): Args:
 - `get_session_lock(self, thread_ts)` (줄 276): 스레드별 락 반환 (없으면 생성)
 - `mark_session_running(self, thread_ts)` (줄 283): 세션을 실행 중으로 표시
 - `mark_session_stopped(self, thread_ts)` (줄 289): 세션 실행 종료 표시
 - `get_running_session_count(self)` (줄 302): 현재 실행 중인 세션 수 반환
-- `set_on_all_sessions_stopped(self, callback)` (줄 307): 세션 종료 콜백 설정 (초기화 후 설정 가능)
+- `set_on_session_stopped(self, callback)` (줄 307): 세션 종료 콜백 설정 (초기화 후 설정 가능)
 
 ## 내부 의존성
 

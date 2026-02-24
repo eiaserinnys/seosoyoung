@@ -3,6 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 import pytest
 
 import sys
@@ -334,6 +335,71 @@ class TestSessionManager:
         finally:
             # 권한 복원
             os.chmod(readonly_dir, stat.S_IRWXU)
+
+
+class TestSessionRuntime:
+    """SessionRuntime 세션 종료 콜백 테스트"""
+
+    def test_on_session_stopped_callback_called(self):
+        """개별 세션 종료 시 on_session_stopped 콜백 호출"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        callback = MagicMock()
+        runtime = SessionRuntime(on_session_stopped=callback)
+
+        runtime.mark_session_running("thread_1")
+        runtime.mark_session_stopped("thread_1")
+
+        callback.assert_called_once()
+
+    def test_on_session_stopped_called_each_time(self):
+        """여러 세션이 종료되면 각각 콜백 호출"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        callback = MagicMock()
+        runtime = SessionRuntime(on_session_stopped=callback)
+
+        runtime.mark_session_running("thread_1")
+        runtime.mark_session_running("thread_2")
+        runtime.mark_session_stopped("thread_1")
+        runtime.mark_session_stopped("thread_2")
+
+        assert callback.call_count == 2
+
+    def test_set_on_session_stopped(self):
+        """set_on_session_stopped로 콜백 설정"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        callback = MagicMock()
+        runtime = SessionRuntime()
+
+        runtime.set_on_session_stopped(callback)
+        runtime.mark_session_running("thread_1")
+        runtime.mark_session_stopped("thread_1")
+
+        callback.assert_called_once()
+
+    def test_no_callback_no_error(self):
+        """콜백 미설정 시 오류 없이 동작"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        runtime = SessionRuntime()
+        runtime.mark_session_running("thread_1")
+        runtime.mark_session_stopped("thread_1")  # 오류 없이 통과
+
+    def test_get_running_session_count(self):
+        """실행 중인 세션 수 추적"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+
+        runtime = SessionRuntime()
+
+        assert runtime.get_running_session_count() == 0
+        runtime.mark_session_running("thread_1")
+        assert runtime.get_running_session_count() == 1
+        runtime.mark_session_running("thread_2")
+        assert runtime.get_running_session_count() == 2
+        runtime.mark_session_stopped("thread_1")
+        assert runtime.get_running_session_count() == 1
 
 
 if __name__ == "__main__":

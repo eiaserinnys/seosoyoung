@@ -43,15 +43,15 @@ executor 내부 메서드들이 공유하는 상태를 하나의 객체로 캡�
 - `_get_service_adapter(self)` (줄 397): Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환
 - `_execute_remote(self, ctx, prompt)` (줄 414): Remote 모드: soul 서버에 실행을 위임
 - `_process_result(self, ctx, result)` (줄 444): 실행 결과 처리
-- `_replace_thinking_message(self)` (줄 464): 하위 호환: ResultProcessor에 위임
-- `_handle_interrupted(self, ctx)` (줄 468): 하위 호환: ResultProcessor에 위임
-- `_handle_success(self, ctx, result)` (줄 472): 하위 호환: ResultProcessor에 위임
-- `_handle_trello_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 476): 하위 호환: ResultProcessor에 위임
-- `_handle_normal_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 480): 하위 호환: ResultProcessor에 위임
-- `_handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 484): 하위 호환: ResultProcessor에 위임
-- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 488): 하위 호환: ResultProcessor에 위임
-- `_handle_error(self, ctx, error)` (줄 492): 하위 호환: ResultProcessor에 위임
-- `_handle_exception(self, ctx, e)` (줄 496): 하위 호환: ResultProcessor에 위임
+- `_replace_thinking_message(self)` (줄 466): 하위 호환: ResultProcessor에 위임
+- `_handle_interrupted(self, ctx)` (줄 470): 하위 호환: ResultProcessor에 위임
+- `_handle_success(self, ctx, result)` (줄 474): 하위 호환: ResultProcessor에 위임
+- `_handle_trello_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 478): 하위 호환: ResultProcessor에 위임
+- `_handle_normal_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 482): 하위 호환: ResultProcessor에 위임
+- `_handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 486): 하위 호환: ResultProcessor에 위임
+- `_handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 490): 하위 호환: ResultProcessor에 위임
+- `_handle_error(self, ctx, error)` (줄 494): 하위 호환: ResultProcessor에 위임
+- `_handle_exception(self, ctx, e)` (줄 498): 하위 호환: ResultProcessor에 위임
 
 ## 함수
 

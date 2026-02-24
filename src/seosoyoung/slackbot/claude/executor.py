@@ -456,6 +456,8 @@ class ClaudeExecutor:
 
         if result.interrupted:
             self._handle_interrupted(ctx)
+        elif result.is_error:
+            self._handle_error(ctx, result.output or result.error)
         elif result.success:
             self._handle_success(ctx, result)
         else:

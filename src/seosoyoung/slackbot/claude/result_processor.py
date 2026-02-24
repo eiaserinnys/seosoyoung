@@ -306,7 +306,11 @@ class ResultProcessor:
             )
 
     def handle_error(self, ctx, error):
-        """오류 결과 처리"""
+        """오류 결과 처리
+
+        ClaudeResult.error 또는 Exception에서 발생한 오류를 처리합니다.
+        update_message 실패 시 ctx.say 폴백을 사용합니다.
+        """
         error_msg = f"오류가 발생했습니다: {error}"
 
         if ctx.dm_channel_id and ctx.dm_last_reply_ts:
@@ -317,38 +321,23 @@ class ResultProcessor:
                 logger.warning(f"DM 에러 메시지 업데이트 실패: {e}")
 
         if ctx.is_trello_mode:
-            header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
-            error_text = f"{header}\n\n❌ {error_msg}"
-            update_message(ctx.client, ctx.channel, ctx.main_msg_ts, error_text,
-                           blocks=[{"type": "section",
-                                    "text": {"type": "mrkdwn", "text": error_text}}])
-        else:
-            error_text = f"❌ {error_msg}"
-            update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text,
-                           blocks=[{"type": "section",
-                                    "text": {"type": "mrkdwn", "text": error_text}}])
-
-    def handle_exception(self, ctx, e: Exception):
-        """예외 처리"""
-        error_msg = f"오류가 발생했습니다: {str(e)}"
-
-        if ctx.dm_channel_id and ctx.dm_last_reply_ts:
-            try:
-                update_message(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
-                               f"❌ {error_msg}")
-            except Exception:
-                pass
-
-        if ctx.is_trello_mode:
             try:
                 header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
-                update_message(ctx.client, ctx.channel, ctx.main_msg_ts,
-                               f"{header}\n\n❌ {error_msg}")
+                error_text = f"{header}\n\n❌ {error_msg}"
+                update_message(ctx.client, ctx.channel, ctx.main_msg_ts, error_text,
+                               blocks=[{"type": "section",
+                                        "text": {"type": "mrkdwn", "text": error_text}}])
             except Exception:
                 ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)
         else:
             try:
                 error_text = f"❌ {error_msg}"
-                update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text)
+                update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text,
+                               blocks=[{"type": "section",
+                                        "text": {"type": "mrkdwn", "text": error_text}}])
             except Exception:
                 ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)
+
+    def handle_exception(self, ctx, e: Exception):
+        """예외 처리 — handle_error에 위임"""
+        self.handle_error(ctx, str(e))

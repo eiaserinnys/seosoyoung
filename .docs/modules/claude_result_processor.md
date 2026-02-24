@@ -28,7 +28,7 @@ Claude 실행 결과 처리
 - `handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 228): 재기동 마커 처리
 - `handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 251): LIST_RUN 마커 처리 - 정주행 시작
 - `handle_error(self, ctx, error)` (줄 308): 오류 결과 처리
-- `handle_exception(self, ctx, e)` (줄 331): 예외 처리
+- `handle_exception(self, ctx, e)` (줄 341): 예외 처리 — handle_error에 위임
 
 ## 내부 의존성
 

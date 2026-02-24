@@ -1,6 +1,6 @@
 """executor.py 유틸리티 함수 테스트"""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from seosoyoung.slackbot.claude.message_formatter import (
     build_context_usage_bar,
 )
@@ -165,15 +165,17 @@ def _make_ctx(is_thread_reply=False, message_count=0, is_existing_thread=False):
     return ctx
 
 
-def _make_result(output="hello", session_id="test-session", usage=None):
+def _make_result(output="hello", session_id="test-session", usage=None,
+                 interrupted=False, is_error=False, success=True, error=None):
     """가짜 result 객체"""
     result = MagicMock()
     result.output = output
     result.session_id = session_id
     result.usage = usage
-    result.interrupted = False
-    result.success = True
-    result.error = None
+    result.interrupted = interrupted
+    result.is_error = is_error
+    result.success = success
+    result.error = error
     result.update_requested = False
     result.restart_requested = False
     result.list_run = None
@@ -297,3 +299,117 @@ class TestHandleNormalSuccessShortResponseNoDuplicate:
         assert "..." in updated_text
         # 4번째 줄은 미리보기에 포함되지 않아야 함
         assert "line 3" not in updated_text
+
+
+class TestProcessResult3WayBranch:
+    """_process_result 3-way 분기 테스트: interrupted / is_error / success"""
+
+    def test_interrupted_calls_handle_interrupted(self):
+        """interrupted=True → _handle_interrupted 호출"""
+        executor = _make_executor()
+        ctx = _make_ctx()
+        result = _make_result(interrupted=True)
+
+        with patch.object(executor, "_handle_interrupted") as mock_handler:
+            executor._process_result(ctx, result)
+
+        mock_handler.assert_called_once_with(ctx)
+
+    def test_is_error_calls_handle_error(self):
+        """is_error=True → _handle_error 호출 (interrupted=False)"""
+        executor = _make_executor()
+        ctx = _make_ctx()
+        result = _make_result(
+            is_error=True, success=False,
+            output="Claude가 오류를 보고했습니다",
+        )
+
+        with patch.object(executor, "_handle_error") as mock_handler:
+            executor._process_result(ctx, result)
+
+        mock_handler.assert_called_once_with(ctx, "Claude가 오류를 보고했습니다")
+
+    def test_is_error_uses_error_field_as_fallback(self):
+        """is_error=True + output 비어있음 → error 필드 사용"""
+        executor = _make_executor()
+        ctx = _make_ctx()
+        result = _make_result(
+            is_error=True, success=False,
+            output="", error="에러 메시지",
+        )
+
+        with patch.object(executor, "_handle_error") as mock_handler:
+            executor._process_result(ctx, result)
+
+        mock_handler.assert_called_once_with(ctx, "에러 메시지")
+
+    def test_success_calls_handle_success(self):
+        """success=True → _handle_success 호출"""
+        executor = _make_executor()
+        ctx = _make_ctx()
+        result = _make_result(success=True)
+
+        with patch.object(executor, "_handle_success") as mock_handler:
+            executor._process_result(ctx, result)
+
+        mock_handler.assert_called_once_with(ctx, result)
+
+    def test_failure_calls_handle_error(self):
+        """success=False (is_error=False, interrupted=False) → _handle_error"""
+        executor = _make_executor()
+        ctx = _make_ctx()
+        result = _make_result(success=False, error="프로세스 오류")
+
+        with patch.object(executor, "_handle_error") as mock_handler:
+            executor._process_result(ctx, result)
+
+        mock_handler.assert_called_once_with(ctx, "프로세스 오류")
+
+    def test_priority_interrupted_over_is_error(self):
+        """interrupted=True이면 is_error=True여도 _handle_interrupted"""
+        executor = _make_executor()
+        ctx = _make_ctx()
+        result = _make_result(interrupted=True, is_error=True)
+
+        with patch.object(executor, "_handle_interrupted") as mock_interrupted:
+            with patch.object(executor, "_handle_error") as mock_error:
+                executor._process_result(ctx, result)
+
+        mock_interrupted.assert_called_once()
+        mock_error.assert_not_called()
+
+
+class TestHandleExceptionDelegatesToHandleError:
+    """handle_exception이 handle_error에 위임하는지 테스트"""
+
+    def test_handle_exception_delegates(self):
+        """handle_exception은 handle_error에 위임"""
+        executor = _make_executor()
+        ctx = _make_ctx()
+        error = RuntimeError("테스트 예외")
+
+        with patch.object(executor._result_processor, "handle_error") as mock_handler:
+            executor._handle_exception(ctx, error)
+
+        mock_handler.assert_called_once_with(ctx, "테스트 예외")
+
+    def test_handle_error_fallback_to_say_on_update_failure(self):
+        """handle_error: update_message 실패 시 ctx.say로 폴백"""
+        from seosoyoung.slackbot.claude.result_processor import ResultProcessor
+
+        rp = ResultProcessor(
+            send_long_message=MagicMock(),
+            restart_manager=MagicMock(),
+            get_running_session_count=MagicMock(return_value=0),
+            send_restart_confirmation=MagicMock(),
+        )
+        ctx = _make_ctx()
+        # update_message가 예외를 던지도록 설정
+        with patch("seosoyoung.slackbot.claude.result_processor.update_message",
+                   side_effect=Exception("슬랙 업데이트 실패")):
+            rp.handle_error(ctx, "테스트 오류")
+
+        # 폴백으로 ctx.say 호출
+        ctx.say.assert_called_once()
+        call_kwargs = ctx.say.call_args.kwargs
+        assert "오류가 발생했습니다" in call_kwargs["text"]

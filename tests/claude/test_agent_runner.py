@@ -56,6 +56,7 @@ class MockAssistantMessage:
 class MockResultMessage:
     result: str = ""
     session_id: str = None
+    is_error: bool = False
 
 
 def _apply_mock_config(mock_config, patches):
@@ -1978,6 +1979,79 @@ class TestCompactRetryHangFix:
         # timeout으로 인해 무한 대기 없이 종료
         assert result.success is True
         assert call_idx[0] == 2  # 1차 + retry 1회
+
+
+class TestClaudeResultIsError:
+    """ClaudeResult.is_error 필드 테스트"""
+
+    def test_is_error_default_false(self):
+        """is_error 기본값은 False"""
+        result = ClaudeResult(success=True, output="test")
+        assert result.is_error is False
+
+    def test_is_error_set_true(self):
+        """is_error를 True로 설정"""
+        result = ClaudeResult(success=False, output="error", is_error=True)
+        assert result.is_error is True
+
+    def test_interrupted_and_is_error_independent(self):
+        """interrupted와 is_error는 독립적"""
+        result = ClaudeResult(success=False, output="", interrupted=True, is_error=False)
+        assert result.interrupted is True
+        assert result.is_error is False
+
+        result2 = ClaudeResult(success=False, output="", interrupted=False, is_error=True)
+        assert result2.interrupted is False
+        assert result2.is_error is True
+
+
+@pytest.mark.asyncio
+class TestClaudeRunnerIsErrorFromResultMessage:
+    """ResultMessage.is_error가 ClaudeResult.is_error로 정확히 매핑되는지 테스트"""
+
+    async def test_result_message_is_error_sets_is_error(self):
+        """ResultMessage.is_error=True → ClaudeResult.is_error=True, success=False"""
+        runner = ClaudeAgentRunner()
+
+        error_result = MockResultMessage(
+            result="오류가 발생했습니다",
+            session_id="error-test",
+            is_error=True,
+        )
+        mock_client = _make_mock_client(
+            MockSystemMessage(session_id="error-test"),
+            error_result,
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    result = await runner.run("테스트")
+
+        assert result.is_error is True
+        assert result.success is False
+        assert result.interrupted is False
+        assert result.output == "오류가 발생했습니다"
+
+    async def test_result_message_not_error_sets_success(self):
+        """ResultMessage.is_error=False → ClaudeResult.success=True, is_error=False"""
+        runner = ClaudeAgentRunner()
+
+        mock_client = _make_mock_client(
+            MockResultMessage(
+                result="정상 응답",
+                session_id="ok-test",
+                is_error=False,
+            ),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                result = await runner.run("테스트")
+
+        assert result.is_error is False
+        assert result.success is True
+        assert result.interrupted is False
 
 
 if __name__ == "__main__":
