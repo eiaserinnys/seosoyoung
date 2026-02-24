@@ -37,7 +37,7 @@ def prepare_memory_injection(
 
     try:
         from seosoyoung.config import Config
-        if not Config.OM_ENABLED:
+        if not Config.om.enabled:
             return None, ""
 
         from seosoyoung.memory.context_builder import ContextBuilder, InjectionResult
@@ -52,9 +52,9 @@ def prepare_memory_injection(
         include_channel_obs = False
         if (
             is_new_session
-            and Config.CHANNEL_OBSERVER_ENABLED
+            and Config.channel_observer.enabled
             and channel
-            and channel in Config.CHANNEL_OBSERVER_CHANNELS
+            and channel in Config.channel_observer.channels
         ):
             from seosoyoung.memory.channel_store import ChannelStore
             channel_store = ChannelStore(Config.get_memory_path())
@@ -63,7 +63,7 @@ def prepare_memory_injection(
         builder = ContextBuilder(store, channel_store=channel_store)
         result: InjectionResult = builder.build_memory_prompt(
             thread_ts,
-            max_tokens=Config.OM_MAX_OBSERVATION_TOKENS,
+            max_tokens=Config.om.max_observation_tokens,
             include_persistent=is_new_session,
             include_session=should_inject_session,
             include_channel_observation=include_channel_obs,
@@ -84,12 +84,12 @@ def prepare_memory_injection(
 
         # 앵커 ts: 새 세션이면 생성, 기존 세션이면 MemoryRecord에서 로드
         anchor_ts = create_or_load_debug_anchor(
-            thread_ts, session_id, store, prompt, Config.OM_DEBUG_CHANNEL,
+            thread_ts, session_id, store, prompt, Config.om.debug_channel,
         )
 
         # 디버그 로그 이벤트 #7, #8: 주입 정보
         send_injection_debug_log(
-            thread_ts, result, Config.OM_DEBUG_CHANNEL, anchor_ts=anchor_ts,
+            thread_ts, result, Config.om.debug_channel, anchor_ts=anchor_ts,
         )
 
         return memory_prompt, anchor_ts
@@ -140,7 +140,7 @@ def create_or_load_debug_anchor(
             preview += "…"
         anchor_ts = _send_debug_log(
             debug_channel,
-            f"{Config.EMOJI_TEXT_SESSION_START} *OM | 세션 시작 감지* `{thread_ts}`\n>{preview}",
+            f"{Config.emoji.text_session_start} *OM | 세션 시작 감지* `{thread_ts}`\n>{preview}",
         )
         if anchor_ts:
             record = store.get_record(thread_ts)
@@ -195,7 +195,7 @@ def send_injection_debug_log(
             ltm_quote = _blockquote(result.persistent_content)
             _send_debug_log(
                 debug_channel,
-                f"{Config.EMOJI_TEXT_LTM_INJECT} *OM 장기 기억 주입* `{sid}`\n"
+                f"{Config.emoji.text_ltm_inject} *OM 장기 기억 주입* `{sid}`\n"
                 f">`LTM {_format_tokens(result.persistent_tokens)} tok`\n"
                 f"{ltm_quote}",
                 thread_ts=anchor_ts,
@@ -206,7 +206,7 @@ def send_injection_debug_log(
             new_obs_quote = _blockquote(result.new_observation_content)
             _send_debug_log(
                 debug_channel,
-                f"{Config.EMOJI_TEXT_NEW_OBS_INJECT} *OM 새 관찰 주입* `{sid}`\n"
+                f"{Config.emoji.text_new_obs_inject} *OM 새 관찰 주입* `{sid}`\n"
                 f">`새관찰 {_format_tokens(result.new_observation_tokens)} tok`\n"
                 f"{new_obs_quote}",
                 thread_ts=anchor_ts,
@@ -217,7 +217,7 @@ def send_injection_debug_log(
             session_quote = _blockquote(result.session_content)
             _send_debug_log(
                 debug_channel,
-                f"{Config.EMOJI_TEXT_SESSION_OBS_INJECT} *OM 세션 관찰 주입* `{sid}`\n"
+                f"{Config.emoji.text_session_obs_inject} *OM 세션 관찰 주입* `{sid}`\n"
                 f">`세션 {_format_tokens(result.session_tokens)} tok`\n"
                 f"{session_quote}",
                 thread_ts=anchor_ts,
@@ -228,7 +228,7 @@ def send_injection_debug_log(
             ch_total = result.channel_digest_tokens + result.channel_buffer_tokens
             _send_debug_log(
                 debug_channel,
-                f"{Config.EMOJI_TEXT_CHANNEL_OBS_INJECT} *채널 관찰 주입* `{sid}`\n"
+                f"{Config.emoji.text_channel_obs_inject} *채널 관찰 주입* `{sid}`\n"
                 f">`digest {_format_tokens(result.channel_digest_tokens)} tok + "
                 f"buffer {_format_tokens(result.channel_buffer_tokens)} tok = "
                 f"총 {_format_tokens(ch_total)} tok`",
@@ -252,7 +252,7 @@ def trigger_observation(
     """
     try:
         from seosoyoung.config import Config
-        if not Config.OM_ENABLED:
+        if not Config.om.enabled:
             return
 
         # tool_use/tool_result 메시지를 필터링하여 순수 user/assistant 텍스트만 전달
@@ -275,24 +275,24 @@ def trigger_observation(
                 from seosoyoung.memory.reflector import Reflector
                 from seosoyoung.memory.store import MemoryStore
 
-                debug_channel = Config.OM_DEBUG_CHANNEL
+                debug_channel = Config.om.debug_channel
 
                 store = MemoryStore(Config.get_memory_path())
                 observer = Observer(
-                    api_key=Config.OPENAI_API_KEY,
-                    model=Config.OM_MODEL,
+                    api_key=Config.om.openai_api_key,
+                    model=Config.om.model,
                 )
                 reflector = Reflector(
-                    api_key=Config.OPENAI_API_KEY,
-                    model=Config.OM_MODEL,
+                    api_key=Config.om.openai_api_key,
+                    model=Config.om.model,
                 )
                 promoter = Promoter(
-                    api_key=Config.OPENAI_API_KEY,
-                    model=Config.OM_PROMOTER_MODEL,
+                    api_key=Config.om.openai_api_key,
+                    model=Config.om.promoter_model,
                 )
                 compactor = Compactor(
-                    api_key=Config.OPENAI_API_KEY,
-                    model=Config.OM_PROMOTER_MODEL,
+                    api_key=Config.om.openai_api_key,
+                    model=Config.om.promoter_model,
                 )
                 asyncio.run(observe_conversation(
                     store=store,
@@ -300,14 +300,14 @@ def trigger_observation(
                     thread_ts=thread_ts,
                     user_id=user_id,
                     messages=messages,
-                    min_turn_tokens=Config.OM_MIN_TURN_TOKENS,
+                    min_turn_tokens=Config.om.min_turn_tokens,
                     reflector=reflector,
-                    reflection_threshold=Config.OM_REFLECTION_THRESHOLD,
+                    reflection_threshold=Config.om.reflection_threshold,
                     promoter=promoter,
-                    promotion_threshold=Config.OM_PROMOTION_THRESHOLD,
+                    promotion_threshold=Config.om.promotion_threshold,
                     compactor=compactor,
-                    compaction_threshold=Config.OM_PERSISTENT_COMPACTION_THRESHOLD,
-                    compaction_target=Config.OM_PERSISTENT_COMPACTION_TARGET,
+                    compaction_threshold=Config.om.persistent_compaction_threshold,
+                    compaction_target=Config.om.persistent_compaction_target,
                     debug_channel=debug_channel,
                     anchor_ts=anchor_ts,
                 ))
@@ -315,9 +315,9 @@ def trigger_observation(
                 logger.error(f"OM 관찰 파이프라인 비동기 실행 오류 (무시): {e}")
                 try:
                     from seosoyoung.memory.observation_pipeline import _send_debug_log
-                    if Config.OM_DEBUG_CHANNEL:
+                    if Config.om.debug_channel:
                         _send_debug_log(
-                            Config.OM_DEBUG_CHANNEL,
+                            Config.om.debug_channel,
                             f"❌ *OM 스레드 오류*\n• user: `{user_id}`\n• thread: `{thread_ts}`\n• error: `{e}`",
                             thread_ts=anchor_ts,
                         )

@@ -25,19 +25,19 @@ class TestIsRemoteMode:
     def test_default_is_local(self):
         """기본값은 local"""
         with patch("seosoyoung.claude.executor.Config") as mock_config:
-            mock_config.CLAUDE_EXECUTION_MODE = "local"
+            mock_config.claude.execution_mode = "local"
             assert _is_remote_mode() is False
 
     def test_remote_mode(self):
         """CLAUDE_EXECUTION_MODE=remote"""
         with patch("seosoyoung.claude.executor.Config") as mock_config:
-            mock_config.CLAUDE_EXECUTION_MODE = "remote"
+            mock_config.claude.execution_mode = "remote"
             assert _is_remote_mode() is True
 
     def test_invalid_value_is_not_remote(self):
         """잘못된 값은 remote가 아님"""
         with patch("seosoyoung.claude.executor.Config") as mock_config:
-            mock_config.CLAUDE_EXECUTION_MODE = "unknown"
+            mock_config.claude.execution_mode = "unknown"
             assert _is_remote_mode() is False
 
 
@@ -146,9 +146,9 @@ class TestGetServiceAdapter:
     def test_lazy_init(self, executor):
         """첫 호출 시 adapter가 생성되고 이후 재사용"""
         with patch("seosoyoung.claude.executor.Config") as mock_config:
-            mock_config.SEOSOYOUNG_SOUL_URL = "http://localhost:3105"
-            mock_config.SEOSOYOUNG_SOUL_TOKEN = "test-token"
-            mock_config.SEOSOYOUNG_SOUL_CLIENT_ID = "test_bot"
+            mock_config.claude.soul_url = "http://localhost:3105"
+            mock_config.claude.soul_token = "test-token"
+            mock_config.claude.soul_client_id = "test_bot"
 
             adapter1 = executor._get_service_adapter()
             adapter2 = executor._get_service_adapter()
@@ -233,12 +233,12 @@ class TestConfigEnvVars:
             # Config는 모듈 로드 시 평가되므로 직접 확인
             from seosoyoung.config import Config
             # 환경변수가 없을 때 기본값 확인
-            assert Config.CLAUDE_EXECUTION_MODE in ("local", "remote")
+            assert Config.claude.execution_mode in ("local", "remote")
 
     def test_soul_url_default(self):
         from seosoyoung.config import Config
-        assert "localhost" in Config.SEOSOYOUNG_SOUL_URL or Config.SEOSOYOUNG_SOUL_URL != ""
+        assert "localhost" in Config.claude.soul_url or Config.claude.soul_url != ""
 
     def test_soul_client_id_default(self):
         from seosoyoung.config import Config
-        assert Config.SEOSOYOUNG_SOUL_CLIENT_ID == "seosoyoung_bot"
+        assert Config.claude.soul_client_id == "seosoyoung_bot"

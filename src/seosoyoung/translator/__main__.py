@@ -44,7 +44,7 @@ def main():
     )
     parser.add_argument(
         "--model", default=None,
-        help="사용할 모델 (기본: Config.TRANSLATE_MODEL)"
+        help="사용할 모델 (기본: Config.translate.model)"
     )
     parser.add_argument(
         "--json", action="store_true",

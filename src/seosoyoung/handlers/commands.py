@@ -193,9 +193,9 @@ def handle_status(*, say, ts, session_manager, **_):
     status_lines = [
         f"📊 *상태*",
         f"• 작업 폴더: `{Path.cwd()}`",
-        f"• 관리자: {', '.join(Config.ADMIN_USERS)}",
+        f"• 관리자: {', '.join(Config.auth.admin_users)}",
         f"• 활성 세션: {session_manager.count()}개",
-        f"• 디버그 모드: {Config.DEBUG}",
+        f"• 디버그 모드: {Config.debug}",
         f"• CPU 사용률: {cpu_percent:.1f}%",
         f"• 메모리: {mem_used_str} / {mem_total_str} ({mem.percent:.1f}%)",
         f"• Claude 관련 프로세스: {len(claude_processes)}개",
@@ -443,7 +443,7 @@ def handle_translate(*, text, say, ts, channel, client, **_):
             lines.append(f"`📖 {terms_str}`")
         say(text="\n".join(lines), thread_ts=ts)
         client.reactions_remove(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
-        client.reactions_add(channel=channel, timestamp=ts, name=Config.EMOJI_TRANSLATE_DONE)
+        client.reactions_add(channel=channel, timestamp=ts, name=Config.emoji.translate_done)
     except Exception as e:
         logger.exception(f"번역 테스트 실패: {e}")
         try:
@@ -478,7 +478,7 @@ def handle_update_restart(
     if running_count > 0:
         send_restart_confirmation(
             client=client,
-            channel=Config.TRELLO_NOTIFY_CHANNEL,
+            channel=Config.trello.notify_channel,
             restart_type=restart_type,
             running_count=running_count,
             user_id=user_id,

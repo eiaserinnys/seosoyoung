@@ -132,8 +132,17 @@
 - `Session` (seosoyoung/claude/session.py:21): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/claude/session.py:43): 세션 매니저
 - `SessionRuntime` (seosoyoung/claude/session.py:253): 세션 실행 상태 관리자
-- `ConfigurationError` (seosoyoung/config.py:17): 설정 오류 예외
-- `Config` (seosoyoung/config.py:58): 애플리케이션 설정
+- `ConfigurationError` (seosoyoung/config.py:18): 설정 오류 예외
+- `SlackConfig` (seosoyoung/config.py:60): Slack 연결 설정
+- `AuthConfig` (seosoyoung/config.py:70): 권한 설정
+- `TrelloConfig` (seosoyoung/config.py:103): Trello 설정
+- `TranslateConfig` (seosoyoung/config.py:124): 번역 설정
+- `GeminiConfig` (seosoyoung/config.py:145): Gemini 설정 (이미지 생성)
+- `OMConfig` (seosoyoung/config.py:153): Observational Memory 설정
+- `ChannelObserverConfig` (seosoyoung/config.py:179): Channel Observer 설정
+- `ClaudeConfig` (seosoyoung/config.py:232): Claude 실행 모드 설정
+- `EmojiConfig` (seosoyoung/config.py:243): 이모지 설정
+- `Config` (seosoyoung/config.py:271): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `MentionTracker` (seosoyoung/handlers/mention_tracker.py:13): 멘션으로 처리 중인 스레드를 추적
 - `Settings` (seosoyoung/mcp/soul/config.py:35): 애플리케이션 설정

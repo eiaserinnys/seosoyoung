@@ -36,7 +36,7 @@ def _send_debug_log(channel: str, text: str, thread_ts: str = "") -> str:
         from seosoyoung.config import Config
         from slack_sdk import WebClient
 
-        client = WebClient(token=Config.SLACK_BOT_TOKEN)
+        client = WebClient(token=Config.slack.bot_token)
         kwargs: dict = {"channel": channel, "text": text}
         if thread_ts:
             kwargs["thread_ts"] = thread_ts
@@ -55,7 +55,7 @@ def _update_debug_log(channel: str, ts: str, text: str) -> None:
         from seosoyoung.config import Config
         from slack_sdk import WebClient
 
-        client = WebClient(token=Config.SLACK_BOT_TOKEN)
+        client = WebClient(token=Config.slack.bot_token)
         client.chat_update(channel=channel, ts=ts, text=text)
     except Exception as e:
         logger.warning(f"OM 디버그 로그 수정 실패: {e}")
@@ -286,7 +286,7 @@ async def observe_conversation(
             _update_debug_log(
                 debug_channel,
                 debug_ts,
-                f"{Config.EMOJI_TEXT_OBS_COMPLETE} *OM 관찰 완료* `{sid}`\n"
+                f"{Config.emoji.text_obs_complete} *OM 관찰 완료* `{sid}`\n"
                 f">`{_format_tokens(turn_tokens)} tok{candidate_part}{new_obs_part}`",
             )
 
@@ -395,7 +395,7 @@ async def _try_promote(
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f"{Config.EMOJI_TEXT_OBS_COMPLETE} *LTM 승격 완료*\n"
+                    f"{Config.emoji.text_obs_complete} *LTM 승격 완료*\n"
                     f">`승격 {result.promoted_count}건 ({priority_str}) | "
                     f"기각 {result.rejected_count}건 | "
                     f"장기기억 {_format_tokens(persistent_tokens)} tok`\n"
@@ -422,7 +422,7 @@ async def _try_promote(
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f"{Config.EMOJI_TEXT_OBS_COMPLETE} *LTM 승격 완료*\n"
+                    f"{Config.emoji.text_obs_complete} *LTM 승격 완료*\n"
                     f">`승격 0건 | 기각 {result.rejected_count}건`",
                 )
 

@@ -36,10 +36,10 @@ logger = logging.getLogger(__name__)
 
 from seosoyoung.config import Config
 
-# 허용 도구: Config.ROLE_TOOLS["admin"]에서 NPC 도구를 제외한 서브셋
+# 허용 도구: Config.auth.role_tools["admin"]에서 NPC 도구를 제외한 서브셋
 _NPC_TOOL_PREFIX = "mcp__seosoyoung-attach__npc_"
 ALLOWED_TOOLS = [
-    t for t in Config.ROLE_TOOLS["admin"]
+    t for t in Config.auth.role_tools["admin"]
     if not t.startswith(_NPC_TOOL_PREFIX)
 ]
 

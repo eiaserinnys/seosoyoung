@@ -56,6 +56,16 @@ class MockResultMessage:
     session_id: str = None
 
 
+def _apply_mock_config(mock_config, patches):
+    """중첩 Config mock에 패치 적용 (dot 경로 지원)"""
+    for k, v in patches.items():
+        parts = k.split(".")
+        obj = mock_config
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        setattr(obj, parts[-1], v)
+
+
 def _make_mock_client(*messages):
     """mock_receive async generator를 설정한 mock client를 생성하는 헬퍼"""
     mock_client = AsyncMock()
@@ -76,7 +86,7 @@ class TestClaudeAgentRunnerUnit:
         runner = ClaudeAgentRunner()
         options, memory_prompt, anchor_ts = runner._build_options()
 
-        assert options.allowed_tools == Config.ROLE_TOOLS["admin"]
+        assert options.allowed_tools == Config.auth.role_tools["admin"]
         assert options.disallowed_tools == DEFAULT_DISALLOWED_TOOLS
         assert options.permission_mode == "bypassPermissions"
         assert options.resume is None
@@ -590,18 +600,17 @@ class TestBuildOptionsChannelObservation:
         ch_store.save_digest("C_OBS", content="채널에서 재미있는 일이 있었다", meta={})
 
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": True,
-            "CHANNEL_OBSERVER_CHANNELS": ["C_OBS"],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "",
+            "om.enabled": True,
+            "channel_observer.enabled": True,
+            "channel_observer.channels": ["C_OBS"],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "",
         }
 
         runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -624,18 +633,17 @@ class TestBuildOptionsChannelObservation:
     def test_channel_observation_not_injected_for_non_observed_channel(self, tmp_path):
         """관찰 대상이 아닌 채널에서는 채널 관찰 컨텍스트가 주입되지 않음"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": True,
-            "CHANNEL_OBSERVER_CHANNELS": ["C_OBS"],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "",
+            "om.enabled": True,
+            "channel_observer.enabled": True,
+            "channel_observer.channels": ["C_OBS"],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "",
         }
 
         runner = ClaudeAgentRunner("ts_1", channel="C_OTHER")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -654,18 +662,17 @@ class TestBuildOptionsChannelObservation:
     def test_channel_observation_not_injected_when_disabled(self, tmp_path):
         """CHANNEL_OBSERVER_ENABLED=False면 채널 관찰 미주입"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": ["C_OBS"],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": ["C_OBS"],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "",
         }
 
         runner = ClaudeAgentRunner("ts_1", channel="C_OBS")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -694,18 +701,17 @@ class TestBuildOptionsAnchorTs:
     def test_anchor_ts_created_for_new_session(self, tmp_path):
         """새 세션 + OM 활성 시 앵커 메시지가 생성되어 anchor_ts 반환"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         runner = ClaudeAgentRunner("ts_1")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -742,18 +748,17 @@ class TestBuildOptionsAnchorTs:
         pre_store.save_record(pre_record)
 
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         runner = ClaudeAgentRunner("ts_1")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -781,18 +786,17 @@ class TestBuildOptionsAnchorTs:
     def test_anchor_ts_empty_when_no_saved_record(self, tmp_path):
         """기존 세션 재개 시 MemoryRecord가 없으면 anchor_ts 빈 문자열"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         runner = ClaudeAgentRunner("ts_no_record")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -820,18 +824,17 @@ class TestBuildOptionsAnchorTs:
         from seosoyoung.memory.store import MemoryStore
 
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         runner = ClaudeAgentRunner("ts_new")
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -998,11 +1001,11 @@ class TestTriggerObservationToolFilter:
         ]
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.OM_ENABLED = True
-            MockConfig.OPENAI_API_KEY = "test"
-            MockConfig.OM_MODEL = "gpt-4.1-mini"
-            MockConfig.OM_PROMOTER_MODEL = "gpt-4.1-mini"
-            MockConfig.OM_DEBUG_CHANNEL = ""
+            MockConfig.om.enabled = True
+            MockConfig.om.openai_api_key = "test"
+            MockConfig.om.model = "gpt-4.1-mini"
+            MockConfig.om.promoter_model = "gpt-4.1-mini"
+            MockConfig.om.debug_channel = ""
             MockConfig.get_memory_path.return_value = "/tmp/test"
 
             # observe_conversation을 모킹하여 전달된 messages를 캡처
@@ -1467,7 +1470,7 @@ class TestCreateOrLoadDebugAnchor:
         store = MemoryStore(base_dir=tmp_path)
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.EMOJI_TEXT_SESSION_START = "🟢"
+            MockConfig.emoji.text_session_start = "🟢"
             with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anchor_new_123"):
                 anchor_ts = create_or_load_debug_anchor(
                     thread_ts="ts_new", session_id=None, store=store,
@@ -1510,7 +1513,7 @@ class TestCreateOrLoadDebugAnchor:
         long_prompt = "A" * 100
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.EMOJI_TEXT_SESSION_START = "🟢"
+            MockConfig.emoji.text_session_start = "🟢"
             with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anc") as mock_send:
                 create_or_load_debug_anchor(
                     thread_ts="ts_long", session_id=None, store=store,
@@ -1535,7 +1538,7 @@ class TestPrepareMemoryInjection:
     def test_returns_none_when_om_disabled(self):
         """OM 비활성 시 (None, '') 반환"""
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.OM_ENABLED = False
+            MockConfig.om.enabled = False
             memory_prompt, anchor_ts = prepare_memory_injection(
                 thread_ts="ts_1", channel="C1", session_id=None, prompt="test",
             )
@@ -1545,16 +1548,15 @@ class TestPrepareMemoryInjection:
     def test_returns_memory_prompt_when_available(self, tmp_path):
         """OM 활성 + 메모리 존재 시 memory_prompt 반환"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "",
         }
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -1579,16 +1581,15 @@ class TestPrepareMemoryInjection:
     def test_calls_create_or_load_debug_anchor(self, tmp_path):
         """create_or_load_debug_anchor가 내부적으로 호출되는지 확인"""
         config_patches = {
-            "OM_ENABLED": True,
-            "CHANNEL_OBSERVER_ENABLED": False,
-            "CHANNEL_OBSERVER_CHANNELS": [],
-            "OM_MAX_OBSERVATION_TOKENS": 30000,
-            "OM_DEBUG_CHANNEL": "C_DEBUG",
+            "om.enabled": True,
+            "channel_observer.enabled": False,
+            "channel_observer.channels": [],
+            "om.max_observation_tokens": 30000,
+            "om.debug_channel": "C_DEBUG",
         }
 
         with patch("seosoyoung.config.Config") as MockConfig:
-            for k, v in config_patches.items():
-                setattr(MockConfig, k, v)
+            _apply_mock_config(MockConfig, config_patches)
             MockConfig.get_memory_path.return_value = str(tmp_path)
 
             with patch("seosoyoung.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
@@ -1614,7 +1615,7 @@ class TestPrepareMemoryInjection:
     def test_exception_returns_none_gracefully(self):
         """OM 내부 예외 발생 시 (None, '') 반환 (무시)"""
         with patch("seosoyoung.config.Config") as MockConfig:
-            MockConfig.OM_ENABLED = True
+            MockConfig.om.enabled = True
             MockConfig.get_memory_path.side_effect = RuntimeError("boom")
             memory_prompt, anchor_ts = prepare_memory_injection(
                 thread_ts="ts_err", channel="C1", session_id=None, prompt="test",

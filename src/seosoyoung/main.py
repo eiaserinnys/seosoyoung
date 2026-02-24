@@ -31,7 +31,7 @@ from seosoyoung.memory.channel_scheduler import ChannelDigestScheduler
 logger = setup_logging()
 
 # Slack 앱 초기화
-app = App(token=Config.SLACK_BOT_TOKEN, logger=logger)
+app = App(token=Config.slack.bot_token, logger=logger)
 
 # 세션 관리
 session_manager = SessionManager()
@@ -121,51 +121,51 @@ def _init_channel_observer(slack_client, mention_tracker):
                비활성화 시 모두 None.
     """
     nones = (None, None, None, None, None, None)
-    if not (Config.CHANNEL_OBSERVER_ENABLED and Config.CHANNEL_OBSERVER_CHANNELS):
+    if not (Config.channel_observer.enabled and Config.channel_observer.channels):
         return nones
 
     store = ChannelStore(base_dir=Config.get_memory_path())
     collector = ChannelMessageCollector(
         store=store,
-        target_channels=Config.CHANNEL_OBSERVER_CHANNELS,
+        target_channels=Config.channel_observer.channels,
         mention_tracker=mention_tracker,
     )
     cooldown = InterventionHistory(base_dir=Config.get_memory_path())
 
     observer = None
     compressor = None
-    if Config.CHANNEL_OBSERVER_API_KEY:
+    if Config.channel_observer.api_key:
         observer = ChannelObserver(
-            api_key=Config.CHANNEL_OBSERVER_API_KEY,
-            model=Config.CHANNEL_OBSERVER_MODEL,
+            api_key=Config.channel_observer.api_key,
+            model=Config.channel_observer.model,
         )
         compressor = DigestCompressor(
-            api_key=Config.CHANNEL_OBSERVER_API_KEY,
-            model=Config.CHANNEL_OBSERVER_COMPRESSOR_MODEL,
+            api_key=Config.channel_observer.api_key,
+            model=Config.channel_observer.compressor_model,
         )
 
     scheduler = None
-    if observer and Config.CHANNEL_OBSERVER_PERIODIC_SEC > 0:
+    if observer and Config.channel_observer.periodic_sec > 0:
         scheduler = ChannelDigestScheduler(
             store=store,
             observer=observer,
             compressor=compressor,
             cooldown=cooldown,
             slack_client=slack_client,
-            channels=Config.CHANNEL_OBSERVER_CHANNELS,
-            interval_sec=Config.CHANNEL_OBSERVER_PERIODIC_SEC,
-            buffer_threshold=Config.CHANNEL_OBSERVER_BUFFER_THRESHOLD,
-            digest_max_tokens=Config.CHANNEL_OBSERVER_DIGEST_MAX_TOKENS,
-            digest_target_tokens=Config.CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS,
-            debug_channel=Config.CHANNEL_OBSERVER_DEBUG_CHANNEL,
-            intervention_threshold=Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD,
+            channels=Config.channel_observer.channels,
+            interval_sec=Config.channel_observer.periodic_sec,
+            buffer_threshold=Config.channel_observer.buffer_threshold,
+            digest_max_tokens=Config.channel_observer.digest_max_tokens,
+            digest_target_tokens=Config.channel_observer.digest_target_tokens,
+            debug_channel=Config.channel_observer.debug_channel,
+            intervention_threshold=Config.channel_observer.intervention_threshold,
             mention_tracker=mention_tracker,
         )
 
     logger.info(
-        f"채널 관찰 시스템 초기화: channels={Config.CHANNEL_OBSERVER_CHANNELS}, "
-        f"threshold={Config.CHANNEL_OBSERVER_INTERVENTION_THRESHOLD}, "
-        f"periodic={Config.CHANNEL_OBSERVER_PERIODIC_SEC}s"
+        f"채널 관찰 시스템 초기화: channels={Config.channel_observer.channels}, "
+        f"threshold={Config.channel_observer.intervention_threshold}, "
+        f"periodic={Config.channel_observer.periodic_sec}s"
     )
     return store, collector, cooldown, observer, compressor, scheduler
 
@@ -208,7 +208,7 @@ register_all_handlers(app, _build_dependencies())
 
 def notify_startup():
     """봇 시작 알림"""
-    channel = Config.TRELLO_NOTIFY_CHANNEL
+    channel = Config.trello.notify_channel
     if channel:
         try:
             app.client.chat_postMessage(channel=channel, text="안녕하세요, 서소영입니다.")
@@ -219,7 +219,7 @@ def notify_startup():
 
 def notify_shutdown():
     """봇 종료 알림"""
-    channel = Config.TRELLO_NOTIFY_CHANNEL
+    channel = Config.trello.notify_channel
     if channel:
         try:
             app.client.chat_postMessage(channel=channel, text="다음에 또 뵙겠습니다, 안녕히 계세요.")
@@ -232,7 +232,7 @@ def start_trello_watcher():
     """Trello 워처 시작"""
     global trello_watcher
 
-    if not Config.TRELLO_API_KEY or not Config.TRELLO_TOKEN:
+    if not Config.trello.api_key or not Config.trello.token:
         logger.info("Trello API 키가 설정되지 않아 워처를 시작하지 않습니다.")
         return
 
@@ -262,8 +262,8 @@ def init_bot_user_id():
     """봇 사용자 ID 초기화"""
     try:
         auth_result = app.client.auth_test()
-        Config.BOT_USER_ID = auth_result["user_id"]
-        logger.info(f"BOT_USER_ID: {Config.BOT_USER_ID}")
+        Config.slack.bot_user_id = auth_result["user_id"]
+        logger.info(f"BOT_USER_ID: {Config.slack.bot_user_id}")
     except Exception as e:
         logger.error(f"봇 ID 조회 실패: {e}")
 
@@ -271,14 +271,14 @@ def init_bot_user_id():
 if __name__ == "__main__":
     logger.info("SeoSoyoung 봇을 시작합니다...")
     logger.info(f"LOG_PATH: {Config.get_log_path()}")
-    logger.info(f"ADMIN_USERS: {Config.ADMIN_USERS}")
-    logger.info(f"ALLOWED_USERS: {Config.ALLOWED_USERS}")
-    logger.info(f"DEBUG: {Config.DEBUG}")
+    logger.info(f"ADMIN_USERS: {Config.auth.admin_users}")
+    logger.info(f"ALLOWED_USERS: {Config.auth.allowed_users}")
+    logger.info(f"DEBUG: {Config.debug}")
     init_bot_user_id()
     notify_startup()
     start_trello_watcher()
     start_list_runner()
     if _channel_scheduler:
         _channel_scheduler.start()
-    handler = SocketModeHandler(app, Config.SLACK_APP_TOKEN)
+    handler = SocketModeHandler(app, Config.slack.app_token)
     handler.start()

@@ -63,7 +63,7 @@ async def generate_image(
 
     Args:
         prompt: 이미지 생성 프롬프트
-        model: 사용할 모델 (None이면 Config.GEMINI_MODEL 사용)
+        model: 사용할 모델 (None이면 Config.gemini.model 사용)
         reference_images: 레퍼런스 이미지 파일 경로 목록 (선택)
 
     Returns:
@@ -73,13 +73,13 @@ async def generate_image(
         ValueError: API 키가 설정되지 않은 경우
         RuntimeError: 이미지 생성에 실패한 경우
     """
-    if not Config.GEMINI_API_KEY:
+    if not Config.gemini.api_key:
         raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
 
-    target_model = model or Config.GEMINI_MODEL
+    target_model = model or Config.gemini.model
     logger.info(f"이미지 생성 요청: model={target_model}, prompt={prompt[:100]}")
 
-    client = genai.Client(api_key=Config.GEMINI_API_KEY)
+    client = genai.Client(api_key=Config.gemini.api_key)
 
     # 레퍼런스 이미지가 있으면 multimodal contents 구성
     contents = prompt

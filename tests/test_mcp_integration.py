@@ -39,7 +39,7 @@ class TestMCPToolsInAllowedTools:
         """admin 역할에 MCP 도구가 허용됨"""
         from seosoyoung.config import Config
 
-        admin_tools = Config.ROLE_TOOLS["admin"]
+        admin_tools = Config.auth.role_tools["admin"]
         mcp_tools = [t for t in admin_tools if t.startswith("mcp__seosoyoung-attach")]
         assert len(mcp_tools) > 0, "admin에 mcp__seosoyoung-attach 도구가 없음"
 
@@ -47,7 +47,7 @@ class TestMCPToolsInAllowedTools:
         """viewer 역할에는 MCP 도구가 없음"""
         from seosoyoung.config import Config
 
-        viewer_tools = Config.ROLE_TOOLS["viewer"]
+        viewer_tools = Config.auth.role_tools["viewer"]
         mcp_tools = [t for t in viewer_tools if t.startswith("mcp__")]
         assert len(mcp_tools) == 0, "viewer에 MCP 도구가 있으면 안됨"
 

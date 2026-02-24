@@ -325,12 +325,12 @@ class TestMessageHandlerBotMention:
         from seosoyoung.handlers.message import _contains_bot_mention
         from seosoyoung.config import Config
 
-        original_bot_id = Config.BOT_USER_ID
+        original_bot_id = Config.slack.bot_user_id
         try:
-            Config.BOT_USER_ID = "BOT123"
+            Config.slack.bot_user_id = "BOT123"
             assert _contains_bot_mention("<@BOT123> hello") is True
             assert _contains_bot_mention("hello <@BOT123>") is True
             assert _contains_bot_mention("hello") is False
             assert _contains_bot_mention("<@OTHER> hello") is False
         finally:
-            Config.BOT_USER_ID = original_bot_id
+            Config.slack.bot_user_id = original_bot_id

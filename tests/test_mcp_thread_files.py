@@ -248,5 +248,5 @@ class TestRoleToolsConsistency:
         from seosoyoung.config import Config
 
         tool_name = "mcp__seosoyoung-attach__slack_download_thread_files"
-        assert tool_name in Config.ROLE_TOOLS["admin"]
+        assert tool_name in Config.auth.role_tools["admin"]
 

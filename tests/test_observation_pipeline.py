@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import seosoyoung.config as _cfg_mod
+import seosoyoung.memory.observation_pipeline as _op_mod
 from seosoyoung.memory.observation_pipeline import (
     _extract_new_observations,
     observe_conversation,
@@ -541,7 +543,7 @@ class TestTriggerObservation:
 
         with patch("seosoyoung.memory.injector.threading.Thread") as mock_thread:
             mock_thread.return_value.start = MagicMock()
-            with patch("seosoyoung.config.Config.OM_ENABLED", True):
+            with patch.object(_cfg_mod.Config.om, 'enabled', True):
                 trigger_observation("ts_1234", "U12345", "프롬프트", messages)
 
         mock_thread.assert_called_once()
@@ -553,7 +555,7 @@ class TestTriggerObservation:
         from seosoyoung.memory.injector import trigger_observation
 
         with patch("seosoyoung.memory.injector.threading.Thread") as mock_thread:
-            with patch("seosoyoung.config.Config.OM_ENABLED", False):
+            with patch.object(_cfg_mod.Config.om, 'enabled', False):
                 trigger_observation("ts_1234", "U12345", "프롬프트", [])
 
         mock_thread.assert_not_called()
@@ -563,8 +565,8 @@ class TestTriggerObservation:
         """트리거 오류가 전파되지 않음"""
         from seosoyoung.memory.injector import trigger_observation
 
-        with patch(
-            "seosoyoung.config.Config.OM_ENABLED",
+        with patch.object(
+            type(_cfg_mod.Config.om), 'enabled',
             new_callable=lambda: property(lambda self: (_ for _ in ()).throw(RuntimeError("설정 오류"))),
         ):
             trigger_observation("ts_1234", "U12345", "프롬프트", [])
@@ -580,11 +582,11 @@ class TestTriggerObservation:
             mock_t.start = lambda: target()
             return mock_t
 
-        with patch("seosoyoung.config.Config.OM_ENABLED", True):
-            with patch("seosoyoung.config.Config.OPENAI_API_KEY", "test-key"):
-                with patch("seosoyoung.config.Config.OM_MODEL", "gpt-4.1-mini"):
+        with patch.object(_cfg_mod.Config.om, 'enabled', True):
+            with patch.object(_cfg_mod.Config.om, 'openai_api_key', "test-key"):
+                with patch.object(_cfg_mod.Config.om, 'model', "gpt-4.1-mini"):
                     with patch("seosoyoung.config.Config.get_memory_path", return_value="/tmp/test"):
-                        with patch("seosoyoung.config.Config.OM_MIN_TURN_TOKENS", 200):
+                        with patch.object(_cfg_mod.Config.om, 'min_turn_tokens', 200):
                             with patch(
                                 "seosoyoung.memory.observation_pipeline.observe_conversation",
                                 new_callable=AsyncMock,
@@ -615,15 +617,15 @@ class TestTriggerObservation:
             mock_t.start = lambda: target()
             return mock_t
 
-        with patch("seosoyoung.config.Config.OM_ENABLED", True):
-            with patch("seosoyoung.config.Config.OPENAI_API_KEY", "test-key"):
-                with patch("seosoyoung.config.Config.OM_MODEL", "gpt-4.1-mini"):
-                    with patch("seosoyoung.config.Config.OM_PROMOTER_MODEL", "gpt-5.2"):
-                        with patch("seosoyoung.config.Config.OM_PROMOTION_THRESHOLD", 5000):
-                            with patch("seosoyoung.config.Config.OM_PERSISTENT_COMPACTION_THRESHOLD", 15000):
-                                with patch("seosoyoung.config.Config.OM_PERSISTENT_COMPACTION_TARGET", 8000):
+        with patch.object(_cfg_mod.Config.om, 'enabled', True):
+            with patch.object(_cfg_mod.Config.om, 'openai_api_key', "test-key"):
+                with patch.object(_cfg_mod.Config.om, 'model', "gpt-4.1-mini"):
+                    with patch.object(_cfg_mod.Config.om, 'promoter_model', "gpt-5.2"):
+                        with patch.object(_cfg_mod.Config.om, 'promotion_threshold', 5000):
+                            with patch.object(_cfg_mod.Config.om, 'persistent_compaction_threshold', 15000):
+                                with patch.object(_cfg_mod.Config.om, 'persistent_compaction_target', 8000):
                                     with patch("seosoyoung.config.Config.get_memory_path", return_value="/tmp/test"):
-                                        with patch("seosoyoung.config.Config.OM_MIN_TURN_TOKENS", 200):
+                                        with patch.object(_cfg_mod.Config.om, 'min_turn_tokens', 200):
                                             with patch(
                                                 "seosoyoung.memory.observation_pipeline.observe_conversation",
                                                 new_callable=AsyncMock,
@@ -748,7 +750,7 @@ class TestSendDebugLogThreadTs:
             mock_instance.chat_postMessage.return_value = {"ts": "1234.5678"}
             MockClient.return_value = mock_instance
 
-            with patch("seosoyoung.config.Config.SLACK_BOT_TOKEN", "xoxb-test"):
+            with patch.object(_cfg_mod.Config.slack, 'bot_token', "xoxb-test"):
                 result = _send_debug_log("C_DEBUG", "테스트 메시지")
 
             assert result == "1234.5678"
@@ -764,7 +766,7 @@ class TestSendDebugLogThreadTs:
             mock_instance.chat_postMessage.return_value = {"ts": "9999.0001"}
             MockClient.return_value = mock_instance
 
-            with patch("seosoyoung.config.Config.SLACK_BOT_TOKEN", "xoxb-test"):
+            with patch.object(_cfg_mod.Config.slack, 'bot_token', "xoxb-test"):
                 result = _send_debug_log("C_DEBUG", "스레드 메시지", thread_ts="1234.5678")
 
             assert result == "9999.0001"
@@ -780,7 +782,7 @@ class TestSendDebugLogThreadTs:
             mock_instance.chat_postMessage.return_value = {"ts": "1234.5678"}
             MockClient.return_value = mock_instance
 
-            with patch("seosoyoung.config.Config.SLACK_BOT_TOKEN", "xoxb-test"):
+            with patch.object(_cfg_mod.Config.slack, 'bot_token', "xoxb-test"):
                 _send_debug_log("C_DEBUG", "메시지", thread_ts="")
 
             call_kwargs = mock_instance.chat_postMessage.call_args.kwargs
@@ -872,11 +874,11 @@ class TestTriggerObservationAnchorTs:
             mock_t.start = lambda: target()
             return mock_t
 
-        with patch("seosoyoung.config.Config.OM_ENABLED", True):
-            with patch("seosoyoung.config.Config.OPENAI_API_KEY", "test-key"):
-                with patch("seosoyoung.config.Config.OM_MODEL", "gpt-4.1-mini"):
+        with patch.object(_cfg_mod.Config.om, 'enabled', True):
+            with patch.object(_cfg_mod.Config.om, 'openai_api_key', "test-key"):
+                with patch.object(_cfg_mod.Config.om, 'model', "gpt-4.1-mini"):
                     with patch("seosoyoung.config.Config.get_memory_path", return_value="/tmp/test"):
-                        with patch("seosoyoung.config.Config.OM_MIN_TURN_TOKENS", 200):
+                        with patch.object(_cfg_mod.Config.om, 'min_turn_tokens', 200):
                             with patch(
                                 "seosoyoung.memory.observation_pipeline.observe_conversation",
                                 new_callable=AsyncMock,

@@ -161,13 +161,13 @@ def _build_task_context_hint() -> str:
 def _build_list_ids_context() -> str:
     """자주 사용하는 리스트 ID 컨텍스트 생성 (Config에서 동적으로 조회)"""
     lines = ["## 리스트 ID (MCP 검색 불필요)"]
-    if Config.TRELLO_DRAFT_LIST_ID:
-        lines.append(f"- 📥 Draft: {Config.TRELLO_DRAFT_LIST_ID}")
-    if Config.TRELLO_BACKLOG_LIST_ID:
-        lines.append(f"- 📦 Backlog: {Config.TRELLO_BACKLOG_LIST_ID}")
-    if Config.TRELLO_BLOCKED_LIST_ID:
-        lines.append(f"- 🚧 Blocked: {Config.TRELLO_BLOCKED_LIST_ID}")
-    if Config.TRELLO_REVIEW_LIST_ID:
-        lines.append(f"- 👀 Review: {Config.TRELLO_REVIEW_LIST_ID}")
+    if Config.trello.draft_list_id:
+        lines.append(f"- 📥 Draft: {Config.trello.draft_list_id}")
+    if Config.trello.backlog_list_id:
+        lines.append(f"- 📦 Backlog: {Config.trello.backlog_list_id}")
+    if Config.trello.blocked_list_id:
+        lines.append(f"- 🚧 Blocked: {Config.trello.blocked_list_id}")
+    if Config.trello.review_list_id:
+        lines.append(f"- 👀 Review: {Config.trello.review_list_id}")
 
     return "\n".join(lines) + "\n"

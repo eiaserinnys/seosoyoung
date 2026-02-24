@@ -34,9 +34,9 @@ class TrelloClient:
         token: Optional[str] = None,
         board_id: Optional[str] = None,
     ):
-        self.api_key = api_key or Config.TRELLO_API_KEY
-        self.token = token or Config.TRELLO_TOKEN
-        self.board_id = board_id or Config.TRELLO_BOARD_ID
+        self.api_key = api_key or Config.trello.api_key
+        self.token = token or Config.trello.token
+        self.board_id = board_id or Config.trello.board_id
 
         if not self.api_key or not self.token:
             logger.warning("Trello API 키 또는 토큰이 설정되지 않았습니다.")

@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 def _is_remote_mode() -> bool:
     """현재 실행 모드가 remote인지 확인"""
-    return Config.CLAUDE_EXECUTION_MODE == "remote"
+    return Config.claude.execution_mode == "remote"
 
 
 def _get_mcp_config_path() -> Optional[Path]:
@@ -49,7 +49,7 @@ def _get_role_config(role: str) -> dict:
     Returns:
         dict with keys: allowed_tools, disallowed_tools, mcp_config_path
     """
-    allowed_tools = Config.ROLE_TOOLS.get(role, Config.ROLE_TOOLS["viewer"])
+    allowed_tools = Config.auth.role_tools.get(role, Config.auth.role_tools["viewer"])
 
     if role == "viewer":
         return {
@@ -402,12 +402,12 @@ class ClaudeExecutor:
                     from seosoyoung.claude.service_client import SoulServiceClient
                     from seosoyoung.claude.service_adapter import ClaudeServiceAdapter
                     client = SoulServiceClient(
-                        base_url=Config.SEOSOYOUNG_SOUL_URL,
-                        token=Config.SEOSOYOUNG_SOUL_TOKEN,
+                        base_url=Config.claude.soul_url,
+                        token=Config.claude.soul_token,
                     )
                     self._service_adapter = ClaudeServiceAdapter(
                         client=client,
-                        client_id=Config.SEOSOYOUNG_SOUL_CLIENT_ID,
+                        client_id=Config.claude.soul_client_id,
                     )
         return self._service_adapter
 

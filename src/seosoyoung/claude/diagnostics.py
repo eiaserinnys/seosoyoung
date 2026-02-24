@@ -125,7 +125,7 @@ def _get_slack_client():
     global _slack_client
     if _slack_client is None:
         from seosoyoung.config import Config
-        if Config.SLACK_BOT_TOKEN:
+        if Config.slack.bot_token:
             from slack_sdk import WebClient
-            _slack_client = WebClient(token=Config.SLACK_BOT_TOKEN)
+            _slack_client = WebClient(token=Config.slack.bot_token)
     return _slack_client

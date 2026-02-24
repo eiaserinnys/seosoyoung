@@ -86,13 +86,13 @@ class TrelloWatcher:
         self.session_manager = session_manager
         self.claude_runner_factory = claude_runner_factory
         self.get_session_lock = get_session_lock
-        self.notify_channel = notify_channel or Config.TRELLO_NOTIFY_CHANNEL
+        self.notify_channel = notify_channel or Config.trello.notify_channel
         self.poll_interval = poll_interval
         self.list_runner_ref = list_runner_ref
 
         self.trello = TrelloClient()
         self.prompt_builder = PromptBuilder(self.trello)
-        self.watch_lists = Config.TRELLO_WATCH_LISTS
+        self.watch_lists = Config.trello.watch_lists
 
         # 상태 저장 경로
         self.data_dir = data_dir or Path(Config.get_session_path()).parent / "data"
@@ -291,7 +291,7 @@ class TrelloWatcher:
             logger.debug("Trello 워처 일시 중단 상태 - 폴링 스킵")
             return
 
-        if Config.TRELLO_POLLING_DEBUG:
+        if Config.trello.polling_debug:
             logger.debug("Trello 폴링 시작")
 
         # 현재 감시 리스트의 모든 카드 조회
@@ -350,8 +350,8 @@ class TrelloWatcher:
 
     def _check_review_list_for_completion(self):
         """Review 리스트에서 dueComplete된 카드를 Done으로 자동 이동"""
-        review_list_id = Config.TRELLO_REVIEW_LIST_ID
-        done_list_id = Config.TRELLO_DONE_LIST_ID
+        review_list_id = Config.trello.review_list_id
+        done_list_id = Config.trello.done_list_id
 
         if not review_list_id or not done_list_id:
             return
@@ -431,7 +431,7 @@ class TrelloWatcher:
         Returns:
             채널 ID (DM 또는 notify_channel)
         """
-        dm_target_user = Config.TRELLO_DM_TARGET_USER_ID
+        dm_target_user = Config.trello.dm_target_user_id
         if dm_target_user:
             try:
                 dm_result = self.slack_client.conversations_open(users=dm_target_user)
@@ -451,7 +451,7 @@ class TrelloWatcher:
             (dm_channel_id, dm_thread_ts) - DM 채널 ID와 앵커 메시지 ts
             실패 시 (None, None)
         """
-        dm_target_user = Config.TRELLO_DM_TARGET_USER_ID
+        dm_target_user = Config.trello.dm_target_user_id
         if not dm_target_user:
             return None, None
 
@@ -480,7 +480,7 @@ class TrelloWatcher:
     def _handle_new_card(self, card: TrelloCard, list_key: str):
         """새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행"""
         # 1. 카드를 In Progress로 이동
-        in_progress_list_id = Config.TRELLO_IN_PROGRESS_LIST_ID
+        in_progress_list_id = Config.trello.in_progress_list_id
         if in_progress_list_id:
             if self.trello.move_card(card.id, in_progress_list_id):
                 logger.info(f"카드 In Progress로 이동: {card.name}")
@@ -856,7 +856,7 @@ class TrelloWatcher:
             return
 
         # 카드를 In Progress로 이동
-        in_progress_list_id = Config.TRELLO_IN_PROGRESS_LIST_ID
+        in_progress_list_id = Config.trello.in_progress_list_id
         if in_progress_list_id:
             self.trello.move_card(card.id, in_progress_list_id)
 

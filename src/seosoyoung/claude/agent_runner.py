@@ -165,7 +165,7 @@ class ClaudeRunner:
         self.thread_ts = thread_ts
         self.channel = channel
         self.working_dir = working_dir or Path.cwd()
-        self.allowed_tools = allowed_tools or Config.ROLE_TOOLS["admin"]
+        self.allowed_tools = allowed_tools or Config.auth.role_tools["admin"]
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
 
@@ -310,7 +310,7 @@ class ClaudeRunner:
             if thread_ts:
                 try:
                     from seosoyoung.config import Config
-                    if Config.OM_ENABLED:
+                    if Config.om.enabled:
                         from seosoyoung.memory.store import MemoryStore
                         store = MemoryStore(Config.get_memory_path())
                         record = store.get_record(thread_ts)

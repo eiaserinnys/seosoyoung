@@ -80,7 +80,7 @@ class ResultProcessor:
             return
 
         usage_bar = None
-        if Config.SHOW_CONTEXT_USAGE:
+        if Config.claude.show_context_usage:
             usage_bar = build_context_usage_bar(result.usage)
 
         is_list_run_from_marker = bool(ctx.effective_role == "admin" and result.list_run)

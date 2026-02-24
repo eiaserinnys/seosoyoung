@@ -172,8 +172,8 @@ class TestTranslate:
     def test_translate_korean_to_english(self, mock_config, mock_anthropic_class):
         """한국어 -> 영어 번역"""
         # Config mock
-        mock_config.TRANSLATE_API_KEY = "test-key"
-        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-latest"
+        mock_config.translate.api_key = "test-key"
+        mock_config.translate.model = "claude-3-5-haiku-latest"
 
         # Anthropic client mock
         mock_client = MagicMock()
@@ -196,8 +196,8 @@ class TestTranslate:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_english_to_korean(self, mock_config, mock_anthropic_class):
         """영어 -> 한국어 번역"""
-        mock_config.TRANSLATE_API_KEY = "test-key"
-        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-latest"
+        mock_config.translate.api_key = "test-key"
+        mock_config.translate.model = "claude-3-5-haiku-latest"
 
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
@@ -217,7 +217,7 @@ class TestTranslate:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_without_api_key(self, mock_config):
         """API 키 없이 호출 시 에러"""
-        mock_config.TRANSLATE_API_KEY = None
+        mock_config.translate.api_key = None
 
         with pytest.raises(ValueError, match="TRANSLATE_API_KEY"):
             translate("Hello", Language.ENGLISH)
@@ -226,8 +226,8 @@ class TestTranslate:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_with_custom_model(self, mock_config, mock_anthropic_class):
         """커스텀 모델 사용"""
-        mock_config.TRANSLATE_API_KEY = "test-key"
-        mock_config.TRANSLATE_MODEL = "default-model"
+        mock_config.translate.api_key = "test-key"
+        mock_config.translate.model = "default-model"
 
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
@@ -248,8 +248,8 @@ class TestTranslate:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_returns_glossary_terms(self, mock_config, mock_anthropic_class, mock_find_terms_v2):
         """번역 시 참고한 용어 목록 반환"""
-        mock_config.TRANSLATE_API_KEY = "test-key"
-        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-latest"
+        mock_config.translate.api_key = "test-key"
+        mock_config.translate.model = "claude-3-5-haiku-latest"
 
         mock_result = GlossaryMatchResult(
             matched_terms=[("펜릭스", "Fenrix"), ("아리엘라", "Ariella")],
@@ -280,9 +280,9 @@ class TestTranslateOpenAI:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_openai_korean_to_english(self, mock_config, mock_openai_class):
         """OpenAI backend로 한국어 -> 영어 번역"""
-        mock_config.TRANSLATE_BACKEND = "openai"
-        mock_config.OPENAI_API_KEY = "test-openai-key"
-        mock_config.TRANSLATE_OPENAI_MODEL = "gpt-5-mini"
+        mock_config.translate.backend = "openai"
+        mock_config.om.openai_api_key = "test-openai-key"
+        mock_config.translate.openai_model = "gpt-5-mini"
 
         mock_client = MagicMock()
         mock_openai_class.return_value = mock_client
@@ -305,8 +305,8 @@ class TestTranslateOpenAI:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_openai_without_api_key(self, mock_config, mock_openai_class):
         """OpenAI API 키 없이 호출 시 에러"""
-        mock_config.TRANSLATE_BACKEND = "openai"
-        mock_config.OPENAI_API_KEY = None
+        mock_config.translate.backend = "openai"
+        mock_config.om.openai_api_key = None
 
         with pytest.raises(ValueError, match="OPENAI_API_KEY"):
             translate("Hello", Language.ENGLISH, backend="openai")
@@ -315,9 +315,9 @@ class TestTranslateOpenAI:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_openai_default_backend(self, mock_config, mock_openai_class):
         """Config.TRANSLATE_BACKEND=openai일 때 자동으로 OpenAI 사용"""
-        mock_config.TRANSLATE_BACKEND = "openai"
-        mock_config.OPENAI_API_KEY = "test-openai-key"
-        mock_config.TRANSLATE_OPENAI_MODEL = "gpt-5-mini"
+        mock_config.translate.backend = "openai"
+        mock_config.om.openai_api_key = "test-openai-key"
+        mock_config.translate.openai_model = "gpt-5-mini"
 
         mock_client = MagicMock()
         mock_openai_class.return_value = mock_client
@@ -337,9 +337,9 @@ class TestTranslateOpenAI:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_backend_switch_to_anthropic(self, mock_config, mock_anthropic_class):
         """backend 파라미터로 anthropic 명시적 지정"""
-        mock_config.TRANSLATE_BACKEND = "openai"  # 기본은 openai지만
-        mock_config.TRANSLATE_API_KEY = "test-anthropic-key"
-        mock_config.TRANSLATE_MODEL = "claude-3-5-haiku-latest"
+        mock_config.translate.backend = "openai"  # 기본은 openai지만
+        mock_config.translate.api_key = "test-anthropic-key"
+        mock_config.translate.model = "claude-3-5-haiku-latest"
 
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
@@ -361,9 +361,9 @@ class TestTranslateOpenAI:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_openai_uses_max_completion_tokens(self, mock_config, mock_openai_class):
         """OpenAI API 호출 시 max_completion_tokens 사용 (max_tokens 아님)"""
-        mock_config.TRANSLATE_BACKEND = "openai"
-        mock_config.OPENAI_API_KEY = "test-key"
-        mock_config.TRANSLATE_OPENAI_MODEL = "gpt-5-mini"
+        mock_config.translate.backend = "openai"
+        mock_config.om.openai_api_key = "test-key"
+        mock_config.translate.openai_model = "gpt-5-mini"
 
         mock_client = MagicMock()
         mock_openai_class.return_value = mock_client
@@ -385,9 +385,9 @@ class TestTranslateOpenAI:
     @patch("seosoyoung.translator.translator.Config")
     def test_translate_openai_custom_model(self, mock_config, mock_openai_class):
         """OpenAI에서 커스텀 모델 사용"""
-        mock_config.TRANSLATE_BACKEND = "openai"
-        mock_config.OPENAI_API_KEY = "test-key"
-        mock_config.TRANSLATE_OPENAI_MODEL = "gpt-5-mini"
+        mock_config.translate.backend = "openai"
+        mock_config.om.openai_api_key = "test-key"
+        mock_config.translate.openai_model = "gpt-5-mini"
 
         mock_client = MagicMock()
         mock_openai_class.return_value = mock_client
@@ -410,8 +410,8 @@ class TestFormatResponse:
     @patch("seosoyoung.handlers.translate.Config")
     def test_korean_to_english_without_glossary(self, mock_config):
         """한국어 -> 영어 (용어집 없음)"""
-        mock_config.TRANSLATE_SHOW_GLOSSARY = False
-        mock_config.TRANSLATE_SHOW_COST = True
+        mock_config.translate.show_glossary = False
+        mock_config.translate.show_cost = True
         result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012)
         assert "`홍길동 said,`" in result
         assert '"Hello"' in result
@@ -421,8 +421,8 @@ class TestFormatResponse:
     @patch("seosoyoung.handlers.translate.Config")
     def test_english_to_korean_without_glossary(self, mock_config):
         """영어 -> 한국어 (용어집 없음)"""
-        mock_config.TRANSLATE_SHOW_GLOSSARY = False
-        mock_config.TRANSLATE_SHOW_COST = True
+        mock_config.translate.show_glossary = False
+        mock_config.translate.show_cost = True
         result = _format_response("John", "안녕하세요", Language.ENGLISH, 0.0012)
         assert "`John님이`" in result
         assert '"안녕하세요"' in result
@@ -433,8 +433,8 @@ class TestFormatResponse:
     @patch("seosoyoung.handlers.translate.Config")
     def test_korean_to_english_with_glossary(self, mock_config):
         """한국어 -> 영어 (용어집 있음, 표시 켜짐)"""
-        mock_config.TRANSLATE_SHOW_GLOSSARY = True
-        mock_config.TRANSLATE_SHOW_COST = True
+        mock_config.translate.show_glossary = True
+        mock_config.translate.show_cost = True
         terms = [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
         result = _format_response("홍길동", "Fenrix and Ariella", Language.KOREAN, 0.0012, terms)
         assert "`홍길동 said,`" in result
@@ -444,8 +444,8 @@ class TestFormatResponse:
     @patch("seosoyoung.handlers.translate.Config")
     def test_english_to_korean_with_glossary(self, mock_config):
         """영어 -> 한국어 (용어집 있음, 표시 켜짐)"""
-        mock_config.TRANSLATE_SHOW_GLOSSARY = True
-        mock_config.TRANSLATE_SHOW_COST = True
+        mock_config.translate.show_glossary = True
+        mock_config.translate.show_cost = True
         terms = [("Fenrix", "펜릭스")]
         result = _format_response("John", "펜릭스가 말했다", Language.ENGLISH, 0.0012, terms)
         assert "`John님이`" in result
@@ -455,24 +455,24 @@ class TestFormatResponse:
     @patch("seosoyoung.handlers.translate.Config")
     def test_with_empty_glossary(self, mock_config):
         """빈 용어집"""
-        mock_config.TRANSLATE_SHOW_GLOSSARY = True
-        mock_config.TRANSLATE_SHOW_COST = True
+        mock_config.translate.show_glossary = True
+        mock_config.translate.show_cost = True
         result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012, [])
         assert "📖" not in result
 
     @patch("seosoyoung.handlers.translate.Config")
     def test_with_none_glossary(self, mock_config):
         """None 용어집"""
-        mock_config.TRANSLATE_SHOW_GLOSSARY = True
-        mock_config.TRANSLATE_SHOW_COST = True
+        mock_config.translate.show_glossary = True
+        mock_config.translate.show_cost = True
         result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012, None)
         assert "📖" not in result
 
     @patch("seosoyoung.handlers.translate.Config")
     def test_glossary_hidden_when_option_off(self, mock_config):
         """용어집 표시 옵션 꺼짐"""
-        mock_config.TRANSLATE_SHOW_GLOSSARY = False
-        mock_config.TRANSLATE_SHOW_COST = True
+        mock_config.translate.show_glossary = False
+        mock_config.translate.show_cost = True
         terms = [("펜릭스", "Fenrix")]
         result = _format_response("홍길동", "Fenrix", Language.KOREAN, 0.0012, terms)
         assert "📖" not in result
@@ -480,7 +480,7 @@ class TestFormatResponse:
     @patch("seosoyoung.handlers.translate.Config")
     def test_cost_hidden_when_option_off(self, mock_config):
         """비용 표시 옵션 꺼짐"""
-        mock_config.TRANSLATE_SHOW_GLOSSARY = False
-        mock_config.TRANSLATE_SHOW_COST = False
+        mock_config.translate.show_glossary = False
+        mock_config.translate.show_cost = False
         result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012)
         assert "💵" not in result

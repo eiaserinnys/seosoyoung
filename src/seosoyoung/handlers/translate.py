@@ -95,13 +95,13 @@ def _format_response(
     """
     # 용어 라인 생성 (TRANSLATE_SHOW_GLOSSARY가 True이고 용어가 있는 경우에만)
     glossary_line = ""
-    if Config.TRANSLATE_SHOW_GLOSSARY and glossary_terms:
+    if Config.translate.show_glossary and glossary_terms:
         # 원어 (번역어) 형식으로 나열
         term_strs = [f"{src} ({tgt})" for src, tgt in glossary_terms]
         glossary_line = f"\n`📖 {', '.join(term_strs)}`"
 
     # 비용 라인 (TRANSLATE_SHOW_COST가 True인 경우에만)
-    cost_line = f"\n`~💵${cost:.4f}`" if Config.TRANSLATE_SHOW_COST else ""
+    cost_line = f"\n`~💵${cost:.4f}`" if Config.translate.show_cost else ""
 
     if source_lang == Language.KOREAN:
         # 한국어 -> 영어
@@ -125,7 +125,7 @@ def _send_debug_log(
         source_lang: 원본 언어
         match_result: 용어 매칭 결과
     """
-    debug_channel = Config.TRANSLATE_DEBUG_CHANNEL
+    debug_channel = Config.translate.debug_channel
     if not debug_channel or not match_result:
         return
 
@@ -236,7 +236,7 @@ def process_translate_message(event: dict, client) -> bool:
             client,
             channel,
             thread_ts,
-            Config.TRANSLATE_CONTEXT_COUNT
+            Config.translate.context_count
         )
 
         # 번역
@@ -322,6 +322,6 @@ def register_translate_handler(app: App, dependencies: dict):
     Note: 이 함수는 더 이상 핸들러를 등록하지 않습니다.
     번역 처리는 message.py의 handle_message에서 process_translate_message를 호출합니다.
     """
-    translate_channels = Config.TRANSLATE_CHANNELS
+    translate_channels = Config.translate.channels
     if translate_channels:
         logger.info(f"번역 기능 활성화: 채널 {translate_channels}")

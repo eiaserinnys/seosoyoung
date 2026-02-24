@@ -27,7 +27,7 @@ Gemini API를 호출하여 이미지를 생성하고, 슬랙 스레드에 업로
 
 Args:
     prompt: 이미지 생성 프롬프트
-    model: 사용할 모델 (None이면 Config.GEMINI_MODEL 사용)
+    model: 사용할 모델 (None이면 Config.gemini.model 사용)
     reference_images: 레퍼런스 이미지 파일 경로 목록 (선택)
 
 Returns:

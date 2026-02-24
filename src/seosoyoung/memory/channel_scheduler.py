@@ -140,7 +140,7 @@ class ChannelDigestScheduler:
                     debug_channel=self.debug_channel,
                     intervention_threshold=self.intervention_threshold,
                     claude_runner=runner,
-                    bot_user_id=Config.BOT_USER_ID,
+                    bot_user_id=Config.slack.bot_user_id,
                     mention_tracker=self.mention_tracker,
                 )
             )

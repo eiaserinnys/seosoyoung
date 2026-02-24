@@ -350,7 +350,7 @@ class TestMCPConfigIntegrity:
         from seosoyoung.mcp.server import mcp
 
         admin_mcp_tools = [
-            t for t in Config.ROLE_TOOLS["admin"]
+            t for t in Config.auth.role_tools["admin"]
             if t.startswith("mcp__seosoyoung-attach__")
         ]
 
@@ -362,17 +362,17 @@ class TestMCPConfigIntegrity:
             assert tool_name in actual_tools, f"{tool_name} not in MCP server tools"
 
     def test_admin_tools_include_all_mcp_tools(self):
-        """Config.ROLE_TOOLS["admin"]에 MCP 도구 모두 포함"""
+        """Config.auth.role_tools["admin"]에 MCP 도구 모두 포함"""
         from seosoyoung.config import Config
 
-        mcp_tools = [t for t in Config.ROLE_TOOLS["admin"] if "seosoyoung-attach" in t]
+        mcp_tools = [t for t in Config.auth.role_tools["admin"] if "seosoyoung-attach" in t]
         assert len(mcp_tools) == 11
 
     def test_viewer_has_no_mcp_tools(self):
         """viewer 역할에는 MCP 도구 없음"""
         from seosoyoung.config import Config
 
-        viewer_tools = Config.ROLE_TOOLS["viewer"]
+        viewer_tools = Config.auth.role_tools["viewer"]
         mcp_tools = [t for t in viewer_tools if t.startswith("mcp__")]
         assert len(mcp_tools) == 0
 
@@ -392,7 +392,7 @@ class TestMCPConfigIntegrity:
         """admin 역할에 NPC 도구 6개 포함"""
         from seosoyoung.config import Config
 
-        admin_tools = Config.ROLE_TOOLS["admin"]
+        admin_tools = Config.auth.role_tools["admin"]
         npc_tools = [t for t in admin_tools if "npc_" in t]
         assert len(npc_tools) == 6
         expected = {

@@ -50,7 +50,7 @@ class ChannelMessageCollector:
         # Config에서 런타임에 설정된 BOT_USER_ID를 참조
         try:
             from seosoyoung.config import Config
-            return Config.BOT_USER_ID
+            return Config.slack.bot_user_id
         except Exception:
             return None
 

@@ -129,7 +129,7 @@ async def download_file(
 
         # 파일 다운로드 (Bot Token 인증)
         async with httpx.AsyncClient() as client:
-            headers = {"Authorization": f"Bearer {Config.SLACK_BOT_TOKEN}"}
+            headers = {"Authorization": f"Bearer {Config.slack.bot_token}"}
             response = await client.get(url, headers=headers, follow_redirects=True)
             response.raise_for_status()
 
