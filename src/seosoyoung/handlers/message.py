@@ -170,8 +170,10 @@ def _handle_dm_message(event, say, client, dependencies):
 
     # 스레드 메시지: 기존 세션에서 후속 처리
     if thread_ts:
+        logger.info(f"DM 스레드 답글 수신: user={user_id}, channel={channel}, thread_ts={thread_ts}, ts={ts}, text={text[:50]}")
         session = session_manager.get(thread_ts)
         if not session:
+            logger.warning(f"DM 스레드 세션 미발견: thread_ts={thread_ts}, user={user_id}, channel={channel}")
             return
 
         if restart_manager.is_pending:
@@ -269,6 +271,10 @@ def register_message_handlers(app, dependencies: dict):
         if channel_type == "im":
             _handle_dm_message(event, say, client, dependencies)
             return
+
+        # DM 채널인데 channel_type이 없는 경우 감지 (Slack API 불일치 디버깅)
+        if channel and channel.startswith("D") and channel_type != "im":
+            logger.warning(f"DM 채널인데 channel_type 불일치: channel={channel}, channel_type={channel_type!r}, thread_ts={event.get('thread_ts')}, user={event.get('user')}")
 
         # 번역 채널인 경우: 멘션이 없으면 번역, 멘션이 있으면 기존 로직 (handle_mention에서 처리)
         if channel in Config.TRANSLATE_CHANNELS:

@@ -279,7 +279,7 @@
 - `register_mention_handlers()` (seosoyoung/handlers/mention.py:327): 멘션 핸들러 등록
 - `build_slack_context()` (seosoyoung/handlers/message.py:20): 슬랙 컨텍스트 블록 문자열을 생성합니다.
 - `process_thread_message()` (seosoyoung/handlers/message.py:46): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
-- `register_message_handlers()` (seosoyoung/handlers/message.py:214): 메시지 핸들러 등록
+- `register_message_handlers()` (seosoyoung/handlers/message.py:216): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
