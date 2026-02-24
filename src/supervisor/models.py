@@ -56,6 +56,7 @@ class ProcessConfig:
     restart_policy: RestartPolicy = field(default_factory=RestartPolicy)
     log_dir: str | None = None
     port: int | None = None  # 프로세스가 바인딩하는 포트 (시작 전 좀비 정리용)
+    shutdown_url: str | None = None  # graceful shutdown HTTP 엔드포인트 URL
 
     @property
     def log_path(self) -> Path | None:

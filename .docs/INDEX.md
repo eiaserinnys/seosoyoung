@@ -85,6 +85,7 @@
 - [`search/schema.py`](modules/search_schema.md): Whoosh schema definitions for search indices.
 - [`search/searcher.py`](modules/search_searcher.md): Whoosh searcher for dialogue data.
 - [`search/sentence_splitter.py`](modules/search_sentence_splitter.md): 한/영 텍스트 문장 분할기.
+- [`seosoyoung/shutdown.py`](modules/seosoyoung_shutdown.md): 경량 HTTP Shutdown 서버
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
 - [`slack/helpers.py`](modules/slack_helpers.md): Slack 메시지 유틸리티
 - [`translator/__main__.py`](modules/translator___main__.md): 번역 기능 CLI 테스트
@@ -321,9 +322,10 @@
 - `setup_logging()` (seosoyoung/mcp/soul/config.py:111): 로깅 설정
 - `async periodic_cleanup()` (seosoyoung/mcp/soul/main.py:37): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
 - `async lifespan()` (seosoyoung/mcp/soul/main.py:53): 애플리케이션 라이프사이클 관리
-- `async health_check()` (seosoyoung/mcp/soul/main.py:137): 헬스 체크 엔드포인트
-- `async get_status()` (seosoyoung/mcp/soul/main.py:148): 서비스 상태 조회
-- `async global_exception_handler()` (seosoyoung/mcp/soul/main.py:180): 전역 예외 핸들러
+- `async shutdown()` (seosoyoung/mcp/soul/main.py:137): Graceful shutdown 엔드포인트 (supervisor 전용)
+- `async health_check()` (seosoyoung/mcp/soul/main.py:162): 헬스 체크 엔드포인트
+- `async get_status()` (seosoyoung/mcp/soul/main.py:173): 서비스 상태 조회
+- `async global_exception_handler()` (seosoyoung/mcp/soul/main.py:205): 전역 예외 핸들러
 - `sanitize_output()` (seosoyoung/mcp/soul/service/output_sanitizer.py:32): 출력에서 민감 정보를 마스킹합니다.
 - `find_session_file()` (seosoyoung/mcp/soul/service/session_validator.py:16): 세션 파일을 찾습니다.
 - `validate_session()` (seosoyoung/mcp/soul/service/session_validator.py:44): 세션 ID가 유효한지 검증합니다.
@@ -412,6 +414,7 @@
 - `format_results()` (seosoyoung/search/searcher.py:202): 결과 포맷팅.
 - `main()` (seosoyoung/search/searcher.py:222): CLI 진입점.
 - `split_sentences()` (seosoyoung/search/sentence_splitter.py:16): 텍스트를 문장 단위로 분할.
+- `start_shutdown_server()` (seosoyoung/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slack/file_handler.py:67): 스레드별 임시 폴더 생성
 - `cleanup_thread_files()` (seosoyoung/slack/file_handler.py:76): 스레드의 임시 파일 정리

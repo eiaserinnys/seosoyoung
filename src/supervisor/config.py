@@ -132,6 +132,7 @@ def build_process_configs() -> list[ProcessConfig]:
             auto_restart=True,
         ),
         log_dir=str(paths["logs"]),
+        shutdown_url="http://127.0.0.1:3106/shutdown",
     ))
 
     # --- 필수: mcp-seosoyoung ---
@@ -183,6 +184,7 @@ def build_process_configs() -> list[ProcessConfig]:
         ),
         log_dir=str(paths["logs"]),
         port=3105,
+        shutdown_url="http://127.0.0.1:3105/shutdown",
     ))
 
     # --- 선택적: rescue-bot (긴급 복구용 경량 슬랙 봇) ---
@@ -208,6 +210,7 @@ def build_process_configs() -> list[ProcessConfig]:
                 restart_delay=5.0,
             ),
             log_dir=str(paths["logs"]),
+            shutdown_url="http://127.0.0.1:3107/shutdown",
         ))
     else:
         logger.info("rescue-bot 설정 건너뜀: RESCUE_SLACK_BOT_TOKEN 또는 RESCUE_SLACK_APP_TOKEN 미설정")

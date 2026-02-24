@@ -133,6 +133,31 @@ app.add_middleware(
 
 # === Health & Status Endpoints ===
 
+@app.post("/shutdown", tags=["health"])
+async def shutdown():
+    """Graceful shutdown 엔드포인트 (supervisor 전용)"""
+    import os
+
+    logger.info("Graceful shutdown 요청 수신")
+
+    async def _do_shutdown():
+        # 실행 중인 태스크 정리
+        try:
+            task_manager = get_task_manager()
+            cancelled = await task_manager.cancel_running_tasks(timeout=5.0)
+            if cancelled > 0:
+                logger.info(f"Shutdown: {cancelled}개 태스크 취소")
+            await task_manager.save()
+        except Exception as e:
+            logger.warning(f"Shutdown cleanup error: {e}")
+
+        await asyncio.sleep(0.3)
+        os._exit(0)
+
+    asyncio.create_task(_do_shutdown())
+    return {"status": "shutting_down"}
+
+
 @app.get("/health", response_model=HealthResponse, tags=["health"])
 async def health_check():
     """헬스 체크 엔드포인트"""

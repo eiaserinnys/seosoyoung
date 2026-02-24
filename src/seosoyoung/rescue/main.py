@@ -663,9 +663,22 @@ class RescueBotApp:
 
 def main():
     """rescue-bot 진입점"""
+    import os
     logger.info("rescue-bot을 시작합니다...")
 
     RescueConfig.validate()
+
+    # Shutdown 서버 시작 (supervisor graceful shutdown용)
+    from seosoyoung.shutdown import start_shutdown_server
+
+    _SHUTDOWN_PORT = int(os.environ.get("RESCUE_SHUTDOWN_PORT", "3107"))
+
+    def _on_shutdown():
+        logger.info("rescue-bot: graceful shutdown")
+        os._exit(0)
+
+    start_shutdown_server(_SHUTDOWN_PORT, _on_shutdown)
+    logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")
 
     # Slack 앱 초기화
     slack_app = App(token=RescueConfig.SLACK_BOT_TOKEN, logger=logger)
