@@ -11,7 +11,7 @@ import json
 from fastapi import APIRouter, HTTPException, Depends
 from sse_starlette.sse import EventSourceResponse
 
-from seosoyoung.mcp.soul.models import (
+from seosoyoung.soul.models import (
     ExecuteRequest,
     TaskResponse,
     TaskListResponse,
@@ -19,7 +19,7 @@ from seosoyoung.mcp.soul.models import (
     InterveneResponse,
     ErrorResponse,
 )
-from seosoyoung.mcp.soul.service.task_manager import (
+from seosoyoung.soul.service.task_manager import (
     get_task_manager,
     Task,
     TaskConflictError,
@@ -27,8 +27,8 @@ from seosoyoung.mcp.soul.service.task_manager import (
     TaskNotRunningError,
     TaskStatus,
 )
-from seosoyoung.mcp.soul.service import resource_manager, claude_runner
-from seosoyoung.mcp.soul.api.auth import verify_token
+from seosoyoung.soul.service import resource_manager, claude_runner
+from seosoyoung.soul.api.auth import verify_token
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ router = APIRouter()
 
 def task_to_response(task: Task) -> TaskResponse:
     """Task를 TaskResponse로 변환"""
-    from seosoyoung.mcp.soul.models import TaskStatus as ResponseTaskStatus
+    from seosoyoung.soul.models import TaskStatus as ResponseTaskStatus
     return TaskResponse(
         client_id=task.client_id,
         request_id=task.request_id,

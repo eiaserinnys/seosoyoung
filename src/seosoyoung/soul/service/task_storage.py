@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Optional
 
-from seosoyoung.mcp.soul.service.task_models import (
+from seosoyoung.soul.service.task_models import (
     Task,
     TaskStatus,
     utc_now,

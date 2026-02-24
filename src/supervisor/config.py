@@ -171,7 +171,7 @@ def build_process_configs() -> list[ProcessConfig]:
         command=str(paths["venv_python"]),
         args=[
             "-m", "uvicorn",
-            "seosoyoung.mcp.soul.main:app",
+            "seosoyoung.soul.main:app",
             "--host", "127.0.0.1",
             "--port", "3105",
         ],

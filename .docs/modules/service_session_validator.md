@@ -1,6 +1,6 @@
 # service/session_validator.py
 
-> 경로: `seosoyoung/mcp/soul/service/session_validator.py`
+> 경로: `seosoyoung/soul/service/session_validator.py`
 
 ## 개요
 

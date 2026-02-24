@@ -1,6 +1,6 @@
 # service/task_manager.py
 
-> 경로: `seosoyoung/mcp/soul/service/task_manager.py`
+> 경로: `seosoyoung/soul/service/task_manager.py`
 
 ## 개요
 
@@ -76,12 +76,12 @@ TaskManager - 태스크 라이프사이클 관리
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.service.task_executor.TaskExecutor`
-- `seosoyoung.mcp.soul.service.task_listener.TaskListenerManager`
-- `seosoyoung.mcp.soul.service.task_models.Task`
-- `seosoyoung.mcp.soul.service.task_models.TaskConflictError`
-- `seosoyoung.mcp.soul.service.task_models.TaskNotFoundError`
-- `seosoyoung.mcp.soul.service.task_models.TaskNotRunningError`
-- `seosoyoung.mcp.soul.service.task_models.TaskStatus`
-- `seosoyoung.mcp.soul.service.task_models.utc_now`
-- `seosoyoung.mcp.soul.service.task_storage.TaskStorage`
+- `seosoyoung.soul.service.task_executor.TaskExecutor`
+- `seosoyoung.soul.service.task_listener.TaskListenerManager`
+- `seosoyoung.soul.service.task_models.Task`
+- `seosoyoung.soul.service.task_models.TaskConflictError`
+- `seosoyoung.soul.service.task_models.TaskNotFoundError`
+- `seosoyoung.soul.service.task_models.TaskNotRunningError`
+- `seosoyoung.soul.service.task_models.TaskStatus`
+- `seosoyoung.soul.service.task_models.utc_now`
+- `seosoyoung.soul.service.task_storage.TaskStorage`

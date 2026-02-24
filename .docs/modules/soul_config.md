@@ -1,6 +1,6 @@
 # soul/config.py
 
-> 경로: `seosoyoung/mcp/soul/config.py`
+> 경로: `seosoyoung/soul/config.py`
 
 ## 개요
 

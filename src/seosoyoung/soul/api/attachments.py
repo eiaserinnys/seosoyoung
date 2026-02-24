@@ -5,13 +5,13 @@ Attachments API - 첨부 파일 관리 엔드포인트
 import logging
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 
-from seosoyoung.mcp.soul.models import (
+from seosoyoung.soul.models import (
     AttachmentUploadResponse,
     AttachmentCleanupResponse,
     ErrorResponse,
 )
-from seosoyoung.mcp.soul.service import file_manager, AttachmentError
-from seosoyoung.mcp.soul.api.auth import verify_token
+from seosoyoung.soul.service import file_manager, AttachmentError
+from seosoyoung.soul.api.auth import verify_token
 
 logger = logging.getLogger(__name__)
 

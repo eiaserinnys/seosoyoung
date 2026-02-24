@@ -8,7 +8,7 @@ import asyncio
 import logging
 from typing import Dict
 
-from seosoyoung.mcp.soul.service.task_models import Task
+from seosoyoung.soul.service.task_models import Task
 
 logger = logging.getLogger(__name__)
 

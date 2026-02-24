@@ -1,6 +1,6 @@
 # service/resource_manager.py
 
-> 경로: `seosoyoung/mcp/soul/service/resource_manager.py`
+> 경로: `seosoyoung/soul/service/resource_manager.py`
 
 ## 개요
 

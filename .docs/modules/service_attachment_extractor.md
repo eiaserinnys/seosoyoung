@@ -1,6 +1,6 @@
 # service/attachment_extractor.py
 
-> 경로: `seosoyoung/mcp/soul/service/attachment_extractor.py`
+> 경로: `seosoyoung/soul/service/attachment_extractor.py`
 
 ## 개요
 
@@ -25,5 +25,5 @@ Claude Code 출력에서 [ATTACH:path] 패턴을 찾아 첨부 파일을 추출�
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.constants.DANGEROUS_EXTENSIONS`
-- `seosoyoung.mcp.soul.constants.MAX_ATTACHMENT_SIZE`
+- `seosoyoung.soul.constants.DANGEROUS_EXTENSIONS`
+- `seosoyoung.soul.constants.MAX_ATTACHMENT_SIZE`

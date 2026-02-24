@@ -1,6 +1,6 @@
 # service/claude_runner.py
 
-> 경로: `seosoyoung/mcp/soul/service/claude_runner.py`
+> 경로: `seosoyoung/soul/service/claude_runner.py`
 
 ## 개요
 
@@ -34,15 +34,15 @@ Claude Code SDK를 사용하여 Claude Code를 실행하고 결과를 스트리�
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.models.CompactEvent`
-- `seosoyoung.mcp.soul.models.CompleteEvent`
-- `seosoyoung.mcp.soul.models.ContextUsageEvent`
-- `seosoyoung.mcp.soul.models.ErrorEvent`
-- `seosoyoung.mcp.soul.models.InterventionSentEvent`
-- `seosoyoung.mcp.soul.models.MemoryEvent`
-- `seosoyoung.mcp.soul.models.ProgressEvent`
-- `seosoyoung.mcp.soul.service.attachment_extractor.AttachmentExtractor`
-- `seosoyoung.mcp.soul.service.output_sanitizer.sanitize_output`
-- `seosoyoung.mcp.soul.service.resource_manager.resource_manager`
-- `seosoyoung.mcp.soul.service.session_validator.SESSION_NOT_FOUND_CODE`
-- `seosoyoung.mcp.soul.service.session_validator.validate_session`
+- `seosoyoung.soul.models.CompactEvent`
+- `seosoyoung.soul.models.CompleteEvent`
+- `seosoyoung.soul.models.ContextUsageEvent`
+- `seosoyoung.soul.models.ErrorEvent`
+- `seosoyoung.soul.models.InterventionSentEvent`
+- `seosoyoung.soul.models.MemoryEvent`
+- `seosoyoung.soul.models.ProgressEvent`
+- `seosoyoung.soul.service.attachment_extractor.AttachmentExtractor`
+- `seosoyoung.soul.service.output_sanitizer.sanitize_output`
+- `seosoyoung.soul.service.resource_manager.resource_manager`
+- `seosoyoung.soul.service.session_validator.SESSION_NOT_FOUND_CODE`
+- `seosoyoung.soul.service.session_validator.validate_session`

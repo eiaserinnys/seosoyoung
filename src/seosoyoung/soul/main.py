@@ -14,12 +14,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from seosoyoung.mcp.soul.api import attachments_router
-from seosoyoung.mcp.soul.api.tasks import router as tasks_router
-from seosoyoung.mcp.soul.service import resource_manager, file_manager
-from seosoyoung.mcp.soul.service.task_manager import init_task_manager, get_task_manager
-from seosoyoung.mcp.soul.models import HealthResponse
-from seosoyoung.mcp.soul.config import get_settings, setup_logging
+from seosoyoung.soul.api import attachments_router
+from seosoyoung.soul.api.tasks import router as tasks_router
+from seosoyoung.soul.service import resource_manager, file_manager
+from seosoyoung.soul.service.task_manager import init_task_manager, get_task_manager
+from seosoyoung.soul.models import HealthResponse
+from seosoyoung.soul.config import get_settings, setup_logging
 
 # 설정 로드
 settings = get_settings()
@@ -229,7 +229,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "seosoyoung.mcp.soul.main:app",
+        "seosoyoung.soul.main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.is_development,

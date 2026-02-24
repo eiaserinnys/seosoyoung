@@ -5,7 +5,7 @@ test_task_models - Task 생성, 상태 전이, 직렬화/역직렬화 테스트
 import asyncio
 from datetime import datetime, timezone
 
-from seosoyoung.mcp.soul.service.task_models import (
+from seosoyoung.soul.service.task_models import (
     Task,
     TaskStatus,
     TaskConflictError,

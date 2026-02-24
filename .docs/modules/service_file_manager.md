@@ -1,6 +1,6 @@
 # service/file_manager.py
 
-> 경로: `seosoyoung/mcp/soul/service/file_manager.py`
+> 경로: `seosoyoung/soul/service/file_manager.py`
 
 ## 개요
 
@@ -36,5 +36,5 @@ FileManager - 첨부 파일 관리
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.constants.DANGEROUS_EXTENSIONS`
-- `seosoyoung.mcp.soul.constants.MAX_ATTACHMENT_SIZE`
+- `seosoyoung.soul.constants.DANGEROUS_EXTENSIONS`
+- `seosoyoung.soul.constants.MAX_ATTACHMENT_SIZE`

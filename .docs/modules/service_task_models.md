@@ -1,6 +1,6 @@
 # service/task_models.py
 
-> 경로: `seosoyoung/mcp/soul/service/task_models.py`
+> 경로: `seosoyoung/soul/service/task_models.py`
 
 ## 개요
 

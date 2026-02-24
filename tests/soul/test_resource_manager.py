@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from seosoyoung.mcp.soul.service.resource_manager import ResourceManager
+from seosoyoung.soul.service.resource_manager import ResourceManager
 
 
 @pytest.fixture

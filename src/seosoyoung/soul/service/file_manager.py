@@ -13,7 +13,7 @@ from typing import Optional
 
 import aiofiles
 
-from seosoyoung.mcp.soul.constants import MAX_ATTACHMENT_SIZE, DANGEROUS_EXTENSIONS
+from seosoyoung.soul.constants import MAX_ATTACHMENT_SIZE, DANGEROUS_EXTENSIONS
 
 
 # 기본 설정

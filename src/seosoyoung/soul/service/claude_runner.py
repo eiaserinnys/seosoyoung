@@ -30,7 +30,7 @@ except ImportError:
     class ClaudeCodeOptions:
         pass
 
-from seosoyoung.mcp.soul.models import (
+from seosoyoung.soul.models import (
     ProgressEvent,
     MemoryEvent,
     InterventionSentEvent,
@@ -39,10 +39,10 @@ from seosoyoung.mcp.soul.models import (
     ContextUsageEvent,
     CompactEvent,
 )
-from seosoyoung.mcp.soul.service.resource_manager import resource_manager
-from seosoyoung.mcp.soul.service.output_sanitizer import sanitize_output
-from seosoyoung.mcp.soul.service.attachment_extractor import AttachmentExtractor
-from seosoyoung.mcp.soul.service.session_validator import (
+from seosoyoung.soul.service.resource_manager import resource_manager
+from seosoyoung.soul.service.output_sanitizer import sanitize_output
+from seosoyoung.soul.service.attachment_extractor import AttachmentExtractor
+from seosoyoung.soul.service.session_validator import (
     validate_session,
     SESSION_NOT_FOUND_CODE,
 )

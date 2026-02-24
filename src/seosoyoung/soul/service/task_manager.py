@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional, Dict, List
 
 # 서브모듈에서 import
-from seosoyoung.mcp.soul.service.task_models import (
+from seosoyoung.soul.service.task_models import (
     Task,
     TaskStatus,
     TaskConflictError,
@@ -27,9 +27,9 @@ from seosoyoung.mcp.soul.service.task_models import (
     TaskNotRunningError,
     utc_now,
 )
-from seosoyoung.mcp.soul.service.task_storage import TaskStorage
-from seosoyoung.mcp.soul.service.task_listener import TaskListenerManager
-from seosoyoung.mcp.soul.service.task_executor import TaskExecutor
+from seosoyoung.soul.service.task_storage import TaskStorage
+from seosoyoung.soul.service.task_listener import TaskListenerManager
+from seosoyoung.soul.service.task_executor import TaskExecutor
 
 # Re-export for backward compatibility
 __all__ = [

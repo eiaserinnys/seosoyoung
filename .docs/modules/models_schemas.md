@@ -1,6 +1,6 @@
 # models/schemas.py
 
-> 경로: `seosoyoung/mcp/soul/models/schemas.py`
+> 경로: `seosoyoung/soul/models/schemas.py`
 
 ## 개요
 

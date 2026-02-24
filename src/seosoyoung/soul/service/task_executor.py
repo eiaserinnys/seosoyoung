@@ -8,10 +8,10 @@ import asyncio
 import logging
 from typing import Dict, Callable, Awaitable, Optional, TYPE_CHECKING
 
-from seosoyoung.mcp.soul.service.task_models import Task, TaskStatus
+from seosoyoung.soul.service.task_models import Task, TaskStatus
 
 if TYPE_CHECKING:
-    from seosoyoung.mcp.soul.service.task_listener import TaskListenerManager
+    from seosoyoung.soul.service.task_listener import TaskListenerManager
 
 logger = logging.getLogger(__name__)
 

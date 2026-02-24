@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import List, Tuple
 
-from seosoyoung.mcp.soul.constants import MAX_ATTACHMENT_SIZE, DANGEROUS_EXTENSIONS
+from seosoyoung.soul.constants import MAX_ATTACHMENT_SIZE, DANGEROUS_EXTENSIONS
 
 
 class AttachmentExtractor:

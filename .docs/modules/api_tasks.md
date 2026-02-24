@@ -1,6 +1,6 @@
 # api/tasks.py
 
-> 경로: `seosoyoung/mcp/soul/api/tasks.py`
+> 경로: `seosoyoung/soul/api/tasks.py`
 
 ## 개요
 
@@ -62,18 +62,18 @@ running 상태의 태스크에만 메시지를 전송할 수 있습니다.
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.api.auth.verify_token`
-- `seosoyoung.mcp.soul.models.ErrorResponse`
-- `seosoyoung.mcp.soul.models.ExecuteRequest`
-- `seosoyoung.mcp.soul.models.InterveneResponse`
-- `seosoyoung.mcp.soul.models.TaskInterveneRequest`
-- `seosoyoung.mcp.soul.models.TaskListResponse`
-- `seosoyoung.mcp.soul.models.TaskResponse`
-- `seosoyoung.mcp.soul.service.claude_runner`
-- `seosoyoung.mcp.soul.service.resource_manager`
-- `seosoyoung.mcp.soul.service.task_manager.Task`
-- `seosoyoung.mcp.soul.service.task_manager.TaskConflictError`
-- `seosoyoung.mcp.soul.service.task_manager.TaskNotFoundError`
-- `seosoyoung.mcp.soul.service.task_manager.TaskNotRunningError`
-- `seosoyoung.mcp.soul.service.task_manager.TaskStatus`
-- `seosoyoung.mcp.soul.service.task_manager.get_task_manager`
+- `seosoyoung.soul.api.auth.verify_token`
+- `seosoyoung.soul.models.ErrorResponse`
+- `seosoyoung.soul.models.ExecuteRequest`
+- `seosoyoung.soul.models.InterveneResponse`
+- `seosoyoung.soul.models.TaskInterveneRequest`
+- `seosoyoung.soul.models.TaskListResponse`
+- `seosoyoung.soul.models.TaskResponse`
+- `seosoyoung.soul.service.claude_runner`
+- `seosoyoung.soul.service.resource_manager`
+- `seosoyoung.soul.service.task_manager.Task`
+- `seosoyoung.soul.service.task_manager.TaskConflictError`
+- `seosoyoung.soul.service.task_manager.TaskNotFoundError`
+- `seosoyoung.soul.service.task_manager.TaskNotRunningError`
+- `seosoyoung.soul.service.task_manager.TaskStatus`
+- `seosoyoung.soul.service.task_manager.get_task_manager`

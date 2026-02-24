@@ -166,7 +166,7 @@ class TestBuildProcessConfigs:
         soul = next(c for c in configs if c.name == "seosoyoung-soul")
         assert "-m" in soul.args
         assert "uvicorn" in soul.args
-        assert "seosoyoung.mcp.soul.main:app" in soul.args
+        assert "seosoyoung.soul.main:app" in soul.args
         assert "--port" in soul.args
         assert "3105" in soul.args
         assert "--host" in soul.args

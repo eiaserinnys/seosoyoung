@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from seosoyoung.mcp.soul.service.task_models import Task, TaskStatus, utc_now, datetime_to_str
-from seosoyoung.mcp.soul.service.task_storage import TaskStorage
+from seosoyoung.soul.service.task_models import Task, TaskStatus, utc_now, datetime_to_str
+from seosoyoung.soul.service.task_storage import TaskStorage
 
 
 @pytest.fixture

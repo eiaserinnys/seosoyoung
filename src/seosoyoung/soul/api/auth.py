@@ -8,7 +8,7 @@ import logging
 from fastapi import HTTPException, Header
 from typing import Optional
 
-from seosoyoung.mcp.soul.config import get_settings
+from seosoyoung.soul.config import get_settings
 
 
 logger = logging.getLogger(__name__)
