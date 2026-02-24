@@ -10,7 +10,6 @@
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
 - [`tools/image_gen.py`](modules/tools_image_gen.md): 이미지 생성 및 슬랙 업로드 MCP 도구
-- [`tools/lore_search.py`](modules/tools_lore_search.md): A-RAG 로어 검색 MCP 도구 — keyword_search, semantic_search, chunk_read.
 - [`tools/npc_chat.py`](modules/tools_npc_chat.md): NPC 대화 모듈: 캐릭터 로더, 프롬프트 빌더, 세션 관리, Claude API 연동.
 - [`tools/slack_messaging.py`](modules/tools_slack_messaging.md): 슬랙 메시지 전송 MCP 도구
 - [`tools/thread_files.py`](modules/tools_thread_files.md): 스레드 내 파일 다운로드 MCP 도구
@@ -63,15 +62,6 @@
 - [`memory/token_counter.py`](modules/memory_token_counter.md): 토큰 카운터
 - [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리 (CLAUDE_CONFIG_DIR + Junction 방식)
 - [`slackbot/restart.py`](modules/slackbot_restart.md): 재시작 관리
-- [`search/build.py`](modules/search_build.md): 통합 빌드 스크립트 — Whoosh + 임베딩 인덱스를 한 번에 빌드.
-- [`search/embedding_cache.py`](modules/search_embedding_cache.md): OpenAI 임베딩 캐시.
-- [`search/embedding_index.py`](modules/search_embedding_index.md): 임베딩 인덱스 빌더 + 코사인 유사도 검색.
-- [`search/git_watcher.py`](modules/search_git_watcher.md): Git Poll Watcher — eb_narrative/eb_lore HEAD 감시 + 인덱스 자동 재빌드.
-- [`search/indexer.py`](modules/search_indexer.md): Dialogue indexer — dlglist YAML → Whoosh index.
-- [`search/lore_indexer.py`](modules/search_lore_indexer.md): eb_lore 인덱서 — YAML → Whoosh lore index.
-- [`search/schema.py`](modules/search_schema.md): Whoosh schema definitions for search indices.
-- [`search/searcher.py`](modules/search_searcher.md): Whoosh searcher for dialogue data.
-- [`search/sentence_splitter.py`](modules/search_sentence_splitter.md): 한/영 텍스트 문장 분할기.
 - [`slackbot/shutdown.py`](modules/slackbot_shutdown.md): 경량 HTTP Shutdown 서버
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
 - [`slack/formatting.py`](modules/slack_formatting.md): 슬랙 메시지 포맷팅 헬퍼
@@ -191,16 +181,6 @@
 - `RestartType` (seosoyoung/slackbot/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/slackbot/restart.py:23): 재시작 요청 정보
 - `RestartManager` (seosoyoung/slackbot/restart.py:31): 재시작 관리자
-- `EmbeddingCache` (seosoyoung/slackbot/search/embedding_cache.py:14): OpenAI text-embedding-3-small 임베딩 + 로컬 JSON 캐시.
-- `EmbeddingIndexBuilder` (seosoyoung/slackbot/search/embedding_index.py:45): dlglist 대사와 eb_lore 텍스트를 문장 단위 임베딩 인덱스로 빌드.
-- `BuildLock` (seosoyoung/slackbot/search/git_watcher.py:26): 파일 기반 빌드 lock — pre-commit hook과 동시 빌드 방지.
-- `IndexStatus` (seosoyoung/slackbot/search/git_watcher.py:65): 인덱스 상태 정보 — lore_index_status 도구에서 조회.
-- `GitWatcher` (seosoyoung/slackbot/search/git_watcher.py:128): Git HEAD 폴링 워처 — 백그라운드 스레드로 실행.
-- `DialogueMetadata` (seosoyoung/slackbot/search/indexer.py:19): dlgId에 대한 메타데이터.
-- `DialogueReferenceMap` (seosoyoung/slackbot/search/indexer.py:27): 대화 구조 파일을 스캔하여 dlgId → 메타데이터 역참조 맵 생성.
-- `DialogueIndexer` (seosoyoung/slackbot/search/indexer.py:164): dlglist YAML 파일을 Whoosh 인덱스로 변환.
-- `LoreIndexer` (seosoyoung/slackbot/search/lore_indexer.py:62): eb_lore YAML → Whoosh lore index.
-- `DialogueSearcher` (seosoyoung/slackbot/search/searcher.py:14): 대사 검색 API.
 - `SlackFile` (seosoyoung/slackbot/slack/file_handler.py:35): 슬랙 파일 정보
 - `DownloadedFile` (seosoyoung/slackbot/slack/file_handler.py:45): 다운로드된 파일 정보
 - `Language` (seosoyoung/slackbot/translator/detector.py:9): 
@@ -262,35 +242,24 @@
 
 ### 주요 함수
 
-- `start_git_watcher()` (seosoyoung/mcp/server.py:46): Git watcher 백그라운드 스레드 시작.
-- `stop_git_watcher()` (seosoyoung/mcp/server.py:72): Git watcher 정지.
-- `slack_attach_file()` (seosoyoung/mcp/server.py:81): 슬랙에 파일을 첨부합니다.
-- `slack_get_context()` (seosoyoung/mcp/server.py:97): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
-- `slack_post_message()` (seosoyoung/mcp/server.py:107): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
-- `async slack_generate_image()` (seosoyoung/mcp/server.py:128): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
-- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:151): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
-- `slack_get_user_profile()` (seosoyoung/mcp/server.py:165): Slack 사용자의 프로필 정보를 조회합니다.
-- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:177): Slack 사용자의 프로필 이미지를 다운로드합니다.
-- `npc_list_characters()` (seosoyoung/mcp/server.py:192): 대화 가능한 NPC 캐릭터 목록을 반환합니다.
-- `npc_open_session()` (seosoyoung/mcp/server.py:202): NPC 대화 세션을 열고 NPC의 첫 반응을 반환합니다.
-- `npc_talk()` (seosoyoung/mcp/server.py:221): NPC에게 말을 걸고 응답을 받습니다.
-- `npc_set_situation()` (seosoyoung/mcp/server.py:234): 대화 중 상황을 변경하고 NPC의 반응을 받습니다.
-- `npc_inject()` (seosoyoung/mcp/server.py:247): 다른 NPC의 대사를 세션 대화 이력에 주입합니다.
-- `npc_close_session()` (seosoyoung/mcp/server.py:262): 세션을 종료하고 전체 대화 이력을 반환합니다.
-- `npc_get_history()` (seosoyoung/mcp/server.py:274): 세션의 대화 이력을 조회합니다 (세션 유지).
-- `lore_keyword_search()` (seosoyoung/mcp/server.py:286): 키워드 기반 로어/대사 검색.
-- `lore_semantic_search()` (seosoyoung/mcp/server.py:307): 의미 기반 로어/대사 검색.
-- `lore_chunk_read()` (seosoyoung/mcp/server.py:329): chunk_id로 전체 텍스트를 읽습니다.
-- `lore_index_status()` (seosoyoung/mcp/server.py:360): 로어/대사 검색 인덱스의 상태를 반환합니다.
+- `slack_attach_file()` (seosoyoung/mcp/server.py:29): 슬랙에 파일을 첨부합니다.
+- `slack_get_context()` (seosoyoung/mcp/server.py:45): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:55): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `async slack_generate_image()` (seosoyoung/mcp/server.py:76): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
+- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:99): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
+- `slack_get_user_profile()` (seosoyoung/mcp/server.py:113): Slack 사용자의 프로필 정보를 조회합니다.
+- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:125): Slack 사용자의 프로필 이미지를 다운로드합니다.
+- `npc_list_characters()` (seosoyoung/mcp/server.py:140): 대화 가능한 NPC 캐릭터 목록을 반환합니다.
+- `npc_open_session()` (seosoyoung/mcp/server.py:150): NPC 대화 세션을 열고 NPC의 첫 반응을 반환합니다.
+- `npc_talk()` (seosoyoung/mcp/server.py:169): NPC에게 말을 걸고 응답을 받습니다.
+- `npc_set_situation()` (seosoyoung/mcp/server.py:182): 대화 중 상황을 변경하고 NPC의 반응을 받습니다.
+- `npc_inject()` (seosoyoung/mcp/server.py:195): 다른 NPC의 대사를 세션 대화 이력에 주입합니다.
+- `npc_close_session()` (seosoyoung/mcp/server.py:210): 세션을 종료하고 전체 대화 이력을 반환합니다.
+- `npc_get_history()` (seosoyoung/mcp/server.py:222): 세션의 대화 이력을 조회합니다 (세션 유지).
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:57): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:132): 이미지를 생성하고 슬랙 스레드에 업로드
-- `reset_context_tracker()` (seosoyoung/mcp/tools/lore_search.py:50): 테스트용: 트래커 초기화.
-- `reset_indices()` (seosoyoung/mcp/tools/lore_search.py:101): 테스트용: 인덱스 캐시 초기화.
-- `lore_keyword_search()` (seosoyoung/mcp/tools/lore_search.py:106): 키워드 기반 로어/대사 검색.
-- `lore_semantic_search()` (seosoyoung/mcp/tools/lore_search.py:210): 의미 기반 로어/대사 검색.
-- `lore_chunk_read()` (seosoyoung/mcp/tools/lore_search.py:300): chunk_id로 전체 텍스트를 읽는다.
 - `npc_list_characters()` (seosoyoung/mcp/tools/npc_chat.py:185): 대화 가능한 NPC 캐릭터 목록을 반환한다.
 - `npc_open_session()` (seosoyoung/mcp/tools/npc_chat.py:311): NPC 대화 세션을 열고 NPC의 첫 반응을 반환한다.
 - `npc_talk()` (seosoyoung/mcp/tools/npc_chat.py:362): NPC에게 말하기. 사용자 메시지를 보내고 NPC 응답을 받는다.
@@ -411,16 +380,6 @@
 - `generate_ltm_id()` (seosoyoung/slackbot/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
 - `parse_md_observations()` (seosoyoung/slackbot/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.
 - `parse_md_persistent()` (seosoyoung/slackbot/memory/store.py:192): 마크다운 장기 기억을 항목 리스트로 파싱합니다.
-- `build_whoosh()` (seosoyoung/slackbot/search/build.py:19): Whoosh 인덱스 빌드 (대사 + 로어).
-- `build_embeddings()` (seosoyoung/slackbot/search/build.py:55): 임베딩 인덱스 빌드 (대사 + 로어).
-- `build_all()` (seosoyoung/slackbot/search/build.py:84): Whoosh + 임베딩 인덱스 통합 빌드.
-- `main()` (seosoyoung/slackbot/search/build.py:131): CLI 진입점.
-- `load_embedding_index()` (seosoyoung/slackbot/search/embedding_index.py:335): 저장된 임베딩 인덱스 로드.
-- `cosine_similarity_search()` (seosoyoung/slackbot/search/embedding_index.py:363): 코사인 유사도 기반 검색.
-- `get_default_index_path()` (seosoyoung/slackbot/search/searcher.py:197): 기본 인덱스 경로 반환.
-- `format_results()` (seosoyoung/slackbot/search/searcher.py:202): 결과 포맷팅.
-- `main()` (seosoyoung/slackbot/search/searcher.py:222): CLI 진입점.
-- `split_sentences()` (seosoyoung/slackbot/search/sentence_splitter.py:16): 텍스트를 문장 단위로 분할.
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slackbot/slack/file_handler.py:67): 스레드별 임시 폴더 생성
