@@ -97,7 +97,9 @@
 - [`translator/glossary.py`](modules/translator_glossary.md): 용어집 로더 모듈
 - [`translator/translator.py`](modules/translator_translator.md): 번역 모듈
 - [`trello/client.py`](modules/trello_client.md): Trello API 클라이언트
+- [`trello/formatting.py`](modules/trello_formatting.md): 트렐로 카드 포맷팅 유틸리티
 - [`trello/list_runner.py`](modules/trello_list_runner.md): ListRunner - 리스트 정주행 기능
+- [`trello/prompt_builder.py`](modules/trello_prompt_builder.md): 트렐로 카드 프롬프트 빌더
 - [`trello/watcher.py`](modules/trello_watcher.md): Trello 워처 - To Go 리스트 감시 및 처리
 - [`utils/async_bridge.py`](modules/utils_async_bridge.md): Async-to-sync 브릿지 유틸리티
 - [`web/cache.py`](modules/web_cache.md): 웹 콘텐츠 캐시 관리
@@ -239,6 +241,7 @@
 - `CardRunResult` (seosoyoung/trello/list_runner.py:67): 카드 실행 및 검증 전체 결과
 - `ListRunSession` (seosoyoung/trello/list_runner.py:78): 리스트 정주행 세션 정보
 - `ListRunner` (seosoyoung/trello/list_runner.py:123): 리스트 정주행 관리자
+- `PromptBuilder` (seosoyoung/trello/prompt_builder.py:14): 트렐로 카드용 프롬프트 빌더
 - `TrackedCard` (seosoyoung/trello/watcher.py:19): 추적 중인 카드 정보 (To Go 리스트 감시용)
 - `ThreadCardInfo` (seosoyoung/trello/watcher.py:35): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
 - `TrelloWatcher` (seosoyoung/trello/watcher.py:51): Trello 리스트 감시자
@@ -452,6 +455,8 @@
 - `get_term_mappings()` (seosoyoung/translator/glossary.py:406): 용어 매핑 딕셔너리 생성 (하위 호환성 유지)
 - `clear_cache()` (seosoyoung/translator/glossary.py:436): 캐시 초기화 (테스트 또는 용어집 갱신 시 사용)
 - `translate()` (seosoyoung/translator/translator.py:169): 텍스트를 번역
+- `format_checklists()` (seosoyoung/trello/formatting.py:7): 체크리스트를 프롬프트용 문자열로 포맷
+- `format_comments()` (seosoyoung/trello/formatting.py:28): 코멘트를 프롬프트용 문자열로 포맷
 - `run_in_new_loop()` (seosoyoung/utils/async_bridge.py:13): 별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
 - `run_async_in_thread()` (seosoyoung/utils/async_bridge.py:46): 별도 스레드에서 코루틴을 실행 (fire-and-forget)
 - `async get_article()` (seosoyoung/web/__init__.py:22): URL에서 아티클 추출

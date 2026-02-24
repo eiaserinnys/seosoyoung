@@ -3,7 +3,6 @@
 import json
 import logging
 import threading
-import time
 from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,6 +10,7 @@ from typing import Callable, Optional
 
 from seosoyoung.config import Config
 from seosoyoung.trello.client import TrelloClient, TrelloCard
+from seosoyoung.trello.prompt_builder import PromptBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,7 @@ class TrelloWatcher:
         self.list_runner_ref = list_runner_ref
 
         self.trello = TrelloClient()
+        self.prompt_builder = PromptBuilder(self.trello)
         self.watch_lists = Config.TRELLO_WATCH_LISTS
 
         # 상태 저장 경로
@@ -562,12 +563,72 @@ class TrelloWatcher:
         )
 
         # 8. 프롬프트 생성 (Execute 레이블 유무에 따라)
-        prompt = self._build_to_go_prompt(card, has_execute)
+        prompt = self.prompt_builder.build_to_go(card, has_execute)
 
         # 9. Claude 실행 (별도 스레드에서)
         card_id_for_cleanup = card.id
         card_name_with_spinner = f"🌀 {card.name}"
 
+        def on_finally():
+            if self._remove_spinner_prefix(card_id_for_cleanup, card_name_with_spinner):
+                logger.info(f"🌀 prefix 제거: {card.name}")
+            else:
+                logger.warning(f"🌀 prefix 제거 실패: {card.name}")
+            self._untrack_card(card_id_for_cleanup)
+
+        self._spawn_claude_thread(
+            session=session,
+            prompt=prompt,
+            thread_ts=thread_ts,
+            channel=msg_channel,
+            tracked=tracked,
+            dm_channel_id=dm_channel_id,
+            dm_thread_ts=dm_thread_ts,
+            on_finally=on_finally,
+        )
+
+    def build_reaction_execute_prompt(self, info: ThreadCardInfo) -> str:
+        """하위 호환: PromptBuilder에 위임"""
+        return self.prompt_builder.build_reaction_execute(info)
+
+    def _build_to_go_prompt(self, card: TrelloCard, has_execute: bool = False) -> str:
+        """하위 호환: PromptBuilder에 위임"""
+        return self.prompt_builder.build_to_go(card, has_execute)
+
+    def _spawn_claude_thread(
+        self,
+        *,
+        session,
+        prompt: str,
+        thread_ts: str,
+        channel: str,
+        tracked: TrackedCard,
+        dm_channel_id: Optional[str] = None,
+        dm_thread_ts: Optional[str] = None,
+        on_success: Optional[Callable] = None,
+        on_error: Optional[Callable] = None,
+        on_finally: Optional[Callable] = None,
+    ):
+        """Claude 실행 스레드 스포닝 (공통)
+
+        _handle_new_card와 _process_list_run_card의 공통 패턴을 통합합니다.
+        - 세션 락 획득/해제
+        - say 클로저 생성
+        - claude_runner_factory 호출
+        - 성공/에러/최종 콜백 실행
+
+        Args:
+            session: Claude 세션
+            prompt: 프롬프트
+            thread_ts: 슬랙 스레드 타임스탬프
+            channel: 슬랙 채널 ID
+            tracked: TrackedCard 정보
+            dm_channel_id: DM 채널 ID
+            dm_thread_ts: DM 스레드 타임스탬프
+            on_success: 성공 시 호출될 콜백
+            on_error: 에러 시 호출될 콜백 (Exception을 인자로 받음)
+            on_finally: 항상 호출될 콜백 (락 해제 전)
+        """
         def run_claude():
             lock = None
             if self.get_session_lock:
@@ -575,9 +636,9 @@ class TrelloWatcher:
                 lock.acquire()
                 logger.debug(f"워처 락 획득: thread_ts={thread_ts}")
             try:
-                def say(text, thread_ts=None):
+                def say(text, thread_ts=None, **kwargs):
                     self.slack_client.chat_postMessage(
-                        channel=msg_channel,
+                        channel=channel,
                         thread_ts=thread_ts or tracked.thread_ts,
                         text=text
                     )
@@ -586,184 +647,29 @@ class TrelloWatcher:
                     session=session,
                     prompt=prompt,
                     msg_ts=thread_ts,
-                    channel=msg_channel,
+                    channel=channel,
                     say=say,
                     client=self.slack_client,
                     trello_card=tracked,
                     dm_channel_id=dm_channel_id,
                     dm_thread_ts=dm_thread_ts,
                 )
+
+                if on_success:
+                    on_success()
             except Exception as e:
                 logger.exception(f"Claude 실행 오류 (워처): {e}")
+                if on_error:
+                    on_error(e)
             finally:
-                # Claude 실행 완료 후 🌀 제거
-                if self._remove_spinner_prefix(card_id_for_cleanup, card_name_with_spinner):
-                    logger.info(f"🌀 prefix 제거: {card.name}")
-                else:
-                    logger.warning(f"🌀 prefix 제거 실패: {card.name}")
-                # To Go 추적에서 제거 (새 카드 감지용)
-                self._untrack_card(card_id_for_cleanup)
-                # 락 해제
+                if on_finally:
+                    on_finally()
                 if lock:
                     lock.release()
                     logger.debug(f"워처 락 해제: thread_ts={thread_ts}")
 
         claude_thread = threading.Thread(target=run_claude, daemon=True)
         claude_thread.start()
-
-    def _build_task_context_hint(self) -> str:
-        """태스크 컨텍스트 힌트 생성"""
-        return """
-태스크는 여러가지 이유로 중단되거나 재개될 수 있습니다.
-아래 체크리스트와 코멘트를 참고하세요.
-"""
-
-    def _build_list_ids_context(self) -> str:
-        """자주 사용하는 리스트 ID 컨텍스트 생성 (Config에서 동적으로 조회)"""
-        from seosoyoung.config import Config
-
-        lines = ["## 리스트 ID (MCP 검색 불필요)"]
-        if Config.TRELLO_DRAFT_LIST_ID:
-            lines.append(f"- 📥 Draft: {Config.TRELLO_DRAFT_LIST_ID}")
-        if Config.TRELLO_BACKLOG_LIST_ID:
-            lines.append(f"- 📦 Backlog: {Config.TRELLO_BACKLOG_LIST_ID}")
-        if Config.TRELLO_BLOCKED_LIST_ID:
-            lines.append(f"- 🚧 Blocked: {Config.TRELLO_BLOCKED_LIST_ID}")
-        if Config.TRELLO_REVIEW_LIST_ID:
-            lines.append(f"- 👀 Review: {Config.TRELLO_REVIEW_LIST_ID}")
-
-        return "\n".join(lines) + "\n"
-
-    def _format_checklists(self, checklists: list[dict]) -> str:
-        """체크리스트를 프롬프트용 문자열로 포맷"""
-        if not checklists:
-            return "(체크리스트 없음)"
-
-        lines = []
-        for cl in checklists:
-            lines.append(f"### {cl['name']}")
-            for item in cl.get("items", []):
-                mark = "x" if item["state"] == "complete" else " "
-                lines.append(f"- [{mark}] {item['name']}")
-        return "\n".join(lines)
-
-    def _format_comments(self, comments: list[dict]) -> str:
-        """코멘트를 프롬프트용 문자열로 포맷"""
-        if not comments:
-            return "(코멘트 없음)"
-
-        lines = []
-        for c in comments:
-            # 날짜에서 시간 부분만 추출 (2026-01-27T05:10:41.387Z -> 01-27 05:10)
-            date_str = c.get("date", "")[:16].replace("T", " ") if c.get("date") else ""
-            author = c.get("author", "Unknown")
-            text = c.get("text", "").strip()
-            # 첫 3줄만 미리보기
-            preview = "\n".join(text.split("\n")[:3])
-            if len(text.split("\n")) > 3:
-                preview += "\n..."
-            lines.append(f"**[{date_str}] {author}**\n{preview}")
-        return "\n\n".join(lines)
-
-    def _build_card_context(self, card_id: str, desc: str = "") -> str:
-        """카드의 체크리스트, 코멘트, 리스트 ID 컨텍스트를 조합"""
-        # 체크리스트 조회
-        checklists = self.trello.get_card_checklists(card_id)
-        checklists_text = self._format_checklists(checklists)
-
-        # 코멘트 조회
-        comments = self.trello.get_card_comments(card_id)
-        comments_text = self._format_comments(comments)
-
-        # 리스트 ID 컨텍스트
-        list_ids_text = self._build_list_ids_context()
-
-        context = f"""
-## 카드 본문
-{desc if desc else "(본문 없음)"}
-
-## 체크리스트
-{checklists_text}
-
-## 코멘트
-{comments_text}
-{list_ids_text}"""
-        return context
-
-    def _build_to_go_prompt(self, card: TrelloCard, has_execute: bool = False) -> str:
-        """To Go 카드용 프롬프트 생성
-
-        Args:
-            card: Trello 카드
-            has_execute: Execute 레이블 유무
-                - True: 실행 모드 (계획 수립 후 바로 실행)
-                - False: 계획 모드 (계획 수립만 하고 Backlog로 이동)
-        """
-        # 카드 컨텍스트 (체크리스트, 코멘트, 리스트 ID) 조회
-        card_context = self._build_card_context(card.id, card.desc)
-
-        # 워처가 카드를 자동으로 In Progress로 이동시킨 상태임을 안내
-        auto_move_notice = "**카드는 이미 워처에 의해 🔨 In Progress로 이동되었습니다. 카드를 In Progress로 이동하지 마세요.**"
-
-        if has_execute:
-            # 실행 모드: 계획 수립 후 바로 실행
-            prompt = f"""🚀 To Go 리스트에 들어온 '{card.name}' 태스크를 실행해주세요.
-
-{auto_move_notice}
-
-카드 ID: {card.id}
-카드 URL: {card.url}
-{self._build_task_context_hint()}
-{card_context}"""
-        else:
-            # 계획 모드: 계획 수립만 하고 Backlog로 이동
-            prompt = f"""📋 To Go 리스트에 들어온 '{card.name}' 태스크의 계획을 수립해주세요.
-
-{auto_move_notice}
-**Execute 레이블이 없으므로 계획 수립만 진행합니다.**
-
-1. 카드를 분석하고 계획을 수립하세요
-2. 체크리스트로 세부 단계를 기록하세요
-3. 완료 후 카드를 📦 Backlog로 이동하세요
-4. 사용자가 Execute 레이블을 붙이고 다시 🚀 To Go로 보내면 실행됩니다
-
-카드 ID: {card.id}
-카드 URL: {card.url}
-{self._build_task_context_hint()}
-{card_context}"""
-        return prompt
-
-    def build_reaction_execute_prompt(self, info: ThreadCardInfo) -> str:
-        """리액션 기반 실행용 프롬프트 생성
-
-        사용자가 계획 수립 완료 메시지에 실행 리액션을 달았을 때 사용합니다.
-        Execute 레이블이 있는 To Go 카드와 동일한 프롬프트를 생성합니다.
-
-        Args:
-            info: ThreadCardInfo 정보
-
-        Returns:
-            실행 프롬프트 문자열
-        """
-        # 카드의 본문 조회
-        card = self.trello.get_card(info.card_id)
-        desc = card.desc if card else ""
-
-        # 카드 컨텍스트 (체크리스트, 코멘트, 리스트 ID) 조회
-        card_context = self._build_card_context(info.card_id, desc)
-
-        prompt = f"""🚀 리액션으로 실행이 요청된 '{info.card_name}' 태스크를 실행해주세요.
-
-**카드는 이미 워처에 의해 🔨 In Progress로 이동되었습니다. 카드를 In Progress로 이동하지 마세요.**
-
-이전에 계획 수립이 완료된 태스크입니다.
-체크리스트와 코멘트를 확인하고 계획에 따라 작업을 수행하세요.
-
-카드 ID: {info.card_id}
-카드 URL: {info.card_url}
-{self._build_task_context_hint()}
-{card_context}"""
-        return prompt
 
     def _check_run_list_labels(self):
         """🏃 Run List 레이블을 가진 카드 감지 및 리스트 정주행 시작
@@ -975,7 +881,7 @@ class TrelloWatcher:
         )
 
         # 프롬프트 생성
-        prompt = self._build_list_run_prompt(card, session_id, session.current_index + 1, len(session.card_ids))
+        prompt = self.prompt_builder.build_list_run(card, session_id, session.current_index + 1, len(session.card_ids))
 
         # DM 스레드 생성 (사고 과정 출력용) — 정주행 채널이 이미 DM이면 별도 DM 불필요
         if channel != self.notify_channel:
@@ -984,110 +890,50 @@ class TrelloWatcher:
         else:
             dm_channel_id, dm_thread_ts = self._open_dm_thread(card.name, card.url)
 
-        # Claude 실행 (별도 스레드에서)
-        def run_claude():
-            lock = None
-            if self.get_session_lock:
-                lock = self.get_session_lock(thread_ts)
-                lock.acquire()
-            try:
-                # TrackedCard 유사 객체 생성 (정주행용)
-                tracked = TrackedCard(
-                    card_id=card.id,
-                    card_name=card.name,
-                    card_url=card.url,
-                    list_id=card.list_id,
-                    list_key="list_run",
-                    thread_ts=thread_ts,
-                    channel_id=channel,
-                    detected_at=datetime.now().isoformat(),
-                    has_execute=True,
-                )
+        # TrackedCard 유사 객체 생성 (정주행용)
+        tracked = TrackedCard(
+            card_id=card.id,
+            card_name=card.name,
+            card_url=card.url,
+            list_id=card.list_id,
+            list_key="list_run",
+            thread_ts=thread_ts,
+            channel_id=channel,
+            detected_at=datetime.now().isoformat(),
+            has_execute=True,
+        )
 
-                def say(text, thread_ts=None, **kwargs):
-                    self.slack_client.chat_postMessage(
-                        channel=channel,
-                        thread_ts=thread_ts or tracked.thread_ts,
-                        text=text
-                    )
+        def on_success():
+            list_runner.mark_card_processed(session_id, card.id, "completed")
+            self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
+            self._preemptive_compact(thread_ts, channel, card.name)
+            # 다음 카드 처리 (별도 스레드로)
+            next_thread = threading.Thread(
+                target=self._process_list_run_card,
+                args=(session_id, thread_ts, run_channel),
+                daemon=True
+            )
+            next_thread.start()
 
-                self.claude_runner_factory(
-                    session=claude_session,
-                    prompt=prompt,
-                    msg_ts=thread_ts,
-                    channel=channel,
-                    say=say,
-                    client=self.slack_client,
-                    trello_card=tracked,
-                    dm_channel_id=dm_channel_id,
-                    dm_thread_ts=dm_thread_ts,
-                )
+        def on_error(e):
+            list_runner.mark_card_processed(session_id, card.id, "failed")
+            list_runner.pause_run(session_id, str(e))
+            self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
+            self.slack_client.chat_postMessage(
+                channel=channel,
+                thread_ts=thread_ts,
+                text=f"❌ 카드 처리 실패: {card.name}\n오류: {e}"
+            )
 
-                # 카드 처리 완료 표시
-                list_runner.mark_card_processed(session_id, card.id, "completed")
+        self._spawn_claude_thread(
+            session=claude_session,
+            prompt=prompt,
+            thread_ts=thread_ts,
+            channel=channel,
+            tracked=tracked,
+            dm_channel_id=dm_channel_id,
+            dm_thread_ts=dm_thread_ts,
+            on_success=on_success,
+            on_error=on_error,
+        )
 
-                # 🌀 prefix 제거
-                self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
-
-                # 선제적 컨텍스트 컴팩트: 다음 카드로 넘어가기 전에 컨텍스트 압축
-                self._preemptive_compact(thread_ts, channel, card.name)
-
-                # 다음 카드 처리 (별도 스레드로)
-                next_thread = threading.Thread(
-                    target=self._process_list_run_card,
-                    args=(session_id, thread_ts, run_channel),
-                    daemon=True
-                )
-                next_thread.start()
-
-            except Exception as e:
-                logger.exception(f"정주행 카드 실행 오류: {e}")
-                list_runner.mark_card_processed(session_id, card.id, "failed")
-                list_runner.pause_run(session_id, str(e))
-
-                # 🌀 prefix 제거
-                self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
-
-                # 실패 알림
-                self.slack_client.chat_postMessage(
-                    channel=channel,
-                    thread_ts=thread_ts,
-                    text=f"❌ 카드 처리 실패: {card.name}\n오류: {e}"
-                )
-            finally:
-                if lock:
-                    lock.release()
-
-        claude_thread = threading.Thread(target=run_claude, daemon=True)
-        claude_thread.start()
-
-    def _build_list_run_prompt(
-        self,
-        card: TrelloCard,
-        session_id: str,
-        current: int,
-        total: int
-    ) -> str:
-        """리스트 정주행용 프롬프트 생성
-
-        Args:
-            card: 처리할 카드
-            session_id: 정주행 세션 ID
-            current: 현재 카드 번호
-            total: 전체 카드 수
-
-        Returns:
-            프롬프트 문자열
-        """
-        card_context = self._build_card_context(card.id, card.desc)
-
-        return f"""📋 리스트 정주행 [{current}/{total}]
-
-**정주행 세션 ID**: `{session_id}`
-**카드**: {card.name}
-**카드 ID**: {card.id}
-**카드 URL**: {card.url}
-
-이 카드의 작업을 수행해주세요. 체크리스트와 코멘트를 확인하고 계획에 따라 작업하세요.
-{self._build_task_context_hint()}
-{card_context}"""
