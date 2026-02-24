@@ -1472,6 +1472,7 @@ class TestHandleListRunMarkerIntegration:
 
     def test_handle_list_run_marker_starts_list_run(self):
         """LIST_RUN 마커 처리 시 정주행 시작"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor
         from seosoyoung.slackbot.trello.watcher import TrelloWatcher
         from seosoyoung.slackbot.trello.list_runner import ListRunner
@@ -1502,14 +1503,9 @@ class TestHandleListRunMarkerIntegration:
             mock_watcher = MagicMock(spec=TrelloWatcher)
             mock_watcher.trello = mock_trello
 
-            runtime = MagicMock()
-            runtime.get_session_lock = MagicMock()
-            runtime.mark_session_running = MagicMock()
-            runtime.mark_session_stopped = MagicMock()
-            runtime.get_running_session_count = MagicMock(return_value=1)
             executor = ClaudeExecutor(
                 session_manager=MagicMock(),
-                session_runtime=runtime,
+                session_runtime=MagicMock(spec=SessionRuntime),
                 restart_manager=MagicMock(),
                 send_long_message=MagicMock(),
                 send_restart_confirmation=MagicMock(),
@@ -1534,20 +1530,16 @@ class TestHandleListRunMarkerIntegration:
     def test_handle_list_run_marker_without_watcher(self):
         """TrelloWatcher 없이 LIST_RUN 마커 처리 시 에러 메시지"""
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.claude.session import SessionRuntime
         from unittest.mock import MagicMock
 
-        runtime = MagicMock()
-        runtime.get_session_lock = MagicMock()
-        runtime.mark_session_running = MagicMock()
-        runtime.mark_session_stopped = MagicMock()
-        runtime.get_running_session_count = MagicMock(return_value=1)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            session_runtime=runtime,
+            session_runtime=MagicMock(spec=SessionRuntime),
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
-            update_message_fn=MagicMock(),
+                update_message_fn=MagicMock(),
             trello_watcher_ref=None,  # 워처 없음
             list_runner_ref=None,
         )
@@ -1570,6 +1562,7 @@ class TestHandleListRunMarkerIntegration:
     def test_handle_list_run_marker_list_not_found(self):
         """존재하지 않는 리스트로 LIST_RUN 마커 처리 시 에러 메시지"""
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.claude.session import SessionRuntime
         from seosoyoung.slackbot.trello.watcher import TrelloWatcher
         from unittest.mock import MagicMock
 
@@ -1581,18 +1574,13 @@ class TestHandleListRunMarkerIntegration:
         mock_watcher = MagicMock(spec=TrelloWatcher)
         mock_watcher.trello = mock_trello
 
-        runtime = MagicMock()
-        runtime.get_session_lock = MagicMock()
-        runtime.mark_session_running = MagicMock()
-        runtime.mark_session_stopped = MagicMock()
-        runtime.get_running_session_count = MagicMock(return_value=1)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            session_runtime=runtime,
+            session_runtime=MagicMock(spec=SessionRuntime),
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
-            update_message_fn=MagicMock(),
+                update_message_fn=MagicMock(),
             trello_watcher_ref=lambda: mock_watcher,
             list_runner_ref=None,
         )

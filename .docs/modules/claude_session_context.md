@@ -12,18 +12,18 @@
 ## 클래스
 
 ### `ChannelStoreProtocol` (Protocol)
-- 위치: 줄 14
+- 위치: 줄 15
 - 설명: ChannelStore가 구현해야 하는 인터페이스
 
 #### 메서드
 
-- `load_judged(self, channel_id)` (줄 17): 
-- `load_pending(self, channel_id)` (줄 18): 
+- `load_judged(self, channel_id)` (줄 18): 
+- `load_pending(self, channel_id)` (줄 19): 
 
 ## 함수
 
 ### `build_initial_context(channel_id, slack_messages, monitored_channels, channel_store)`
-- 위치: 줄 23
+- 위치: 줄 24
 - 설명: 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
 
 Args:
@@ -40,7 +40,7 @@ Returns:
     }
 
 ### `build_followup_context(channel_id, last_seen_ts, channel_store, monitored_channels)`
-- 위치: 줄 75
+- 위치: 줄 76
 - 설명: 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
 
 모니터링 채널이면 judged/pending에서 last_seen_ts 이후 메시지를 가져오고
@@ -59,7 +59,7 @@ Returns:
     }
 
 ### `format_hybrid_context(messages, source_type)`
-- 위치: 줄 142
+- 위치: 줄 143
 - 설명: hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
 
 Args:
@@ -70,7 +70,7 @@ Returns:
     포맷된 컨텍스트 문자열
 
 ### `_merge_messages()`
-- 위치: 줄 176
+- 위치: 줄 177
 - 설명: 여러 메시지 소스를 ts 기준으로 중복 제거하며 병합합니다.
 
 먼저 나오는 소스의 메시지가 우선합니다 (judged > pending > slack).

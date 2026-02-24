@@ -640,7 +640,7 @@ class TestPreemptiveCompact:
             claude_runner_factory=MagicMock(),
         )
 
-        # ClaudeAgentRunner.compact_session을 mock
+        # ClaudeRunner.compact_session을 mock
         mock_result = MagicMock()
         mock_result.success = True
         mock_result.session_id = "test-session-abc123"  # 동일 session_id

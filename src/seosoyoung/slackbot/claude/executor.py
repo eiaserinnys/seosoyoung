@@ -9,7 +9,9 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 - remote: seosoyoung-soul 서버에 HTTP/SSE로 위임하여 실행.
 """
 
+import functools
 import logging
+import os
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,9 +36,17 @@ from seosoyoung.utils.async_bridge import run_in_new_loop
 logger = logging.getLogger(__name__)
 
 
+def _get_runtime_dir() -> Path:
+    """런타임 디렉토리 반환 (SEOSOYOUNG_RUNTIME 환경변수 우선, 폴백: __file__ 기준)"""
+    env = os.environ.get("SEOSOYOUNG_RUNTIME")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[4]
+
+
 def _get_mcp_config_path() -> Optional[Path]:
     """MCP 설정 파일 경로 반환 (없으면 None)"""
-    config_path = Path(__file__).resolve().parents[4] / "mcp_config.json"
+    config_path = _get_runtime_dir() / "mcp_config.json"
     return config_path if config_path.exists() else None
 
 
@@ -127,12 +137,6 @@ class ClaudeExecutor:
         self.trigger_observation_fn = trigger_observation_fn
         self.on_compact_om_flag = on_compact_om_flag
 
-        # 하위 호환 프로퍼티 (기존 코드에서 직접 접근하는 경우 대비)
-        self.get_session_lock = session_runtime.get_session_lock
-        self.mark_session_running = session_runtime.mark_session_running
-        self.mark_session_stopped = session_runtime.mark_session_stopped
-        self.get_running_session_count = session_runtime.get_running_session_count
-
         # 인터벤션 관리자
         self._intervention = InterventionManager()
         # 하위 호환 프로퍼티 (테스트에서 직접 접근)
@@ -214,7 +218,7 @@ class ClaudeExecutor:
         )
 
         # 스레드별 락으로 동시 실행 방지
-        lock = self.get_session_lock(thread_ts)
+        lock = self.session_runtime.get_session_lock(thread_ts)
         if not lock.acquire(blocking=False):
             # 인터벤션: 리액션만 추가하고 pending에 저장 후 interrupt
             self._handle_intervention(ctx, prompt)
@@ -262,7 +266,7 @@ class ClaudeExecutor:
         original_thread_ts = ctx.original_thread_ts
 
         # 실행 중 세션으로 표시
-        self.mark_session_running(original_thread_ts)
+        self.session_runtime.mark_session_running(original_thread_ts)
 
         try:
             # 첫 번째 실행
@@ -294,7 +298,7 @@ class ClaudeExecutor:
                 self._execute_once(ctx, pending.prompt)
 
         finally:
-            self.mark_session_stopped(original_thread_ts)
+            self.session_runtime.mark_session_stopped(original_thread_ts)
 
     def _execute_once(self, ctx: ExecutionContext, prompt: str):
         """단일 Claude 실행
@@ -327,42 +331,8 @@ class ClaudeExecutor:
             )
             ctx.last_msg_ts = initial_msg["ts"]
 
-        async def on_progress(current_text: str):
-            try:
-                display_text = truncate_progress_text(current_text)
-                if not display_text:
-                    return
-
-                if ctx.is_trello_mode:
-                    if ctx.dm_channel_id and ctx.dm_thread_ts:
-                        quote_text = format_dm_progress(display_text)
-                        reply = ctx.client.chat_postMessage(
-                            channel=ctx.dm_channel_id,
-                            thread_ts=ctx.dm_thread_ts,
-                            text=quote_text,
-                            blocks=[{"type": "section", "text": {"type": "mrkdwn", "text": quote_text}}]
-                        )
-                        ctx.dm_last_reply_ts = reply["ts"]
-                    else:
-                        update_text = format_trello_progress(
-                            display_text, ctx.trello_card, session.session_id or "")
-                        self.update_message_fn(ctx.client, ctx.channel, ctx.main_msg_ts, update_text)
-                else:
-                    quote_text = format_as_blockquote(display_text)
-                    self.update_message_fn(ctx.client, ctx.channel, ctx.last_msg_ts, quote_text)
-            except Exception as e:
-                logger.warning(f"사고 과정 메시지 전송 실패: {e}")
-
-        async def on_compact(trigger: str, message: str):
-            try:
-                text = ("🔄 컨텍스트가 자동 압축됩니다..." if trigger == "auto"
-                        else "📦 컨텍스트를 압축하는 중입니다...")
-                ctx.say(text=text, thread_ts=ctx.thread_ts)
-            except Exception as e:
-                logger.warning(f"컴팩션 알림 전송 실패: {e}")
-
-        ctx.on_progress = on_progress
-        ctx.on_compact = on_compact
+        ctx.on_progress = functools.partial(self._on_progress, ctx)
+        ctx.on_compact = functools.partial(self._on_compact, ctx)
         original_thread_ts = ctx.original_thread_ts
 
         if self.execution_mode == "remote":
@@ -393,8 +363,8 @@ class ClaudeExecutor:
                 result = runner.run_sync(runner.run(
                     prompt=prompt,
                     session_id=session.session_id,
-                    on_progress=on_progress,
-                    on_compact=on_compact,
+                    on_progress=ctx.on_progress,
+                    on_compact=ctx.on_compact,
                     user_id=session.user_id,
                     user_message=ctx.user_message,
                 ))
@@ -469,6 +439,42 @@ class ClaudeExecutor:
             self._result_processor.handle_exception(ctx, e)
         finally:
             self._active_remote_requests.pop(original_thread_ts, None)
+
+    async def _on_progress(self, ctx: ExecutionContext, current_text: str):
+        """사고 과정 메시지 업데이트 콜백"""
+        try:
+            display_text = truncate_progress_text(current_text)
+            if not display_text:
+                return
+
+            if ctx.is_trello_mode:
+                if ctx.dm_channel_id and ctx.dm_thread_ts:
+                    quote_text = format_dm_progress(display_text)
+                    reply = ctx.client.chat_postMessage(
+                        channel=ctx.dm_channel_id,
+                        thread_ts=ctx.dm_thread_ts,
+                        text=quote_text,
+                        blocks=[{"type": "section", "text": {"type": "mrkdwn", "text": quote_text}}]
+                    )
+                    ctx.dm_last_reply_ts = reply["ts"]
+                else:
+                    update_text = format_trello_progress(
+                        display_text, ctx.trello_card, ctx.session.session_id or "")
+                    self.update_message_fn(ctx.client, ctx.channel, ctx.main_msg_ts, update_text)
+            else:
+                quote_text = format_as_blockquote(display_text)
+                self.update_message_fn(ctx.client, ctx.channel, ctx.last_msg_ts, quote_text)
+        except Exception as e:
+            logger.warning(f"사고 과정 메시지 전송 실패: {e}")
+
+    async def _on_compact(self, ctx: ExecutionContext, trigger: str, message: str):
+        """컨텍스트 압축 알림 콜백"""
+        try:
+            text = ("🔄 컨텍스트가 자동 압축됩니다..." if trigger == "auto"
+                    else "📦 컨텍스트를 압축하는 중입니다...")
+            ctx.say(text=text, thread_ts=ctx.thread_ts)
+        except Exception as e:
+            logger.warning(f"컴팩션 알림 전송 실패: {e}")
 
     def _process_result(self, ctx: ExecutionContext, result):
         """실행 결과 처리

@@ -80,7 +80,11 @@ class InterventionManager:
         active_remote_requests: dict[str, str],
         service_adapter,
     ):
-        """Remote 모드: soul 서버에 HTTP intervene 요청"""
+        """Remote 모드: soul 서버에 HTTP intervene 요청
+
+        sync 스레드 컨텍스트(executor._run_with_lock 내부)에서 호출되므로
+        run_in_new_loop로 격리된 이벤트 루프를 생성해 async 호출을 수행합니다.
+        """
         request_id = active_remote_requests.get(thread_ts)
         if request_id and service_adapter:
             try:

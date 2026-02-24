@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, patch, call
 import pytest
 
 from seosoyoung.slackbot.claude.executor import ClaudeExecutor, ExecutionContext, PendingPrompt
+from seosoyoung.slackbot.claude.session import SessionRuntime
 from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
 
 
@@ -36,15 +37,11 @@ class FakeSession:
 
 def make_executor(**overrides) -> ClaudeExecutor:
     """테스트용 ClaudeExecutor 생성"""
-    from seosoyoung.slackbot.claude.session import SessionRuntime
-    runtime = MagicMock(spec=SessionRuntime)
-    runtime.get_session_lock = overrides.pop("get_session_lock", MagicMock())
-    runtime.mark_session_running = overrides.pop("mark_session_running", MagicMock())
-    runtime.mark_session_stopped = overrides.pop("mark_session_stopped", MagicMock())
-    runtime.get_running_session_count = overrides.pop("get_running_session_count", MagicMock(return_value=1))
+    session_runtime = MagicMock(spec=SessionRuntime)
+    session_runtime.get_running_session_count.return_value = 1
     defaults = dict(
         session_manager=MagicMock(),
-        session_runtime=runtime,
+        session_runtime=session_runtime,
         restart_manager=MagicMock(is_pending=False),
         send_long_message=MagicMock(),
         send_restart_confirmation=MagicMock(),
@@ -185,8 +182,11 @@ class TestInterventionViaRun:
         # 락 획득 실패 설정
         mock_lock = MagicMock()
         mock_lock.acquire.return_value = False
+        mock_runtime = MagicMock(spec=SessionRuntime)
+        mock_runtime.get_session_lock.return_value = mock_lock
+        mock_runtime.get_running_session_count.return_value = 1
         executor = make_executor(
-            get_session_lock=MagicMock(return_value=mock_lock)
+            session_runtime=mock_runtime
         )
 
         session = FakeSession()
@@ -215,6 +215,7 @@ class TestInterruptedExecution:
     def test_handle_interrupted_normal_mode(self):
         """일반 모드에서 중단 시 사고 과정 메시지 업데이트"""
         executor = make_executor()
+        mock_update_fn = executor._result_processor.update_message_fn
         client = MagicMock()
         ctx = _make_ctx(
             client=client,
@@ -226,14 +227,16 @@ class TestInterruptedExecution:
 
         executor._result_processor.handle_interrupted(ctx)
 
-        client.chat_update.assert_called_once()
-        call_kwargs = client.chat_update.call_args
-        assert call_kwargs[1]["ts"] == "msg_100"
-        assert "(중단됨)" in call_kwargs[1]["text"]
+        # update_message_fn(client, channel, ts, text) 형태로 호출됨
+        mock_update_fn.assert_called()
+        call_args = mock_update_fn.call_args[0]
+        assert call_args[2] == "msg_100"
+        assert "(중단됨)" in call_args[3]
 
     def test_handle_interrupted_trello_mode(self):
         """트렐로 모드에서 중단 시 헤더 포함 메시지 업데이트"""
         executor = make_executor()
+        mock_update_fn = executor._result_processor.update_message_fn
         client = MagicMock()
         trello_card = MagicMock()
         trello_card.card_name = "Test Card"
@@ -250,15 +253,16 @@ class TestInterruptedExecution:
         with patch("seosoyoung.slackbot.claude.result_processor.build_trello_header", return_value="[Trello Header]"):
             executor._result_processor.handle_interrupted(ctx)
 
-        client.chat_update.assert_called_once()
-        call_kwargs = client.chat_update.call_args
-        assert call_kwargs[1]["ts"] == "msg_200"
-        assert "(중단됨)" in call_kwargs[1]["text"]
-        assert "[Trello Header]" in call_kwargs[1]["text"]
+        mock_update_fn.assert_called()
+        call_args = mock_update_fn.call_args[0]
+        assert call_args[2] == "msg_200"
+        assert "(중단됨)" in call_args[3]
+        assert "[Trello Header]" in call_args[3]
 
     def test_handle_interrupted_no_target_ts(self):
         """target_ts가 없으면 업데이트 스킵"""
         executor = make_executor()
+        mock_update_fn = executor._result_processor.update_message_fn
         client = MagicMock()
         ctx = _make_ctx(
             client=client,
@@ -270,7 +274,7 @@ class TestInterruptedExecution:
 
         executor._result_processor.handle_interrupted(ctx)
 
-        client.chat_update.assert_not_called()
+        mock_update_fn.assert_not_called()
 
 
 class TestExecuteOnceWithInterruption:
@@ -422,17 +426,16 @@ class TestRunWithLockPendingLoop:
 
     @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
     def test_session_running_stopped_called(self, MockRunnerClass):
-        """mark_session_running/stopped이 호출됨"""
+        """session_runtime.mark_session_running/stopped이 호출됨"""
         result = make_claude_result()
         mock_runner = MagicMock()
         mock_runner.run_sync.return_value = result
         MockRunnerClass.return_value = mock_runner
 
-        mark_running = MagicMock()
-        mark_stopped = MagicMock()
+        mock_runtime = MagicMock(spec=SessionRuntime)
+        mock_runtime.get_running_session_count.return_value = 1
         executor = make_executor(
-            mark_session_running=mark_running,
-            mark_session_stopped=mark_stopped,
+            session_runtime=mock_runtime,
         )
         session = FakeSession()
         client = MagicMock()
@@ -443,8 +446,8 @@ class TestRunWithLockPendingLoop:
         with patch.object(executor._result_processor, "handle_success"):
             executor._run_with_lock(ctx, "test")
 
-        mark_running.assert_called_once()
-        mark_stopped.assert_called_once()
+        mock_runtime.mark_session_running.assert_called_once()
+        mock_runtime.mark_session_stopped.assert_called_once()
 
 
 class TestConsecutiveInterventions:
@@ -619,11 +622,12 @@ class TestListRunTrelloSuccessNoDelete:
             is_trello_mode=True,
         )
 
+        mock_update_fn = executor._result_processor.update_message_fn
         with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
             executor._result_processor.handle_trello_success(ctx, result, "카드 작업 완료", True, None)
 
         mock_replace.assert_not_called()
-        client.chat_update.assert_called_once()
+        mock_update_fn.assert_called()
 
     def test_handle_success_detects_list_run_from_trello_card(self):
         """_handle_success에서 trello_card.list_key=='list_run'이면 is_list_run=True"""

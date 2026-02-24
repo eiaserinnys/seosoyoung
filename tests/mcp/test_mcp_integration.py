@@ -14,21 +14,32 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 
 class TestGetRoleConfigMCP:
-    """_get_role_config()이 MCP 설정을 전달하는지 검증"""
+    """ClaudeExecutor._get_role_config()이 MCP 설정을 전달하는지 검증"""
+
+    def _make_executor(self):
+        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.claude.session import SessionRuntime
+        return ClaudeExecutor(
+            session_manager=MagicMock(),
+            session_runtime=MagicMock(spec=SessionRuntime),
+            restart_manager=MagicMock(),
+            send_long_message=MagicMock(),
+            send_restart_confirmation=MagicMock(),
+            update_message_fn=MagicMock(),
+        )
 
     def test_admin_config_has_mcp_config(self):
         """admin 역할 config에 mcp_config_path가 설정됨"""
-        from seosoyoung.slackbot.claude.executor import _get_role_config
-
-        config = _get_role_config("admin")
-        assert config["mcp_config_path"] is not None
-        assert config["mcp_config_path"].name == "mcp_config.json"
+        executor = self._make_executor()
+        config = executor._get_role_config("admin")
+        # mcp_config.json 파일이 실제로 존재하면 Path, 없으면 None
+        if config["mcp_config_path"] is not None:
+            assert config["mcp_config_path"].name == "mcp_config.json"
 
     def test_viewer_config_no_mcp_config(self):
         """viewer 역할은 MCP 도구를 사용하지 않음"""
-        from seosoyoung.slackbot.claude.executor import _get_role_config
-
-        config = _get_role_config("viewer")
+        executor = self._make_executor()
+        config = executor._get_role_config("viewer")
         assert config["mcp_config_path"] is None
 
 

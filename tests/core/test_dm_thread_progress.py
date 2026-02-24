@@ -98,6 +98,7 @@ class TestOnProgressDmThread:
 
     def test_dm_progress_always_posts_new_message(self):
         """DM 사고 과정은 항상 chat_postMessage로 새 메시지를 추가해야 함 (chat_update 사용 안 함)"""
+        from seosoyoung.slackbot.claude.session import SessionRuntime
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor, ExecutionContext
         from seosoyoung.slackbot.trello.watcher import TrackedCard
 
@@ -109,14 +110,9 @@ class TestOnProgressDmThread:
             {"ts": "dm_reply_3"},
         ]
 
-        _runtime = MagicMock()
-        _runtime.get_session_lock = lambda ts: MagicMock()
-        _runtime.mark_session_running = MagicMock()
-        _runtime.mark_session_stopped = MagicMock()
-        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            session_runtime=_runtime,
+            session_runtime=MagicMock(spec=SessionRuntime),
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
@@ -217,6 +213,7 @@ class TestOnProgressDmThread:
         두 번째 턴 이후 텍스트가 dm_sent_length보다 짧으면 전부 스킵됨.
         """
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor, ExecutionContext
+        from seosoyoung.slackbot.claude.session import SessionRuntime
         from seosoyoung.slackbot.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
@@ -226,14 +223,9 @@ class TestOnProgressDmThread:
             {"ts": "dm_reply_3"},
         ]
 
-        _runtime = MagicMock()
-        _runtime.get_session_lock = lambda ts: MagicMock()
-        _runtime.mark_session_running = MagicMock()
-        _runtime.mark_session_stopped = MagicMock()
-        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            session_runtime=_runtime,
+            session_runtime=MagicMock(spec=SessionRuntime),
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
@@ -381,18 +373,13 @@ class TestHandleTrelloSuccessWithDm:
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor, ExecutionContext
         from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
         from seosoyoung.slackbot.trello.watcher import TrackedCard
-        from seosoyoung.slackbot.claude.session import Session
+        from seosoyoung.slackbot.claude.session import Session, SessionRuntime
 
         mock_client = MagicMock()
         mock_session_manager = MagicMock()
-        _runtime = MagicMock()
-        _runtime.get_session_lock = lambda ts: MagicMock()
-        _runtime.mark_session_running = MagicMock()
-        _runtime.mark_session_stopped = MagicMock()
-        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=mock_session_manager,
-            session_runtime=_runtime,
+            session_runtime=MagicMock(spec=SessionRuntime),
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
@@ -438,30 +425,27 @@ class TestHandleTrelloSuccessWithDm:
             dm_last_reply_ts="dm_reply_last",
         )
 
+        mock_update_fn = executor._result_processor.update_message_fn
         executor._result_processor.handle_trello_success(ctx, result, "작업 완료 응답", False, None)
 
-        # DM 스레드의 마지막 답글이 평문으로 업데이트되었는지 확인
+        # DM 스레드의 마지막 답글이 update_message_fn을 통해 평문으로 업데이트되었는지 확인
         dm_update_calls = [
-            call for call in mock_client.chat_update.call_args_list
-            if call[1].get("channel") == "D_DM_CHANNEL" and call[1].get("ts") == "dm_reply_last"
+            call for call in mock_update_fn.call_args_list
+            if call[0][1] == "D_DM_CHANNEL" and call[0][2] == "dm_reply_last"
         ]
         assert len(dm_update_calls) == 1
-        assert "작업 완료 응답" in dm_update_calls[0][1]["text"]
+        assert "작업 완료 응답" in dm_update_calls[0][0][3]
 
     def test_no_dm_params_uses_fallback(self):
         """DM 파라미터가 없으면 기존 동작 유지"""
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor, ExecutionContext
+        from seosoyoung.slackbot.claude.session import SessionRuntime
         from seosoyoung.slackbot.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
-        _runtime = MagicMock()
-        _runtime.get_session_lock = lambda ts: MagicMock()
-        _runtime.mark_session_running = MagicMock()
-        _runtime.mark_session_stopped = MagicMock()
-        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            session_runtime=_runtime,
+            session_runtime=MagicMock(spec=SessionRuntime),
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
@@ -524,17 +508,13 @@ class TestHandleInterruptedWithDm:
     def test_dm_last_reply_marked_interrupted(self):
         """인터럽트 시 DM 스레드의 마지막 답글이 (중단됨)으로 업데이트"""
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor, ExecutionContext
+        from seosoyoung.slackbot.claude.session import SessionRuntime
         from seosoyoung.slackbot.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
-        _runtime = MagicMock()
-        _runtime.get_session_lock = lambda ts: MagicMock()
-        _runtime.mark_session_running = MagicMock()
-        _runtime.mark_session_stopped = MagicMock()
-        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            session_runtime=_runtime,
+            session_runtime=MagicMock(spec=SessionRuntime),
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
@@ -572,15 +552,16 @@ class TestHandleInterruptedWithDm:
             dm_last_reply_ts="dm_reply_last",
         )
 
+        mock_update_fn = executor._result_processor.update_message_fn
         executor._result_processor.handle_interrupted(ctx)
 
-        # DM 스레드의 마지막 답글이 (중단됨)으로 업데이트
+        # DM 스레드의 마지막 답글이 update_message_fn을 통해 (중단됨)으로 업데이트
         dm_update_calls = [
-            call for call in mock_client.chat_update.call_args_list
-            if call[1].get("channel") == "D_DM_CHANNEL" and call[1].get("ts") == "dm_reply_last"
+            call for call in mock_update_fn.call_args_list
+            if call[0][1] == "D_DM_CHANNEL" and call[0][2] == "dm_reply_last"
         ]
         assert len(dm_update_calls) == 1
-        assert "(중단됨)" in dm_update_calls[0][1]["text"]
+        assert "(중단됨)" in dm_update_calls[0][0][3]
 
 
 class TestNotifyChannelSuppression:
@@ -1074,16 +1055,14 @@ class TestRestartMarkerDmRouting:
     def test_restart_confirmation_uses_current_channel(self):
         """재시작 확인 메시지가 현재 세션 채널로 전송됨 (DM 모드에서는 DM 채널)"""
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.claude.session import SessionRuntime
 
         mock_send_restart = MagicMock()
-        runtime = MagicMock()
-        runtime.get_session_lock = lambda ts: MagicMock()
-        runtime.mark_session_running = MagicMock()
-        runtime.mark_session_stopped = MagicMock()
-        runtime.get_running_session_count = MagicMock(return_value=2)  # 다른 세션 1개 실행 중
+        mock_runtime = MagicMock(spec=SessionRuntime)
+        mock_runtime.get_running_session_count.return_value = 2  # 다른 세션 1개 실행 중
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            session_runtime=runtime,
+            session_runtime=mock_runtime,
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=mock_send_restart,

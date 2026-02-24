@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from seosoyoung.slackbot.claude.agent_runner import (
     ClaudeRunner,
+    ClaudeRunner,
     ClaudeResult,
     COMPACT_RETRY_READ_TIMEOUT,
     CompactRetryState,
