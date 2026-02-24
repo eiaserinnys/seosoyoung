@@ -75,7 +75,6 @@ class TestExecutorRemoteBranch:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=0),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
         )
@@ -140,7 +139,6 @@ class TestGetServiceAdapter:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=0),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
         )
@@ -172,7 +170,6 @@ class TestInterventionDualPath:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=0),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
         )
@@ -194,7 +191,7 @@ class TestInterventionDualPath:
         ctx = _make_ctx(session)
 
         with patch("seosoyoung.claude.executor._is_remote_mode", return_value=False), \
-             patch("seosoyoung.claude.executor.get_runner", return_value=mock_runner):
+             patch("seosoyoung.claude.agent_runner.get_runner", return_value=mock_runner):
             executor._handle_intervention(ctx, "new prompt")
 
         mock_runner.interrupt.assert_called_once()
@@ -208,7 +205,7 @@ class TestInterventionDualPath:
         ctx = _make_ctx(session)
 
         with patch("seosoyoung.claude.executor._is_remote_mode", return_value=True), \
-             patch("seosoyoung.claude.agent_runner.run_in_new_loop") as mock_run:
+             patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
 
             mock_run.return_value = True
 

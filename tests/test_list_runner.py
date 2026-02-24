@@ -1506,7 +1506,6 @@ class TestHandleListRunMarkerIntegration:
                 mark_session_stopped=MagicMock(),
                 get_running_session_count=MagicMock(return_value=1),
                 restart_manager=MagicMock(),
-                upload_file_to_slack=MagicMock(),
                 send_long_message=MagicMock(),
                 send_restart_confirmation=MagicMock(),
                 trello_watcher_ref=lambda: mock_watcher,
@@ -1538,7 +1537,6 @@ class TestHandleListRunMarkerIntegration:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=1),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
             trello_watcher_ref=None,  # 워처 없음
@@ -1581,7 +1579,6 @@ class TestHandleListRunMarkerIntegration:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=1),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
             trello_watcher_ref=lambda: mock_watcher,

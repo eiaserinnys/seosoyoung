@@ -116,7 +116,6 @@ class TestOnProgressDmThread:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=0),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
         )
@@ -231,7 +230,6 @@ class TestOnProgressDmThread:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=0),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
         )
@@ -388,7 +386,6 @@ class TestHandleTrelloSuccessWithDm:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=0),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
         )
@@ -455,7 +452,6 @@ class TestHandleTrelloSuccessWithDm:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=0),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
         )
@@ -526,7 +522,6 @@ class TestHandleInterruptedWithDm:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=0),
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
         )
@@ -1073,7 +1068,6 @@ class TestRestartMarkerDmRouting:
             mark_session_stopped=MagicMock(),
             get_running_session_count=MagicMock(return_value=2),  # 다른 세션 1개 실행 중
             restart_manager=MagicMock(),
-            upload_file_to_slack=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=mock_send_restart,
         )

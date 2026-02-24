@@ -7,11 +7,15 @@
 슬랙 메시지 포맷팅 유틸리티
 
 Claude 응답을 슬랙 메시지 형식으로 변환하는 함수들을 제공합니다.
+- 컨텍스트 사용량 바
+- 백틱 이스케이프
+- 트렐로 헤더
+- 진행 상황(on_progress) 포맷팅
 
 ## 함수
 
 ### `build_context_usage_bar(usage, bar_length)`
-- 위치: 줄 14
+- 위치: 줄 21
 - 설명: usage dict에서 컨텍스트 사용량 바를 생성
 
 SDK의 ResultMessage.usage 구조:
@@ -28,7 +32,7 @@ Returns:
     "Context | ■■■■■■□□□□□□□□□□□□□□ | 30%" 형태 문자열, 또는 None
 
 ### `escape_backticks(text)`
-- 위치: 줄 49
+- 위치: 줄 56
 - 설명: 텍스트 내 모든 백틱을 이스케이프
 
 슬랙에서 백틱은 인라인 코드(`)나 코드 블록(```)을 만드므로,
@@ -45,7 +49,7 @@ Returns:
     백틱이 이스케이프된 텍스트
 
 ### `build_trello_header(card, session_id)`
-- 위치: 줄 68
+- 위치: 줄 75
 - 설명: 트렐로 카드용 슬랙 메시지 헤더 생성
 
 진행 상태(계획/실행/완료)는 헤더가 아닌 슬랙 이모지 리액션으로 표시합니다.
@@ -56,6 +60,22 @@ Args:
 
 Returns:
     헤더 문자열
+
+### `truncate_progress_text(text)`
+- 위치: 줄 96
+- 설명: 진행 상황 텍스트를 표시용으로 정리
+
+### `format_as_blockquote(text)`
+- 위치: 줄 106
+- 설명: 텍스트를 슬랙 blockquote 형식으로 변환
+
+### `format_trello_progress(text, card, session_id)`
+- 위치: 줄 113
+- 설명: 트렐로 모드 채널 진행 상황 포맷
+
+### `format_dm_progress(text, max_len)`
+- 위치: 줄 120
+- 설명: DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
 
 ## 내부 의존성
 

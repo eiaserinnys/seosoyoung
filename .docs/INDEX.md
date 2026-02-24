@@ -9,7 +9,9 @@
 - [`claude/agent_runner.py`](modules/claude_agent_runner.md): Claude Code SDK 기반 실행기
 - [`claude/diagnostics.py`](modules/claude_diagnostics.md): 세션 진단 및 에러 분류 로직
 - [`claude/executor.py`](modules/claude_executor.md): Claude Code 실행 로직
+- [`claude/intervention.py`](modules/claude_intervention.md): 인터벤션(Intervention) 관리
 - [`claude/message_formatter.py`](modules/claude_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티
+- [`claude/result_processor.py`](modules/claude_result_processor.md): Claude 실행 결과 처리
 - [`claude/security.py`](modules/claude_security.md): 보안 레이어
 - [`claude/service_adapter.py`](modules/claude_service_adapter.md): Claude Soul Service Adapter
 - [`claude/service_client.py`](modules/claude_service_client.md): Claude Soul Service HTTP + SSE 클라이언트
@@ -109,8 +111,10 @@
 - `ClaudeResult` (seosoyoung/claude/agent_runner.py:50): Claude Code 실행 결과
 - `ClaudeRunner` (seosoyoung/claude/agent_runner.py:147): Claude Code SDK 기반 실행기
 - `ExecutionContext` (seosoyoung/claude/executor.py:68): 실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
-- `PendingPrompt` (seosoyoung/claude/executor.py:107): 인터벤션 대기 중인 프롬프트 정보
-- `ClaudeExecutor` (seosoyoung/claude/executor.py:123): Claude Code 실행기
+- `ClaudeExecutor` (seosoyoung/claude/executor.py:106): Claude Code 실행기
+- `PendingPrompt` (seosoyoung/claude/intervention.py:19): 인터벤션 대기 중인 프롬프트 정보
+- `InterventionManager` (seosoyoung/claude/intervention.py:35): 인터벤션 관리자
+- `ResultProcessor` (seosoyoung/claude/result_processor.py:20): Claude 실행 결과를 처리하여 슬랙에 응답
 - `SecurityError` (seosoyoung/claude/security.py:10): 보안 관련 에러
 - `ClaudeServiceAdapter` (seosoyoung/claude/service_adapter.py:26): 원격 soul 서버 어댑터
 - `SSEEvent` (seosoyoung/claude/service_client.py:32): Server-Sent Event 데이터
@@ -257,9 +261,13 @@
 - `build_session_dump()` (seosoyoung/claude/diagnostics.py:31): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/claude/diagnostics.py:71): ProcessError를 사용자 친화적 메시지로 변환.
 - `send_debug_to_slack()` (seosoyoung/claude/diagnostics.py:105): 슬랙에 디버그 메시지 전송 (별도 메시지로)
-- `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:14): usage dict에서 컨텍스트 사용량 바를 생성
-- `escape_backticks()` (seosoyoung/claude/message_formatter.py:49): 텍스트 내 모든 백틱을 이스케이프
-- `build_trello_header()` (seosoyoung/claude/message_formatter.py:68): 트렐로 카드용 슬랙 메시지 헤더 생성
+- `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:21): usage dict에서 컨텍스트 사용량 바를 생성
+- `escape_backticks()` (seosoyoung/claude/message_formatter.py:56): 텍스트 내 모든 백틱을 이스케이프
+- `build_trello_header()` (seosoyoung/claude/message_formatter.py:75): 트렐로 카드용 슬랙 메시지 헤더 생성
+- `truncate_progress_text()` (seosoyoung/claude/message_formatter.py:96): 진행 상황 텍스트를 표시용으로 정리
+- `format_as_blockquote()` (seosoyoung/claude/message_formatter.py:106): 텍스트를 슬랙 blockquote 형식으로 변환
+- `format_trello_progress()` (seosoyoung/claude/message_formatter.py:113): 트렐로 모드 채널 진행 상황 포맷
+- `format_dm_progress()` (seosoyoung/claude/message_formatter.py:120): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
 - `build_initial_context()` (seosoyoung/claude/session_context.py:15): 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
 - `build_followup_context()` (seosoyoung/claude/session_context.py:67): 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
 - `format_hybrid_context()` (seosoyoung/claude/session_context.py:134): hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
@@ -289,11 +297,11 @@
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/main.py:210): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/main.py:221): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/main.py:232): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/main.py:252): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/main.py:262): 봇 사용자 ID 초기화
+- `notify_startup()` (seosoyoung/main.py:209): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/main.py:220): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/main.py:231): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/main.py:251): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/main.py:261): 봇 사용자 ID 초기화
 - `start_git_watcher()` (seosoyoung/mcp/server.py:46): Git watcher 백그라운드 스레드 시작.
 - `stop_git_watcher()` (seosoyoung/mcp/server.py:72): Git watcher 정지.
 - `slack_attach_file()` (seosoyoung/mcp/server.py:81): 슬랙에 파일을 첨부합니다.

@@ -43,7 +43,6 @@ def make_executor(**overrides) -> ClaudeExecutor:
         mark_session_stopped=MagicMock(),
         get_running_session_count=MagicMock(return_value=1),
         restart_manager=MagicMock(is_pending=False),
-        upload_file_to_slack=MagicMock(return_value=(True, "")),
         send_long_message=MagicMock(),
         send_restart_confirmation=MagicMock(),
     )
@@ -89,7 +88,7 @@ class TestPendingPrompts:
 
     def test_pop_pending_empty(self):
         executor = make_executor()
-        assert executor._pop_pending("thread_123") is None
+        assert executor._intervention.pop_pending("thread_123") is None
 
     def test_pop_pending_returns_and_removes(self):
         executor = make_executor()
@@ -99,7 +98,7 @@ class TestPendingPrompts:
         )
         executor._pending_prompts["thread_123"] = pending
 
-        result = executor._pop_pending("thread_123")
+        result = executor._intervention.pop_pending("thread_123")
         assert result is pending
         assert "thread_123" not in executor._pending_prompts
 
@@ -117,7 +116,7 @@ class TestPendingPrompts:
         executor._pending_prompts["t1"] = p1
         executor._pending_prompts["t1"] = p2
 
-        result = executor._pop_pending("t1")
+        result = executor._intervention.pop_pending("t1")
         assert result.prompt == "second"
 
 
@@ -156,7 +155,7 @@ class TestInterventionHandling:
 
         ctx = _make_ctx()
 
-        with patch("seosoyoung.claude.executor.get_runner", return_value=mock_runner):
+        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=mock_runner):
             executor._handle_intervention(ctx, "새 질문")
 
         # interrupt()는 인자 없이 호출됨 (per-instance 모델)
@@ -167,7 +166,7 @@ class TestInterventionHandling:
         executor = make_executor()
         ctx = _make_ctx()
 
-        with patch("seosoyoung.claude.executor.get_runner", return_value=None):
+        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=None):
             executor._handle_intervention(ctx, "새 질문")
 
         # pending에는 저장됨
@@ -244,7 +243,7 @@ class TestInterruptedExecution:
             trello_card=trello_card,
         )
 
-        with patch("seosoyoung.claude.executor.build_trello_header", return_value="[Trello Header]"):
+        with patch("seosoyoung.claude.result_processor.build_trello_header", return_value="[Trello Header]"):
             executor._handle_interrupted(ctx)
 
         client.chat_update.assert_called_once()
@@ -455,7 +454,7 @@ class TestConsecutiveInterventions:
         mock_runner.interrupt.return_value = True
 
         # get_runner가 mock_runner를 반환하도록 패치
-        with patch("seosoyoung.claude.executor.get_runner", return_value=mock_runner):
+        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=mock_runner):
             # A → B → C 순서로 인터벤션
             for i, prompt in enumerate(["A", "B", "C"]):
                 ctx = _make_ctx(msg_ts=f"msg_{i}")
@@ -494,7 +493,7 @@ class TestModuleLevelRunnerLookup:
 
         ctx = _make_ctx(thread_ts="thread_abc")
 
-        with patch("seosoyoung.claude.executor.get_runner", return_value=mock_runner):
+        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=mock_runner):
             executor._handle_intervention(ctx, "interrupt me")
 
         mock_runner.interrupt.assert_called_once()
@@ -504,7 +503,7 @@ class TestModuleLevelRunnerLookup:
         executor = make_executor()
         ctx = _make_ctx()
 
-        with patch("seosoyoung.claude.executor.get_runner", return_value=None):
+        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=None):
             executor._handle_intervention(ctx, "no runner")
 
         # pending에는 저장됨
@@ -515,7 +514,7 @@ class TestNormalSuccessWithReplace:
     """_handle_normal_success에서 _replace_thinking_message 사용 확인"""
 
     def test_normal_success_calls_replace_thinking(self):
-        """일반 성공 처리에서 _replace_thinking_message가 호출됨"""
+        """일반 성공 처리에서 replace_thinking_message가 호출됨"""
         executor = make_executor()
         result = make_claude_result(output="짧은 응답")
         client = MagicMock()
@@ -529,11 +528,10 @@ class TestNormalSuccessWithReplace:
             is_thread_reply=True,
         )
 
-        with patch.object(executor, "_replace_thinking_message") as mock_replace:
+        with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
             executor._handle_normal_success(ctx, result, "짧은 응답", False, None)
 
         mock_replace.assert_called_once()
-        # 스레드 내 답글이므로 thread_ts="thread_1"
         call_kwargs = mock_replace.call_args
         assert call_kwargs[1]["thread_ts"] == "thread_1"
 
@@ -552,7 +550,7 @@ class TestNormalSuccessWithReplace:
             is_thread_reply=False,
         )
 
-        with patch.object(executor, "_replace_thinking_message") as mock_replace:
+        with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
             executor._handle_normal_success(ctx, result, "짧은 응답", False, None)
 
         mock_replace.assert_called_once()
@@ -563,7 +561,7 @@ class TestNormalSuccessWithReplace:
 class TestTrelloSuccessWithReplace:
     """_handle_trello_success에서 _replace_thinking_message 사용 확인"""
 
-    @patch("seosoyoung.claude.executor.build_trello_header", return_value="[Header]")
+    @patch("seosoyoung.claude.result_processor.build_trello_header", return_value="[Header]")
     def test_trello_success_calls_replace_thinking(self, mock_header):
         """트렐로 성공 처리에서 _replace_thinking_message가 호출됨"""
         executor = make_executor()
@@ -583,11 +581,10 @@ class TestTrelloSuccessWithReplace:
             is_trello_mode=True,
         )
 
-        with patch.object(executor, "_replace_thinking_message") as mock_replace:
+        with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
             executor._handle_trello_success(ctx, result, "트렐로 응답", False, None)
 
         mock_replace.assert_called_once()
-        # 트렐로 모드에서는 항상 thread_ts=None
         call_kwargs = mock_replace.call_args
         assert call_kwargs[1]["thread_ts"] is None
 
@@ -595,7 +592,7 @@ class TestTrelloSuccessWithReplace:
 class TestListRunTrelloSuccessNoDelete:
     """정주행 카드 실행 시 chat_delete 방지 테스트"""
 
-    @patch("seosoyoung.claude.executor.build_trello_header", return_value="[Header]")
+    @patch("seosoyoung.claude.result_processor.build_trello_header", return_value="[Header]")
     def test_list_run_card_uses_chat_update_not_delete(self, mock_header):
         """정주행 카드(list_key='list_run')는 _replace_thinking_message를 호출하지 않음"""
         executor = make_executor()
@@ -618,12 +615,10 @@ class TestListRunTrelloSuccessNoDelete:
             is_trello_mode=True,
         )
 
-        with patch.object(executor, "_replace_thinking_message") as mock_replace:
+        with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
             executor._handle_trello_success(ctx, result, "카드 작업 완료", True, None)
 
-        # _replace_thinking_message가 호출되지 않아야 함 (chat_delete 방지)
         mock_replace.assert_not_called()
-        # 대신 chat_update가 호출되어야 함
         client.chat_update.assert_called_once()
 
     def test_handle_success_detects_list_run_from_trello_card(self):
@@ -650,11 +645,10 @@ class TestListRunTrelloSuccessNoDelete:
             is_thread_reply=False,
         )
 
-        with patch.object(executor, "_handle_trello_success") as mock_trello_success:
+        with patch.object(executor._result_processor, "handle_trello_success") as mock_trello_success:
             executor._handle_success(ctx, result)
 
         mock_trello_success.assert_called_once()
-        # is_list_run=True로 전달되어야 함
         call_kwargs = mock_trello_success.call_args
         assert call_kwargs[1].get("is_list_run") is True or (len(call_kwargs[0]) >= 4 and call_kwargs[0][3] is True)
 

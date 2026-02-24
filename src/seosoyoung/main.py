@@ -14,7 +14,7 @@ from seosoyoung.auth import check_permission, get_user_role
 from seosoyoung.claude.session import SessionManager, SessionRuntime
 from seosoyoung.claude.executor import ClaudeExecutor
 from seosoyoung.claude.agent_runner import shutdown_all_sync
-from seosoyoung.slack.helpers import upload_file_to_slack, send_long_message
+from seosoyoung.slack.helpers import send_long_message
 from seosoyoung.handlers import register_all_handlers
 from seosoyoung.handlers.actions import send_restart_confirmation
 from seosoyoung.restart import RestartManager, RestartType
@@ -103,7 +103,6 @@ executor = ClaudeExecutor(
     mark_session_stopped=session_runtime.mark_session_stopped,
     get_running_session_count=session_runtime.get_running_session_count,
     restart_manager=restart_manager,
-    upload_file_to_slack=upload_file_to_slack,
     send_long_message=send_long_message,
     send_restart_confirmation=send_restart_confirmation,
     trello_watcher_ref=lambda: trello_watcher,

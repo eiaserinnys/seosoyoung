@@ -28,7 +28,7 @@ SeoSoyoung 슬랙 봇 메인
 SIGTERM, SIGINT 수신 시 모든 클라이언트를 정리하고 프로세스를 종료합니다.
 
 ### `_init_channel_observer(slack_client, mention_tracker)`
-- 위치: 줄 117
+- 위치: 줄 116
 - 설명: 채널 관찰 시스템 초기화
 
 Returns:
@@ -36,27 +36,27 @@ Returns:
            비활성화 시 모두 None.
 
 ### `_build_dependencies()`
-- 위치: 줄 184
+- 위치: 줄 183
 - 설명: 핸들러 의존성 딕셔너리 빌드
 
 ### `notify_startup()`
-- 위치: 줄 210
+- 위치: 줄 209
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 221
+- 위치: 줄 220
 - 설명: 봇 종료 알림
 
 ### `start_trello_watcher()`
-- 위치: 줄 232
+- 위치: 줄 231
 - 설명: Trello 워처 시작
 
 ### `start_list_runner()`
-- 위치: 줄 252
+- 위치: 줄 251
 - 설명: 리스트 러너 초기화
 
 ### `init_bot_user_id()`
-- 위치: 줄 262
+- 위치: 줄 261
 - 설명: 봇 사용자 ID 초기화
 
 ## 내부 의존성
@@ -81,6 +81,5 @@ Returns:
 - `seosoyoung.restart.RestartManager`
 - `seosoyoung.restart.RestartType`
 - `seosoyoung.slack.helpers.send_long_message`
-- `seosoyoung.slack.helpers.upload_file_to_slack`
 - `seosoyoung.trello.list_runner.ListRunner`
 - `seosoyoung.trello.watcher.TrelloWatcher`
