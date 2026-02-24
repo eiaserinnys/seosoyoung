@@ -147,7 +147,7 @@ def build_process_configs() -> list[ProcessConfig]:
         cwd=str(paths["workspace"].resolve()),
         env={
             "PYTHONUTF8": "1",
-            "PYTHONPATH": str(paths["workspace"] / "seosoyoung" / "src"),
+            "PYTHONPATH": str(paths["workspace"] / ".projects" / "seosoyoung" / "src"),
         },
         restart_policy=RestartPolicy(
             use_exit_codes=False,
