@@ -1,6 +1,6 @@
 # translator/glossary.py
 
-> 경로: `seosoyoung/translator/glossary.py`
+> 경로: `seosoyoung/slackbot/translator/glossary.py`
 
 ## 개요
 

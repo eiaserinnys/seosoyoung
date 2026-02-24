@@ -1,6 +1,6 @@
 # memory/channel_pipeline.py
 
-> 경로: `seosoyoung/memory/channel_pipeline.py`
+> 경로: `seosoyoung/slackbot/memory/channel_pipeline.py`
 
 ## 개요
 

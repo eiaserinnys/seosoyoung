@@ -1,6 +1,6 @@
 # slack/file_handler.py
 
-> 경로: `seosoyoung/slack/file_handler.py`
+> 경로: `seosoyoung/slackbot/slack/file_handler.py`
 
 ## 개요
 

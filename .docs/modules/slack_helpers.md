@@ -1,6 +1,6 @@
 # slack/helpers.py
 
-> 경로: `seosoyoung/slack/helpers.py`
+> 경로: `seosoyoung/slackbot/slack/helpers.py`
 
 ## 개요
 

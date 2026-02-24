@@ -1,6 +1,6 @@
 # handlers/commands.py
 
-> 경로: `seosoyoung/handlers/commands.py`
+> 경로: `seosoyoung/slackbot/handlers/commands.py`
 
 ## 개요
 

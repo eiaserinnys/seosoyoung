@@ -1,6 +1,6 @@
 # memory/channel_observer.py
 
-> 경로: `seosoyoung/memory/channel_observer.py`
+> 경로: `seosoyoung/slackbot/memory/channel_observer.py`
 
 ## 개요
 

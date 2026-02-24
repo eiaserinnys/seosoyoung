@@ -1,6 +1,6 @@
 # translator/detector.py
 
-> 경로: `seosoyoung/translator/detector.py`
+> 경로: `seosoyoung/slackbot/translator/detector.py`
 
 ## 개요
 

@@ -1,6 +1,6 @@
 # memory/channel_prompts.py
 
-> 경로: `seosoyoung/memory/channel_prompts.py`
+> 경로: `seosoyoung/slackbot/memory/channel_prompts.py`
 
 ## 개요
 

@@ -1,6 +1,6 @@
 # claude/session.py
 
-> 경로: `seosoyoung/claude/session.py`
+> 경로: `seosoyoung/slackbot/claude/session.py`
 
 ## 개요
 

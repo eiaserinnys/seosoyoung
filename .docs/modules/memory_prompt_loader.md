@@ -1,6 +1,6 @@
 # memory/prompt_loader.py
 
-> 경로: `seosoyoung/memory/prompt_loader.py`
+> 경로: `seosoyoung/slackbot/memory/prompt_loader.py`
 
 ## 개요
 

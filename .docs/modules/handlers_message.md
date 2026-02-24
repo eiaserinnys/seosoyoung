@@ -1,6 +1,6 @@
 # handlers/message.py
 
-> 경로: `seosoyoung/handlers/message.py`
+> 경로: `seosoyoung/slackbot/handlers/message.py`
 
 ## 개요
 

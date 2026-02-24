@@ -1,6 +1,6 @@
 # claude/diagnostics.py
 
-> 경로: `seosoyoung/claude/diagnostics.py`
+> 경로: `seosoyoung/slackbot/claude/diagnostics.py`
 
 ## 개요
 

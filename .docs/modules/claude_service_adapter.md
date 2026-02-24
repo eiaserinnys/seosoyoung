@@ -1,6 +1,6 @@
 # claude/service_adapter.py
 
-> 경로: `seosoyoung/claude/service_adapter.py`
+> 경로: `seosoyoung/slackbot/claude/service_adapter.py`
 
 ## 개요
 

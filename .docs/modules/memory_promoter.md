@@ -1,6 +1,6 @@
 # memory/promoter.py
 
-> 경로: `seosoyoung/memory/promoter.py`
+> 경로: `seosoyoung/slackbot/memory/promoter.py`
 
 ## 개요
 

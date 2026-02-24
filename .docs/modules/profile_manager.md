@@ -1,6 +1,6 @@
 # profile/manager.py
 
-> 경로: `seosoyoung/profile/manager.py`
+> 경로: `seosoyoung/slackbot/profile/manager.py`
 
 ## 개요
 

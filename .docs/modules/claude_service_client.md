@@ -1,6 +1,6 @@
 # claude/service_client.py
 
-> 경로: `seosoyoung/claude/service_client.py`
+> 경로: `seosoyoung/slackbot/claude/service_client.py`
 
 ## 개요
 

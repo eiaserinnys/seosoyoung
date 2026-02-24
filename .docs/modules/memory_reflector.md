@@ -1,6 +1,6 @@
 # memory/reflector.py
 
-> 경로: `seosoyoung/memory/reflector.py`
+> 경로: `seosoyoung/slackbot/memory/reflector.py`
 
 ## 개요
 

@@ -1,6 +1,6 @@
 # trello/watcher.py
 
-> 경로: `seosoyoung/trello/watcher.py`
+> 경로: `seosoyoung/slackbot/trello/watcher.py`
 
 ## 개요
 

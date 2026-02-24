@@ -1,6 +1,6 @@
 # claude/message_formatter.py
 
-> 경로: `seosoyoung/claude/message_formatter.py`
+> 경로: `seosoyoung/slackbot/claude/message_formatter.py`
 
 ## 개요
 

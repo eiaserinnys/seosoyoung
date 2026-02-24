@@ -1,6 +1,6 @@
 # claude/executor.py
 
-> 경로: `seosoyoung/claude/executor.py`
+> 경로: `seosoyoung/slackbot/claude/executor.py`
 
 ## 개요
 

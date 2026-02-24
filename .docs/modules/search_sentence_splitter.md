@@ -1,6 +1,6 @@
 # search/sentence_splitter.py
 
-> 경로: `seosoyoung/search/sentence_splitter.py`
+> 경로: `seosoyoung/slackbot/search/sentence_splitter.py`
 
 ## 개요
 

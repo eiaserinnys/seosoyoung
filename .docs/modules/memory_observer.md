@@ -1,6 +1,6 @@
 # memory/observer.py
 
-> 경로: `seosoyoung/memory/observer.py`
+> 경로: `seosoyoung/slackbot/memory/observer.py`
 
 ## 개요
 

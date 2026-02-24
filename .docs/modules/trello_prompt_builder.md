@@ -1,6 +1,6 @@
 # trello/prompt_builder.py
 
-> 경로: `seosoyoung/trello/prompt_builder.py`
+> 경로: `seosoyoung/slackbot/trello/prompt_builder.py`
 
 ## 개요
 

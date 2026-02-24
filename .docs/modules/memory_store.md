@@ -1,6 +1,6 @@
 # memory/store.py
 
-> 경로: `seosoyoung/memory/store.py`
+> 경로: `seosoyoung/slackbot/memory/store.py`
 
 ## 개요
 

@@ -1,6 +1,6 @@
 # memory/context_builder.py
 
-> 경로: `seosoyoung/memory/context_builder.py`
+> 경로: `seosoyoung/slackbot/memory/context_builder.py`
 
 ## 개요
 

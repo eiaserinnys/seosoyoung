@@ -268,7 +268,8 @@ def init_bot_user_id():
         logger.error(f"봇 ID 조회 실패: {e}")
 
 
-if __name__ == "__main__":
+def main():
+    """봇 메인 진입점"""
     logger.info("SeoSoyoung 봇을 시작합니다...")
     logger.info(f"LOG_PATH: {Config.get_log_path()}")
     logger.info(f"ADMIN_USERS: {Config.auth.admin_users}")
@@ -276,7 +277,7 @@ if __name__ == "__main__":
     logger.info(f"DEBUG: {Config.debug}")
 
     # Shutdown 서버 시작 (supervisor graceful shutdown용)
-    from seosoyoung.shutdown import start_shutdown_server
+    from seosoyoung.slackbot.shutdown import start_shutdown_server
 
     _SHUTDOWN_PORT = int(os.environ.get("SHUTDOWN_PORT", "3106"))
 
@@ -301,3 +302,7 @@ if __name__ == "__main__":
         _channel_scheduler.start()
     handler = SocketModeHandler(app, Config.slack.app_token)
     handler.start()
+
+
+if __name__ == "__main__":
+    main()

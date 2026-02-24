@@ -1,6 +1,6 @@
 # memory/channel_scheduler.py
 
-> 경로: `seosoyoung/memory/channel_scheduler.py`
+> 경로: `seosoyoung/slackbot/memory/channel_scheduler.py`
 
 ## 개요
 

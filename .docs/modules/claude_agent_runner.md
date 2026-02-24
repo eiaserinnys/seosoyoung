@@ -1,6 +1,6 @@
 # claude/agent_runner.py
 
-> 경로: `seosoyoung/claude/agent_runner.py`
+> 경로: `seosoyoung/slackbot/claude/agent_runner.py`
 
 ## 개요
 

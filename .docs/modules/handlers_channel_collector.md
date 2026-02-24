@@ -1,6 +1,6 @@
 # handlers/channel_collector.py
 
-> 경로: `seosoyoung/handlers/channel_collector.py`
+> 경로: `seosoyoung/slackbot/handlers/channel_collector.py`
 
 ## 개요
 

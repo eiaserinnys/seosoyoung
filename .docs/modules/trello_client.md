@@ -1,6 +1,6 @@
 # trello/client.py
 
-> 경로: `seosoyoung/trello/client.py`
+> 경로: `seosoyoung/slackbot/trello/client.py`
 
 ## 개요
 

@@ -1,6 +1,6 @@
 # slack/formatting.py
 
-> 경로: `seosoyoung/slack/formatting.py`
+> 경로: `seosoyoung/slackbot/slack/formatting.py`
 
 ## 개요
 

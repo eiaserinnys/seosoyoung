@@ -1,6 +1,6 @@
 # web/fetcher.py
 
-> 경로: `seosoyoung/web/fetcher.py`
+> 경로: `seosoyoung/slackbot/web/fetcher.py`
 
 ## 개요
 

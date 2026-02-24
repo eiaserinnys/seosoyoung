@@ -1,6 +1,6 @@
 # memory/observation_pipeline.py
 
-> 경로: `seosoyoung/memory/observation_pipeline.py`
+> 경로: `seosoyoung/slackbot/memory/observation_pipeline.py`
 
 ## 개요
 

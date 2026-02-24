@@ -1,6 +1,6 @@
 # trello/list_runner.py
 
-> 경로: `seosoyoung/trello/list_runner.py`
+> 경로: `seosoyoung/slackbot/trello/list_runner.py`
 
 ## 개요
 

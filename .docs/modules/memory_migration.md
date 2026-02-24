@@ -1,6 +1,6 @@
 # memory/migration.py
 
-> 경로: `seosoyoung/memory/migration.py`
+> 경로: `seosoyoung/slackbot/memory/migration.py`
 
 ## 개요
 

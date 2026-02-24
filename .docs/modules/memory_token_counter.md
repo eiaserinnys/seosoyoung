@@ -1,6 +1,6 @@
 # memory/token_counter.py
 
-> 경로: `seosoyoung/memory/token_counter.py`
+> 경로: `seosoyoung/slackbot/memory/token_counter.py`
 
 ## 개요
 

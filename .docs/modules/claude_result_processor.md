@@ -1,6 +1,6 @@
 # claude/result_processor.py
 
-> 경로: `seosoyoung/claude/result_processor.py`
+> 경로: `seosoyoung/slackbot/claude/result_processor.py`
 
 ## 개요
 
