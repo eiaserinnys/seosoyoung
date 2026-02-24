@@ -84,7 +84,7 @@ class TestClaudeAgentRunnerUnit:
     def test_build_options_basic(self):
         """기본 옵션 생성 테스트"""
         runner = ClaudeAgentRunner()
-        options, memory_prompt, anchor_ts = runner._build_options()
+        options, memory_prompt, anchor_ts, _ = runner._build_options()
 
         assert options.allowed_tools == Config.auth.role_tools["admin"]
         assert options.disallowed_tools == DEFAULT_DISALLOWED_TOOLS
@@ -96,7 +96,7 @@ class TestClaudeAgentRunnerUnit:
     def test_build_options_with_session(self):
         """세션 ID가 있을 때 resume 옵션 추가"""
         runner = ClaudeAgentRunner()
-        options, _, _ = runner._build_options(session_id="abc-123")
+        options, _, _, _ = runner._build_options(session_id="abc-123")
 
         assert options.resume == "abc-123"
 
@@ -106,7 +106,7 @@ class TestClaudeAgentRunnerUnit:
             allowed_tools=["Read", "Glob"],
             disallowed_tools=["Bash"]
         )
-        options, _, _ = runner._build_options()
+        options, _, _, _ = runner._build_options()
 
         assert options.allowed_tools == ["Read", "Glob"]
         assert options.disallowed_tools == ["Bash"]
@@ -119,7 +119,7 @@ class TestClaudeAgentRunnerUnit:
         assert runner.mcp_config_path == mcp_path
 
         # _build_options는 mcp_servers를 직접 설정하지 않음 (pm2 외부 관리)
-        options, _, _ = runner._build_options()
+        options, _, _, _ = runner._build_options()
         assert isinstance(options.mcp_servers, dict)
 
 
@@ -279,7 +279,7 @@ class TestClaudeAgentRunnerCompact:
         """compact_events 전달 시 PreCompact 훅이 등록되는지 확인"""
         runner = ClaudeAgentRunner()
         compact_events = []
-        options, _, _ = runner._build_options(compact_events=compact_events)
+        options, _, _, _ = runner._build_options(compact_events=compact_events)
 
         assert options.hooks is not None
         assert "PreCompact" in options.hooks
@@ -289,7 +289,7 @@ class TestClaudeAgentRunnerCompact:
     async def test_build_options_without_compact_events(self):
         """compact_events 미전달 시 hooks가 None인지 확인"""
         runner = ClaudeAgentRunner()
-        options, _, _ = runner._build_options()
+        options, _, _, _ = runner._build_options()
 
         assert options.hooks is None
 
@@ -310,13 +310,13 @@ class TestClaudeAgentRunnerCompact:
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+            options, memory_prompt, anchor, stderr_f = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: auto)",
                 })
-            return options, memory_prompt, anchor
+            return options, memory_prompt, anchor, stderr_f
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
@@ -348,7 +348,7 @@ class TestClaudeAgentRunnerCompact:
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+            options, memory_prompt, anchor, stderr_f = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -358,7 +358,7 @@ class TestClaudeAgentRunnerCompact:
                     "trigger": "manual",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: manual)",
                 })
-            return options, memory_prompt, anchor
+            return options, memory_prompt, anchor, stderr_f
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -384,13 +384,13 @@ class TestClaudeAgentRunnerCompact:
         original_build = runner._build_options
 
         def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+            options, memory_prompt, anchor, stderr_f = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컴팩트 실행됨",
                 })
-            return options, memory_prompt, anchor
+            return options, memory_prompt, anchor, stderr_f
 
         with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -621,7 +621,7 @@ class TestBuildOptionsChannelObservation:
                     channel_digest_tokens=50,
                     channel_buffer_tokens=0,
                 )
-                _, memory_prompt, _ = runner._build_options()
+                _, memory_prompt, _, _ = runner._build_options()
 
                 # build_memory_prompt에 include_channel_observation=True가 전달되었는지 확인
                 call_kwargs = mock_build.call_args.kwargs
@@ -695,7 +695,7 @@ class TestBuildOptionsAnchorTs:
     def test_anchor_ts_empty_without_om(self):
         """OM 미활성 시 anchor_ts가 빈 문자열"""
         runner = ClaudeAgentRunner()
-        _, _, anchor_ts = runner._build_options()
+        _, _, anchor_ts, _ = runner._build_options()
         assert anchor_ts == ""
 
     def test_anchor_ts_created_for_new_session(self, tmp_path):
@@ -727,7 +727,7 @@ class TestBuildOptionsAnchorTs:
                     channel_buffer_tokens=0,
                 )
                 with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="anchor_ts_123") as mock_send:
-                    _, _, anchor_ts = runner._build_options(
+                    _, _, anchor_ts, _ = runner._build_options(
                         prompt="테스트 프롬프트입니다",
                     )
 
@@ -774,7 +774,7 @@ class TestBuildOptionsAnchorTs:
                     channel_buffer_tokens=0,
                 )
                 with patch("seosoyoung.memory.observation_pipeline._send_debug_log") as mock_send:
-                    _, _, anchor_ts = runner._build_options(
+                    _, _, anchor_ts, _ = runner._build_options(
                         session_id="existing-session",
                         prompt="테스트",
                     )
@@ -811,7 +811,7 @@ class TestBuildOptionsAnchorTs:
                     channel_digest_tokens=0,
                     channel_buffer_tokens=0,
                 )
-                _, _, anchor_ts = runner._build_options(
+                _, _, anchor_ts, _ = runner._build_options(
                     session_id="existing-session",
                     prompt="테스트",
                 )
@@ -850,7 +850,7 @@ class TestBuildOptionsAnchorTs:
                     channel_buffer_tokens=0,
                 )
                 with patch("seosoyoung.memory.observation_pipeline._send_debug_log", return_value="new_anchor_456"):
-                    _, _, anchor_ts = runner._build_options(
+                    _, _, anchor_ts, _ = runner._build_options(
                         prompt="새 세션 테스트",
                     )
 
