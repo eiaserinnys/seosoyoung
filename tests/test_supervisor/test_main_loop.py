@@ -21,7 +21,7 @@ def _make_bot_config() -> ProcessConfig:
     return ProcessConfig(
         name="bot",
         command="python",
-        args=["-m", "seosoyoung.slackbot.main"],
+        args=["-m", "seosoyoung.slackbot"],
         restart_policy=RestartPolicy(use_exit_codes=True, auto_restart=True),
     )
 

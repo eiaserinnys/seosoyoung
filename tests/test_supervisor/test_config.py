@@ -121,7 +121,7 @@ class TestBuildProcessConfigs:
         configs = self._build()
         bot = next(c for c in configs if c.name == "bot")
         assert "-m" in bot.args
-        assert "seosoyoung.slackbot.main" in bot.args
+        assert "seosoyoung.slackbot" in bot.args
         assert bot.restart_policy.use_exit_codes is True
         assert bot.env.get("PYTHONUTF8") == "1"
         assert bot.log_dir is not None
