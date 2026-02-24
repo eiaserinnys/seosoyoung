@@ -1756,5 +1756,285 @@ class TestBuildSessionDumpThreadTs:
             mock_read.assert_called_once_with(20, thread_ts=None)
 
 
+@pytest.mark.asyncio
+class TestAutocompactRetry:
+    """autocompact가 세션을 조기 종료하는 버그 수정 테스트
+
+    Bug: autocompact가 현재 턴의 ResultMessage를 발생시키면
+    receive_response()가 즉시 return되어 compact 후의 응답을 수신하지 못함.
+    Fix: receive_response() 완료 후 compact 이벤트가 감지되면 재호출하여
+    post-compact 응답을 수신.
+    """
+
+    async def test_retry_after_autocompact(self):
+        """autocompact 발생 시 receive_response()를 재호출하여 post-compact 응답 수신"""
+        runner = ClaudeAgentRunner()
+
+        # compact_events 리스트를 캡처하기 위해 _build_options를 가로채서
+        # compact_events 참조를 저장
+        captured_compact_events = [None]
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor, stderr_file = original_build(
+                session_id=session_id, compact_events=compact_events,
+                user_id=user_id, prompt=prompt,
+            )
+            if compact_events is not None:
+                captured_compact_events[0] = compact_events
+            return options, memory_prompt, anchor, stderr_file
+
+        # 첫 번째 receive_response(): compact 발생 중 ResultMessage로 종료
+        # 두 번째 receive_response(): compact 후 최종 응답
+        call_count = [0]
+
+        async def mock_receive_first():
+            """첫 번째: SystemMessage → (compact 훅이 이벤트 추가) → ResultMessage"""
+            yield MockSystemMessage(session_id="compact-retry-test")
+            # compact 이벤트를 수신 도중에 주입 (PreCompact 훅 시뮬레이션)
+            if captured_compact_events[0] is not None:
+                captured_compact_events[0].append({
+                    "trigger": "auto",
+                    "message": "컨텍스트 컴팩트 실행됨 (트리거: auto)",
+                })
+            yield MockResultMessage(result="", session_id="compact-retry-test")
+
+        async def mock_receive_second():
+            """두 번째: compact 후 최종 응답"""
+            yield MockAssistantMessage(content=[MockTextBlock(text="compact 후 응답")])
+            yield MockResultMessage(result="compact 후 최종 응답입니다.", session_id="compact-retry-test")
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        def make_receive():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_receive_first()
+            return mock_receive_second()
+
+        mock_client.receive_response = make_receive
+
+        compact_calls = []
+
+        async def on_compact(trigger: str, message: str):
+            compact_calls.append({"trigger": trigger, "message": message})
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.claude.agent_runner.TextBlock", MockTextBlock):
+                            with patch.object(runner, "_build_options", patched_build):
+                                result = await runner.run(
+                                    "테스트", on_compact=on_compact
+                                )
+
+        # compact 후 최종 응답을 수신해야 함
+        assert result.success is True
+        assert "compact 후 최종 응답" in result.output
+        assert call_count[0] == 2  # receive_response()가 2번 호출됨
+        assert len(compact_calls) == 1
+
+    async def test_compact_callback_on_stop_async_iteration(self):
+        """StopAsyncIteration 발생 시에도 compact_events가 확인되고 콜백이 호출되어야 함"""
+        runner = ClaudeAgentRunner()
+
+        # compact_events 참조 캡처
+        captured_compact_events = [None]
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor, stderr_file = original_build(
+                session_id=session_id, compact_events=compact_events,
+                user_id=user_id, prompt=prompt,
+            )
+            if compact_events is not None:
+                captured_compact_events[0] = compact_events
+            return options, memory_prompt, anchor, stderr_file
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        call_count = [0]
+
+        async def mock_receive_empty():
+            """빈 응답에 compact 이벤트 주입 후 즉시 종료"""
+            # compact 이벤트를 주입 (PreCompact 훅 시뮬레이션)
+            if captured_compact_events[0] is not None:
+                captured_compact_events[0].append({
+                    "trigger": "auto",
+                    "message": "컴팩트됨",
+                })
+            return
+            yield  # make it a generator  # noqa: E117 (unreachable)
+
+        async def mock_receive_final():
+            """compact 후 최종 응답"""
+            yield MockResultMessage(result="compact 후 응답", session_id="test-123")
+
+        def make_receive():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_receive_empty()
+            return mock_receive_final()
+
+        mock_client.receive_response = make_receive
+
+        compact_calls = []
+
+        async def on_compact(trigger: str, message: str):
+            compact_calls.append({"trigger": trigger, "message": message})
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                with patch.object(runner, "_build_options", patched_build):
+                    result = await runner.run("테스트", on_compact=on_compact)
+
+        # compact 콜백이 호출되어야 함
+        assert len(compact_calls) == 1
+        # compact 후 재시도로 최종 응답을 받아야 함
+        assert result.success is True
+        assert "compact 후 응답" in result.output
+
+    async def test_max_compact_retries_prevents_infinite_loop(self):
+        """compact가 무한 반복되지 않도록 최대 재시도 횟수 제한"""
+        runner = ClaudeAgentRunner()
+
+        # compact_events 참조 캡처
+        captured_compact_events = [None]
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor, stderr_file = original_build(
+                session_id=session_id, compact_events=compact_events,
+                user_id=user_id, prompt=prompt,
+            )
+            if compact_events is not None:
+                captured_compact_events[0] = compact_events
+            return options, memory_prompt, anchor, stderr_file
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        call_count = [0]
+
+        async def mock_receive_with_compact():
+            """매 호출마다 compact 이벤트를 추가하고 빈 응답 반환"""
+            if captured_compact_events[0] is not None:
+                captured_compact_events[0].append({
+                    "trigger": "auto",
+                    "message": f"컴팩트 #{call_count[0]}",
+                })
+            return
+            yield  # noqa: E117
+
+        def make_receive():
+            call_count[0] += 1
+            return mock_receive_with_compact()
+
+        mock_client.receive_response = make_receive
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch.object(runner, "_build_options", patched_build):
+                result = await runner.run("테스트")
+
+        # 최대 재시도 횟수(MAX_COMPACT_RETRIES=3) 이내에서 종료해야 함
+        # 초기 1회 + 재시도 최대 3회 = 최대 4회
+        assert call_count[0] <= 4
+        assert result.success is True
+
+    async def test_no_retry_when_no_compact_events(self):
+        """compact 이벤트 없이 정상 종료 시 재시도하지 않음"""
+        runner = ClaudeAgentRunner()
+
+        call_count = [0]
+
+        async def mock_receive():
+            yield MockSystemMessage(session_id="no-compact-test")
+            yield MockResultMessage(result="정상 완료", session_id="no-compact-test")
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        def make_receive():
+            call_count[0] += 1
+            return mock_receive()
+
+        mock_client.receive_response = make_receive
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                    result = await runner.run("테스트")
+
+        assert result.success is True
+        assert "정상 완료" in result.output
+        assert call_count[0] == 1  # 재시도 없이 1번만 호출
+
+    async def test_result_text_reset_after_compact(self):
+        """compact 후 재시도 시 result_text가 초기화되어야 함"""
+        runner = ClaudeAgentRunner()
+
+        # compact_events 참조 캡처
+        captured_compact_events = [None]
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor, stderr_file = original_build(
+                session_id=session_id, compact_events=compact_events,
+                user_id=user_id, prompt=prompt,
+            )
+            if compact_events is not None:
+                captured_compact_events[0] = compact_events
+            return options, memory_prompt, anchor, stderr_file
+
+        call_count = [0]
+
+        async def mock_receive_pre_compact():
+            yield MockSystemMessage(session_id="reset-test")
+            # compact 이벤트 주입 (PreCompact 훅 시뮬레이션)
+            if captured_compact_events[0] is not None:
+                captured_compact_events[0].append({
+                    "trigger": "auto",
+                    "message": "컴팩트 실행됨",
+                })
+            yield MockResultMessage(result="compact 전 불완전한 텍스트", session_id="reset-test")
+
+        async def mock_receive_post_compact():
+            yield MockResultMessage(result="compact 후 완성된 응답", session_id="reset-test")
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        def make_receive():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return mock_receive_pre_compact()
+            return mock_receive_post_compact()
+
+        mock_client.receive_response = make_receive
+
+        with patch("seosoyoung.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch.object(runner, "_build_options", patched_build):
+                        result = await runner.run("테스트")
+
+        # compact 전 텍스트가 아닌 compact 후 텍스트가 최종 결과여야 함
+        assert "compact 후 완성된 응답" in result.output
+        assert "compact 전 불완전한 텍스트" not in result.output
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
