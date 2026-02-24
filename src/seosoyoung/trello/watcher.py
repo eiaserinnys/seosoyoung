@@ -671,19 +671,45 @@ class TrelloWatcher:
         claude_thread = threading.Thread(target=run_claude, daemon=True)
         claude_thread.start()
 
+    def _get_operational_list_ids(self) -> set[str]:
+        """운영 리스트 ID 집합 반환 (정주행 대상에서 제외할 리스트)"""
+        ids = set()
+        # watch_lists (To Go 등)
+        for list_id in self.watch_lists.values():
+            if list_id:
+                ids.add(list_id)
+        # 기타 운영 리스트
+        for list_id in (
+            Config.trello.in_progress_list_id,
+            Config.trello.review_list_id,
+            Config.trello.done_list_id,
+            Config.trello.backlog_list_id,
+            Config.trello.blocked_list_id,
+            Config.trello.draft_list_id,
+        ):
+            if list_id:
+                ids.add(list_id)
+        return ids
+
     def _check_run_list_labels(self):
         """🏃 Run List 레이블을 가진 카드 감지 및 리스트 정주행 시작
 
-        모든 리스트의 첫 번째 카드에서 🏃 Run List 레이블을 확인합니다.
+        운영 리스트(To Go, In Progress, Review, Done 등)를 제외한
+        리스트의 첫 번째 카드에서 🏃 Run List 레이블을 확인합니다.
         레이블이 발견되면:
-        1. 해당 리스트의 정주행을 시작
-        2. 첫 카드에서 레이블 제거
+        1. 첫 카드에서 레이블 제거 (실패 시 정주행 시작 안 함)
+        2. 해당 리스트의 정주행을 시작
         """
         lists = self.trello.get_lists()
+        operational_ids = self._get_operational_list_ids()
 
         for lst in lists:
             list_id = lst["id"]
             list_name = lst["name"]
+
+            # 운영 리스트는 정주행 대상에서 제외
+            if list_id in operational_ids:
+                continue
 
             # 리스트의 모든 카드 조회
             cards = self.trello.get_cards_in_list(list_id)
@@ -698,13 +724,33 @@ class TrelloWatcher:
             # 🏃 Run List 레이블 발견!
             logger.info(f"🏃 Run List 레이블 감지: {list_name} - {first_card.name}")
 
-            # 레이블 제거
+            # 레이블 제거 (실패 시 정주행 시작하지 않음)
             label_id = self._get_run_list_label_id(first_card)
             if label_id:
                 if self.trello.remove_label_from_card(first_card.id, label_id):
                     logger.info(f"🏃 Run List 레이블 제거: {first_card.name}")
                 else:
-                    logger.warning(f"🏃 Run List 레이블 제거 실패: {first_card.name}")
+                    logger.warning(
+                        f"🏃 Run List 레이블 제거 실패, 정주행 스킵: {first_card.name} "
+                        f"(다음 폴링에서 재시도)"
+                    )
+                    continue
+            else:
+                logger.warning(f"🏃 Run List 레이블 ID를 찾을 수 없음: {first_card.name}")
+                continue
+
+            # 활성 정주행 세션 가드: 동일 리스트에 이미 활성 세션이 있으면 스킵
+            list_runner = self.list_runner_ref() if self.list_runner_ref else None
+            if list_runner:
+                active_sessions = list_runner.get_active_sessions()
+                already_running = any(
+                    s.list_id == list_id for s in active_sessions
+                )
+                if already_running:
+                    logger.warning(
+                        f"이미 활성 정주행 세션이 있어 스킵: {list_name}"
+                    )
+                    continue
 
             # 리스트 정주행 시작
             self._start_list_run(list_id, list_name, cards)
@@ -890,7 +936,7 @@ class TrelloWatcher:
         else:
             dm_channel_id, dm_thread_ts = self._open_dm_thread(card.name, card.url)
 
-        # TrackedCard 유사 객체 생성 (정주행용)
+        # TrackedCard 생성 및 _tracked 등록 (To Go 감지와 중복 방지)
         tracked = TrackedCard(
             card_id=card.id,
             card_name=card.name,
@@ -902,10 +948,13 @@ class TrelloWatcher:
             detected_at=datetime.now().isoformat(),
             has_execute=True,
         )
+        self._tracked[card.id] = tracked
+        self._save_tracked()
 
         def on_success():
             list_runner.mark_card_processed(session_id, card.id, "completed")
             self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
+            self._untrack_card(card.id)
             self._preemptive_compact(thread_ts, channel, card.name)
             # 다음 카드 처리 (별도 스레드로)
             next_thread = threading.Thread(
@@ -919,6 +968,7 @@ class TrelloWatcher:
             list_runner.mark_card_processed(session_id, card.id, "failed")
             list_runner.pause_run(session_id, str(e))
             self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
+            self._untrack_card(card.id)
             self.slack_client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,

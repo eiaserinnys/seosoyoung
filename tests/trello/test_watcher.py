@@ -770,5 +770,339 @@ class TestPreemptiveCompact:
             )
 
 
+class TestCheckRunListLabelsFiltering:
+    """_check_run_list_labels 운영 리스트 필터링 및 가드 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_operational_lists_excluded(self, mock_config, mock_trello_client):
+        """운영 리스트(In Progress, Review, Done 등)는 정주행 대상에서 제외"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.trello.notify_channel = "C12345"
+        mock_config.trello.watch_lists = {"to_go": "list_togo"}
+        mock_config.trello.review_list_id = "list_review"
+        mock_config.trello.done_list_id = "list_done"
+        mock_config.trello.in_progress_list_id = "list_inprogress"
+        mock_config.trello.backlog_list_id = "list_backlog"
+        mock_config.trello.blocked_list_id = "list_blocked"
+        mock_config.trello.draft_list_id = "list_draft"
+        mock_config.trello.polling_debug = False
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        # 운영 리스트에 Run List 레이블이 있는 카드를 배치
+        run_list_label = {"id": "label_run", "name": "🏃 Run List"}
+        card_in_progress = TrelloCard(
+            id="card_ip", name="Card In Progress", desc="",
+            url="", list_id="list_inprogress",
+            labels=[run_list_label],
+        )
+
+        mock_trello.get_lists.return_value = [
+            {"id": "list_inprogress", "name": "🔨 In Progress"},
+            {"id": "list_review", "name": "👀 Review"},
+            {"id": "list_togo", "name": "🚀 To Go"},
+            {"id": "list_plan", "name": "📌 PLAN: Test"},
+        ]
+        mock_trello.get_cards_in_list.return_value = [card_in_progress]
+        mock_trello.remove_label_from_card.return_value = True
+
+        watcher._check_run_list_labels()
+
+        # 운영 리스트가 아닌 list_plan만 카드 조회 대상이어야 함
+        # get_cards_in_list는 list_plan에 대해서만 호출되어야 함
+        call_args = [c[0][0] for c in mock_trello.get_cards_in_list.call_args_list]
+        assert "list_inprogress" not in call_args
+        assert "list_review" not in call_args
+        assert "list_togo" not in call_args
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_label_removal_failure_skips_list_run(self, mock_config, mock_trello_client):
+        """레이블 제거 실패 시 정주행을 시작하지 않아야 함"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = None
+        mock_config.TRELLO_BACKLOG_LIST_ID = None
+        mock_config.TRELLO_BLOCKED_LIST_ID = None
+        mock_config.TRELLO_DRAFT_LIST_ID = None
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+            list_runner_ref=MagicMock(return_value=MagicMock()),
+        )
+
+        run_list_label = {"id": "label_run", "name": "🏃 Run List"}
+        card = TrelloCard(
+            id="card_plan", name="Plan Card", desc="",
+            url="", list_id="list_plan",
+            labels=[run_list_label],
+        )
+
+        mock_trello.get_lists.return_value = [
+            {"id": "list_plan", "name": "📌 PLAN: Test"},
+        ]
+        mock_trello.get_cards_in_list.return_value = [card]
+        # 레이블 제거 실패
+        mock_trello.remove_label_from_card.return_value = False
+
+        with patch.object(watcher, "_start_list_run") as mock_start:
+            watcher._check_run_list_labels()
+            # _start_list_run이 호출되지 않아야 함
+            mock_start.assert_not_called()
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_active_session_guard_prevents_duplicate(self, mock_config, mock_trello_client):
+        """동일 리스트에 활성 세션이 있으면 정주행 시작 안 함"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = None
+        mock_config.TRELLO_BACKLOG_LIST_ID = None
+        mock_config.TRELLO_BLOCKED_LIST_ID = None
+        mock_config.TRELLO_DRAFT_LIST_ID = None
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+
+        # list_runner에 활성 세션이 있는 상태
+        mock_list_runner = MagicMock()
+        active_session = MagicMock()
+        active_session.list_id = "list_plan"
+        mock_list_runner.get_active_sessions.return_value = [active_session]
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+            list_runner_ref=lambda: mock_list_runner,
+        )
+
+        run_list_label = {"id": "label_run", "name": "🏃 Run List"}
+        card = TrelloCard(
+            id="card_plan", name="Plan Card", desc="",
+            url="", list_id="list_plan",
+            labels=[run_list_label],
+        )
+
+        mock_trello.get_lists.return_value = [
+            {"id": "list_plan", "name": "📌 PLAN: Test"},
+        ]
+        mock_trello.get_cards_in_list.return_value = [card]
+        mock_trello.remove_label_from_card.return_value = True
+
+        with patch.object(watcher, "_start_list_run") as mock_start:
+            watcher._check_run_list_labels()
+            mock_start.assert_not_called()
+
+
+class TestProcessListRunCardTracked:
+    """_process_list_run_card가 _tracked에 등록하는지 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_list_run_card_registered_in_tracked(self, mock_config, mock_trello_client):
+        """정주행 카드가 _tracked에 등록되어 To Go 감지와 중복 방지"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = None
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+        from seosoyoung.trello.client import TrelloCard
+        from seosoyoung.trello.list_runner import ListRunner, SessionStatus
+
+        mock_slack = MagicMock()
+        mock_slack.chat_postMessage.return_value = {"ts": "1234567890.123456"}
+
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+
+            watcher = TrelloWatcher(
+                slack_client=mock_slack,
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+            )
+
+            # 세션 생성
+            session = list_runner.create_session(
+                list_id="list_123",
+                list_name="Plan List",
+                card_ids=["card_a"],
+            )
+            list_runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            card = TrelloCard(
+                id="card_a", name="Test Card", desc="",
+                url="https://trello.com/c/abc", list_id="list_123",
+                labels=[],
+            )
+            mock_trello.get_card.return_value = card
+
+            # _process_list_run_card 호출 전 _tracked 확인
+            assert "card_a" not in watcher._tracked
+
+            # 세션 락 없이 실행
+            watcher.get_session_lock = None
+            watcher._process_list_run_card(session.session_id, "1234567890.123456")
+
+            # 정주행 카드가 _tracked에 등록되어야 함
+            assert "card_a" in watcher._tracked
+            assert watcher._tracked["card_a"].list_key == "list_run"
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_list_run_first_card_not_redetected_by_poll(self, mock_config, mock_trello_client):
+        """정주행 첫 카드가 _tracked에 있으면 _poll에서 재감지되지 않음"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {"to_go": "list_togo"}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = None
+        mock_config.TRELLO_BACKLOG_LIST_ID = None
+        mock_config.TRELLO_BLOCKED_LIST_ID = None
+        mock_config.TRELLO_DRAFT_LIST_ID = None
+        mock_config.TRELLO_POLLING_DEBUG = False
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+        mock_trello.get_lists.return_value = []
+
+        from seosoyoung.trello.watcher import TrelloWatcher, TrackedCard
+        from seosoyoung.trello.client import TrelloCard
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        # 정주행으로 이미 _tracked에 등록된 카드
+        tracked = TrackedCard(
+            card_id="card_run_1",
+            card_name="Run Card",
+            card_url="https://trello.com/c/run1",
+            list_id="list_plan",
+            list_key="list_run",
+            thread_ts="thread_123",
+            channel_id="C12345",
+            detected_at=datetime.now().isoformat(),
+            has_execute=True,
+        )
+        watcher._tracked["card_run_1"] = tracked
+
+        # 같은 카드가 To Go에도 나타남 (이론적으로 불가능하지만 방어적으로 테스트)
+        card = TrelloCard(
+            id="card_run_1", name="Run Card", desc="",
+            url="https://trello.com/c/run1", list_id="list_togo",
+            labels=[],
+        )
+        mock_trello.get_cards_in_list.return_value = [card]
+
+        with patch.object(watcher, "_handle_new_card") as mock_handle:
+            watcher._poll()
+            # _tracked에 이미 있으므로 _handle_new_card가 호출되지 않아야 함
+            mock_handle.assert_not_called()
+
+
+class TestGetOperationalListIds:
+    """_get_operational_list_ids 테스트"""
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_collects_all_operational_ids(self, mock_config, mock_trello_client):
+        """모든 운영 리스트 ID가 수집됨"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.trello.notify_channel = "C12345"
+        mock_config.trello.watch_lists = {"to_go": "list_togo"}
+        mock_config.trello.review_list_id = "list_review"
+        mock_config.trello.done_list_id = "list_done"
+        mock_config.trello.in_progress_list_id = "list_ip"
+        mock_config.trello.backlog_list_id = "list_bl"
+        mock_config.trello.blocked_list_id = "list_blocked"
+        mock_config.trello.draft_list_id = "list_draft"
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        ids = watcher._get_operational_list_ids()
+        assert "list_togo" in ids
+        assert "list_review" in ids
+        assert "list_done" in ids
+        assert "list_ip" in ids
+        assert "list_bl" in ids
+        assert "list_blocked" in ids
+        assert "list_draft" in ids
+
+    @patch("seosoyoung.trello.watcher.TrelloClient")
+    @patch("seosoyoung.trello.watcher.Config")
+    def test_empty_ids_excluded(self, mock_config, mock_trello_client):
+        """빈 문자열 ID는 제외됨"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.trello.notify_channel = "C12345"
+        mock_config.trello.watch_lists = {"to_go": "list_togo"}
+        mock_config.trello.review_list_id = ""
+        mock_config.trello.done_list_id = None
+        mock_config.trello.in_progress_list_id = "list_ip"
+        mock_config.trello.backlog_list_id = ""
+        mock_config.trello.blocked_list_id = None
+        mock_config.trello.draft_list_id = ""
+
+        from seosoyoung.trello.watcher import TrelloWatcher
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        ids = watcher._get_operational_list_ids()
+        assert "" not in ids
+        assert None not in ids
+        assert "list_togo" in ids
+        assert "list_ip" in ids
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
