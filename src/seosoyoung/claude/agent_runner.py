@@ -334,8 +334,17 @@ class ClaudeRunner:
         compact_events: Optional[list] = None,
         user_id: Optional[str] = None,
         prompt: Optional[str] = None,
-    ) -> tuple[ClaudeCodeOptions, Optional[str], str]:
-        """ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts를 함께 반환합니다."""
+    ) -> tuple[ClaudeCodeOptions, Optional[str], str, Optional[object]]:
+        """ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts, stderr 파일을 반환합니다.
+
+        Returns:
+            (options, memory_prompt, anchor_ts, stderr_file)
+            - memory_prompt는 첫 번째 query에 프리픽스로 주입합니다.
+            - anchor_ts는 디버그 채널의 세션 스레드 앵커 메시지 ts입니다.
+            - stderr_file은 호출자가 닫아야 함 (sys.stderr이면 None)
+        """
+        thread_ts = self.thread_ts
+        channel = self.channel
         hooks = self._build_compact_hook(compact_events)
 
         # 슬랙 컨텍스트가 있으면 env에 주입 (MCP 서버용)
@@ -344,18 +353,24 @@ class ClaudeRunner:
             env["SLACK_CHANNEL"] = self.channel
             env["SLACK_THREAD_TS"] = self.thread_ts
 
-        # DEBUG: CLI stderr를 파일에 캡처
+        # CLI stderr를 세션별 파일에 캡처
         import sys as _sys
         _runtime_dir = Path(__file__).resolve().parents[3]
-        _stderr_log_path = _runtime_dir / "logs" / "cli_stderr.log"
+        _stderr_suffix = thread_ts.replace(".", "_") if thread_ts else "default"
+        _stderr_log_path = _runtime_dir / "logs" / f"cli_stderr_{_stderr_suffix}.log"
         logger.info(f"[DEBUG] CLI stderr 로그 경로: {_stderr_log_path}")
+        _stderr_file = None
+        _stderr_target = _sys.stderr
         try:
             _stderr_file = open(_stderr_log_path, "a", encoding="utf-8")
             _stderr_file.write(f"\n--- CLI stderr capture start: {datetime.now(timezone.utc).isoformat()} ---\n")
             _stderr_file.flush()
+            _stderr_target = _stderr_file
         except Exception as _e:
             logger.warning(f"[DEBUG] stderr 캡처 파일 열기 실패: {_e}")
-            _stderr_file = _sys.stderr
+            if _stderr_file:
+                _stderr_file.close()
+            _stderr_file = None
 
         options = ClaudeCodeOptions(
             allowed_tools=self.allowed_tools,
@@ -365,7 +380,7 @@ class ClaudeRunner:
             hooks=hooks,
             env=env,
             extra_args={"debug-to-stderr": None},
-            debug_stderr=_stderr_file,
+            debug_stderr=_stderr_target,
         )
 
         if session_id:
@@ -375,7 +390,7 @@ class ClaudeRunner:
             self.thread_ts, self.channel, session_id, prompt,
         )
 
-        return options, memory_prompt, anchor_ts
+        return options, memory_prompt, anchor_ts, _stderr_file
 
     async def run(
         self,
@@ -410,7 +425,7 @@ class ClaudeRunner:
         channel = self.channel
         compact_events: list[dict] = []
         compact_notified_count = 0
-        options, memory_prompt, anchor_ts = self._build_options(session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+        options, memory_prompt, anchor_ts, stderr_file = self._build_options(session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
         logger.info(f"Claude Code SDK 실행 시작 (cwd={self.working_dir})")
         logger.info(f"[DEBUG-OPTIONS] permission_mode={options.permission_mode}")
         logger.info(f"[DEBUG-OPTIONS] cwd={options.cwd}")
@@ -456,125 +471,171 @@ class ClaudeRunner:
 
             await client.query(effective_prompt)
 
-            aiter = client.receive_response().__aiter__()
+            # autocompact 재시도 외부 루프:
+            # receive_response()는 ResultMessage에서 즉시 return하므로,
+            # autocompact가 현재 턴의 ResultMessage를 발생시키면
+            # compact 후의 응답을 수신하지 못함.
+            # compact 이벤트가 감지되면 receive_response()를 재호출하여
+            # post-compact 응답을 계속 수신.
+            MAX_COMPACT_RETRIES = 3
+            compact_retry_count = 0
+
             while True:
-                try:
-                    message = await aiter.__anext__()
-                except StopAsyncIteration:
-                    if not result_text and not current_text and channel and thread_ts:
-                        _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                        dump = build_session_dump(
-                            reason="CLI exited with no output (StopAsyncIteration)",
-                            pid=self.pid,
-                            duration_sec=_dur,
-                            message_count=_msg_count,
-                            last_tool=_last_tool,
-                            current_text_len=len(current_text),
-                            result_text_len=len(result_text),
-                            session_id=result_session_id,
-                            active_clients_count=len(_registry),
-                        )
-                        logger.warning(f"세션 무출력 종료 덤프: thread={thread_ts}, duration={_dur:.1f}s, msgs={_msg_count}, last_tool={_last_tool}")
-                        send_debug_to_slack(channel, thread_ts, dump)
-                    break
-                except MessageParseError as e:
-                    if e.data and e.data.get("type") == "rate_limit_event":
-                        rate_limit_info = e.data.get("rate_limit_info", {})
-                        status = rate_limit_info.get("status", "")
+                compact_before = len(compact_events)
+                aiter = client.receive_response().__aiter__()
 
-                        if status == "allowed":
-                            continue
-
-                        if channel and thread_ts:
-                            debug_msg = (
-                                f"🔍 rate_limit_event:\n"
-                                f"• status: `{status}`\n"
-                                f"• data: `{json.dumps(e.data, ensure_ascii=False)[:500]}`\n"
-                                f"• current_text: {len(current_text)} chars"
-                            )
-                            send_debug_to_slack(channel, thread_ts, debug_msg)
-
-                        logger.warning(
-                            f"rate_limit_event 발생 (status={status}): "
-                            f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
-                            f"resetsAt={rate_limit_info.get('resetsAt')}"
-                        )
+                while True:
+                    try:
+                        message = await aiter.__anext__()
+                    except StopAsyncIteration:
                         break
-                    raise
-                _msg_count += 1
+                    except MessageParseError as e:
+                        if e.data and e.data.get("type") == "rate_limit_event":
+                            rate_limit_info = e.data.get("rate_limit_info", {})
+                            status = rate_limit_info.get("status", "")
 
-                if isinstance(message, SystemMessage):
-                    if hasattr(message, 'session_id'):
-                        result_session_id = message.session_id
-                        logger.info(f"세션 ID: {result_session_id}")
+                            if status == "allowed":
+                                continue
 
-                elif isinstance(message, AssistantMessage):
-                    if hasattr(message, 'content'):
-                        for block in message.content:
-                            if isinstance(block, TextBlock):
-                                current_text = block.text
-                                collected_messages.append({
-                                    "role": "assistant",
-                                    "content": block.text,
-                                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                                })
-                                if on_progress:
-                                    current_time = asyncio.get_event_loop().time()
-                                    if current_time - last_progress_time >= progress_interval:
-                                        try:
-                                            display_text = current_text
-                                            if len(display_text) > 1000:
-                                                display_text = "...\n" + display_text[-1000:]
-                                            await on_progress(display_text)
-                                            last_progress_time = current_time
-                                        except Exception as e:
-                                            logger.warning(f"진행 상황 콜백 오류: {e}")
+                            if channel and thread_ts:
+                                debug_msg = (
+                                    f"🔍 rate_limit_event:\n"
+                                    f"• status: `{status}`\n"
+                                    f"• data: `{json.dumps(e.data, ensure_ascii=False)[:500]}`\n"
+                                    f"• current_text: {len(current_text)} chars"
+                                )
+                                send_debug_to_slack(channel, thread_ts, debug_msg)
 
-                            elif isinstance(block, ToolUseBlock):
-                                tool_input = ""
-                                if block.input:
-                                    tool_input = json.dumps(block.input, ensure_ascii=False)
-                                    if len(tool_input) > 2000:
-                                        tool_input = tool_input[:2000] + "..."
-                                _last_tool = block.name
-                                logger.info(f"[TOOL_USE] {block.name}: {tool_input[:500]}")
-                                collected_messages.append({
-                                    "role": "assistant",
-                                    "content": f"[tool_use: {block.name}] {tool_input}",
-                                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                                })
+                            logger.warning(
+                                f"rate_limit_event 발생 (status={status}): "
+                                f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
+                                f"resetsAt={rate_limit_info.get('resetsAt')}"
+                            )
+                            break
+                        raise
+                    _msg_count += 1
 
-                            elif isinstance(block, ToolResultBlock):
-                                content = ""
-                                if isinstance(block.content, str):
-                                    content = block.content[:2000]
-                                elif block.content:
-                                    content = json.dumps(block.content, ensure_ascii=False)[:2000]
-                                logger.info(f"[TOOL_RESULT] {content[:500]}")
-                                collected_messages.append({
-                                    "role": "tool",
-                                    "content": content,
-                                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                                })
+                    # SystemMessage에서 세션 ID 추출
+                    if isinstance(message, SystemMessage):
+                        if hasattr(message, 'session_id'):
+                            result_session_id = message.session_id
+                            logger.info(f"세션 ID: {result_session_id}")
 
-                elif isinstance(message, ResultMessage):
-                    if hasattr(message, 'is_error'):
-                        result_is_error = message.is_error
-                    if hasattr(message, 'result'):
-                        result_text = message.result
-                    if hasattr(message, 'session_id') and message.session_id:
-                        result_session_id = message.session_id
-                    if hasattr(message, 'usage') and message.usage:
-                        result_usage = message.usage
+                    # AssistantMessage에서 텍스트/도구 사용 추출
+                    elif isinstance(message, AssistantMessage):
+                        if hasattr(message, 'content'):
+                            for block in message.content:
+                                if isinstance(block, TextBlock):
+                                    current_text = block.text
 
-                # 컴팩션 이벤트 확인
-                if on_compact and len(compact_events) > compact_notified_count:
-                    for event in compact_events[compact_notified_count:]:
-                        try:
-                            await on_compact(event["trigger"], event["message"])
-                        except Exception as e:
-                            logger.warning(f"컴팩션 콜백 오류: {e}")
-                    compact_notified_count = len(compact_events)
+                                    collected_messages.append({
+                                        "role": "assistant",
+                                        "content": block.text,
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    })
+
+                                    if on_progress:
+                                        current_time = asyncio.get_event_loop().time()
+                                        if current_time - last_progress_time >= progress_interval:
+                                            try:
+                                                display_text = current_text
+                                                if len(display_text) > 1000:
+                                                    display_text = "...\n" + display_text[-1000:]
+                                                await on_progress(display_text)
+                                                last_progress_time = current_time
+                                            except Exception as e:
+                                                logger.warning(f"진행 상황 콜백 오류: {e}")
+
+                                elif isinstance(block, ToolUseBlock):
+                                    tool_input = ""
+                                    if block.input:
+                                        tool_input = json.dumps(block.input, ensure_ascii=False)
+                                        if len(tool_input) > 2000:
+                                            tool_input = tool_input[:2000] + "..."
+                                    _last_tool = block.name
+                                    logger.info(f"[TOOL_USE] {block.name}: {tool_input[:500]}")
+                                    collected_messages.append({
+                                        "role": "assistant",
+                                        "content": f"[tool_use: {block.name}] {tool_input}",
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    })
+
+                                elif isinstance(block, ToolResultBlock):
+                                    content = ""
+                                    if isinstance(block.content, str):
+                                        content = block.content[:2000]
+                                    elif block.content:
+                                        content = json.dumps(block.content, ensure_ascii=False)[:2000]
+                                    logger.info(f"[TOOL_RESULT] {content[:500]}")
+                                    collected_messages.append({
+                                        "role": "tool",
+                                        "content": content,
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    })
+
+                    # ResultMessage에서 최종 결과 추출
+                    elif isinstance(message, ResultMessage):
+                        if hasattr(message, 'is_error'):
+                            result_is_error = message.is_error
+                        if hasattr(message, 'result'):
+                            result_text = message.result
+                        if hasattr(message, 'session_id') and message.session_id:
+                            result_session_id = message.session_id
+                        if hasattr(message, 'usage') and message.usage:
+                            result_usage = message.usage
+
+                    # 컴팩션 이벤트 확인
+                    if on_compact and len(compact_events) > compact_notified_count:
+                        for event in compact_events[compact_notified_count:]:
+                            try:
+                                await on_compact(event["trigger"], event["message"])
+                            except Exception as e:
+                                logger.warning(f"컴팩션 콜백 오류: {e}")
+                        compact_notified_count = len(compact_events)
+
+                # PreCompact 훅 콜백은 SDK 내부에서 start_soon()으로 스케줄되므로
+                # 이벤트 루프에 제어를 양보해야 콜백이 실행되어 compact_events가 갱신됨
+                await asyncio.sleep(0)
+
+                # 내부 루프 종료 후: compact가 발생했는지 확인
+                if len(compact_events) > compact_before and compact_retry_count < MAX_COMPACT_RETRIES:
+                    if on_compact and len(compact_events) > compact_notified_count:
+                        for event in compact_events[compact_notified_count:]:
+                            try:
+                                await on_compact(event["trigger"], event["message"])
+                            except Exception as e:
+                                logger.warning(f"컴팩션 콜백 오류: {e}")
+                        compact_notified_count = len(compact_events)
+
+                    compact_retry_count += 1
+                    logger.info(
+                        f"Compact 후 응답 재수신 시도 "
+                        f"(retry={compact_retry_count}/{MAX_COMPACT_RETRIES}, "
+                        f"session_id={result_session_id})"
+                    )
+                    current_text = ""
+                    result_text = ""
+                    result_is_error = False
+                    continue  # 외부 루프 계속 → receive_response() 재호출
+
+                # compact가 아닌 정상 종료 또는 재시도 한도 초과
+                if not result_text and not current_text and channel and thread_ts:
+                    _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
+                    dump = build_session_dump(
+                        reason="CLI exited with no output (StopAsyncIteration)",
+                        pid=self.pid,
+                        duration_sec=_dur,
+                        message_count=_msg_count,
+                        last_tool=_last_tool,
+                        current_text_len=len(current_text),
+                        result_text_len=len(result_text),
+                        session_id=result_session_id,
+                        active_clients_count=len(_registry),
+                        thread_ts=thread_ts,
+                    )
+                    logger.warning(f"세션 무출력 종료 덤프: thread={thread_ts}, duration={_dur:.1f}s, msgs={_msg_count}, last_tool={_last_tool}")
+                    send_debug_to_slack(channel, thread_ts, dump)
+                break  # 외부 루프 종료
 
             # 정상 완료
             output = result_text or current_text
@@ -627,6 +688,7 @@ class ClaudeRunner:
                     exit_code=e.exit_code,
                     error_detail=str(e.stderr or e),
                     active_clients_count=len(_registry),
+                    thread_ts=thread_ts,
                 )
                 send_debug_to_slack(channel, thread_ts, dump)
             return ClaudeResult(
@@ -664,6 +726,11 @@ class ClaudeRunner:
             self.execution_loop = None
             if thread_ts:
                 remove_runner(thread_ts)
+            if stderr_file is not None:
+                try:
+                    stderr_file.close()
+                except Exception:
+                    pass
 
     async def compact_session(self, session_id: str) -> ClaudeResult:
         """세션 컴팩트 처리"""

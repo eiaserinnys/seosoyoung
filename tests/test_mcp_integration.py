@@ -60,7 +60,7 @@ class TestBuildOptionsEnvInjection:
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner("1234567890.123456", channel="C12345")
-        options, _memory_prompt, _anchor_ts = runner._build_options()
+        options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
 
         assert options.env is not None
         assert options.env.get("SLACK_CHANNEL") == "C12345"
@@ -71,7 +71,7 @@ class TestBuildOptionsEnvInjection:
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner("1234567890.123456", channel="C12345")
-        options, _memory_prompt, _anchor_ts = runner._build_options()
+        options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
 
         assert isinstance(options.env, dict)
         # SDK가 {**os.environ, **options.env}로 merge하므로
@@ -83,7 +83,7 @@ class TestBuildOptionsEnvInjection:
         from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 
         runner = ClaudeAgentRunner()  # channel/thread_ts 미지정
-        options, _memory_prompt, _anchor_ts = runner._build_options()
+        options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
 
         assert isinstance(options.env, dict)
         assert "SLACK_CHANNEL" not in options.env

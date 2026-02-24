@@ -148,23 +148,85 @@ class ProcessManager:
         state.status = ProcessStatus.RUNNING
         logger.info("%s: 시작됨 (pid=%d)", name, proc.pid)
 
+    def _request_graceful_shutdown(self, url: str, timeout: float = 3.0) -> bool:
+        """HTTP POST로 graceful shutdown 요청. 성공 시 True."""
+        import urllib.request
+        try:
+            req = urllib.request.Request(url, method="POST", data=b"")
+            urllib.request.urlopen(req, timeout=timeout)
+            return True
+        except Exception as e:
+            logger.debug("Graceful shutdown 요청 실패 (%s): %s", url, e)
+            return False
+
+    def _kill_process_tree(self, pid: int) -> None:
+        """프로세스와 모든 자손을 강제 종료 (psutil)."""
+        import psutil
+        try:
+            parent = psutil.Process(pid)
+            children = parent.children(recursive=True)
+            for child in children:
+                try:
+                    child.kill()
+                except psutil.NoSuchProcess:
+                    pass
+            parent.kill()
+            # 모든 프로세스가 실제로 종료될 때까지 대기
+            gone, alive = psutil.wait_procs(children + [parent], timeout=3)
+            if alive:
+                logger.warning(
+                    "프로세스 트리 킬 후에도 살아있는 프로세스: %s",
+                    [p.pid for p in alive],
+                )
+        except psutil.NoSuchProcess:
+            pass
+
     def stop(self, name: str, timeout: float = 10.0) -> int | None:
-        """프로세스 중지. 종료 코드 반환 (이미 중지된 경우 None)."""
+        """프로세스 중지. 종료 코드 반환 (이미 중지된 경우 None).
+
+        shutdown_url이 설정된 경우 HTTP graceful shutdown을 먼저 시도하고,
+        실패 시 프로세스 트리 전체를 강제 종료합니다.
+        """
         state = self._ensure_registered(name)
         proc = self._procs.get(name)
 
         if proc is None or state.status == ProcessStatus.STOPPED:
             return None
 
-        logger.info("%s: 종료 요청 (pid=%s)", name, state.pid)
-        try:
-            proc.terminate()
-            exit_code = proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            logger.warning("%s: terminate 타임아웃, kill 시도", name)
-            proc.kill()
-            exit_code = proc.wait(timeout=5)
+        config = state.config
+        pid = proc.pid
+        logger.info("%s: 종료 요청 (pid=%s)", name, pid)
 
+        exit_code = None
+
+        # Phase 1: Graceful shutdown via HTTP
+        if config.shutdown_url:
+            if self._request_graceful_shutdown(config.shutdown_url):
+                logger.info("%s: graceful shutdown 요청 전송", name)
+                try:
+                    exit_code = proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    logger.warning("%s: graceful shutdown 타임아웃", name)
+
+        # Phase 2: 아직 살아있으면 프로세스 트리 킬
+        if exit_code is None:
+            if config.shutdown_url:
+                logger.warning("%s: graceful 실패, 프로세스 트리 강제 종료 (pid=%s)", name, pid)
+            else:
+                logger.info("%s: 프로세스 트리 종료 (pid=%s)", name, pid)
+            self._kill_process_tree(pid)
+            try:
+                exit_code = proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.error("%s: 트리 킬 후에도 종료 안됨", name)
+                try:
+                    proc.kill()
+                    exit_code = proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logger.critical("%s: kill 후에도 종료 안됨, 좀비 가능", name)
+                    exit_code = -1
+
+        # Cleanup
         self._close_log_files(name)
         state.status = ProcessStatus.STOPPED
         state.last_exit_code = exit_code

@@ -274,6 +274,25 @@ if __name__ == "__main__":
     logger.info(f"ADMIN_USERS: {Config.auth.admin_users}")
     logger.info(f"ALLOWED_USERS: {Config.auth.allowed_users}")
     logger.info(f"DEBUG: {Config.debug}")
+
+    # Shutdown 서버 시작 (supervisor graceful shutdown용)
+    from seosoyoung.shutdown import start_shutdown_server
+
+    _SHUTDOWN_PORT = int(os.environ.get("SHUTDOWN_PORT", "3106"))
+
+    def _on_shutdown_request():
+        """supervisor에서 graceful shutdown 요청을 받았을 때"""
+        logger.info("Graceful shutdown 요청 수신")
+        try:
+            count = shutdown_all_sync()
+            logger.info(f"셧다운: {count}개 클라이언트 종료")
+        except Exception as e:
+            logger.warning(f"클라이언트 종료 중 오류: {e}")
+        notify_shutdown()
+        os._exit(0)
+
+    start_shutdown_server(_SHUTDOWN_PORT, _on_shutdown_request)
+    logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")
     init_bot_user_id()
     notify_startup()
     start_trello_watcher()

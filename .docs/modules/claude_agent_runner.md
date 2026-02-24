@@ -29,10 +29,10 @@ thread_ts 단위 인스턴스: 각 인스턴스가 자신의 client/pid/executio
 - `_force_kill_process(pid, thread_ts)` (줄 255): psutil을 사용하여 프로세스를 강제 종료
 - `interrupt(self)` (줄 272): 이 러너에 인터럽트 전송 (동기)
 - `_build_compact_hook(self, compact_events)` (줄 287): PreCompact 훅을 생성합니다.
-- `_build_options(self, session_id, compact_events, user_id, prompt)` (줄 331): ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts를 함께 반환합니다.
-- `async run(self, prompt, session_id, on_progress, on_compact, user_id, user_message)` (줄 380): Claude Code 실행
-- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id)` (줄 400): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 668): 세션 컴팩트 처리
+- `_build_options(self, session_id, compact_events, user_id, prompt)` (줄 331): ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts, stderr 파일을 반환합니다.
+- `async run(self, prompt, session_id, on_progress, on_compact, user_id, user_message)` (줄 395): Claude Code 실행
+- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id)` (줄 415): 실제 실행 로직 (ClaudeSDKClient 기반)
+- `async compact_session(self, session_id)` (줄 735): 세션 컴팩트 처리
 
 ## 함수
 
@@ -67,7 +67,7 @@ Returns:
     종료된 클라이언트 수
 
 ### `async main()`
-- 위치: 줄 693
+- 위치: 줄 760
 
 ## 내부 의존성
 

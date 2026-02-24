@@ -89,6 +89,7 @@
 - [`search/schema.py`](modules/search_schema.md): Whoosh schema definitions for search indices.
 - [`search/searcher.py`](modules/search_searcher.md): Whoosh searcher for dialogue data.
 - [`search/sentence_splitter.py`](modules/search_sentence_splitter.md): 한/영 텍스트 문장 분할기.
+- [`seosoyoung/shutdown.py`](modules/seosoyoung_shutdown.md): 경량 HTTP Shutdown 서버
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
 - [`slack/formatting.py`](modules/slack_formatting.md): 슬랙 메시지 포맷팅 헬퍼
 - [`slack/helpers.py`](modules/slack_helpers.md): Slack 메시지 유틸리티
@@ -268,11 +269,11 @@
 - `remove_runner()` (seosoyoung/claude/agent_runner.py:84): 레지스트리에서 러너 제거
 - `async shutdown_all()` (seosoyoung/claude/agent_runner.py:90): 모든 등록된 러너의 클라이언트를 종료
 - `shutdown_all_sync()` (seosoyoung/claude/agent_runner.py:125): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/claude/agent_runner.py:693): 
-- `read_stderr_tail()` (seosoyoung/claude/diagnostics.py:17): cli_stderr.log의 마지막 N줄 읽기
-- `build_session_dump()` (seosoyoung/claude/diagnostics.py:31): 세션 종료 진단 덤프 메시지 생성
-- `classify_process_error()` (seosoyoung/claude/diagnostics.py:71): ProcessError를 사용자 친화적 메시지로 변환.
-- `send_debug_to_slack()` (seosoyoung/claude/diagnostics.py:105): 슬랙에 디버그 메시지 전송 (별도 메시지로)
+- `async main()` (seosoyoung/claude/agent_runner.py:760): 
+- `read_stderr_tail()` (seosoyoung/claude/diagnostics.py:17): 세션별 cli_stderr 로그의 마지막 N줄 읽기
+- `build_session_dump()` (seosoyoung/claude/diagnostics.py:50): 세션 종료 진단 덤프 메시지 생성
+- `classify_process_error()` (seosoyoung/claude/diagnostics.py:95): ProcessError를 사용자 친화적 메시지로 변환.
+- `send_debug_to_slack()` (seosoyoung/claude/diagnostics.py:129): 슬랙에 디버그 메시지 전송 (별도 메시지로)
 - `build_context_usage_bar()` (seosoyoung/claude/message_formatter.py:21): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/claude/message_formatter.py:56): 텍스트 내 모든 백틱을 이스케이프
 - `build_trello_header()` (seosoyoung/claude/message_formatter.py:75): 트렐로 카드용 슬랙 메시지 헤더 생성
@@ -305,7 +306,7 @@
 - `register_mention_handlers()` (seosoyoung/handlers/mention.py:327): 멘션 핸들러 등록
 - `build_slack_context()` (seosoyoung/handlers/message.py:20): 슬랙 컨텍스트 블록 문자열을 생성합니다.
 - `process_thread_message()` (seosoyoung/handlers/message.py:46): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
-- `register_message_handlers()` (seosoyoung/handlers/message.py:214): 메시지 핸들러 등록
+- `register_message_handlers()` (seosoyoung/handlers/message.py:216): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/logging_config.py:44): 로깅 설정 및 로거 반환
@@ -348,9 +349,10 @@
 - `setup_logging()` (seosoyoung/mcp/soul/config.py:111): 로깅 설정
 - `async periodic_cleanup()` (seosoyoung/mcp/soul/main.py:37): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
 - `async lifespan()` (seosoyoung/mcp/soul/main.py:53): 애플리케이션 라이프사이클 관리
-- `async health_check()` (seosoyoung/mcp/soul/main.py:137): 헬스 체크 엔드포인트
-- `async get_status()` (seosoyoung/mcp/soul/main.py:148): 서비스 상태 조회
-- `async global_exception_handler()` (seosoyoung/mcp/soul/main.py:180): 전역 예외 핸들러
+- `async shutdown()` (seosoyoung/mcp/soul/main.py:137): Graceful shutdown 엔드포인트 (supervisor 전용)
+- `async health_check()` (seosoyoung/mcp/soul/main.py:162): 헬스 체크 엔드포인트
+- `async get_status()` (seosoyoung/mcp/soul/main.py:173): 서비스 상태 조회
+- `async global_exception_handler()` (seosoyoung/mcp/soul/main.py:205): 전역 예외 핸들러
 - `sanitize_output()` (seosoyoung/mcp/soul/service/output_sanitizer.py:32): 출력에서 민감 정보를 마스킹합니다.
 - `find_session_file()` (seosoyoung/mcp/soul/service/session_validator.py:16): 세션 파일을 찾습니다.
 - `validate_session()` (seosoyoung/mcp/soul/service/session_validator.py:44): 세션 ID가 유효한지 검증합니다.
@@ -443,6 +445,7 @@
 - `format_results()` (seosoyoung/search/searcher.py:202): 결과 포맷팅.
 - `main()` (seosoyoung/search/searcher.py:222): CLI 진입점.
 - `split_sentences()` (seosoyoung/search/sentence_splitter.py:16): 텍스트를 문장 단위로 분할.
+- `start_shutdown_server()` (seosoyoung/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slack/file_handler.py:67): 스레드별 임시 폴더 생성
 - `cleanup_thread_files()` (seosoyoung/slack/file_handler.py:76): 스레드의 임시 파일 정리
