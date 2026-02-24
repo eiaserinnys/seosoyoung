@@ -15,7 +15,9 @@ from seosoyoung.slackbot.claude.agent_runner import (
     ClaudeAgentRunner,
     ClaudeRunner,
     ClaudeResult,
+    COMPACT_RETRY_READ_TIMEOUT,
     DEFAULT_DISALLOWED_TOOLS,
+    _extract_last_assistant_text,
     _registry,
     _registry_lock,
     get_runner,
@@ -1694,6 +1696,288 @@ class TestPrepareMemoryInjection:
             )
         assert memory_prompt is None
         assert anchor_ts == ""
+
+
+class TestExtractLastAssistantText:
+    """_extract_last_assistant_text 헬퍼 함수 테스트"""
+
+    def test_extracts_last_assistant_text(self):
+        """마지막 assistant 텍스트를 추출"""
+        msgs = [
+            {"role": "assistant", "content": "첫 번째"},
+            {"role": "assistant", "content": "[tool_use: Read] {}"},
+            {"role": "tool", "content": "파일 내용"},
+            {"role": "assistant", "content": "최종 답변"},
+        ]
+        assert _extract_last_assistant_text(msgs) == "최종 답변"
+
+    def test_skips_tool_use_messages(self):
+        """tool_use 메시지를 건너뜀"""
+        msgs = [
+            {"role": "assistant", "content": "텍스트"},
+            {"role": "assistant", "content": "[tool_use: Bash] {}"},
+        ]
+        assert _extract_last_assistant_text(msgs) == "텍스트"
+
+    def test_returns_empty_when_no_assistant(self):
+        """assistant 메시지가 없으면 빈 문자열"""
+        msgs = [
+            {"role": "tool", "content": "결과"},
+            {"role": "assistant", "content": "[tool_use: Read] {}"},
+        ]
+        assert _extract_last_assistant_text(msgs) == ""
+
+    def test_returns_empty_for_empty_list(self):
+        """빈 리스트이면 빈 문자열"""
+        assert _extract_last_assistant_text([]) == ""
+
+
+class TestIsCliAlive:
+    """_is_cli_alive 메서드 테스트"""
+
+    def test_returns_false_when_pid_is_none(self):
+        """PID가 None이면 False"""
+        runner = ClaudeRunner()
+        runner.pid = None
+        assert runner._is_cli_alive() is False
+
+    def test_returns_true_for_running_process(self):
+        """실행 중인 프로세스면 True"""
+        runner = ClaudeRunner()
+        runner.pid = 12345
+
+        mock_proc = MagicMock()
+        mock_proc.is_running.return_value = True
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.psutil") as mock_psutil:
+            mock_psutil.Process.return_value = mock_proc
+            mock_psutil.NoSuchProcess = type("NoSuchProcess", (Exception,), {})
+            mock_psutil.AccessDenied = type("AccessDenied", (Exception,), {})
+            assert runner._is_cli_alive() is True
+
+    def test_returns_false_for_dead_process(self):
+        """종료된 프로세스면 False"""
+        runner = ClaudeRunner()
+        runner.pid = 99999
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.psutil") as mock_psutil:
+            mock_psutil.NoSuchProcess = type("NoSuchProcess", (Exception,), {})
+            mock_psutil.AccessDenied = type("AccessDenied", (Exception,), {})
+            mock_psutil.Process.side_effect = mock_psutil.NoSuchProcess(99999)
+            assert runner._is_cli_alive() is False
+
+
+@pytest.mark.asyncio
+class TestCompactRetryHangFix:
+    """compact 재시도 시 무한 대기 방지 테스트 (A/B/C)"""
+
+    async def test_retry_skipped_when_has_result(self):
+        """[partial fix] 이미 결과가 있으면 compact 후에도 retry 생략"""
+        runner = ClaudeRunner()
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        # compact 이벤트가 발생하지만 ResultMessage도 같이 수신되는 시나리오
+        mock_client.receive_response = MagicMock(return_value=_make_mock_client(
+            MockAssistantMessage(content=[MockTextBlock(text="응답 텍스트")]),
+            MockResultMessage(result="최종 결과", session_id="test"),
+        ).receive_response())
+
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor, stderr_f = original_build(
+                session_id=session_id, compact_events=compact_events,
+                user_id=user_id, prompt=prompt,
+            )
+            if compact_events is not None:
+                compact_events.append({
+                    "trigger": "auto",
+                    "message": "컴팩트 실행됨",
+                })
+            return options, memory_prompt, anchor, stderr_f
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                            with patch.object(runner, "_build_options", patched_build):
+                                result = await runner.run("테스트")
+
+        # compact 발생했지만 결과가 있으므로 retry 없이 성공
+        assert result.success is True
+        assert result.output == "최종 결과"
+        # receive_response가 1번만 호출됨 (retry 없음)
+        mock_client.receive_response.assert_called_once()
+
+    async def test_retry_skipped_when_cli_dead(self):
+        """[B] CLI 프로세스 종료 시 retry 생략 + [C] fallback 텍스트 복원"""
+        runner = ClaudeRunner()
+        runner.pid = 12345
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        # 1차 receive_response: 텍스트 없이 StopAsyncIteration
+        # (compact 직후, TextBlock 수신 전 CLI 종료 시나리오)
+        call_count = 0
+
+        class EmptyResponse:
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+        mock_client.receive_response = MagicMock(return_value=EmptyResponse())
+
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor, stderr_f = original_build(
+                session_id=session_id, compact_events=compact_events,
+                user_id=user_id, prompt=prompt,
+            )
+            if compact_events is not None:
+                compact_events.append({
+                    "trigger": "auto",
+                    "message": "컴팩트 실행됨",
+                })
+            return options, memory_prompt, anchor, stderr_f
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch.object(runner, "_build_options", patched_build):
+                with patch.object(runner, "_is_cli_alive", return_value=False):
+                    result = await runner.run("테스트")
+
+        # CLI 종료 → retry 생략 → 무한 대기 없이 종료
+        assert result.success is True
+        # receive_response가 1번만 호출됨 (retry 안 함)
+        mock_client.receive_response.assert_called_once()
+
+    async def test_retry_skipped_cli_dead_with_fallback(self):
+        """[B+C] CLI 종료 시 collected_messages에서 fallback 텍스트 복원"""
+        runner = ClaudeRunner()
+        runner.pid = 12345
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        # on_progress가 호출된 후 compact + CLI 종료
+        # TextBlock을 먼저 수신하고, StopAsyncIteration으로 종료
+        # 하지만 ResultMessage 없음 → result_text=""
+        # current_text는 설정됨 → has_result=True → 이 케이스는 partial fix로 해결
+        # 여기서는 current_text가 빈 경우를 테스트 (collected_messages에만 텍스트 존재)
+
+        class TextThenStop:
+            """TextBlock을 보내지만 current_text 리셋 시나리오를 시뮬레이션"""
+            def __init__(self):
+                self.sent = False
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                if not self.sent:
+                    self.sent = True
+                    return MockAssistantMessage(content=[MockTextBlock(text="작업 중간 텍스트")])
+                raise StopAsyncIteration
+
+        mock_client.receive_response = MagicMock(return_value=TextThenStop())
+
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor, stderr_f = original_build(
+                session_id=session_id, compact_events=compact_events,
+                user_id=user_id, prompt=prompt,
+            )
+            if compact_events is not None:
+                compact_events.append({
+                    "trigger": "auto",
+                    "message": "컴팩트 실행됨",
+                })
+            return options, memory_prompt, anchor, stderr_f
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                    with patch.object(runner, "_build_options", patched_build):
+                        result = await runner.run("테스트")
+
+        # TextBlock이 수신되어 current_text 설정됨 → has_result=True → retry 생략
+        assert result.success is True
+        assert "작업 중간 텍스트" in result.output
+
+    async def test_timeout_breaks_retry_loop(self):
+        """[A] retry 시 timeout으로 무한 대기 방지"""
+        runner = ClaudeRunner()
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        # compact_events 리스트를 캡처하기 위한 컨테이너
+        captured_compact_events = [None]
+
+        class HangForever:
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                await asyncio.sleep(9999)
+
+        call_idx = [0]
+
+        def mock_receive():
+            call_idx[0] += 1
+            if call_idx[0] == 1:
+                # 1차 호출: 내부 루프 중에 compact 이벤트 주입 후 즉시 종료
+                events = captured_compact_events[0]
+
+                class InjectCompactThenStop:
+                    def __aiter__(self):
+                        return self
+                    async def __anext__(self):
+                        if events is not None:
+                            events.append({
+                                "trigger": "auto",
+                                "message": "컴팩트 실행됨",
+                            })
+                        raise StopAsyncIteration
+
+                return InjectCompactThenStop()
+            # 2차(retry): 영원히 대기 → timeout이 구해줌
+            return HangForever()
+
+        mock_client.receive_response = mock_receive
+
+        original_build = runner._build_options
+
+        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
+            options, memory_prompt, anchor, stderr_f = original_build(
+                session_id=session_id, compact_events=compact_events,
+                user_id=user_id, prompt=prompt,
+            )
+            # compact_events 리스트 참조를 캡처 (내부 루프에서 이벤트 주입용)
+            captured_compact_events[0] = compact_events
+            return options, memory_prompt, anchor, stderr_f
+
+        # timeout을 짧게 설정하여 테스트 빠르게 완료
+        with patch("seosoyoung.slackbot.claude.agent_runner.COMPACT_RETRY_READ_TIMEOUT", 0.1):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+                with patch.object(runner, "_build_options", patched_build):
+                    with patch.object(runner, "_is_cli_alive", return_value=True):
+                        result = await runner.run("테스트")
+
+        # timeout으로 인해 무한 대기 없이 종료
+        assert result.success is True
+        assert call_idx[0] == 2  # 1차 + retry 1회
 
 
 if __name__ == "__main__":

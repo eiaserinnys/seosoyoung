@@ -144,6 +144,17 @@ def shutdown_all_sync() -> int:
 # 하위 호환 alias
 _classify_process_error = classify_process_error
 
+# Compact retry 상수
+COMPACT_RETRY_READ_TIMEOUT = 30  # 초: retry 시 receive_response() 읽기 타임아웃
+
+
+def _extract_last_assistant_text(collected_messages: list[dict]) -> str:
+    """collected_messages에서 마지막 assistant 텍스트를 추출 (tool_use 제외)"""
+    for msg in reversed(collected_messages):
+        if msg.get("role") == "assistant" and not msg.get("content", "").startswith("[tool_use:"):
+            return msg["content"]
+    return ""
+
 
 class ClaudeRunner:
     """Claude Code SDK 기반 실행기
@@ -269,6 +280,16 @@ class ClaudeRunner:
             logger.info(f"프로세스 이미 종료됨: PID {pid}, thread={thread_ts}")
         except Exception as kill_error:
             logger.error(f"프로세스 강제 종료 실패: PID {pid}, thread={thread_ts}, {kill_error}")
+
+    def _is_cli_alive(self) -> bool:
+        """CLI 서브프로세스가 아직 살아있는지 확인"""
+        if self.pid is None:
+            return False
+        try:
+            proc = psutil.Process(self.pid)
+            return proc.is_running()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return False
 
     def interrupt(self) -> bool:
         """이 러너에 인터럽트 전송 (동기)"""
@@ -487,7 +508,20 @@ class ClaudeRunner:
 
                 while True:
                     try:
-                        message = await aiter.__anext__()
+                        if compact_retry_count > 0:
+                            # [A] retry 시 timeout 적용: CLI 종료 후 무한 대기 방지
+                            message = await asyncio.wait_for(
+                                aiter.__anext__(), timeout=COMPACT_RETRY_READ_TIMEOUT
+                            )
+                        else:
+                            message = await aiter.__anext__()
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"Compact retry 읽기 타임아웃 ({COMPACT_RETRY_READ_TIMEOUT}s): "
+                            f"thread={thread_ts}, retry={compact_retry_count}, "
+                            f"pid={self.pid}, cli_alive={self._is_cli_alive()}"
+                        )
+                        break
                     except StopAsyncIteration:
                         break
                     except MessageParseError as e:
@@ -606,7 +640,13 @@ class ClaudeRunner:
                 await asyncio.sleep(0)
 
                 # 내부 루프 종료 후: compact가 발생했는지 확인
-                if len(compact_events) > compact_before and compact_retry_count < MAX_COMPACT_RETRIES:
+                # CLI는 세션당 하나의 ResultMessage만 전송하므로,
+                # 이미 유효한 결과가 있으면 retry하지 않음 (retry하면 영원히 대기)
+                has_result = bool(result_text or current_text)
+                compact_happened = len(compact_events) > compact_before
+
+                if compact_happened and compact_retry_count < MAX_COMPACT_RETRIES and not has_result:
+                    # 컴팩션 알림 처리
                     if on_compact and len(compact_events) > compact_notified_count:
                         for event in compact_events[compact_notified_count:]:
                             try:
@@ -615,16 +655,48 @@ class ClaudeRunner:
                                 logger.warning(f"컴팩션 콜백 오류: {e}")
                         compact_notified_count = len(compact_events)
 
-                    compact_retry_count += 1
+                    # [B] retry 전 CLI 프로세스 상태 확인
+                    cli_alive = self._is_cli_alive()
                     logger.info(
-                        f"Compact 후 응답 재수신 시도 "
-                        f"(retry={compact_retry_count}/{MAX_COMPACT_RETRIES}, "
-                        f"session_id={result_session_id})"
+                        f"Compact retry 판정: pid={self.pid}, cli_alive={cli_alive}, "
+                        f"has_result={has_result}, current_text={len(current_text)} chars, "
+                        f"result_text={len(result_text)} chars, "
+                        f"collected_msgs={len(collected_messages)}, "
+                        f"retry={compact_retry_count}/{MAX_COMPACT_RETRIES}"
                     )
-                    current_text = ""
-                    result_text = ""
-                    result_is_error = False
-                    continue  # 외부 루프 계속 → receive_response() 재호출
+
+                    if not cli_alive:
+                        # [C] CLI 종료됨: collected_messages에서 마지막 텍스트 복원
+                        logger.warning(
+                            f"Compact retry 생략: CLI 프로세스 이미 종료 "
+                            f"(pid={self.pid}, thread={thread_ts})"
+                        )
+                        fallback_text = _extract_last_assistant_text(collected_messages)
+                        if fallback_text:
+                            current_text = fallback_text
+                            logger.info(
+                                f"Fallback: collected_messages에서 텍스트 복원 "
+                                f"({len(fallback_text)} chars)"
+                            )
+                    else:
+                        compact_retry_count += 1
+                        logger.info(
+                            f"Compact 후 응답 재수신 시도 "
+                            f"(retry={compact_retry_count}/{MAX_COMPACT_RETRIES}, "
+                            f"session_id={result_session_id})"
+                        )
+                        current_text = ""
+                        result_text = ""
+                        result_is_error = False
+                        continue  # 외부 루프 계속 → receive_response() 재호출
+
+                if has_result and compact_happened:
+                    logger.info(
+                        f"Compact 발생했으나 이미 유효한 결과 있음 - retry 생략 "
+                        f"(result_text={len(result_text)} chars, "
+                        f"current_text={len(current_text)} chars, "
+                        f"compact_retry_count={compact_retry_count}/{MAX_COMPACT_RETRIES})"
+                    )
 
                 # compact가 아닌 정상 종료 또는 재시도 한도 초과
                 if not result_text and not current_text and channel and thread_ts:
