@@ -244,14 +244,19 @@ class ListRunner:
         logger.info(f"세션 상태 업데이트: {session_id} -> {status.value}")
         return True
 
+    # 좀비 세션 자동 완료 처리 기준 시간 (시간)
+    ZOMBIE_SESSION_HOURS = 2
+
     def get_active_sessions(self) -> list[ListRunSession]:
         """활성 세션 목록 조회
 
         RUNNING, PAUSED, VERIFYING 상태인 세션만 반환합니다.
+        조회 전 좀비 세션을 자동 정리합니다.
 
         Returns:
             활성 세션 목록
         """
+        self._cleanup_zombie_sessions()
         active_statuses = {
             SessionStatus.RUNNING,
             SessionStatus.PAUSED,
@@ -261,6 +266,52 @@ class ListRunner:
             session for session in self.sessions.values()
             if session.status in active_statuses
         ]
+
+    def _cleanup_zombie_sessions(self):
+        """좀비 세션 자동 정리
+
+        다음 조건에 해당하는 세션을 자동 정리합니다:
+        1. RUNNING 상태이지만 모든 카드가 처리된 세션 → COMPLETED
+        2. RUNNING 상태이지만 ZOMBIE_SESSION_HOURS 이상 경과한 세션 → PAUSED
+        """
+        changed = False
+        now = datetime.now()
+
+        for session in self.sessions.values():
+            if session.status != SessionStatus.RUNNING:
+                continue
+
+            # 조건 1: 모든 카드 처리 완료인데 running 상태
+            if session.current_index >= len(session.card_ids):
+                logger.warning(
+                    f"좀비 세션 자동 완료: {session.session_id} "
+                    f"({session.list_name}, {session.current_index}/{len(session.card_ids)} 처리됨)"
+                )
+                session.status = SessionStatus.COMPLETED
+                session.error_message = "좀비 세션 자동 정리: 모든 카드 처리 완료"
+                changed = True
+                continue
+
+            # 조건 2: 오래된 running 세션
+            try:
+                created = datetime.fromisoformat(session.created_at)
+                elapsed_hours = (now - created).total_seconds() / 3600
+                if elapsed_hours > self.ZOMBIE_SESSION_HOURS:
+                    logger.warning(
+                        f"좀비 세션 자동 일시중단: {session.session_id} "
+                        f"({session.list_name}, {elapsed_hours:.1f}시간 경과, "
+                        f"{session.current_index}/{len(session.card_ids)} 처리됨)"
+                    )
+                    session.status = SessionStatus.PAUSED
+                    session.error_message = (
+                        f"좀비 세션 자동 정리: {elapsed_hours:.1f}시간 경과"
+                    )
+                    changed = True
+            except (ValueError, TypeError):
+                pass
+
+        if changed:
+            self.save_sessions()
 
     def get_paused_sessions(self) -> list[ListRunSession]:
         """중단된 세션 목록 조회

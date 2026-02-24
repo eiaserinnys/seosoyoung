@@ -738,6 +738,21 @@ class TrelloWatcher:
             # 🏃 Run List 레이블 발견!
             logger.info(f"🏃 Run List 레이블 감지: {list_name} - {first_card.name}")
 
+            # 활성 정주행 세션 가드: 동일 리스트에 이미 활성 세션이 있으면 스킵
+            # ⚠️ 레이블 제거보다 먼저 체크해야 함 — 가드에 걸렸을 때 레이블이
+            # 소실되어 재시도가 불가능해지는 교착 상태를 방지
+            list_runner = self.list_runner_ref() if self.list_runner_ref else None
+            if list_runner:
+                active_sessions = list_runner.get_active_sessions()
+                already_running = any(
+                    s.list_id == list_id for s in active_sessions
+                )
+                if already_running:
+                    logger.warning(
+                        f"이미 활성 정주행 세션이 있어 스킵 (레이블 유지): {list_name}"
+                    )
+                    continue
+
             # 레이블 제거 (실패 시 정주행 시작하지 않음)
             label_id = self._get_run_list_label_id(first_card)
             if label_id:
@@ -752,19 +767,6 @@ class TrelloWatcher:
             else:
                 logger.warning(f"🏃 Run List 레이블 ID를 찾을 수 없음: {first_card.name}")
                 continue
-
-            # 활성 정주행 세션 가드: 동일 리스트에 이미 활성 세션이 있으면 스킵
-            list_runner = self.list_runner_ref() if self.list_runner_ref else None
-            if list_runner:
-                active_sessions = list_runner.get_active_sessions()
-                already_running = any(
-                    s.list_id == list_id for s in active_sessions
-                )
-                if already_running:
-                    logger.warning(
-                        f"이미 활성 정주행 세션이 있어 스킵: {list_name}"
-                    )
-                    continue
 
             # 리스트 정주행 시작
             self._start_list_run(list_id, list_name, cards)

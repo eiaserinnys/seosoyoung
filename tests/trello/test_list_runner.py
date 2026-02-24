@@ -2,6 +2,7 @@
 
 import json
 import pytest
+from datetime import datetime
 from pathlib import Path
 import tempfile
 
@@ -1601,6 +1602,202 @@ class TestHandleListRunMarkerIntegration:
         mock_say.assert_called_once()
         call_args = mock_say.call_args
         assert "찾을 수 없습니다" in call_args[1]["text"]
+
+
+class TestZombieSessionCleanup:
+    """좀비 세션 자동 정리 테스트"""
+
+    def test_zombie_session_all_cards_completed(self):
+        """모든 카드가 처리되었는데 running 상태인 세션 → completed로 자동 전이"""
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card1", "card2", "card3"],
+            )
+            # 모든 카드 처리 완료
+            runner.mark_card_processed(session.session_id, "card1", "completed")
+            runner.mark_card_processed(session.session_id, "card2", "completed")
+            runner.mark_card_processed(session.session_id, "card3", "completed")
+            # 상태는 아직 RUNNING으로 남아 있음
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            # get_active_sessions 호출 시 좀비 정리 발동
+            active = runner.get_active_sessions()
+
+            # 좀비 세션이 COMPLETED로 전이되었으므로 활성 목록에서 제외
+            assert len(active) == 0
+            assert runner.get_session(session.session_id).status == SessionStatus.COMPLETED
+
+    def test_zombie_session_old_running(self):
+        """오래된 running 세션 → paused로 자동 전이"""
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+        from datetime import timedelta
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card1", "card2"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            # 생성 시각을 3시간 전으로 조작
+            old_time = (datetime.now() - timedelta(hours=3)).isoformat()
+            session.created_at = old_time
+            runner.save_sessions()
+
+            # get_active_sessions 호출 시 좀비 정리 발동
+            active = runner.get_active_sessions()
+
+            # 오래된 세션이 PAUSED로 전이
+            assert len(active) == 1  # PAUSED도 active에 포함됨
+            assert runner.get_session(session.session_id).status == SessionStatus.PAUSED
+
+    def test_zombie_cleanup_does_not_affect_normal_sessions(self):
+        """정상 running 세션은 영향 없음"""
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card1", "card2"],
+            )
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+            # 방금 생성된 세션이므로 좀비 아님
+
+            active = runner.get_active_sessions()
+
+            assert len(active) == 1
+            assert runner.get_session(session.session_id).status == SessionStatus.RUNNING
+
+    def test_zombie_cleanup_saves_changes(self):
+        """좀비 정리 시 파일에 저장됨"""
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            session = runner.create_session(
+                list_id="list_123",
+                list_name="📦 Backlog",
+                card_ids=["card1"],
+            )
+            runner.mark_card_processed(session.session_id, "card1", "completed")
+            runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            # 좀비 정리 발동
+            runner.get_active_sessions()
+
+            # 새 인스턴스에서 로드하여 저장 확인
+            runner2 = ListRunner(data_dir=Path(tmpdir))
+            loaded = runner2.get_session(session.session_id)
+            assert loaded.status == SessionStatus.COMPLETED
+
+
+class TestLabelGuardOrdering:
+    """레이블 제거와 활성 세션 가드 순서 테스트"""
+
+    def test_guard_check_before_label_removal(self):
+        """활성 세션이 있으면 레이블 제거 없이 스킵 (레이블 유지)"""
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+        from seosoyoung.slackbot.trello.client import TrelloCard
+        from unittest.mock import MagicMock, patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+
+            # 동일 리스트에 활성 세션 생성
+            active_session = list_runner.create_session(
+                list_id="list_backlog",
+                list_name="📦 Backlog",
+                card_ids=["card_old"],
+            )
+            list_runner.update_session_status(
+                active_session.session_id, SessionStatus.RUNNING
+            )
+
+            mock_trello = MagicMock()
+            mock_trello.get_lists.return_value = [
+                {"id": "list_backlog", "name": "📦 Backlog"},
+            ]
+            mock_trello.get_cards_in_list.return_value = [
+                TrelloCard(
+                    id="card_1",
+                    name="First Card",
+                    desc="",
+                    url="",
+                    list_id="list_backlog",
+                    labels=[{"id": "run_label", "name": "🏃 Run List", "color": "green"}],
+                ),
+            ]
+
+            watcher = TrelloWatcher(
+                slack_client=MagicMock(),
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+            )
+            watcher.trello = mock_trello
+
+            with patch.object(watcher, "_start_list_run") as mock_start:
+                watcher._check_run_list_labels()
+
+                # 정주행 시작되지 않아야 함
+                mock_start.assert_not_called()
+                # 레이블이 제거되지 않아야 함 (핵심!)
+                mock_trello.remove_label_from_card.assert_not_called()
+
+    def test_label_removed_when_no_active_session(self):
+        """활성 세션이 없으면 레이블 제거 후 정주행 시작"""
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
+        from seosoyoung.slackbot.trello.client import TrelloCard
+        from unittest.mock import MagicMock, patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+
+            mock_trello = MagicMock()
+            mock_trello.get_lists.return_value = [
+                {"id": "list_backlog", "name": "📦 Backlog"},
+            ]
+            mock_trello.get_cards_in_list.return_value = [
+                TrelloCard(
+                    id="card_1",
+                    name="First Card",
+                    desc="",
+                    url="",
+                    list_id="list_backlog",
+                    labels=[{"id": "run_label", "name": "🏃 Run List", "color": "green"}],
+                ),
+            ]
+            mock_trello.remove_label_from_card.return_value = True
+
+            watcher = TrelloWatcher(
+                slack_client=MagicMock(),
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+            )
+            watcher.trello = mock_trello
+
+            with patch.object(watcher, "_start_list_run") as mock_start:
+                watcher._check_run_list_labels()
+
+                # 레이블 제거 후 정주행 시작
+                mock_trello.remove_label_from_card.assert_called_once()
+                mock_start.assert_called_once()
 
 
 if __name__ == "__main__":
