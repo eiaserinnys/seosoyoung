@@ -5,7 +5,7 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 현재 실행을 중단하고 새 프롬프트로 이어서 실행합니다.
 
 실행 모드 (execution_mode):
-- local: 기존 방식. ClaudeAgentRunner를 직접 사용하여 로컬에서 실행.
+- local: 기존 방식. ClaudeRunner를 직접 사용하여 로컬에서 실행.
 - remote: seosoyoung-soul 서버에 HTTP/SSE로 위임하여 실행.
 """
 
@@ -403,7 +403,7 @@ class ClaudeExecutor:
 
             except Exception as e:
                 logger.exception(f"Claude 실행 오류: {e}")
-                self._handle_exception(ctx, e)
+                self._result_processor.handle_exception(ctx, e)
 
     def _get_role_config(self, role: str) -> dict:
         """역할에 맞는 runner 설정을 반환
@@ -466,7 +466,7 @@ class ClaudeExecutor:
 
         except Exception as e:
             logger.exception(f"[Remote] Claude 실행 오류: {e}")
-            self._handle_exception(ctx, e)
+            self._result_processor.handle_exception(ctx, e)
         finally:
             self._active_remote_requests.pop(original_thread_ts, None)
 
@@ -484,47 +484,11 @@ class ClaudeExecutor:
         self.session_manager.increment_message_count(thread_ts)
 
         if result.interrupted:
-            self._handle_interrupted(ctx)
+            self._result_processor.handle_interrupted(ctx)
         elif result.is_error:
-            self._handle_error(ctx, result.output or result.error)
+            self._result_processor.handle_error(ctx, result.output or result.error)
         elif result.success:
-            self._handle_success(ctx, result)
+            self._result_processor.handle_success(ctx, result)
         else:
-            self._handle_error(ctx, result.error)
-
-    def _replace_thinking_message(self, *args, **kwargs):
-        """하위 호환: ResultProcessor에 위임"""
-        return self._result_processor.replace_thinking_message(*args, **kwargs)
-
-    def _handle_interrupted(self, ctx: ExecutionContext):
-        """하위 호환: ResultProcessor에 위임"""
-        self._result_processor.handle_interrupted(ctx)
-
-    def _handle_success(self, ctx: ExecutionContext, result):
-        """하위 호환: ResultProcessor에 위임"""
-        self._result_processor.handle_success(ctx, result)
-
-    def _handle_trello_success(self, ctx, result, response, is_list_run, usage_bar):
-        """하위 호환: ResultProcessor에 위임"""
-        self._result_processor.handle_trello_success(ctx, result, response, is_list_run, usage_bar)
-
-    def _handle_normal_success(self, ctx, result, response, is_list_run, usage_bar):
-        """하위 호환: ResultProcessor에 위임"""
-        self._result_processor.handle_normal_success(ctx, result, response, is_list_run, usage_bar)
-
-    def _handle_restart_marker(self, result, session, channel, thread_ts, say):
-        """하위 호환: ResultProcessor에 위임"""
-        self._result_processor.handle_restart_marker(result, session, channel, thread_ts, say)
-
-    def _handle_list_run_marker(self, list_name, channel, thread_ts, say, client):
-        """하위 호환: ResultProcessor에 위임"""
-        self._result_processor.handle_list_run_marker(list_name, channel, thread_ts, say, client)
-
-    def _handle_error(self, ctx: ExecutionContext, error):
-        """하위 호환: ResultProcessor에 위임"""
-        self._result_processor.handle_error(ctx, error)
-
-    def _handle_exception(self, ctx: ExecutionContext, e: Exception):
-        """하위 호환: ResultProcessor에 위임"""
-        self._result_processor.handle_exception(ctx, e)
+            self._result_processor.handle_error(ctx, result.error)
 

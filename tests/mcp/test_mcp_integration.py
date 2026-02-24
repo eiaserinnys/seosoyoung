@@ -57,9 +57,9 @@ class TestBuildOptionsEnvInjection:
 
     def test_env_includes_slack_context_when_channel_and_thread_provided(self):
         """channel과 thread_ts가 주어지면 env에 포함됨"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
-        runner = ClaudeAgentRunner("1234567890.123456", channel="C12345")
+        runner = ClaudeRunner("1234567890.123456", channel="C12345")
         options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
 
         assert options.env is not None
@@ -68,9 +68,9 @@ class TestBuildOptionsEnvInjection:
 
     def test_env_is_always_dict(self):
         """env는 항상 dict (SDK가 os.environ과 merge하므로)"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
-        runner = ClaudeAgentRunner("1234567890.123456", channel="C12345")
+        runner = ClaudeRunner("1234567890.123456", channel="C12345")
         options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
 
         assert isinstance(options.env, dict)
@@ -80,9 +80,9 @@ class TestBuildOptionsEnvInjection:
 
     def test_env_no_slack_context_when_no_channel_or_thread(self):
         """channel/thread_ts가 없으면 env에 슬랙 컨텍스트가 없음"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
-        runner = ClaudeAgentRunner()  # channel/thread_ts 미지정
+        runner = ClaudeRunner()  # channel/thread_ts 미지정
         options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
 
         assert isinstance(options.env, dict)

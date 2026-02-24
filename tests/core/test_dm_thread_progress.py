@@ -109,15 +109,18 @@ class TestOnProgressDmThread:
             {"ts": "dm_reply_3"},
         ]
 
+        _runtime = MagicMock()
+        _runtime.get_session_lock = lambda ts: MagicMock()
+        _runtime.mark_session_running = MagicMock()
+        _runtime.mark_session_stopped = MagicMock()
+        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            get_session_lock=lambda ts: MagicMock(),
-            mark_session_running=MagicMock(),
-            mark_session_stopped=MagicMock(),
-            get_running_session_count=MagicMock(return_value=0),
+            session_runtime=_runtime,
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
+            update_message_fn=MagicMock(),
         )
 
         trello_card = TrackedCard(
@@ -223,15 +226,18 @@ class TestOnProgressDmThread:
             {"ts": "dm_reply_3"},
         ]
 
+        _runtime = MagicMock()
+        _runtime.get_session_lock = lambda ts: MagicMock()
+        _runtime.mark_session_running = MagicMock()
+        _runtime.mark_session_stopped = MagicMock()
+        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            get_session_lock=lambda ts: MagicMock(),
-            mark_session_running=MagicMock(),
-            mark_session_stopped=MagicMock(),
-            get_running_session_count=MagicMock(return_value=0),
+            session_runtime=_runtime,
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
+            update_message_fn=MagicMock(),
         )
 
         trello_card = TrackedCard(
@@ -379,15 +385,18 @@ class TestHandleTrelloSuccessWithDm:
 
         mock_client = MagicMock()
         mock_session_manager = MagicMock()
+        _runtime = MagicMock()
+        _runtime.get_session_lock = lambda ts: MagicMock()
+        _runtime.mark_session_running = MagicMock()
+        _runtime.mark_session_stopped = MagicMock()
+        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=mock_session_manager,
-            get_session_lock=lambda ts: MagicMock(),
-            mark_session_running=MagicMock(),
-            mark_session_stopped=MagicMock(),
-            get_running_session_count=MagicMock(return_value=0),
+            session_runtime=_runtime,
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
+            update_message_fn=MagicMock(),
         )
 
         result = MagicMock()
@@ -429,7 +438,7 @@ class TestHandleTrelloSuccessWithDm:
             dm_last_reply_ts="dm_reply_last",
         )
 
-        executor._handle_trello_success(ctx, result, "작업 완료 응답", False, None)
+        executor._result_processor.handle_trello_success(ctx, result, "작업 완료 응답", False, None)
 
         # DM 스레드의 마지막 답글이 평문으로 업데이트되었는지 확인
         dm_update_calls = [
@@ -445,15 +454,18 @@ class TestHandleTrelloSuccessWithDm:
         from seosoyoung.slackbot.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
+        _runtime = MagicMock()
+        _runtime.get_session_lock = lambda ts: MagicMock()
+        _runtime.mark_session_running = MagicMock()
+        _runtime.mark_session_stopped = MagicMock()
+        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            get_session_lock=lambda ts: MagicMock(),
-            mark_session_running=MagicMock(),
-            mark_session_stopped=MagicMock(),
-            get_running_session_count=MagicMock(return_value=0),
+            session_runtime=_runtime,
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
+            update_message_fn=MagicMock(),
         )
 
         result = MagicMock()
@@ -496,7 +508,7 @@ class TestHandleTrelloSuccessWithDm:
         )
 
         # DM 파라미터 없이 호출 → 에러 없이 정상 동작해야 함
-        executor._handle_trello_success(ctx, result, "응답", False, None)
+        executor._result_processor.handle_trello_success(ctx, result, "응답", False, None)
 
         # DM 관련 chat_update가 없어야 함
         dm_calls = [
@@ -515,15 +527,18 @@ class TestHandleInterruptedWithDm:
         from seosoyoung.slackbot.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
+        _runtime = MagicMock()
+        _runtime.get_session_lock = lambda ts: MagicMock()
+        _runtime.mark_session_running = MagicMock()
+        _runtime.mark_session_stopped = MagicMock()
+        _runtime.get_running_session_count = MagicMock(return_value=0)
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            get_session_lock=lambda ts: MagicMock(),
-            mark_session_running=MagicMock(),
-            mark_session_stopped=MagicMock(),
-            get_running_session_count=MagicMock(return_value=0),
+            session_runtime=_runtime,
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
+            update_message_fn=MagicMock(),
         )
 
         trello_card = TrackedCard(
@@ -557,7 +572,7 @@ class TestHandleInterruptedWithDm:
             dm_last_reply_ts="dm_reply_last",
         )
 
-        executor._handle_interrupted(ctx)
+        executor._result_processor.handle_interrupted(ctx)
 
         # DM 스레드의 마지막 답글이 (중단됨)으로 업데이트
         dm_update_calls = [
@@ -1061,15 +1076,18 @@ class TestRestartMarkerDmRouting:
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor
 
         mock_send_restart = MagicMock()
+        runtime = MagicMock()
+        runtime.get_session_lock = lambda ts: MagicMock()
+        runtime.mark_session_running = MagicMock()
+        runtime.mark_session_stopped = MagicMock()
+        runtime.get_running_session_count = MagicMock(return_value=2)  # 다른 세션 1개 실행 중
         executor = ClaudeExecutor(
             session_manager=MagicMock(),
-            get_session_lock=lambda ts: MagicMock(),
-            mark_session_running=MagicMock(),
-            mark_session_stopped=MagicMock(),
-            get_running_session_count=MagicMock(return_value=2),  # 다른 세션 1개 실행 중
+            session_runtime=runtime,
             restart_manager=MagicMock(),
             send_long_message=MagicMock(),
             send_restart_confirmation=mock_send_restart,
+            update_message_fn=MagicMock(),
         )
 
         result = MagicMock()
@@ -1080,7 +1098,7 @@ class TestRestartMarkerDmRouting:
         session.user_id = "trello_watcher"
 
         # DM 채널에서 실행된 경우
-        executor._handle_restart_marker(
+        executor._result_processor.handle_restart_marker(
             result, session, "D_DM_CHANNEL", "dm_thread_ts", MagicMock()
         )
 

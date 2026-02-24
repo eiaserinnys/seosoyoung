@@ -36,15 +36,19 @@ class FakeSession:
 
 def make_executor(**overrides) -> ClaudeExecutor:
     """테스트용 ClaudeExecutor 생성"""
+    from seosoyoung.slackbot.claude.session import SessionRuntime
+    runtime = MagicMock(spec=SessionRuntime)
+    runtime.get_session_lock = overrides.pop("get_session_lock", MagicMock())
+    runtime.mark_session_running = overrides.pop("mark_session_running", MagicMock())
+    runtime.mark_session_stopped = overrides.pop("mark_session_stopped", MagicMock())
+    runtime.get_running_session_count = overrides.pop("get_running_session_count", MagicMock(return_value=1))
     defaults = dict(
         session_manager=MagicMock(),
-        get_session_lock=MagicMock(),
-        mark_session_running=MagicMock(),
-        mark_session_stopped=MagicMock(),
-        get_running_session_count=MagicMock(return_value=1),
+        session_runtime=runtime,
         restart_manager=MagicMock(is_pending=False),
         send_long_message=MagicMock(),
         send_restart_confirmation=MagicMock(),
+        update_message_fn=MagicMock(),
     )
     defaults.update(overrides)
     return ClaudeExecutor(**defaults)
@@ -220,7 +224,7 @@ class TestInterruptedExecution:
             trello_card=None,
         )
 
-        executor._handle_interrupted(ctx)
+        executor._result_processor.handle_interrupted(ctx)
 
         client.chat_update.assert_called_once()
         call_kwargs = client.chat_update.call_args
@@ -244,7 +248,7 @@ class TestInterruptedExecution:
         )
 
         with patch("seosoyoung.slackbot.claude.result_processor.build_trello_header", return_value="[Trello Header]"):
-            executor._handle_interrupted(ctx)
+            executor._result_processor.handle_interrupted(ctx)
 
         client.chat_update.assert_called_once()
         call_kwargs = client.chat_update.call_args
@@ -264,7 +268,7 @@ class TestInterruptedExecution:
             trello_card=None,
         )
 
-        executor._handle_interrupted(ctx)
+        executor._result_processor.handle_interrupted(ctx)
 
         client.chat_update.assert_not_called()
 
@@ -295,7 +299,7 @@ class TestExecuteOnceWithInterruption:
             is_existing_thread=False,
         )
 
-        with patch.object(executor, "_handle_interrupted") as mock_interrupted:
+        with patch.object(executor._result_processor, "handle_interrupted") as mock_interrupted:
             executor._execute_once(ctx, "test")
 
             mock_interrupted.assert_called_once()
@@ -323,7 +327,7 @@ class TestExecuteOnceWithInterruption:
             is_existing_thread=False,
         )
 
-        with patch.object(executor, "_handle_success") as mock_success:
+        with patch.object(executor._result_processor, "handle_success") as mock_success:
             executor._execute_once(ctx, "test")
 
             mock_success.assert_called_once()
@@ -351,7 +355,7 @@ class TestExecuteOnceWithInterruption:
             is_existing_thread=False,
         )
 
-        with patch.object(executor, "_handle_success"):
+        with patch.object(executor._result_processor, "handle_success"):
             executor._execute_once(ctx, "test")
 
         # ClaudeRunner가 생성되었는지 확인
@@ -376,7 +380,7 @@ class TestRunWithLockPendingLoop:
 
         ctx = _make_ctx(session=session, client=client, msg_ts="msg_1")
 
-        with patch.object(executor, "_handle_success"):
+        with patch.object(executor._result_processor, "handle_success"):
             executor._run_with_lock(ctx, "first prompt")
 
         # run_sync이 한 번만 호출됨
@@ -407,8 +411,8 @@ class TestRunWithLockPendingLoop:
         )
         executor._pending_prompts["thread_123"] = pending
 
-        with patch.object(executor, "_handle_success"):
-            with patch.object(executor, "_handle_interrupted"):
+        with patch.object(executor._result_processor, "handle_success"):
+            with patch.object(executor._result_processor, "handle_interrupted"):
                 executor._run_with_lock(ctx, "first prompt")
 
         # run_sync이 두 번 호출됨 (첫 번째 + pending)
@@ -436,7 +440,7 @@ class TestRunWithLockPendingLoop:
 
         ctx = _make_ctx(session=session, client=client, msg_ts="msg_1")
 
-        with patch.object(executor, "_handle_success"):
+        with patch.object(executor._result_processor, "handle_success"):
             executor._run_with_lock(ctx, "test")
 
         mark_running.assert_called_once()
@@ -529,7 +533,7 @@ class TestNormalSuccessWithReplace:
         )
 
         with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
-            executor._handle_normal_success(ctx, result, "짧은 응답", False, None)
+            executor._result_processor.handle_normal_success(ctx, result, "짧은 응답", False, None)
 
         mock_replace.assert_called_once()
         call_kwargs = mock_replace.call_args
@@ -551,7 +555,7 @@ class TestNormalSuccessWithReplace:
         )
 
         with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
-            executor._handle_normal_success(ctx, result, "짧은 응답", False, None)
+            executor._result_processor.handle_normal_success(ctx, result, "짧은 응답", False, None)
 
         mock_replace.assert_called_once()
         call_kwargs = mock_replace.call_args
@@ -582,7 +586,7 @@ class TestTrelloSuccessWithReplace:
         )
 
         with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
-            executor._handle_trello_success(ctx, result, "트렐로 응답", False, None)
+            executor._result_processor.handle_trello_success(ctx, result, "트렐로 응답", False, None)
 
         mock_replace.assert_called_once()
         call_kwargs = mock_replace.call_args
@@ -616,7 +620,7 @@ class TestListRunTrelloSuccessNoDelete:
         )
 
         with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
-            executor._handle_trello_success(ctx, result, "카드 작업 완료", True, None)
+            executor._result_processor.handle_trello_success(ctx, result, "카드 작업 완료", True, None)
 
         mock_replace.assert_not_called()
         client.chat_update.assert_called_once()
@@ -646,7 +650,7 @@ class TestListRunTrelloSuccessNoDelete:
         )
 
         with patch.object(executor._result_processor, "handle_trello_success") as mock_trello_success:
-            executor._handle_success(ctx, result)
+            executor._result_processor.handle_success(ctx, result)
 
         mock_trello_success.assert_called_once()
         call_kwargs = mock_trello_success.call_args
@@ -684,8 +688,8 @@ class TestIntegrationInterventionFinalResponse:
 
         ctx = _make_ctx(session=session, client=client, msg_ts="msg_A")
 
-        with patch.object(executor, "_handle_interrupted") as mock_interrupted:
-            with patch.object(executor, "_handle_success") as mock_success:
+        with patch.object(executor._result_processor, "handle_interrupted") as mock_interrupted:
+            with patch.object(executor._result_processor, "handle_success") as mock_success:
                 executor._run_with_lock(ctx, "A 질문")
 
         # A는 interrupted로 처리
@@ -720,8 +724,8 @@ class TestIntegrationInterventionFinalResponse:
 
         ctx = _make_ctx(session=session, client=client, msg_ts="msg_A")
 
-        with patch.object(executor, "_handle_interrupted"):
-            with patch.object(executor, "_handle_success") as mock_success:
+        with patch.object(executor._result_processor, "handle_interrupted"):
+            with patch.object(executor._result_processor, "handle_success") as mock_success:
                 executor._run_with_lock(ctx, "A 질문")
 
         # success는 C에 대해서만 한 번 호출됨

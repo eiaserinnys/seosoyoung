@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, run_in_new_loop
+from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner, run_in_new_loop
 
 
 class TestRunInNewLoop:
@@ -92,7 +92,7 @@ class TestRunSync:
 
     def test_run_sync_executes_coroutine(self):
         """run_sync()가 코루틴을 실행하고 결과를 반환하는지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         async def simple_coro():
             return 42
@@ -102,7 +102,7 @@ class TestRunSync:
 
     def test_run_sync_handles_async_sleep(self):
         """run_sync()가 async sleep을 포함한 코루틴을 처리하는지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         async def slow_coro():
             await asyncio.sleep(0.1)
@@ -113,7 +113,7 @@ class TestRunSync:
 
     def test_run_sync_propagates_exceptions(self):
         """run_sync()가 코루틴의 예외를 전파하는지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         async def failing_coro():
             raise ValueError("test error")
@@ -123,7 +123,7 @@ class TestRunSync:
 
     def test_run_sync_callable_from_sync_context(self):
         """run_sync()가 동기 컨텍스트(일반 스레드)에서 호출 가능한지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         results = []
 
         async def coro():
@@ -141,7 +141,7 @@ class TestRunSync:
 
     def test_run_sync_multiple_sequential_calls(self):
         """run_sync()를 연속으로 여러 번 호출해도 안정적인지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         async def add(a, b):
             return a + b

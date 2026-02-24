@@ -593,7 +593,7 @@ class FakeClaudeResult:
 
 
 class FakeClaudeRunner:
-    """ClaudeAgentRunner mock for testing"""
+    """ClaudeRunner mock for testing"""
 
     def __init__(self, output: str = "테스트 응답", success: bool = True, error: str = None):
         self._output = output

@@ -142,9 +142,6 @@ def shutdown_all_sync() -> int:
         return 0
 
 
-# 하위 호환 alias
-_classify_process_error = classify_process_error
-
 # Compact retry 상수
 COMPACT_RETRY_READ_TIMEOUT = 30  # 초: retry 시 receive_response() 읽기 타임아웃
 MAX_COMPACT_RETRIES = 3  # compact 재시도 최대 횟수
@@ -568,7 +565,7 @@ class ClaudeRunner:
                             })
 
                             if on_progress:
-                                current_time = asyncio.get_event_loop().time()
+                                current_time = asyncio.get_running_loop().time()
                                 if current_time - msg_state.last_progress_time >= progress_interval:
                                     try:
                                         display_text = msg_state.current_text
@@ -731,7 +728,7 @@ class ClaudeRunner:
         if thread_ts:
             register_runner(self)
 
-        msg_state = MessageState(last_progress_time=asyncio.get_event_loop().time())
+        msg_state = MessageState(last_progress_time=asyncio.get_running_loop().time())
         _session_start = datetime.now(timezone.utc)
 
         try:
@@ -906,9 +903,6 @@ class ClaudeRunner:
 
         return result
 
-
-# 하위 호환 alias
-ClaudeAgentRunner = ClaudeRunner
 
 
 # 테스트용

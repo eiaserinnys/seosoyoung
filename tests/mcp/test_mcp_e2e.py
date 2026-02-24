@@ -170,9 +170,9 @@ class TestMCPE2ETrelloFlow:
 
     def test_runner_env_injection_for_trello(self):
         """트렐로 모드: _build_options에서 SLACK_CHANNEL/THREAD_TS가 env에 주입됨"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
-        runner = ClaudeAgentRunner("2222222222.000001", channel="C_TRELLO_NOTIFY")
+        runner = ClaudeRunner("2222222222.000001", channel="C_TRELLO_NOTIFY")
         options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
 
         assert options.env["SLACK_CHANNEL"] == "C_TRELLO_NOTIFY"

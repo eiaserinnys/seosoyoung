@@ -12,7 +12,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from seosoyoung.slackbot.claude.agent_runner import (
-    ClaudeAgentRunner,
     ClaudeRunner,
     ClaudeResult,
     COMPACT_RETRY_READ_TIMEOUT,
@@ -84,12 +83,12 @@ def _make_mock_client(*messages):
     return mock_client
 
 
-class TestClaudeAgentRunnerUnit:
+class TestClaudeRunnerUnit:
     """유닛 테스트 (Mock 사용)"""
 
     def test_build_options_basic(self):
         """기본 옵션 생성 테스트"""
-        runner = ClaudeAgentRunner(allowed_tools=["Read", "Glob"])
+        runner = ClaudeRunner(allowed_tools=["Read", "Glob"])
         options, memory_prompt, anchor_ts, _ = runner._build_options()
 
         assert options.allowed_tools == ["Read", "Glob"]
@@ -101,14 +100,14 @@ class TestClaudeAgentRunnerUnit:
 
     def test_build_options_with_session(self):
         """세션 ID가 있을 때 resume 옵션 추가"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         options, _, _, _ = runner._build_options(session_id="abc-123")
 
         assert options.resume == "abc-123"
 
     def test_build_options_custom_tools(self):
         """커스텀 도구 설정 테스트"""
-        runner = ClaudeAgentRunner(
+        runner = ClaudeRunner(
             allowed_tools=["Read", "Glob"],
             disallowed_tools=["Bash"]
         )
@@ -120,7 +119,7 @@ class TestClaudeAgentRunnerUnit:
     def test_build_options_with_mcp_config(self):
         """MCP 설정 파일 경로가 저장되는지 테스트"""
         mcp_path = Path("D:/test/.mcp.json")
-        runner = ClaudeAgentRunner(mcp_config_path=mcp_path)
+        runner = ClaudeRunner(mcp_config_path=mcp_path)
 
         assert runner.mcp_config_path == mcp_path
 
@@ -144,12 +143,12 @@ class TestClaudeResultMarkers:
 
 
 @pytest.mark.asyncio
-class TestClaudeAgentRunnerAsync:
+class TestClaudeRunnerAsync:
     """비동기 테스트 (ClaudeSDKClient Mock 사용)"""
 
     async def test_run_success(self):
         """성공적인 SDK 실행 테스트"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = _make_mock_client(
             MockSystemMessage(session_id="test-sdk-123"),
@@ -170,7 +169,7 @@ class TestClaudeAgentRunnerAsync:
 
     async def test_run_with_markers(self):
         """마커 포함 응답 테스트"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = _make_mock_client(
             MockResultMessage(
@@ -189,7 +188,7 @@ class TestClaudeAgentRunnerAsync:
 
     async def test_run_file_not_found(self):
         """Claude CLI 없음 테스트"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = AsyncMock()
         mock_client.connect.side_effect = FileNotFoundError("claude not found")
@@ -202,7 +201,7 @@ class TestClaudeAgentRunnerAsync:
 
     async def test_run_general_exception(self):
         """일반 예외 처리 테스트"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = AsyncMock()
         mock_client.connect.side_effect = RuntimeError("SDK error")
@@ -215,7 +214,7 @@ class TestClaudeAgentRunnerAsync:
 
     async def test_compact_session_success(self):
         """compact_session 성공 테스트"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = _make_mock_client(
             MockResultMessage(result="Compacted.", session_id="compact-123"),
@@ -230,7 +229,7 @@ class TestClaudeAgentRunnerAsync:
 
     async def test_compact_session_no_session_id(self):
         """compact_session 세션 ID 없음 테스트"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         result = await runner.compact_session("")
 
         assert result.success is False
@@ -238,12 +237,12 @@ class TestClaudeAgentRunnerAsync:
 
 
 @pytest.mark.asyncio
-class TestClaudeAgentRunnerProgress:
+class TestClaudeRunnerProgress:
     """진행 상황 콜백 테스트"""
 
     async def test_progress_callback(self):
         """진행 상황 콜백 호출 테스트"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         progress_calls = []
 
         async def on_progress(text):
@@ -278,12 +277,12 @@ class TestClaudeAgentRunnerProgress:
 
 
 @pytest.mark.asyncio
-class TestClaudeAgentRunnerCompact:
+class TestClaudeRunnerCompact:
     """컴팩션 감지 및 콜백 테스트"""
 
     async def test_build_options_with_compact_events(self):
         """compact_events 전달 시 PreCompact 훅이 등록되는지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         compact_events = []
         options, _, _, _ = runner._build_options(compact_events=compact_events)
 
@@ -294,14 +293,14 @@ class TestClaudeAgentRunnerCompact:
 
     async def test_build_options_without_compact_events(self):
         """compact_events 미전달 시 hooks가 None인지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         options, _, _, _ = runner._build_options()
 
         assert options.hooks is None
 
     async def test_compact_callback_called(self):
         """컴팩션 발생 시 on_compact 콜백이 호출되는지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         compact_calls = []
 
         async def on_compact(trigger: str, message: str):
@@ -341,7 +340,7 @@ class TestClaudeAgentRunnerCompact:
 
     async def test_compact_callback_auto_and_manual(self):
         """auto/manual 트리거 구분 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         compact_calls = []
 
         async def on_compact(trigger: str, message: str):
@@ -378,7 +377,7 @@ class TestClaudeAgentRunnerCompact:
 
     async def test_compact_callback_error_handled(self):
         """on_compact 콜백 오류 시 실행이 중단되지 않는지 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         async def failing_compact(trigger: str, message: str):
             raise RuntimeError("콜백 오류")
@@ -408,7 +407,7 @@ class TestClaudeAgentRunnerCompact:
 
     async def test_no_compact_callback_no_error(self):
         """on_compact 미전달 시에도 정상 동작 확인"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = _make_mock_client(
             MockResultMessage(result="완료", session_id="test"),
@@ -486,7 +485,7 @@ class TestProcessErrorHandling:
 
     async def test_process_error_returns_friendly_message(self):
         """ProcessError 발생 시 친절한 메시지 반환"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = AsyncMock()
         mock_client.connect.side_effect = ProcessError(
@@ -504,7 +503,7 @@ class TestProcessErrorHandling:
 
     async def test_process_error_with_usage_limit(self):
         """usage limit ProcessError 발생 시 친절한 메시지"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = AsyncMock()
         mock_client.connect.side_effect = ProcessError(
@@ -524,7 +523,7 @@ class TestRateLimitEventHandling:
 
     async def test_rate_limit_event_graceful_break(self):
         """rate_limit_event 발생 시 재시도 없이 graceful 종료"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
@@ -551,7 +550,7 @@ class TestRateLimitEventHandling:
 
     async def test_rate_limit_event_returns_friendly_error(self):
         """rate_limit_event가 외부 except에서 잡힐 때 친화적 메시지 반환"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
@@ -574,7 +573,7 @@ class TestRateLimitEventHandling:
 
     async def test_non_rate_limit_parse_error_returns_friendly_error(self):
         """rate_limit이 아닌 MessageParseError도 친화적 메시지 반환"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
@@ -595,7 +594,7 @@ class TestRateLimitEventHandling:
 
     async def test_allowed_warning_continues_processing(self):
         """allowed_warning status는 break하지 않고 continue"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
@@ -685,7 +684,7 @@ class TestBuildOptionsChannelObservation:
             "om.debug_channel": "",
         }
 
-        runner = ClaudeAgentRunner("ts_1", channel="C_OBS", prepare_memory_fn=prepare_memory_injection)
+        runner = ClaudeRunner("ts_1", channel="C_OBS", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -718,7 +717,7 @@ class TestBuildOptionsChannelObservation:
             "om.debug_channel": "",
         }
 
-        runner = ClaudeAgentRunner("ts_1", channel="C_OTHER", prepare_memory_fn=prepare_memory_injection)
+        runner = ClaudeRunner("ts_1", channel="C_OTHER", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -747,7 +746,7 @@ class TestBuildOptionsChannelObservation:
             "om.debug_channel": "",
         }
 
-        runner = ClaudeAgentRunner("ts_1", channel="C_OBS", prepare_memory_fn=prepare_memory_injection)
+        runner = ClaudeRunner("ts_1", channel="C_OBS", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -772,7 +771,7 @@ class TestBuildOptionsAnchorTs:
 
     def test_anchor_ts_empty_without_om(self):
         """OM 미활성 시 anchor_ts가 빈 문자열"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         _, _, anchor_ts, _ = runner._build_options()
         assert anchor_ts == ""
 
@@ -786,7 +785,7 @@ class TestBuildOptionsAnchorTs:
             "om.debug_channel": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner("ts_1", prepare_memory_fn=prepare_memory_injection)
+        runner = ClaudeRunner("ts_1", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -833,7 +832,7 @@ class TestBuildOptionsAnchorTs:
             "om.debug_channel": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner("ts_1", prepare_memory_fn=prepare_memory_injection)
+        runner = ClaudeRunner("ts_1", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -871,7 +870,7 @@ class TestBuildOptionsAnchorTs:
             "om.debug_channel": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner("ts_no_record", prepare_memory_fn=prepare_memory_injection)
+        runner = ClaudeRunner("ts_no_record", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -909,7 +908,7 @@ class TestBuildOptionsAnchorTs:
             "om.debug_channel": "C_DEBUG",
         }
 
-        runner = ClaudeAgentRunner("ts_new", prepare_memory_fn=prepare_memory_injection)
+        runner = ClaudeRunner("ts_new", prepare_memory_fn=prepare_memory_injection)
 
         with patch("seosoyoung.slackbot.config.Config") as MockConfig:
             _apply_mock_config(MockConfig, config_patches)
@@ -1014,7 +1013,7 @@ class TestObserverUserMessage:
     async def test_trigger_observation_uses_user_message(self):
         """user_message가 지정되면 prompt 대신 user_message가 Observer에 전달"""
         mock_trigger = MagicMock()
-        runner = ClaudeAgentRunner("ts_1", trigger_observation_fn=mock_trigger)
+        runner = ClaudeRunner("ts_1", trigger_observation_fn=mock_trigger)
 
         mock_client = _make_mock_client(
             MockSystemMessage(session_id="obs-test"),
@@ -1040,7 +1039,7 @@ class TestObserverUserMessage:
     async def test_trigger_observation_falls_back_to_prompt(self):
         """user_message가 None이면 prompt가 Observer에 전달 (하위 호환)"""
         mock_trigger = MagicMock()
-        runner = ClaudeAgentRunner("ts_2", trigger_observation_fn=mock_trigger)
+        runner = ClaudeRunner("ts_2", trigger_observation_fn=mock_trigger)
 
         mock_client = _make_mock_client(
             MockSystemMessage(session_id="obs-test-2"),
@@ -1067,7 +1066,7 @@ class TestTriggerObservationToolFilter:
 
     def test_filters_tool_use_and_tool_result_messages(self):
         """tool_use, tool role 메시지가 Observer에 전달되지 않음"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         collected = [
             {"role": "assistant", "content": "파일을 읽겠습니다.", "timestamp": "t1"},
@@ -1357,7 +1356,7 @@ class TestForceKillProcess:
         # agent_runner 모듈 내부에서 psutil을 import하므로 해당 경로로 패치
         with patch("seosoyoung.slackbot.claude.agent_runner.psutil") as mock_psutil:
             mock_psutil.Process.return_value = mock_proc
-            ClaudeAgentRunner._force_kill_process(12345, "test_thread")
+            ClaudeRunner._force_kill_process(12345, "test_thread")
 
         mock_proc.terminate.assert_called_once()
         mock_proc.wait.assert_called_once_with(timeout=3)
@@ -1371,7 +1370,7 @@ class TestForceKillProcess:
             mock_psutil.TimeoutExpired = type("TimeoutExpired", (Exception,), {})
             mock_proc.wait.side_effect = [mock_psutil.TimeoutExpired(3), None]
             mock_psutil.Process.return_value = mock_proc
-            ClaudeAgentRunner._force_kill_process(12345, "test_thread")
+            ClaudeRunner._force_kill_process(12345, "test_thread")
 
         mock_proc.terminate.assert_called_once()
         mock_proc.kill.assert_called_once()
@@ -1384,7 +1383,7 @@ class TestForceKillProcess:
             mock_psutil.NoSuchProcess = type("NoSuchProcess", (Exception,), {})
             mock_psutil.Process.side_effect = mock_psutil.NoSuchProcess(12345)
             # 예외 발생하지 않음
-            ClaudeAgentRunner._force_kill_process(12345, "test_thread")
+            ClaudeRunner._force_kill_process(12345, "test_thread")
 
     def test_force_kill_process_general_error(self):
         """_force_kill_process: 일반 오류 발생 시 로깅만"""
@@ -1395,17 +1394,17 @@ class TestForceKillProcess:
             mock_psutil.TimeoutExpired = real_psutil.TimeoutExpired
             mock_psutil.Process.side_effect = RuntimeError("알 수 없는 오류")
             # 예외 발생하지 않음 (로깅만)
-            ClaudeAgentRunner._force_kill_process(12345, "test_thread")
+            ClaudeRunner._force_kill_process(12345, "test_thread")
 
 
 class TestServiceFactory:
     """서비스 팩토리 테스트"""
 
     def test_factory_returns_agent_runner(self):
-        """팩토리가 항상 ClaudeAgentRunner를 반환"""
+        """팩토리가 항상 ClaudeRunner를 반환"""
         from seosoyoung.slackbot.claude import get_claude_runner
         runner = get_claude_runner()
-        assert isinstance(runner, ClaudeAgentRunner)
+        assert isinstance(runner, ClaudeRunner)
 
 
 class TestGetRoleConfig:
@@ -1467,7 +1466,7 @@ class TestGetRoleConfig:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-class TestClaudeAgentRunnerIntegration:
+class TestClaudeRunnerIntegration:
     """통합 테스트 (실제 SDK 호출)
 
     실행 방법: pytest -m integration tests/test_agent_runner.py
@@ -1475,7 +1474,7 @@ class TestClaudeAgentRunnerIntegration:
 
     async def test_real_sdk_execution(self):
         """실제 SDK 실행 테스트"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         result = await runner.run("1+1은? 숫자만 답해줘.")
 
         assert result.success is True
@@ -1487,7 +1486,7 @@ class TestClaudeAgentRunnerIntegration:
 
         SDK 모드에서 Trello MCP 도구가 정상 작동하는지 확인
         """
-        runner = ClaudeAgentRunner(
+        runner = ClaudeRunner(
             allowed_tools=["Read", "mcp__trello__get_lists"]
         )
         result = await runner.run(
@@ -1504,7 +1503,7 @@ class TestClaudeAgentRunnerIntegration:
 
         SDK 모드에서 Slack MCP 도구가 정상 작동하는지 확인
         """
-        runner = ClaudeAgentRunner(
+        runner = ClaudeRunner(
             allowed_tools=["Read", "mcp__slack__channels_list"]
         )
         result = await runner.run(
@@ -1520,13 +1519,13 @@ class TestBuildCompactHook:
 
     def test_returns_none_when_compact_events_is_none(self):
         """compact_events가 None이면 hooks는 None"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         hooks = runner._build_compact_hook(None)
         assert hooks is None
 
     def test_returns_hooks_when_compact_events_provided(self):
         """compact_events 제공 시 PreCompact 훅 딕셔너리 반환"""
-        runner = ClaudeAgentRunner(thread_ts="ts_1")
+        runner = ClaudeRunner(thread_ts="ts_1")
         compact_events = []
         hooks = runner._build_compact_hook(compact_events)
 
@@ -1537,7 +1536,7 @@ class TestBuildCompactHook:
 
     def test_returns_hooks_without_thread_ts(self):
         """thread_ts가 없어도 훅 생성됨"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
         compact_events = []
         hooks = runner._build_compact_hook(compact_events)
 
@@ -2028,7 +2027,7 @@ class TestClaudeRunnerIsErrorFromResultMessage:
 
     async def test_result_message_is_error_sets_is_error(self):
         """ResultMessage.is_error=True → ClaudeResult.is_error=True, success=False"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         error_result = MockResultMessage(
             result="오류가 발생했습니다",
@@ -2052,7 +2051,7 @@ class TestClaudeRunnerIsErrorFromResultMessage:
 
     async def test_result_message_not_error_sets_success(self):
         """ResultMessage.is_error=False → ClaudeResult.success=True, is_error=False"""
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_client = _make_mock_client(
             MockResultMessage(

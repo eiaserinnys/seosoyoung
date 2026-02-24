@@ -653,9 +653,9 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_triggers_observation_on_success(self):
         """성공적인 실행 후 관찰이 트리거됨"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner("ts_1234")
+        runner = ClaudeRunner("ts_1234")
 
         mock_result = ClaudeResult(
             success=True,
@@ -680,9 +680,9 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_without_user_id(self):
         """user_id 없으면 관찰을 트리거하지 않음"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_result = ClaudeResult(
             success=True,
@@ -700,9 +700,9 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_without_thread_ts(self):
         """thread_ts 없으면 관찰을 트리거하지 않음"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner()
+        runner = ClaudeRunner()
 
         mock_result = ClaudeResult(
             success=True,
@@ -720,9 +720,9 @@ class TestRunTriggersObservation:
     @pytest.mark.asyncio
     async def test_run_does_not_trigger_on_failure(self):
         """실행 실패 시 관찰을 트리거하지 않음"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner, ClaudeResult
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner, ClaudeResult
 
-        runner = ClaudeAgentRunner("ts_1234")
+        runner = ClaudeRunner("ts_1234")
 
         mock_result = ClaudeResult(
             success=False,
