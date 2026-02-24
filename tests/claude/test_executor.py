@@ -5,7 +5,7 @@ from seosoyoung.slackbot.claude.message_formatter import (
     build_context_usage_bar,
 )
 from seosoyoung.slackbot.claude.executor import ClaudeExecutor, ExecutionContext
-from seosoyoung.slackbot.claude.session import Session
+from seosoyoung.slackbot.claude.session import Session, SessionRuntime
 
 
 class TestBuildContextUsageBar:
@@ -128,13 +128,11 @@ def _make_executor():
     """테스트용 ClaudeExecutor를 간단히 생성"""
     return ClaudeExecutor(
         session_manager=MagicMock(),
-        get_session_lock=MagicMock(),
-        mark_session_running=MagicMock(),
-        mark_session_stopped=MagicMock(),
-        get_running_session_count=MagicMock(return_value=1),
+        session_runtime=MagicMock(spec=SessionRuntime),
         restart_manager=MagicMock(),
         send_long_message=MagicMock(),
         send_restart_confirmation=MagicMock(),
+        update_message_fn=MagicMock(),
     )
 
 
@@ -193,10 +191,10 @@ class TestHandleNormalSuccessNoContinuationHint:
 
         executor._handle_normal_success(ctx, result, "한 줄 응답입니다.", False, None)
 
-        # chat_update에 전달된 text에 continuation_hint가 없어야 함
-        update_call = ctx.client.chat_update.call_args
+        # update_message_fn에 전달된 text에 continuation_hint가 없어야 함
+        update_call = executor.update_message_fn.call_args
         assert update_call is not None
-        updated_text = update_call.kwargs.get("text", "")
+        updated_text = update_call.args[3]  # (client, channel, ts, text)
         assert "스레드를 확인해주세요" not in updated_text
         assert "자세한 내용을 확인하시거나" not in updated_text
 
@@ -209,10 +207,10 @@ class TestHandleNormalSuccessNoContinuationHint:
 
         executor._handle_normal_success(ctx, result, long_response, False, None)
 
-        # chat_update에 전달된 text에 continuation_hint가 없어야 함
-        update_call = ctx.client.chat_update.call_args
+        # update_message_fn에 전달된 text에 continuation_hint가 없어야 함
+        update_call = executor.update_message_fn.call_args
         assert update_call is not None
-        updated_text = update_call.kwargs.get("text", "")
+        updated_text = update_call.args[3]  # (client, channel, ts, text)
         assert "스레드를 확인해주세요" not in updated_text
         assert "자세한 내용을 확인하시거나" not in updated_text
 
@@ -224,9 +222,9 @@ class TestHandleNormalSuccessNoContinuationHint:
 
         executor._handle_normal_success(ctx, result, "스레드 답변", False, None)
 
-        update_call = ctx.client.chat_update.call_args
+        update_call = executor.update_message_fn.call_args
         assert update_call is not None
-        updated_text = update_call.kwargs.get("text", "")
+        updated_text = update_call.args[3]  # (client, channel, ts, text)
         assert "스레드를 확인해주세요" not in updated_text
         assert "자세한 내용을 확인하시거나" not in updated_text
 
@@ -291,8 +289,8 @@ class TestHandleNormalSuccessShortResponseNoDuplicate:
 
         executor._handle_normal_success(ctx, result, response, False, None)
 
-        update_call = ctx.client.chat_update.call_args
-        updated_text = update_call.kwargs.get("text", "")
+        update_call = executor.update_message_fn.call_args
+        updated_text = update_call.args[3]  # (client, channel, ts, text)
         assert "line 0" in updated_text
         assert "line 1" in updated_text
         assert "line 2" in updated_text
@@ -394,7 +392,7 @@ class TestHandleExceptionDelegatesToHandleError:
         mock_handler.assert_called_once_with(ctx, "테스트 예외")
 
     def test_handle_error_fallback_to_say_on_update_failure(self):
-        """handle_error: update_message 실패 시 ctx.say로 폴백"""
+        """handle_error: update_message_fn 실패 시 ctx.say로 폴백"""
         from seosoyoung.slackbot.claude.result_processor import ResultProcessor
 
         rp = ResultProcessor(
@@ -402,12 +400,10 @@ class TestHandleExceptionDelegatesToHandleError:
             restart_manager=MagicMock(),
             get_running_session_count=MagicMock(return_value=0),
             send_restart_confirmation=MagicMock(),
+            update_message_fn=MagicMock(side_effect=Exception("슬랙 업데이트 실패")),
         )
         ctx = _make_ctx()
-        # update_message가 예외를 던지도록 설정
-        with patch("seosoyoung.slackbot.claude.result_processor.update_message",
-                   side_effect=Exception("슬랙 업데이트 실패")):
-            rp.handle_error(ctx, "테스트 오류")
+        rp.handle_error(ctx, "테스트 오류")
 
         # 폴백으로 ctx.say 호출
         ctx.say.assert_called_once()

@@ -4,7 +4,7 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 인터벤션(intervention) 기능을 지원하여, 실행 중 새 메시지가 도착하면
 현재 실행을 중단하고 새 프롬프트로 이어서 실행합니다.
 
-실행 모드 (CLAUDE_EXECUTION_MODE):
+실행 모드 (execution_mode):
 - local: 기존 방식. ClaudeAgentRunner를 직접 사용하여 로컬에서 실행.
 - remote: seosoyoung-soul 서버에 HTTP/SSE로 위임하여 실행.
 """
@@ -15,11 +15,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 from seosoyoung.slackbot.claude.intervention import InterventionManager, PendingPrompt
 from seosoyoung.slackbot.claude.result_processor import ResultProcessor
-from seosoyoung.slackbot.claude.session import Session, SessionManager
+from seosoyoung.slackbot.claude.session import Session, SessionManager, SessionRuntime
 from seosoyoung.slackbot.claude.message_formatter import (
     truncate_progress_text,
     format_as_blockquote,
@@ -28,42 +27,17 @@ from seosoyoung.slackbot.claude.message_formatter import (
 )
 from seosoyoung.slackbot.claude.types import (
     CardInfo, SlackClient, SayFunction, ProgressCallback, CompactCallback,
+    UpdateMessageFn, PrepareMemoryFn, TriggerObservationFn, OnCompactOMFlagFn,
 )
-from seosoyoung.slackbot.slack.formatting import update_message
+from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
-
-
-def _is_remote_mode() -> bool:
-    """현재 실행 모드가 remote인지 확인"""
-    return Config.claude.execution_mode == "remote"
 
 
 def _get_mcp_config_path() -> Optional[Path]:
     """MCP 설정 파일 경로 반환 (없으면 None)"""
     config_path = Path(__file__).resolve().parents[4] / "mcp_config.json"
     return config_path if config_path.exists() else None
-
-
-def _get_role_config(role: str) -> dict:
-    """역할에 맞는 runner 설정을 반환
-
-    Returns:
-        dict with keys: allowed_tools, disallowed_tools, mcp_config_path
-    """
-    allowed_tools = Config.auth.role_tools.get(role, Config.auth.role_tools["viewer"])
-
-    if role == "viewer":
-        return {
-            "allowed_tools": allowed_tools,
-            "disallowed_tools": ["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"],
-            "mcp_config_path": None,
-        }
-    return {
-        "allowed_tools": allowed_tools,
-        "disallowed_tools": None,
-        "mcp_config_path": _get_mcp_config_path(),
-    }
 
 
 @dataclass
@@ -115,26 +89,49 @@ class ClaudeExecutor:
     def __init__(
         self,
         session_manager: SessionManager,
-        get_session_lock: Callable,
-        mark_session_running: Callable,
-        mark_session_stopped: Callable,
-        get_running_session_count: Callable,
+        session_runtime: SessionRuntime,
         restart_manager,
         send_long_message: Callable,
         send_restart_confirmation: Callable,
+        update_message_fn: UpdateMessageFn,
+        *,
+        execution_mode: str = "local",
+        role_tools: Optional[dict] = None,
+        show_context_usage: bool = False,
+        soul_url: str = "",
+        soul_token: str = "",
+        soul_client_id: str = "",
+        restart_type_update=None,
+        restart_type_restart=None,
         trello_watcher_ref: Optional[Callable] = None,
         list_runner_ref: Optional[Callable] = None,
+        prepare_memory_fn: Optional[PrepareMemoryFn] = None,
+        trigger_observation_fn: Optional[TriggerObservationFn] = None,
+        on_compact_om_flag: Optional[OnCompactOMFlagFn] = None,
     ):
         self.session_manager = session_manager
-        self.get_session_lock = get_session_lock
-        self.mark_session_running = mark_session_running
-        self.mark_session_stopped = mark_session_stopped
-        self.get_running_session_count = get_running_session_count
+        self.session_runtime = session_runtime
         self.restart_manager = restart_manager
         self.send_long_message = send_long_message
         self.send_restart_confirmation = send_restart_confirmation
+        self.update_message_fn = update_message_fn
+        self.execution_mode = execution_mode
+        self.role_tools = role_tools or {}
+        self.show_context_usage = show_context_usage
+        self.soul_url = soul_url
+        self.soul_token = soul_token
+        self.soul_client_id = soul_client_id
         self.trello_watcher_ref = trello_watcher_ref
         self.list_runner_ref = list_runner_ref
+        self.prepare_memory_fn = prepare_memory_fn
+        self.trigger_observation_fn = trigger_observation_fn
+        self.on_compact_om_flag = on_compact_om_flag
+
+        # 하위 호환 프로퍼티 (기존 코드에서 직접 접근하는 경우 대비)
+        self.get_session_lock = session_runtime.get_session_lock
+        self.mark_session_running = session_runtime.mark_session_running
+        self.mark_session_stopped = session_runtime.mark_session_stopped
+        self.get_running_session_count = session_runtime.get_running_session_count
 
         # 인터벤션 관리자
         self._intervention = InterventionManager()
@@ -144,10 +141,13 @@ class ClaudeExecutor:
         self._result_processor = ResultProcessor(
             send_long_message=send_long_message,
             restart_manager=restart_manager,
-            get_running_session_count=get_running_session_count,
+            get_running_session_count=session_runtime.get_running_session_count,
             send_restart_confirmation=send_restart_confirmation,
+            update_message_fn=update_message_fn,
             trello_watcher_ref=trello_watcher_ref,
-            show_context_usage=Config.claude.show_context_usage,
+            show_context_usage=show_context_usage,
+            restart_type_update=restart_type_update,
+            restart_type_restart=restart_type_restart,
         )
         # Remote 모드: ClaudeServiceAdapter (lazy 초기화)
         self._service_adapter: Optional[object] = None
@@ -249,7 +249,7 @@ class ClaudeExecutor:
         )
         self._intervention.save_pending(thread_ts, pending)
 
-        if _is_remote_mode():
+        if self.execution_mode == "remote":
             self._intervention.fire_interrupt_remote(
                 thread_ts, prompt,
                 self._active_remote_requests, self._service_adapter,
@@ -346,10 +346,10 @@ class ClaudeExecutor:
                     else:
                         update_text = format_trello_progress(
                             display_text, ctx.trello_card, session.session_id or "")
-                        update_message(ctx.client, ctx.channel, ctx.main_msg_ts, update_text)
+                        self.update_message_fn(ctx.client, ctx.channel, ctx.main_msg_ts, update_text)
                 else:
                     quote_text = format_as_blockquote(display_text)
-                    update_message(ctx.client, ctx.channel, ctx.last_msg_ts, quote_text)
+                    self.update_message_fn(ctx.client, ctx.channel, ctx.last_msg_ts, quote_text)
             except Exception as e:
                 logger.warning(f"사고 과정 메시지 전송 실패: {e}")
 
@@ -365,13 +365,13 @@ class ClaudeExecutor:
         ctx.on_compact = on_compact
         original_thread_ts = ctx.original_thread_ts
 
-        if _is_remote_mode():
+        if self.execution_mode == "remote":
             # === Remote 모드: soul 서버에 위임 ===
             logger.info(f"Claude 실행 (remote): thread={thread_ts}, role={ctx.effective_role}")
             self._execute_remote(ctx, prompt)
         else:
             # === Local 모드: thread_ts 단위 runner 생성 ===
-            role_config = _get_role_config(ctx.effective_role)
+            role_config = self._get_role_config(ctx.effective_role)
 
             def _debug_send(ch: str, ts: str, msg: str) -> None:
                 ctx.client.chat_postMessage(channel=ch, thread_ts=ts, text=msg)
@@ -383,6 +383,9 @@ class ClaudeExecutor:
                 disallowed_tools=role_config["disallowed_tools"],
                 mcp_config_path=role_config["mcp_config_path"],
                 debug_send_fn=_debug_send,
+                prepare_memory_fn=self.prepare_memory_fn,
+                trigger_observation_fn=self.trigger_observation_fn,
+                on_compact_om_flag=self.on_compact_om_flag,
             )
             logger.info(f"Claude 실행 (local): thread={thread_ts}, role={ctx.effective_role}")
 
@@ -402,6 +405,26 @@ class ClaudeExecutor:
                 logger.exception(f"Claude 실행 오류: {e}")
                 self._handle_exception(ctx, e)
 
+    def _get_role_config(self, role: str) -> dict:
+        """역할에 맞는 runner 설정을 반환
+
+        Returns:
+            dict with keys: allowed_tools, disallowed_tools, mcp_config_path
+        """
+        allowed_tools = self.role_tools.get(role, self.role_tools.get("viewer", []))
+
+        if role == "viewer":
+            return {
+                "allowed_tools": allowed_tools,
+                "disallowed_tools": ["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"],
+                "mcp_config_path": None,
+            }
+        return {
+            "allowed_tools": allowed_tools,
+            "disallowed_tools": None,
+            "mcp_config_path": _get_mcp_config_path(),
+        }
+
     def _get_service_adapter(self):
         """Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환"""
         if self._service_adapter is None:
@@ -410,19 +433,17 @@ class ClaudeExecutor:
                     from seosoyoung.slackbot.claude.service_client import SoulServiceClient
                     from seosoyoung.slackbot.claude.service_adapter import ClaudeServiceAdapter
                     client = SoulServiceClient(
-                        base_url=Config.claude.soul_url,
-                        token=Config.claude.soul_token,
+                        base_url=self.soul_url,
+                        token=self.soul_token,
                     )
                     self._service_adapter = ClaudeServiceAdapter(
                         client=client,
-                        client_id=Config.claude.soul_client_id,
+                        client_id=self.soul_client_id,
                     )
         return self._service_adapter
 
     def _execute_remote(self, ctx: ExecutionContext, prompt: str):
         """Remote 모드: soul 서버에 실행을 위임"""
-        from seosoyoung.slackbot.claude.agent_runner import run_in_new_loop
-
         adapter = self._get_service_adapter()
         original_thread_ts = ctx.original_thread_ts
         request_id = original_thread_ts  # thread_ts를 request_id로 사용

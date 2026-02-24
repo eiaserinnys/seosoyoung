@@ -30,11 +30,10 @@ from seosoyoung.slackbot.claude.diagnostics import (
     format_rate_limit_warning,
     send_debug_to_slack,
 )
-from seosoyoung.slackbot.memory.injector import (
-    create_or_load_debug_anchor,
-    prepare_memory_injection,
-    send_injection_debug_log,
-    trigger_observation,
+from seosoyoung.slackbot.claude.types import (
+    PrepareMemoryFn,
+    TriggerObservationFn,
+    OnCompactOMFlagFn,
 )
 from seosoyoung.utils.async_bridge import run_in_new_loop
 
@@ -221,16 +220,20 @@ class ClaudeRunner:
         disallowed_tools: Optional[list[str]] = None,
         mcp_config_path: Optional[Path] = None,
         debug_send_fn: Optional[DebugSendFn] = None,
+        prepare_memory_fn: Optional[PrepareMemoryFn] = None,
+        trigger_observation_fn: Optional[TriggerObservationFn] = None,
+        on_compact_om_flag: Optional[OnCompactOMFlagFn] = None,
     ):
-        from seosoyoung.slackbot.config import Config
-
         self.thread_ts = thread_ts
         self.channel = channel
         self.working_dir = working_dir or Path.cwd()
-        self.allowed_tools = allowed_tools or Config.auth.role_tools["admin"]
+        self.allowed_tools = allowed_tools or DEFAULT_DISALLOWED_TOOLS  # fallback to safe default
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
         self.debug_send_fn = debug_send_fn
+        self.prepare_memory_fn = prepare_memory_fn
+        self.trigger_observation_fn = trigger_observation_fn
+        self.on_compact_om_flag = on_compact_om_flag
 
         # Instance-level client state
         self.client: Optional[ClaudeSDKClient] = None
@@ -380,16 +383,9 @@ class ClaudeRunner:
             })
 
             # OM: 컴팩션 시 다음 요청에 관찰 로그 재주입하도록 플래그 설정
-            if thread_ts:
+            if thread_ts and self.on_compact_om_flag:
                 try:
-                    from seosoyoung.slackbot.config import Config
-                    if Config.om.enabled:
-                        from seosoyoung.slackbot.memory.store import MemoryStore
-                        store = MemoryStore(Config.get_memory_path())
-                        record = store.get_record(thread_ts)
-                        if record and record.observations.strip():
-                            store.set_inject_flag(thread_ts)
-                            logger.info(f"OM inject 플래그 설정 (PreCompact, thread={thread_ts})")
+                    self.on_compact_om_flag(thread_ts)
                 except Exception as e:
                     logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
 
@@ -459,9 +455,12 @@ class ClaudeRunner:
         if session_id:
             options.resume = session_id
 
-        memory_prompt, anchor_ts = prepare_memory_injection(
-            self.thread_ts, self.channel, session_id, prompt,
-        )
+        memory_prompt: Optional[str] = None
+        anchor_ts: str = ""
+        if self.prepare_memory_fn:
+            memory_prompt, anchor_ts = self.prepare_memory_fn(
+                self.thread_ts, self.channel, session_id, prompt,
+            )
 
         return options, memory_prompt, anchor_ts, _stderr_file
 
@@ -695,9 +694,9 @@ class ClaudeRunner:
         result = await self._execute(prompt, session_id, on_progress, on_compact, user_id)
 
         # OM: 세션 종료 후 비동기로 관찰 파이프라인 트리거
-        if result.success and user_id and thread_ts and result.collected_messages:
+        if self.trigger_observation_fn and result.success and user_id and thread_ts and result.collected_messages:
             observation_input = user_message if user_message is not None else prompt
-            trigger_observation(thread_ts, user_id, observation_input, result.collected_messages, anchor_ts=result.anchor_ts)
+            self.trigger_observation_fn(thread_ts, user_id, observation_input, result.collected_messages, anchor_ts=result.anchor_ts)
 
         return result
 
