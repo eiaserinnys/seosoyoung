@@ -175,7 +175,7 @@ class SoulServiceClient:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> ExecuteResult:
-        """Claude Code 실행 (SSE 스트리밍)"""
+        """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)"""
         session = await self._get_session()
         url = f"{self.base_url}/execute"
 
@@ -186,6 +186,8 @@ class SoulServiceClient:
         }
         if resume_session_id:
             data["resume_session_id"] = resume_session_id
+
+        backoff = ExponentialBackoff()
 
         async with session.post(url, json=data) as response:
             if response.status == 409:
@@ -198,11 +200,43 @@ class SoulServiceClient:
                 error = await self._parse_error(response)
                 raise SoulServiceError(f"실행 실패: {error}")
 
-            return await self._handle_sse_events(
-                response=response,
-                on_progress=on_progress,
-                on_compact=on_compact,
+            try:
+                return await self._handle_sse_events(
+                    response=response,
+                    on_progress=on_progress,
+                    on_compact=on_compact,
+                )
+            except ConnectionLostError:
+                pass  # 재연결 루프로 진입
+
+        # 연결 끊김 → reconnect_stream()으로 새 HTTP 요청을 보내 재연결
+        while backoff.should_retry():
+            delay = backoff.get_delay()
+            logger.warning(
+                f"[SSE] 연결 끊김, 재연결 시도 ({backoff.attempt + 1}/{backoff.max_retries}), "
+                f"{delay}초 후"
             )
+            backoff.increment()
+            await asyncio.sleep(delay)
+
+            try:
+                return await self.reconnect_stream(
+                    client_id, request_id, on_progress, on_compact,
+                )
+            except ConnectionLostError:
+                continue
+            except TaskNotFoundError:
+                return ExecuteResult(
+                    success=False,
+                    result="재연결 실패: 태스크가 이미 종료됨",
+                    error="재연결 실패: 태스크가 이미 종료됨",
+                )
+
+        return ExecuteResult(
+            success=False,
+            result=f"소울 서비스 연결이 끊어졌습니다 ({backoff.max_retries}회 재시도 실패)",
+            error=f"소울 서비스 연결이 끊어졌습니다 ({backoff.max_retries}회 재시도 실패)",
+        )
 
     async def intervene(
         self,
@@ -291,15 +325,17 @@ class SoulServiceClient:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> ExecuteResult:
-        """SSE 이벤트 스트림 처리"""
+        """SSE 이벤트 스트림 처리
+
+        ConnectionLostError는 catch하지 않고 상위 레이어로 전파합니다.
+        재연결은 execute()에서 reconnect_stream()을 통해 처리합니다.
+        """
         result_text = ""
         result_claude_session_id = None
         error_message = None
 
-        backoff = ExponentialBackoff()
-
         try:
-            async for event in self._parse_sse_stream(response, backoff):
+            async for event in self._parse_sse_stream(response):
                 if event.event == "progress":
                     text = event.data.get("text", "")
                     if on_progress and text:
@@ -326,8 +362,6 @@ class SoulServiceClient:
 
         except asyncio.TimeoutError:
             error_message = "응답 대기 시간 초과"
-        except ConnectionLostError as e:
-            error_message = str(e)
         except aiohttp.ClientError as e:
             error_message = f"네트워크 오류: {e}"
 
@@ -347,9 +381,12 @@ class SoulServiceClient:
     async def _parse_sse_stream(
         self,
         response: aiohttp.ClientResponse,
-        backoff: ExponentialBackoff,
     ) -> AsyncIterator[SSEEvent]:
-        """SSE 스트림 파싱 (연결 끊김 시 지수 백오프 재시도)"""
+        """SSE 스트림 파싱
+
+        연결 끊김 시 ConnectionLostError를 발생시킵니다.
+        재연결은 상위 레이어(execute)에서 reconnect_stream()을 통해 처리합니다.
+        """
         current_event = "message"
         current_data: list[str] = []
 
@@ -359,8 +396,6 @@ class SoulServiceClient:
                     response.content.readline(),
                     timeout=HTTP_SOCK_READ_TIMEOUT,
                 )
-
-                backoff.reset()
 
                 if not line_bytes:
                     break
@@ -390,19 +425,9 @@ class SoulServiceClient:
                 raise
 
             except aiohttp.ClientError as e:
-                if backoff.should_retry():
-                    delay = backoff.get_delay()
-                    logger.warning(
-                        f"[SSE] 연결 끊김, 재시도 ({backoff.attempt + 1}/{backoff.max_retries}), "
-                        f"{delay}초 후: {e}"
-                    )
-                    backoff.increment()
-                    await asyncio.sleep(delay)
-                    continue
-                else:
-                    raise ConnectionLostError(
-                        f"소울 서비스 연결이 끊어졌습니다 ({backoff.max_retries}회 재시도 실패)"
-                    )
+                raise ConnectionLostError(
+                    f"소울 서비스 연결이 끊어졌습니다: {e}"
+                )
 
     async def _parse_error(self, response: aiohttp.ClientResponse) -> str:
         """에러 응답 파싱"""
