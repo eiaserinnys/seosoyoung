@@ -11,7 +11,7 @@ Claude 실행 결과 처리
 ## 클래스
 
 ### `ResultProcessor`
-- 위치: 줄 18
+- 위치: 줄 20
 - 설명: Claude 실행 결과를 처리하여 슬랙에 응답
 
 성공/실패/중단 분기 처리, 트렐로/일반 모드 분기,
@@ -19,19 +19,21 @@ Claude 실행 결과 처리
 
 #### 메서드
 
-- `__init__(self, send_long_message, restart_manager, get_running_session_count, send_restart_confirmation, update_message_fn)` (줄 25): 
-- `replace_thinking_message(self, client, channel, old_msg_ts, new_text, new_blocks, thread_ts)` (줄 48): 사고 과정 메시지를 최종 응답으로 교체 (chat_update)
-- `handle_interrupted(self, ctx)` (줄 56): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
-- `handle_success(self, ctx, result)` (줄 81): 성공 결과 처리
-- `handle_trello_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 115): 트렐로 모드 성공 처리
-- `handle_normal_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 159): 일반 모드(멘션) 성공 처리
-- `handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 235): 재기동 마커 처리
-- `handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 258): LIST_RUN 마커 처리 - 정주행 시작
-- `handle_error(self, ctx, error)` (줄 315): 오류 결과 처리
-- `handle_exception(self, ctx, e)` (줄 348): 예외 처리 — handle_error에 위임
+- `__init__(self, send_long_message, restart_manager, get_running_session_count, send_restart_confirmation, update_message_fn)` (줄 27): 
+- `replace_thinking_message(self, client, channel, old_msg_ts, new_text, new_blocks, thread_ts)` (줄 50): 사고 과정 메시지를 최종 응답으로 교체 (chat_update)
+- `handle_interrupted(self, ctx)` (줄 58): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
+- `handle_success(self, ctx, result)` (줄 83): 성공 결과 처리
+- `handle_trello_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 117): 트렐로 모드 성공 처리
+- `handle_normal_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 161): 일반 모드(멘션) 성공 처리
+- `handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 237): 재기동 마커 처리
+- `handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 260): LIST_RUN 마커 처리 - 정주행 시작
+- `handle_error(self, ctx, error)` (줄 317): 오류 결과 처리
+- `handle_exception(self, ctx, e)` (줄 350): 예외 처리 — handle_error에 위임
 
 ## 내부 의존성
 
+- `seosoyoung.slackbot.claude.message_formatter.PROGRESS_MAX_LEN`
+- `seosoyoung.slackbot.claude.message_formatter.SLACK_MSG_MAX_LEN`
 - `seosoyoung.slackbot.claude.message_formatter.build_context_usage_bar`
 - `seosoyoung.slackbot.claude.message_formatter.build_trello_header`
 - `seosoyoung.slackbot.claude.types.UpdateMessageFn`

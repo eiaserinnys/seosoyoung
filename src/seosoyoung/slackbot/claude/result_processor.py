@@ -7,6 +7,8 @@ import logging
 from typing import Any, Callable, Optional
 
 from seosoyoung.slackbot.claude.message_formatter import (
+    PROGRESS_MAX_LEN,
+    SLACK_MSG_MAX_LEN,
     build_context_usage_bar,
     build_trello_header,
 )
@@ -119,7 +121,7 @@ class ResultProcessor:
         """트렐로 모드 성공 처리"""
         if ctx.dm_channel_id and ctx.dm_last_reply_ts:
             try:
-                dm_final = response[:3800] if len(response) > 3800 else response
+                dm_final = response[:PROGRESS_MAX_LEN] if len(response) > PROGRESS_MAX_LEN else response
                 self.update_message_fn(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts, dm_final)
             except Exception as e:
                 logger.warning(f"DM 스레드 최종 메시지 업데이트 실패: {e}")
@@ -128,7 +130,7 @@ class ResultProcessor:
         header = build_trello_header(ctx.trello_card, final_session_id)
         footer = usage_bar or ""
 
-        max_response_len = 3900 - len(header) - len(footer) - 20
+        max_response_len = SLACK_MSG_MAX_LEN - len(header) - len(footer) - 20
         if len(response) <= max_response_len:
             final_text = f"{header}\n\n{response}"
             if footer:
@@ -206,7 +208,7 @@ class ResultProcessor:
                 display_response = f"{display_response}\n\n{usage_bar}"
 
             try:
-                if len(display_response) <= 3900:
+                if len(display_response) <= SLACK_MSG_MAX_LEN:
                     final_text = display_response
                     final_blocks = [{
                         "type": "section",
@@ -217,7 +219,7 @@ class ResultProcessor:
                         final_text, final_blocks, thread_ts=reply_thread_ts,
                     )
                 else:
-                    truncated = display_response[:3900]
+                    truncated = display_response[:SLACK_MSG_MAX_LEN]
                     first_part = f"{truncated}..."
                     first_blocks = [{
                         "type": "section",
@@ -227,7 +229,7 @@ class ResultProcessor:
                         ctx.client, ctx.channel, ctx.last_msg_ts,
                         first_part, first_blocks, thread_ts=reply_thread_ts,
                     )
-                    remaining = display_response[3900:]
+                    remaining = display_response[SLACK_MSG_MAX_LEN:]
                     self.send_long_message(ctx.say, remaining, ctx.thread_ts)
             except Exception:
                 self.send_long_message(ctx.say, display_response, ctx.thread_ts)

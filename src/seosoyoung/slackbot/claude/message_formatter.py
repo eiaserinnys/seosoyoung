@@ -88,7 +88,8 @@ def build_trello_header(card: CardInfo, session_id: str = "") -> str:
     return f"*🎫 <{card.card_url}|{card.card_name}>{session_display}*"
 
 
-# 진행 상황 메시지 길이 제한
+# 슬랙 메시지 길이 제한
+SLACK_MSG_MAX_LEN = 3900
 PROGRESS_MAX_LEN = 3800
 DM_MSG_MAX_LEN = 3000
 
