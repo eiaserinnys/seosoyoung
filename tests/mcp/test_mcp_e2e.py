@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 
 class TestMCPServerStandalone:
@@ -70,7 +70,7 @@ class TestMCPServerStandalone:
 class TestMCPE2EMentionFlow:
     """멘션 → attach_file MCP 호출 → 슬랙 파일 첨부 E2E"""
 
-    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[2])
+    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[3])
 
     def _make_workspace_file(self, suffix=".txt", content=b"E2E test file"):
         """workspace 내부에 테스트 파일 생성"""
@@ -160,7 +160,7 @@ class TestMCPE2EMentionFlow:
 class TestMCPE2ETrelloFlow:
     """트렐로 모드에서 첨부 파일 정상 전달 E2E"""
 
-    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[2])
+    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[3])
 
     def _make_workspace_file(self, suffix=".txt", content=b"trello test"):
         tmp_dir = Path(self.WORKSPACE_ROOT) / ".local" / "tmp"
@@ -217,7 +217,7 @@ class TestMCPE2ETrelloFlow:
 class TestMCPE2EErrorCases:
     """E2E 에러 케이스 테스트"""
 
-    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[2])
+    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[3])
 
     def _make_workspace_file(self, suffix=".txt", content=b"test"):
         tmp_dir = Path(self.WORKSPACE_ROOT) / ".local" / "tmp"
@@ -336,7 +336,7 @@ class TestMCPConfigIntegrity:
 
     def test_mcp_config_server_name_matches(self):
         """mcp_config.json의 서버 이름이 FastMCP 서버와 일치"""
-        config_path = Path(__file__).parent.parent / "mcp_config.json"
+        config_path = Path(__file__).parent.parent.parent / "mcp_config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
 
         from seosoyoung.mcp.server import mcp
@@ -378,7 +378,7 @@ class TestMCPConfigIntegrity:
 
     def test_mcp_config_env_vars_complete(self):
         """mcp_config.json에 필요한 환경변수 참조 포함"""
-        config_path = Path(__file__).parent.parent / "mcp_config.json"
+        config_path = Path(__file__).parent.parent.parent / "mcp_config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
 
         env = config["seosoyoung-attach"]["env"]

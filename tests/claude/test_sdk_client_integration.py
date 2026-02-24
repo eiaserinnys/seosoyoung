@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
 
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from seosoyoung.claude.agent_runner import ClaudeAgentRunner
 

@@ -10,7 +10,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 
 class TestGetRoleConfigMCP:
@@ -94,14 +94,14 @@ class TestMCPConfigFile:
 
     def test_mcp_config_exists(self):
         """mcp_config.json 파일이 존재"""
-        config_path = Path(__file__).parent.parent / "mcp_config.json"
+        config_path = Path(__file__).parent.parent.parent / "mcp_config.json"
         assert config_path.exists(), f"mcp_config.json이 없음: {config_path}"
 
     def test_mcp_config_has_seosoyoung_server(self):
         """설정에 seosoyoung-attach 서버가 정의됨"""
         import json
 
-        config_path = Path(__file__).parent.parent / "mcp_config.json"
+        config_path = Path(__file__).parent.parent.parent / "mcp_config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
 
         assert "seosoyoung-attach" in config
@@ -112,7 +112,7 @@ class TestMCPConfigFile:
         """env에 SLACK_CHANNEL, SLACK_THREAD_TS 참조가 있음"""
         import json
 
-        config_path = Path(__file__).parent.parent / "mcp_config.json"
+        config_path = Path(__file__).parent.parent.parent / "mcp_config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
 
         env = config["seosoyoung-attach"].get("env", {})

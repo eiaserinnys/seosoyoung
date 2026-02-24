@@ -589,7 +589,7 @@ class TestMigrationCli:
             "## [2026-02-10] Session\n🔴 CLI 테스트\n", encoding="utf-8"
         )
 
-        script = Path(__file__).resolve().parent.parent / "scripts" / "migrate_om_to_json.py"
+        script = Path(__file__).resolve().parent.parent.parent / "scripts" / "migrate_om_to_json.py"
         result = subprocess.run(
             ["python", str(script), "--base-dir", str(tmp_path), "--dry-run"],
             capture_output=True,
@@ -612,7 +612,7 @@ class TestMigrationCli:
             "## [2026-02-10] Session\n🔴 실제 변환\n", encoding="utf-8"
         )
 
-        script = Path(__file__).resolve().parent.parent / "scripts" / "migrate_om_to_json.py"
+        script = Path(__file__).resolve().parent.parent.parent / "scripts" / "migrate_om_to_json.py"
         result = subprocess.run(
             ["python", str(script), "--base-dir", str(tmp_path)],
             capture_output=True,
@@ -627,7 +627,7 @@ class TestMigrationCli:
     def test_cli_nonexistent_dir(self):
         import subprocess
 
-        script = Path(__file__).resolve().parent.parent / "scripts" / "migrate_om_to_json.py"
+        script = Path(__file__).resolve().parent.parent.parent / "scripts" / "migrate_om_to_json.py"
         result = subprocess.run(
             ["python", str(script), "--base-dir", "/nonexistent/path"],
             capture_output=True,

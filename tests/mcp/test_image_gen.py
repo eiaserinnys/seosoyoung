@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 import seosoyoung.mcp.tools.image_gen as _image_gen_mod
 

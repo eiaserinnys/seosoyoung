@@ -69,7 +69,7 @@ class TestPostMessageTextOnly:
 class TestPostMessageWithFiles:
     """파일 첨부 포함 post_message 테스트"""
 
-    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[2])
+    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[3])
 
     def _make_temp_file(self, suffix=".txt", content=b"test"):
         """workspace 내부에 임시 파일 생성"""

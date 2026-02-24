@@ -37,3 +37,4 @@ data/*.json
 # Observational memory (runtime only)
 memory/
 !src/seosoyoung/memory/
+!tests/memory/
