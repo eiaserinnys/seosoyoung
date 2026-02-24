@@ -1,6 +1,6 @@
 # claude/message_formatter.py
 
-> 경로: `seosoyoung/claude/message_formatter.py`
+> 경로: `seosoyoung/slackbot/claude/message_formatter.py`
 
 ## 개요
 
@@ -79,4 +79,4 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.trello.watcher.TrackedCard`
+- `seosoyoung.slackbot.trello.watcher.TrackedCard`

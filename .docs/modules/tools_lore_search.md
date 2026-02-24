@@ -119,6 +119,6 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.search.embedding_cache.EmbeddingCache`
-- `seosoyoung.search.embedding_index.cosine_similarity_search`
-- `seosoyoung.search.embedding_index.load_embedding_index`
+- `seosoyoung.slackbot.search.embedding_cache.EmbeddingCache`
+- `seosoyoung.slackbot.search.embedding_index.cosine_similarity_search`
+- `seosoyoung.slackbot.search.embedding_index.load_embedding_index`

@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from seosoyoung.search.git_watcher import (
+from seosoyoung.slackbot.search.git_watcher import (
     BuildLock,
     IndexStatus,
     GitWatcher,
@@ -125,7 +125,7 @@ class TestIndexStatus:
 
 
 class TestGitUtils:
-    @patch("seosoyoung.search.git_watcher.subprocess.run")
+    @patch("seosoyoung.slackbot.search.git_watcher.subprocess.run")
     def test_read_git_head_success(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0, stdout="abc123def456\n"
@@ -133,7 +133,7 @@ class TestGitUtils:
         head = _read_git_head(Path("/fake/repo"))
         assert head == "abc123def456"
 
-    @patch("seosoyoung.search.git_watcher.subprocess.run")
+    @patch("seosoyoung.slackbot.search.git_watcher.subprocess.run")
     def test_read_git_head_failure(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=1, stdout="", stderr="error"
@@ -141,7 +141,7 @@ class TestGitUtils:
         head = _read_git_head(Path("/fake/repo"))
         assert head is None
 
-    @patch("seosoyoung.search.git_watcher.subprocess.run")
+    @patch("seosoyoung.slackbot.search.git_watcher.subprocess.run")
     def test_read_git_head_timeout(self, mock_run):
         import subprocess
 
@@ -149,14 +149,14 @@ class TestGitUtils:
         head = _read_git_head(Path("/fake/repo"))
         assert head is None
 
-    @patch("seosoyoung.search.git_watcher.subprocess.run")
+    @patch("seosoyoung.slackbot.search.git_watcher.subprocess.run")
     def test_git_pull_success(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0, stdout="Already up to date.\n"
         )
         assert _git_pull(Path("/fake/repo")) is True
 
-    @patch("seosoyoung.search.git_watcher.subprocess.run")
+    @patch("seosoyoung.slackbot.search.git_watcher.subprocess.run")
     def test_git_pull_failure(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=1, stdout="", stderr="merge conflict"
@@ -185,7 +185,7 @@ class TestGitWatcher:
             "index_root": index_root,
         }
 
-    @patch("seosoyoung.search.git_watcher._read_git_head")
+    @patch("seosoyoung.slackbot.search.git_watcher._read_git_head")
     def test_start_stop(self, mock_head, watcher_env):
         """워처 시작/종료가 정상 동작."""
         mock_head.return_value = "abc123"
@@ -201,7 +201,7 @@ class TestGitWatcher:
         watcher.stop(timeout=2.0)
         assert not watcher.is_running
 
-    @patch("seosoyoung.search.git_watcher._read_git_head")
+    @patch("seosoyoung.slackbot.search.git_watcher._read_git_head")
     def test_initial_head_stored(self, mock_head, watcher_env):
         """시작 시 초기 HEAD가 저장됨."""
         mock_head.side_effect = ["narrative_head", "lore_head"]
@@ -214,8 +214,8 @@ class TestGitWatcher:
 
         watcher.stop()
 
-    @patch("seosoyoung.search.git_watcher._git_pull")
-    @patch("seosoyoung.search.git_watcher._read_git_head")
+    @patch("seosoyoung.slackbot.search.git_watcher._git_pull")
+    @patch("seosoyoung.slackbot.search.git_watcher._read_git_head")
     def test_no_rebuild_when_unchanged(self, mock_head, mock_pull, watcher_env):
         """HEAD 변경 없으면 rebuild/pull 호출 안 함."""
         mock_head.return_value = "same_head"
@@ -227,9 +227,9 @@ class TestGitWatcher:
 
         mock_pull.assert_not_called()
 
-    @patch("seosoyoung.search.git_watcher.GitWatcher._rebuild_index")
-    @patch("seosoyoung.search.git_watcher._git_pull")
-    @patch("seosoyoung.search.git_watcher._read_git_head")
+    @patch("seosoyoung.slackbot.search.git_watcher.GitWatcher._rebuild_index")
+    @patch("seosoyoung.slackbot.search.git_watcher._git_pull")
+    @patch("seosoyoung.slackbot.search.git_watcher._read_git_head")
     def test_rebuild_on_narrative_change(
         self, mock_head, mock_pull, mock_rebuild, watcher_env
     ):
@@ -260,9 +260,9 @@ class TestGitWatcher:
         mock_pull.assert_called()
         mock_rebuild.assert_called()
 
-    @patch("seosoyoung.search.git_watcher.GitWatcher._rebuild_index")
-    @patch("seosoyoung.search.git_watcher._git_pull")
-    @patch("seosoyoung.search.git_watcher._read_git_head")
+    @patch("seosoyoung.slackbot.search.git_watcher.GitWatcher._rebuild_index")
+    @patch("seosoyoung.slackbot.search.git_watcher._git_pull")
+    @patch("seosoyoung.slackbot.search.git_watcher._read_git_head")
     def test_rebuild_on_lore_change(
         self, mock_head, mock_pull, mock_rebuild, watcher_env
     ):
@@ -290,15 +290,15 @@ class TestGitWatcher:
         mock_pull.assert_called()
         mock_rebuild.assert_called()
 
-    @patch("seosoyoung.search.git_watcher._read_git_head")
+    @patch("seosoyoung.slackbot.search.git_watcher._read_git_head")
     def test_on_rebuild_callback(self, mock_head, watcher_env):
         """재빌드 완료 시 on_rebuild 콜백 호출."""
         callback = MagicMock()
 
         # _rebuild_index를 직접 호출하되, build_whoosh를 모킹
-        with patch("seosoyoung.search.git_watcher.BuildLock.acquire", return_value=True), \
-             patch("seosoyoung.search.git_watcher.BuildLock.release"), \
-             patch("seosoyoung.search.build.build_whoosh", return_value={
+        with patch("seosoyoung.slackbot.search.git_watcher.BuildLock.acquire", return_value=True), \
+             patch("seosoyoung.slackbot.search.git_watcher.BuildLock.release"), \
+             patch("seosoyoung.slackbot.search.build.build_whoosh", return_value={
                  "dialogue": {"dialogues": 50},
                  "lore": {"chunks": 10},
              }), \
@@ -317,12 +317,12 @@ class TestGitWatcher:
             assert watcher.status.last_build_time is not None
             assert watcher.status.last_error is None
 
-    @patch("seosoyoung.search.git_watcher._read_git_head")
+    @patch("seosoyoung.slackbot.search.git_watcher._read_git_head")
     def test_rebuild_failure_keeps_existing(self, mock_head, watcher_env):
         """재빌드 실패 시 기존 인덱스 유지, 에러 로깅."""
-        with patch("seosoyoung.search.git_watcher.BuildLock.acquire", return_value=True), \
-             patch("seosoyoung.search.git_watcher.BuildLock.release"), \
-             patch("seosoyoung.search.build.build_whoosh", side_effect=RuntimeError("build error")), \
+        with patch("seosoyoung.slackbot.search.git_watcher.BuildLock.acquire", return_value=True), \
+             patch("seosoyoung.slackbot.search.git_watcher.BuildLock.release"), \
+             patch("seosoyoung.slackbot.search.build.build_whoosh", side_effect=RuntimeError("build error")), \
              patch.object(GitWatcher, "_cleanup_tmp"):
 
             mock_head.return_value = "abc123"
@@ -333,10 +333,10 @@ class TestGitWatcher:
             assert watcher.status.last_error == "build error"
             assert watcher.status.is_building is False
 
-    @patch("seosoyoung.search.git_watcher._read_git_head")
+    @patch("seosoyoung.slackbot.search.git_watcher._read_git_head")
     def test_rebuild_skipped_when_lock_unavailable(self, mock_head, watcher_env):
         """lock을 획득하지 못하면 rebuild를 건너뜀."""
-        with patch("seosoyoung.search.git_watcher.BuildLock.acquire", return_value=False):
+        with patch("seosoyoung.slackbot.search.git_watcher.BuildLock.acquire", return_value=False):
             mock_head.return_value = "abc123"
 
             watcher = GitWatcher(poll_interval=60, **watcher_env)
@@ -358,7 +358,7 @@ class TestSwapIndices:
         tmp_dialogues.mkdir(parents=True)
         (tmp_dialogues / "MAIN_abc.seg").write_text("new index")
 
-        with patch("seosoyoung.search.git_watcher._read_git_head", return_value="abc"):
+        with patch("seosoyoung.slackbot.search.git_watcher._read_git_head", return_value="abc"):
             watcher = GitWatcher(
                 narrative_path=tmp_path / "n",
                 lore_path=tmp_path / "l",
@@ -383,7 +383,7 @@ class TestSwapIndices:
         new_dialogues.mkdir(parents=True)
         (new_dialogues / "MAIN_new.seg").write_text("new index")
 
-        with patch("seosoyoung.search.git_watcher._read_git_head", return_value="abc"):
+        with patch("seosoyoung.slackbot.search.git_watcher._read_git_head", return_value="abc"):
             watcher = GitWatcher(
                 narrative_path=tmp_path / "n",
                 lore_path=tmp_path / "l",

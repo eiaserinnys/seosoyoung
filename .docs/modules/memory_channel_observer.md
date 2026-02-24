@@ -1,6 +1,6 @@
 # memory/channel_observer.py
 
-> 경로: `seosoyoung/memory/channel_observer.py`
+> 경로: `seosoyoung/slackbot/memory/channel_observer.py`
 
 ## 개요
 
@@ -85,12 +85,12 @@ items가 없으면 하위호환용 단일 필드를 사용합니다.
 
 ## 내부 의존성
 
-- `seosoyoung.memory.channel_prompts.build_channel_observer_system_prompt`
-- `seosoyoung.memory.channel_prompts.build_channel_observer_user_prompt`
-- `seosoyoung.memory.channel_prompts.build_digest_compressor_retry_prompt`
-- `seosoyoung.memory.channel_prompts.build_digest_compressor_system_prompt`
-- `seosoyoung.memory.channel_prompts.build_digest_only_system_prompt`
-- `seosoyoung.memory.channel_prompts.build_digest_only_user_prompt`
-- `seosoyoung.memory.channel_prompts.build_judge_system_prompt`
-- `seosoyoung.memory.channel_prompts.build_judge_user_prompt`
-- `seosoyoung.memory.token_counter.TokenCounter`
+- `seosoyoung.slackbot.memory.channel_prompts.build_channel_observer_system_prompt`
+- `seosoyoung.slackbot.memory.channel_prompts.build_channel_observer_user_prompt`
+- `seosoyoung.slackbot.memory.channel_prompts.build_digest_compressor_retry_prompt`
+- `seosoyoung.slackbot.memory.channel_prompts.build_digest_compressor_system_prompt`
+- `seosoyoung.slackbot.memory.channel_prompts.build_digest_only_system_prompt`
+- `seosoyoung.slackbot.memory.channel_prompts.build_digest_only_user_prompt`
+- `seosoyoung.slackbot.memory.channel_prompts.build_judge_system_prompt`
+- `seosoyoung.slackbot.memory.channel_prompts.build_judge_user_prompt`
+- `seosoyoung.slackbot.memory.token_counter.TokenCounter`

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 
-from seosoyoung.web import get_article
+from seosoyoung.slackbot.web import get_article
 
 
 class TestGetArticle:
@@ -21,7 +21,7 @@ class TestGetArticle:
             "authors": ["Cached Author"],
         }
 
-        with patch("seosoyoung.web.WebCache") as mock_cache_cls:
+        with patch("seosoyoung.slackbot.web.WebCache") as mock_cache_cls:
             mock_cache = MagicMock()
             mock_cache.exists.return_value = True
             mock_cache.load.return_value = cached_data
@@ -36,9 +36,9 @@ class TestGetArticle:
     @pytest.mark.asyncio
     async def test_fetches_and_extracts_when_not_cached(self, tmp_path):
         """캐시 없으면 페칭 후 추출"""
-        with patch("seosoyoung.web.WebCache") as mock_cache_cls, \
-             patch("seosoyoung.web.HtmlFetcher") as mock_fetcher_cls, \
-             patch("seosoyoung.web.ContentExtractor") as mock_extractor_cls:
+        with patch("seosoyoung.slackbot.web.WebCache") as mock_cache_cls, \
+             patch("seosoyoung.slackbot.web.HtmlFetcher") as mock_fetcher_cls, \
+             patch("seosoyoung.slackbot.web.ContentExtractor") as mock_extractor_cls:
 
             # 캐시 미스
             mock_cache = MagicMock()
@@ -74,9 +74,9 @@ class TestGetArticle:
     @pytest.mark.asyncio
     async def test_uses_fallback_when_llm_fails(self, tmp_path):
         """LLM 실패 시 폴백 사용"""
-        with patch("seosoyoung.web.WebCache") as mock_cache_cls, \
-             patch("seosoyoung.web.HtmlFetcher") as mock_fetcher_cls, \
-             patch("seosoyoung.web.ContentExtractor") as mock_extractor_cls:
+        with patch("seosoyoung.slackbot.web.WebCache") as mock_cache_cls, \
+             patch("seosoyoung.slackbot.web.HtmlFetcher") as mock_fetcher_cls, \
+             patch("seosoyoung.slackbot.web.ContentExtractor") as mock_extractor_cls:
 
             mock_cache = MagicMock()
             mock_cache.exists.return_value = False
@@ -107,9 +107,9 @@ class TestGetArticle:
     @pytest.mark.asyncio
     async def test_ignore_cache_forces_fetch(self, tmp_path):
         """ignore_cache=True면 캐시 무시하고 페칭"""
-        with patch("seosoyoung.web.WebCache") as mock_cache_cls, \
-             patch("seosoyoung.web.HtmlFetcher") as mock_fetcher_cls, \
-             patch("seosoyoung.web.ContentExtractor") as mock_extractor_cls:
+        with patch("seosoyoung.slackbot.web.WebCache") as mock_cache_cls, \
+             patch("seosoyoung.slackbot.web.HtmlFetcher") as mock_fetcher_cls, \
+             patch("seosoyoung.slackbot.web.ContentExtractor") as mock_extractor_cls:
 
             mock_cache = MagicMock()
             mock_cache.exists.return_value = True  # 캐시 있음
@@ -145,7 +145,7 @@ class TestFormatArticleForPrompt:
 
     def test_formats_article_data(self):
         """아티클 데이터를 프롬프트용 문자열로 포맷"""
-        from seosoyoung.web import format_article_for_prompt
+        from seosoyoung.slackbot.web import format_article_for_prompt
 
         article = {
             "url": "https://example.com/article",
@@ -164,7 +164,7 @@ class TestFormatArticleForPrompt:
 
     def test_handles_missing_fields(self):
         """필드 누락 시 처리"""
-        from seosoyoung.web import format_article_for_prompt
+        from seosoyoung.slackbot.web import format_article_for_prompt
 
         article = {
             "url": "https://example.com/article",
@@ -181,7 +181,7 @@ class TestFormatArticleForPrompt:
 
     def test_truncates_long_text(self):
         """긴 본문 자르기"""
-        from seosoyoung.web import format_article_for_prompt
+        from seosoyoung.slackbot.web import format_article_for_prompt
 
         article = {
             "url": "https://example.com/long",

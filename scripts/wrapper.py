@@ -128,7 +128,7 @@ def run_bot() -> int:
 
     # 봇 실행
     result = subprocess.run(
-        [str(VENV_PYTHON), "-m", "seosoyoung.main"],
+        [str(VENV_PYTHON), "-m", "seosoyoung.slackbot.main"],
         cwd=WORKSPACE_DIR,
         env=env
     )

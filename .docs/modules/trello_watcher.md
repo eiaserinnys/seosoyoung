@@ -1,6 +1,6 @@
 # trello/watcher.py
 
-> 경로: `seosoyoung/trello/watcher.py`
+> 경로: `seosoyoung/slackbot/trello/watcher.py`
 
 ## 개요
 
@@ -72,7 +72,7 @@ To Go 리스트에 새 카드가 들어오면:
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
-- `seosoyoung.trello.client.TrelloCard`
-- `seosoyoung.trello.client.TrelloClient`
-- `seosoyoung.trello.prompt_builder.PromptBuilder`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.trello.client.TrelloCard`
+- `seosoyoung.slackbot.trello.client.TrelloClient`
+- `seosoyoung.slackbot.trello.prompt_builder.PromptBuilder`

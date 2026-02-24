@@ -35,7 +35,7 @@ from seosoyoung.rescue.message_formatter import (
 )
 from seosoyoung.rescue.runner import get_runner, RescueResult
 from seosoyoung.rescue.session import Session, SessionManager
-from seosoyoung.slack.formatting import update_message
+from seosoyoung.slackbot.slack.formatting import update_message
 
 # 로깅 설정
 logging.basicConfig(
@@ -621,7 +621,7 @@ def main():
     RescueConfig.validate()
 
     # Shutdown 서버 시작 (supervisor graceful shutdown용)
-    from seosoyoung.shutdown import start_shutdown_server
+    from seosoyoung.slackbot.shutdown import start_shutdown_server
 
     _SHUTDOWN_PORT = int(os.environ.get("RESCUE_SHUTDOWN_PORT", "3107"))
 

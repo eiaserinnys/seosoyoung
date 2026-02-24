@@ -16,7 +16,7 @@ from google import genai
 from google.genai import types
 from slack_sdk import WebClient
 
-from seosoyoung.config import Config
+from seosoyoung.slackbot.config import Config
 from seosoyoung.mcp.config import SLACK_BOT_TOKEN
 
 logger = logging.getLogger(__name__)

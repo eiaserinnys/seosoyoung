@@ -1,6 +1,6 @@
 # claude/agent_runner.py
 
-> 경로: `seosoyoung/claude/agent_runner.py`
+> 경로: `seosoyoung/slackbot/claude/agent_runner.py`
 
 ## 개요
 
@@ -71,11 +71,11 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.claude.diagnostics.build_session_dump`
-- `seosoyoung.claude.diagnostics.classify_process_error`
-- `seosoyoung.claude.diagnostics.send_debug_to_slack`
-- `seosoyoung.memory.injector.create_or_load_debug_anchor`
-- `seosoyoung.memory.injector.prepare_memory_injection`
-- `seosoyoung.memory.injector.send_injection_debug_log`
-- `seosoyoung.memory.injector.trigger_observation`
+- `seosoyoung.slackbot.claude.diagnostics.build_session_dump`
+- `seosoyoung.slackbot.claude.diagnostics.classify_process_error`
+- `seosoyoung.slackbot.claude.diagnostics.send_debug_to_slack`
+- `seosoyoung.slackbot.memory.injector.create_or_load_debug_anchor`
+- `seosoyoung.slackbot.memory.injector.prepare_memory_injection`
+- `seosoyoung.slackbot.memory.injector.send_injection_debug_log`
+- `seosoyoung.slackbot.memory.injector.trigger_observation`
 - `seosoyoung.utils.async_bridge.run_in_new_loop`

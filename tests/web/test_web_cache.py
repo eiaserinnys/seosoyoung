@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from seosoyoung.web.cache import WebCache
+from seosoyoung.slackbot.web.cache import WebCache
 
 
 class TestWebCacheGetFilePath:

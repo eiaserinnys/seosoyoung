@@ -1,6 +1,6 @@
 # handlers/channel_collector.py
 
-> 경로: `seosoyoung/handlers/channel_collector.py`
+> 경로: `seosoyoung/slackbot/handlers/channel_collector.py`
 
 ## 개요
 
@@ -24,4 +24,4 @@
 
 ## 내부 의존성
 
-- `seosoyoung.memory.channel_store.ChannelStore`
+- `seosoyoung.slackbot.memory.channel_store.ChannelStore`

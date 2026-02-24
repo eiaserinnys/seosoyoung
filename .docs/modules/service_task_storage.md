@@ -1,6 +1,6 @@
 # service/task_storage.py
 
-> 경로: `seosoyoung/mcp/soul/service/task_storage.py`
+> 경로: `seosoyoung/soul/service/task_storage.py`
 
 ## 개요
 
@@ -28,7 +28,7 @@ JSON 파일을 통해 태스크 상태를 영속화합니다.
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.service.task_models.Task`
-- `seosoyoung.mcp.soul.service.task_models.TaskStatus`
-- `seosoyoung.mcp.soul.service.task_models.datetime_to_str`
-- `seosoyoung.mcp.soul.service.task_models.utc_now`
+- `seosoyoung.soul.service.task_models.Task`
+- `seosoyoung.soul.service.task_models.TaskStatus`
+- `seosoyoung.soul.service.task_models.datetime_to_str`
+- `seosoyoung.soul.service.task_models.utc_now`

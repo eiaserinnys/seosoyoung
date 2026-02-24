@@ -1,6 +1,6 @@
 # web/extractor.py
 
-> 경로: `seosoyoung/web/extractor.py`
+> 경로: `seosoyoung/slackbot/web/extractor.py`
 
 ## 개요
 

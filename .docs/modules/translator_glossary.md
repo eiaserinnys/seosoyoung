@@ -1,6 +1,6 @@
 # translator/glossary.py
 
-> 경로: `seosoyoung/translator/glossary.py`
+> 경로: `seosoyoung/slackbot/translator/glossary.py`
 
 ## 개요
 
@@ -130,4 +130,4 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
+- `seosoyoung.slackbot.config.Config`

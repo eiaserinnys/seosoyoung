@@ -1,6 +1,6 @@
 # handlers/mention.py
 
-> 경로: `seosoyoung/handlers/mention.py`
+> 경로: `seosoyoung/slackbot/handlers/mention.py`
 
 ## 개요
 
@@ -97,19 +97,19 @@ Args:
 
 ## 내부 의존성
 
-- `seosoyoung.claude.session_context.build_initial_context`
-- `seosoyoung.claude.session_context.format_hybrid_context`
-- `seosoyoung.config.Config`
-- `seosoyoung.handlers.commands.handle_cleanup`
-- `seosoyoung.handlers.commands.handle_compact`
-- `seosoyoung.handlers.commands.handle_help`
-- `seosoyoung.handlers.commands.handle_log`
-- `seosoyoung.handlers.commands.handle_profile`
-- `seosoyoung.handlers.commands.handle_resume_list_run`
-- `seosoyoung.handlers.commands.handle_status`
-- `seosoyoung.handlers.commands.handle_translate`
-- `seosoyoung.handlers.commands.handle_update_restart`
-- `seosoyoung.handlers.message.build_slack_context`
-- `seosoyoung.handlers.message.process_thread_message`
-- `seosoyoung.slack.build_file_context`
-- `seosoyoung.slack.download_files_sync`
+- `seosoyoung.slackbot.claude.session_context.build_initial_context`
+- `seosoyoung.slackbot.claude.session_context.format_hybrid_context`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.handlers.commands.handle_cleanup`
+- `seosoyoung.slackbot.handlers.commands.handle_compact`
+- `seosoyoung.slackbot.handlers.commands.handle_help`
+- `seosoyoung.slackbot.handlers.commands.handle_log`
+- `seosoyoung.slackbot.handlers.commands.handle_profile`
+- `seosoyoung.slackbot.handlers.commands.handle_resume_list_run`
+- `seosoyoung.slackbot.handlers.commands.handle_status`
+- `seosoyoung.slackbot.handlers.commands.handle_translate`
+- `seosoyoung.slackbot.handlers.commands.handle_update_restart`
+- `seosoyoung.slackbot.handlers.message.build_slack_context`
+- `seosoyoung.slackbot.handlers.message.process_thread_message`
+- `seosoyoung.slackbot.slack.build_file_context`
+- `seosoyoung.slackbot.slack.download_files_sync`

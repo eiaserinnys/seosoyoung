@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, mock_open
 
-from seosoyoung.translator.glossary import (
+from seosoyoung.slackbot.translator.glossary import (
     _extract_name_pair,
     _extract_short_names,
     get_term_mappings,
@@ -80,9 +80,9 @@ class TestExtractNamePair:
 class TestGetTermMappings:
     """용어 매핑 테스트"""
 
-    @patch("seosoyoung.translator.glossary.Config")
+    @patch("seosoyoung.slackbot.translator.glossary.Config")
     @patch("builtins.open", mock_open(read_data=SAMPLE_GLOSSARY_YAML))
-    @patch("seosoyoung.translator.glossary.Path")
+    @patch("seosoyoung.slackbot.translator.glossary.Path")
     def test_get_term_mappings(self, mock_path, mock_config):
         """용어 매핑 생성"""
         clear_cache()
@@ -105,8 +105,8 @@ class TestGetTermMappings:
         assert "망각의 성채" in kr_to_en
         assert kr_to_en["망각의 성채"] == "The Sanctuary of Oblivion"
 
-    @patch("seosoyoung.translator.glossary.Config")
-    @patch("seosoyoung.translator.glossary.Path")
+    @patch("seosoyoung.slackbot.translator.glossary.Config")
+    @patch("seosoyoung.slackbot.translator.glossary.Path")
     def test_get_term_mappings_file_not_found(self, mock_path, mock_config):
         """파일 없을 때 빈 매핑 반환"""
         clear_cache()
@@ -152,9 +152,9 @@ class TestExtractShortNames:
 class TestFindRelevantTerms:
     """관련 용어 찾기 테스트 (새 알고리즘)"""
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_korean_words")
     def test_find_korean_terms(self, mock_extract, mock_entries, mock_index):
         """한국어 텍스트에서 용어 찾기"""
         mock_entries.return_value = (
@@ -174,9 +174,9 @@ class TestFindRelevantTerms:
         assert ("펜릭스", "Fenrix") in result
         assert ("아리엘라", "Ariella") in result
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_english_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_english_words")
     def test_find_english_terms(self, mock_extract, mock_entries, mock_index):
         """영어 텍스트에서 용어 찾기"""
         mock_entries.return_value = (
@@ -196,9 +196,9 @@ class TestFindRelevantTerms:
         assert ("Fenrix", "펜릭스") in result
         assert ("Ariella", "아리엘라") in result
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_english_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_english_words")
     def test_find_no_matching_terms(self, mock_extract, mock_entries, mock_index):
         """매칭되는 용어 없음"""
         mock_entries.return_value = (("펜릭스", "Fenrix"),)
@@ -210,9 +210,9 @@ class TestFindRelevantTerms:
 
         assert len(result) == 0
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_korean_words")
     def test_no_duplicate_matches(self, mock_extract, mock_entries, mock_index):
         """중복 매칭 방지"""
         mock_entries.return_value = (("펜릭스", "Fenrix"),)
@@ -226,9 +226,9 @@ class TestFindRelevantTerms:
         assert len(result) == 1
         assert ("펜릭스", "Fenrix") in result
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_korean_words")
     def test_fuzzy_match_typo(self, mock_extract, mock_entries, mock_index):
         """오타가 있는 용어 퍼지 매칭"""
         mock_entries.return_value = (
@@ -249,9 +249,9 @@ class TestFindRelevantTerms:
         assert len(result) >= 1
         assert ("아리엘라", "Ariella") in result
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_english_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_english_words")
     def test_fuzzy_match_english_typo(self, mock_extract, mock_entries, mock_index):
         """영어 오타 퍼지 매칭"""
         mock_entries.return_value = (("아리엘라", "Ariella"),)
@@ -264,9 +264,9 @@ class TestFindRelevantTerms:
         assert len(result) >= 1
         assert ("Ariella", "아리엘라") in result
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_korean_words")
     def test_fuzzy_match_partial_name(self, mock_extract, mock_entries, mock_index):
         """부분 이름 퍼지 매칭"""
         mock_entries.return_value = (("망각의 성채", "The Sanctuary of Oblivion"),)
@@ -283,9 +283,9 @@ class TestFindRelevantTerms:
         assert len(result) >= 1
         assert ("망각의 성채", "The Sanctuary of Oblivion") in result
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_korean_words")
     def test_short_term_no_fuzzy(self, mock_extract, mock_entries, mock_index):
         """짧은 용어(3자 미만)는 퍼지 매칭 미적용"""
         mock_entries.return_value = (("루미", "Lumi"),)
@@ -298,9 +298,9 @@ class TestFindRelevantTerms:
         # 정확히 일치하지 않고, 퍼지도 안 되므로 빈 결과
         assert len(result) == 0
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_korean_words")
     def test_fuzzy_threshold_high(self, mock_extract, mock_entries, mock_index):
         """높은 임계값에서 퍼지 매칭 실패"""
         mock_entries.return_value = (("아리엘라", "Ariella"),)
@@ -313,9 +313,9 @@ class TestFindRelevantTerms:
         # 95% 이상 유사해야 하는데 "아리엘나"는 그 정도로 유사하지 않음
         assert ("아리엘라", "Ariella") not in result
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_korean_words")
     def test_exact_match_priority(self, mock_extract, mock_entries, mock_index):
         """정확한 매칭이 있으면 퍼지 매칭 중복 안 함"""
         mock_entries.return_value = (("펜릭스", "Fenrix"),)
@@ -333,9 +333,9 @@ class TestFindRelevantTerms:
 class TestFindRelevantTermsV2:
     """find_relevant_terms_v2 디버그 정보 테스트"""
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_korean_words")
     def test_returns_glossary_match_result(self, mock_extract, mock_entries, mock_index):
         """GlossaryMatchResult 반환 확인"""
         mock_entries.return_value = (("펜릭스", "Fenrix"),)
@@ -349,9 +349,9 @@ class TestFindRelevantTermsV2:
         assert result.extracted_words == ["펜릭스"]
         assert "exact_matches" in result.debug_info
 
-    @patch("seosoyoung.translator.glossary._build_word_index")
-    @patch("seosoyoung.translator.glossary.get_glossary_entries")
-    @patch("seosoyoung.translator.glossary._extract_korean_words")
+    @patch("seosoyoung.slackbot.translator.glossary._build_word_index")
+    @patch("seosoyoung.slackbot.translator.glossary.get_glossary_entries")
+    @patch("seosoyoung.slackbot.translator.glossary._extract_korean_words")
     def test_debug_info_contains_match_types(self, mock_extract, mock_entries, mock_index):
         """디버그 정보에 매칭 유형 포함 확인"""
         mock_entries.return_value = (("펜릭스", "Fenrix"),)

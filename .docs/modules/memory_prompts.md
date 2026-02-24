@@ -1,6 +1,6 @@
 # memory/prompts.py
 
-> 경로: `seosoyoung/memory/prompts.py`
+> 경로: `seosoyoung/slackbot/memory/prompts.py`
 
 ## 개요
 
@@ -46,4 +46,4 @@ Mastra의 Observational Memory 프롬프트를 서소영 컨텍스트에 맞게 
 
 ## 내부 의존성
 
-- `seosoyoung.memory.prompt_loader.load_prompt_cached`
+- `seosoyoung.slackbot.memory.prompt_loader.load_prompt_cached`

@@ -1,6 +1,6 @@
 # web/cache.py
 
-> 경로: `seosoyoung/web/cache.py`
+> 경로: `seosoyoung/slackbot/web/cache.py`
 
 ## 개요
 

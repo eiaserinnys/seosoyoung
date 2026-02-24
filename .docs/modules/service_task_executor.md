@@ -1,6 +1,6 @@
 # service/task_executor.py
 
-> 경로: `seosoyoung/mcp/soul/service/task_executor.py`
+> 경로: `seosoyoung/soul/service/task_executor.py`
 
 ## 개요
 
@@ -28,5 +28,5 @@ Claude Code 실행을 백그라운드에서 관리하고,
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.service.task_models.Task`
-- `seosoyoung.mcp.soul.service.task_models.TaskStatus`
+- `seosoyoung.soul.service.task_models.Task`
+- `seosoyoung.soul.service.task_models.TaskStatus`

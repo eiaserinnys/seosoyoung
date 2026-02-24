@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from seosoyoung.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
 
 
 @pytest.fixture

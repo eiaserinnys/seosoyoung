@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from seosoyoung.claude.service_client import (
+from seosoyoung.slackbot.claude.service_client import (
     SoulServiceClient,
     SoulServiceError,
     TaskConflictError,

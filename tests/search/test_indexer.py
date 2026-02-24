@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pathlib import Path
 
-from seosoyoung.search.indexer import (
+from seosoyoung.slackbot.search.indexer import (
     DialogueIndexer,
     DialogueReferenceMap,
     DialogueMetadata,
@@ -172,7 +172,7 @@ class TestDialogueIndexer:
         indexer = DialogueIndexer(narrative_with_dlglist, index_path)
         indexer.index_all(force=True)
 
-        from seosoyoung.search.searcher import DialogueSearcher
+        from seosoyoung.slackbot.search.searcher import DialogueSearcher
 
         searcher = DialogueSearcher(index_path)
         result = searcher.search_by_dlgid("fx-test-001")

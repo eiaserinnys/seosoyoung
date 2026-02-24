@@ -14,7 +14,7 @@ class TestWebCacheConfig:
         monkeypatch.delenv("WEB_CACHE_PATH", raising=False)
 
         # 모듈 다시 로드하여 환경변수 변경 반영
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
 
         result = Config.get_web_cache_path()
         expected = str(Path.cwd() / ".local/cache/web")
@@ -25,7 +25,7 @@ class TestWebCacheConfig:
         custom_path = "/custom/cache/path"
         monkeypatch.setenv("WEB_CACHE_PATH", custom_path)
 
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
 
         result = Config.get_web_cache_path()
         assert result == custom_path
@@ -34,7 +34,7 @@ class TestWebCacheConfig:
         """반환값이 문자열 타입인지 확인"""
         monkeypatch.delenv("WEB_CACHE_PATH", raising=False)
 
-        from seosoyoung.config import Config
+        from seosoyoung.slackbot.config import Config
 
         result = Config.get_web_cache_path()
         assert isinstance(result, str)

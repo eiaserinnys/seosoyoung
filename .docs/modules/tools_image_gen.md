@@ -52,5 +52,5 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
 - `seosoyoung.mcp.config.SLACK_BOT_TOKEN`
+- `seosoyoung.slackbot.config.Config`

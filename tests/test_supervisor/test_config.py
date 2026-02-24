@@ -121,7 +121,7 @@ class TestBuildProcessConfigs:
         configs = self._build()
         bot = next(c for c in configs if c.name == "bot")
         assert "-m" in bot.args
-        assert "seosoyoung.main" in bot.args
+        assert "seosoyoung.slackbot" in bot.args
         assert bot.restart_policy.use_exit_codes is True
         assert bot.env.get("PYTHONUTF8") == "1"
         assert bot.log_dir is not None
@@ -166,7 +166,7 @@ class TestBuildProcessConfigs:
         soul = next(c for c in configs if c.name == "seosoyoung-soul")
         assert "-m" in soul.args
         assert "uvicorn" in soul.args
-        assert "seosoyoung.mcp.soul.main:app" in soul.args
+        assert "seosoyoung.soul.main:app" in soul.args
         assert "--port" in soul.args
         assert "3105" in soul.args
         assert "--host" in soul.args

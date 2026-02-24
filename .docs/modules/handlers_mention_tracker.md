@@ -1,6 +1,6 @@
 # handlers/mention_tracker.py
 
-> 경로: `seosoyoung/handlers/mention_tracker.py`
+> 경로: `seosoyoung/slackbot/handlers/mention_tracker.py`
 
 ## 개요
 

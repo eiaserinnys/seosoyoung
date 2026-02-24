@@ -1,6 +1,6 @@
 # memory/channel_intervention.py
 
-> 경로: `seosoyoung/memory/channel_intervention.py`
+> 경로: `seosoyoung/slackbot/memory/channel_intervention.py`
 
 ## 개요
 
@@ -112,7 +112,7 @@ section.fields는 최대 10개이므로, 5쌍(=10 fields)씩 section 블록을 �
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
-- `seosoyoung.memory.channel_observer.ChannelObserverResult`
-- `seosoyoung.memory.channel_observer.JudgeItem`
-- `seosoyoung.memory.channel_prompts.DisplayNameResolver`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.memory.channel_observer.ChannelObserverResult`
+- `seosoyoung.slackbot.memory.channel_observer.JudgeItem`
+- `seosoyoung.slackbot.memory.channel_prompts.DisplayNameResolver`

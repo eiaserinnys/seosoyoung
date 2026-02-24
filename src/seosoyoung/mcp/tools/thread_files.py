@@ -6,7 +6,7 @@ from typing import Any
 from slack_sdk import WebClient
 
 from seosoyoung.mcp.config import SLACK_BOT_TOKEN
-from seosoyoung.slack.file_handler import download_file
+from seosoyoung.slackbot.slack.file_handler import download_file
 
 logger = logging.getLogger(__name__)
 

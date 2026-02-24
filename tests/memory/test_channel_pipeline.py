@@ -8,21 +8,21 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seosoyoung.claude.session import SessionManager
-from seosoyoung.memory.channel_intervention import InterventionAction, InterventionHistory
-from seosoyoung.memory.channel_observer import (
+from seosoyoung.slackbot.claude.session import SessionManager
+from seosoyoung.slackbot.memory.channel_intervention import InterventionAction, InterventionHistory
+from seosoyoung.slackbot.memory.channel_observer import (
     DigestCompressorResult,
     DigestResult,
     JudgeItem,
     JudgeResult,
 )
-from seosoyoung.memory.channel_pipeline import (
+from seosoyoung.slackbot.memory.channel_pipeline import (
     _apply_importance_modifiers,
     _filter_already_reacted,
     _validate_linked_messages,
     run_channel_pipeline,
 )
-from seosoyoung.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
 
 
 @pytest.fixture

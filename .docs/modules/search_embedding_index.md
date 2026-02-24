@@ -1,6 +1,6 @@
 # search/embedding_index.py
 
-> 경로: `seosoyoung/search/embedding_index.py`
+> 경로: `seosoyoung/slackbot/search/embedding_index.py`
 
 ## 개요
 

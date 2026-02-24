@@ -1,6 +1,6 @@
 # claude/security.py
 
-> 경로: `seosoyoung/claude/security.py`
+> 경로: `seosoyoung/slackbot/claude/security.py`
 
 ## 개요
 

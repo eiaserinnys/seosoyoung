@@ -7,8 +7,8 @@ from datetime import timedelta
 
 import pytest
 
-from seosoyoung.mcp.soul.service.task_manager import TaskManager, set_task_manager
-from seosoyoung.mcp.soul.service.task_models import (
+from seosoyoung.soul.service.task_manager import TaskManager, set_task_manager
+from seosoyoung.soul.service.task_models import (
     Task,
     TaskStatus,
     TaskConflictError,

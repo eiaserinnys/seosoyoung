@@ -10,7 +10,7 @@ import pytest
 import yaml
 from whoosh.index import create_in
 
-from seosoyoung.search.schema import dialogue_schema, lore_schema
+from seosoyoung.slackbot.search.schema import dialogue_schema, lore_schema
 
 
 @pytest.fixture
@@ -468,7 +468,7 @@ class TestLoreIndexStatus:
 
     def test_status_when_watcher_running(self):
         import seosoyoung.mcp.server as srv
-        from seosoyoung.search.git_watcher import IndexStatus
+        from seosoyoung.slackbot.search.git_watcher import IndexStatus
 
         old_watcher = srv._git_watcher
         try:

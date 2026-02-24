@@ -1,6 +1,6 @@
 # slack/file_handler.py
 
-> 경로: `seosoyoung/slack/file_handler.py`
+> 경로: `seosoyoung/slackbot/slack/file_handler.py`
 
 ## 개요
 
@@ -84,4 +84,4 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
+- `seosoyoung.slackbot.config.Config`

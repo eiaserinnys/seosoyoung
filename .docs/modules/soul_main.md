@@ -1,6 +1,6 @@
 # soul/main.py
 
-> 경로: `seosoyoung/mcp/soul/main.py`
+> 경로: `seosoyoung/soul/main.py`
 
 ## 개요
 
@@ -42,12 +42,12 @@ Seosoyoung Soul - FastAPI Application
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.api.attachments_router`
-- `seosoyoung.mcp.soul.api.tasks.router`
-- `seosoyoung.mcp.soul.config.get_settings`
-- `seosoyoung.mcp.soul.config.setup_logging`
-- `seosoyoung.mcp.soul.models.HealthResponse`
-- `seosoyoung.mcp.soul.service.file_manager`
-- `seosoyoung.mcp.soul.service.resource_manager`
-- `seosoyoung.mcp.soul.service.task_manager.get_task_manager`
-- `seosoyoung.mcp.soul.service.task_manager.init_task_manager`
+- `seosoyoung.soul.api.attachments_router`
+- `seosoyoung.soul.api.tasks.router`
+- `seosoyoung.soul.config.get_settings`
+- `seosoyoung.soul.config.setup_logging`
+- `seosoyoung.soul.models.HealthResponse`
+- `seosoyoung.soul.service.file_manager`
+- `seosoyoung.soul.service.resource_manager`
+- `seosoyoung.soul.service.task_manager.get_task_manager`
+- `seosoyoung.soul.service.task_manager.init_task_manager`

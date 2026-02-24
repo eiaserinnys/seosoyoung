@@ -1,7 +1,7 @@
 """언어 감지 모듈 테스트"""
 
 import pytest
-from seosoyoung.translator.detector import detect_language, is_korean_char, Language
+from seosoyoung.slackbot.translator.detector import detect_language, is_korean_char, Language
 
 
 class TestIsKoreanChar:

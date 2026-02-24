@@ -1,6 +1,6 @@
 # handlers/translate.py
 
-> 경로: `seosoyoung/handlers/translate.py`
+> 경로: `seosoyoung/slackbot/handlers/translate.py`
 
 ## 개요
 
@@ -71,8 +71,8 @@ Note: 이 함수는 더 이상 핸들러를 등록하지 않습니다.
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
-- `seosoyoung.translator.GlossaryMatchResult`
-- `seosoyoung.translator.Language`
-- `seosoyoung.translator.detect_language`
-- `seosoyoung.translator.translate`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.translator.GlossaryMatchResult`
+- `seosoyoung.slackbot.translator.Language`
+- `seosoyoung.slackbot.translator.detect_language`
+- `seosoyoung.slackbot.translator.translate`

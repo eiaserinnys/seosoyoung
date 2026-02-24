@@ -1,6 +1,6 @@
 # service/task_listener.py
 
-> 경로: `seosoyoung/mcp/soul/service/task_listener.py`
+> 경로: `seosoyoung/soul/service/task_listener.py`
 
 ## 개요
 
@@ -25,4 +25,4 @@ SSE 연결을 통한 이벤트 브로드캐스트를 담당합니다.
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.service.task_models.Task`
+- `seosoyoung.soul.service.task_models.Task`

@@ -61,25 +61,25 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.auth.check_permission`
-- `seosoyoung.auth.get_user_role`
-- `seosoyoung.claude.agent_runner.shutdown_all_sync`
-- `seosoyoung.claude.executor.ClaudeExecutor`
-- `seosoyoung.claude.session.SessionManager`
-- `seosoyoung.claude.session.SessionRuntime`
-- `seosoyoung.config.Config`
-- `seosoyoung.handlers.actions.send_restart_confirmation`
-- `seosoyoung.handlers.channel_collector.ChannelMessageCollector`
-- `seosoyoung.handlers.mention_tracker.MentionTracker`
-- `seosoyoung.handlers.register_all_handlers`
-- `seosoyoung.logging_config.setup_logging`
-- `seosoyoung.memory.channel_intervention.InterventionHistory`
-- `seosoyoung.memory.channel_observer.ChannelObserver`
-- `seosoyoung.memory.channel_observer.DigestCompressor`
-- `seosoyoung.memory.channel_scheduler.ChannelDigestScheduler`
-- `seosoyoung.memory.channel_store.ChannelStore`
-- `seosoyoung.restart.RestartManager`
-- `seosoyoung.restart.RestartType`
-- `seosoyoung.slack.helpers.send_long_message`
-- `seosoyoung.trello.list_runner.ListRunner`
-- `seosoyoung.trello.watcher.TrelloWatcher`
+- `seosoyoung.slackbot.auth.check_permission`
+- `seosoyoung.slackbot.auth.get_user_role`
+- `seosoyoung.slackbot.claude.agent_runner.shutdown_all_sync`
+- `seosoyoung.slackbot.claude.executor.ClaudeExecutor`
+- `seosoyoung.slackbot.claude.session.SessionManager`
+- `seosoyoung.slackbot.claude.session.SessionRuntime`
+- `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.handlers.actions.send_restart_confirmation`
+- `seosoyoung.slackbot.handlers.channel_collector.ChannelMessageCollector`
+- `seosoyoung.slackbot.handlers.mention_tracker.MentionTracker`
+- `seosoyoung.slackbot.handlers.register_all_handlers`
+- `seosoyoung.slackbot.logging_config.setup_logging`
+- `seosoyoung.slackbot.memory.channel_intervention.InterventionHistory`
+- `seosoyoung.slackbot.memory.channel_observer.ChannelObserver`
+- `seosoyoung.slackbot.memory.channel_observer.DigestCompressor`
+- `seosoyoung.slackbot.memory.channel_scheduler.ChannelDigestScheduler`
+- `seosoyoung.slackbot.memory.channel_store.ChannelStore`
+- `seosoyoung.slackbot.restart.RestartManager`
+- `seosoyoung.slackbot.restart.RestartType`
+- `seosoyoung.slackbot.slack.helpers.send_long_message`
+- `seosoyoung.slackbot.trello.list_runner.ListRunner`
+- `seosoyoung.slackbot.trello.watcher.TrelloWatcher`

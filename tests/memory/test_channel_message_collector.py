@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seosoyoung.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def store(tmp_path):
 
 @pytest.fixture
 def collector(store):
-    from seosoyoung.handlers.channel_collector import ChannelMessageCollector
+    from seosoyoung.slackbot.handlers.channel_collector import ChannelMessageCollector
     return ChannelMessageCollector(store=store, target_channels=["C_OBSERVE"])
 
 
@@ -105,7 +105,7 @@ class TestChannelMessageCollector:
 
     def test_disabled_collector(self, store):
         """target_channels가 비어있으면 수집하지 않음"""
-        from seosoyoung.handlers.channel_collector import ChannelMessageCollector
+        from seosoyoung.slackbot.handlers.channel_collector import ChannelMessageCollector
         collector = ChannelMessageCollector(store=store, target_channels=[])
 
         event = {

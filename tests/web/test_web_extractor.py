@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 
-from seosoyoung.web.extractor import ContentExtractor
+from seosoyoung.slackbot.web.extractor import ContentExtractor
 
 
 class TestContentExtractorExtractBody:
@@ -15,8 +15,8 @@ class TestContentExtractorExtractBody:
         """trafilatura로 본문 추출"""
         html = "<html><body><article>Main article content here.</article></body></html>"
 
-        with patch("seosoyoung.web.extractor.trafilatura_extract") as mock_traf, \
-             patch("seosoyoung.web.extractor.ArticleExtractor") as mock_bp:
+        with patch("seosoyoung.slackbot.web.extractor.trafilatura_extract") as mock_traf, \
+             patch("seosoyoung.slackbot.web.extractor.ArticleExtractor") as mock_bp:
             mock_traf.return_value = "Main article content here."
             mock_bp.return_value.get_content.return_value = "Short"
 
@@ -29,8 +29,8 @@ class TestContentExtractorExtractBody:
         """trafilatura와 boilerpy3 중 더 긴 결과 사용"""
         html = "<html><body>Test</body></html>"
 
-        with patch("seosoyoung.web.extractor.trafilatura_extract") as mock_traf, \
-             patch("seosoyoung.web.extractor.ArticleExtractor") as mock_bp:
+        with patch("seosoyoung.slackbot.web.extractor.trafilatura_extract") as mock_traf, \
+             patch("seosoyoung.slackbot.web.extractor.ArticleExtractor") as mock_bp:
             mock_traf.return_value = "Short text"
             mock_bp.return_value.get_content.return_value = "Much longer text from boilerpy3 extractor"
 
@@ -43,8 +43,8 @@ class TestContentExtractorExtractBody:
         """trafilatura가 None 반환 시 boilerpy3 사용"""
         html = "<html><body>Test</body></html>"
 
-        with patch("seosoyoung.web.extractor.trafilatura_extract") as mock_traf, \
-             patch("seosoyoung.web.extractor.ArticleExtractor") as mock_bp:
+        with patch("seosoyoung.slackbot.web.extractor.trafilatura_extract") as mock_traf, \
+             patch("seosoyoung.slackbot.web.extractor.ArticleExtractor") as mock_bp:
             mock_traf.return_value = None
             mock_bp.return_value.get_content.return_value = "Boilerpy3 result"
 
@@ -57,8 +57,8 @@ class TestContentExtractorExtractBody:
         """둘 다 빈 결과 시 빈 문자열 반환"""
         html = "<html><body></body></html>"
 
-        with patch("seosoyoung.web.extractor.trafilatura_extract") as mock_traf, \
-             patch("seosoyoung.web.extractor.ArticleExtractor") as mock_bp:
+        with patch("seosoyoung.slackbot.web.extractor.trafilatura_extract") as mock_traf, \
+             patch("seosoyoung.slackbot.web.extractor.ArticleExtractor") as mock_bp:
             mock_traf.return_value = ""
             mock_bp.return_value.get_content.return_value = ""
 
@@ -118,7 +118,7 @@ class TestContentExtractorExtractMetadataWithLLM:
             "authors": ["John Doe"]
         }))]
 
-        with patch("seosoyoung.web.extractor.anthropic.Anthropic") as mock_client:
+        with patch("seosoyoung.slackbot.web.extractor.anthropic.Anthropic") as mock_client:
             mock_client.return_value.messages.create.return_value = mock_response
 
             extractor = ContentExtractor(anthropic_api_key="test-key")
@@ -133,7 +133,7 @@ class TestContentExtractorExtractMetadataWithLLM:
         """LLM 실패 시 None 반환"""
         html = "<html><body>Test</body></html>"
 
-        with patch("seosoyoung.web.extractor.anthropic.Anthropic") as mock_client:
+        with patch("seosoyoung.slackbot.web.extractor.anthropic.Anthropic") as mock_client:
             mock_client.return_value.messages.create.side_effect = Exception("API error")
 
             extractor = ContentExtractor(anthropic_api_key="test-key")
@@ -159,8 +159,8 @@ class TestContentExtractorExtractMetadataFallback:
         """goose3로 메타데이터 추출"""
         html = "<html><head><title>Test Title</title></head><body>Content</body></html>"
 
-        with patch("seosoyoung.web.extractor.Goose") as mock_goose, \
-             patch("seosoyoung.web.extractor.find_date") as mock_date:
+        with patch("seosoyoung.slackbot.web.extractor.Goose") as mock_goose, \
+             patch("seosoyoung.slackbot.web.extractor.find_date") as mock_date:
             mock_article = MagicMock()
             mock_article.title = "Test Title"
             mock_article.authors = ["Jane Doe"]
@@ -179,8 +179,8 @@ class TestContentExtractorExtractMetadataFallback:
         """goose3 날짜 없을 때 htmldate 사용"""
         html = "<html><body>Content published on 2024-02-10</body></html>"
 
-        with patch("seosoyoung.web.extractor.Goose") as mock_goose, \
-             patch("seosoyoung.web.extractor.find_date") as mock_date:
+        with patch("seosoyoung.slackbot.web.extractor.Goose") as mock_goose, \
+             patch("seosoyoung.slackbot.web.extractor.find_date") as mock_date:
             mock_article = MagicMock()
             mock_article.title = "Test"
             mock_article.authors = []
@@ -197,8 +197,8 @@ class TestContentExtractorExtractMetadataFallback:
         """goose3 예외 처리"""
         html = "<html><body>Test</body></html>"
 
-        with patch("seosoyoung.web.extractor.Goose") as mock_goose, \
-             patch("seosoyoung.web.extractor.find_date") as mock_date:
+        with patch("seosoyoung.slackbot.web.extractor.Goose") as mock_goose, \
+             patch("seosoyoung.slackbot.web.extractor.find_date") as mock_date:
             mock_goose.return_value.extract.side_effect = Exception("Parse error")
             mock_date.return_value = "2024-03-01"
 

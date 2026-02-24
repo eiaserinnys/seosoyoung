@@ -19,8 +19,8 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-from seosoyoung.claude.executor import ClaudeExecutor, ExecutionContext, PendingPrompt
-from seosoyoung.claude.agent_runner import ClaudeResult
+from seosoyoung.slackbot.claude.executor import ClaudeExecutor, ExecutionContext, PendingPrompt
+from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
 
 
 @dataclass
@@ -155,7 +155,7 @@ class TestInterventionHandling:
 
         ctx = _make_ctx()
 
-        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=mock_runner):
+        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=mock_runner):
             executor._handle_intervention(ctx, "새 질문")
 
         # interrupt()는 인자 없이 호출됨 (per-instance 모델)
@@ -166,7 +166,7 @@ class TestInterventionHandling:
         executor = make_executor()
         ctx = _make_ctx()
 
-        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=None):
+        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=None):
             executor._handle_intervention(ctx, "새 질문")
 
         # pending에는 저장됨
@@ -243,7 +243,7 @@ class TestInterruptedExecution:
             trello_card=trello_card,
         )
 
-        with patch("seosoyoung.claude.result_processor.build_trello_header", return_value="[Trello Header]"):
+        with patch("seosoyoung.slackbot.claude.result_processor.build_trello_header", return_value="[Trello Header]"):
             executor._handle_interrupted(ctx)
 
         client.chat_update.assert_called_once()
@@ -272,7 +272,7 @@ class TestInterruptedExecution:
 class TestExecuteOnceWithInterruption:
     """_execute_once에서 interrupted 결과 처리"""
 
-    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
     def test_interrupted_result_calls_handle_interrupted(self, MockRunnerClass):
         """result.interrupted=True일 때 _handle_interrupted 호출"""
         interrupted_result = make_claude_result(interrupted=True, success=True)
@@ -300,7 +300,7 @@ class TestExecuteOnceWithInterruption:
 
             mock_interrupted.assert_called_once()
 
-    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
     def test_normal_result_calls_handle_success(self, MockRunnerClass):
         """result.interrupted=False, success=True일 때 _handle_success 호출"""
         normal_result = make_claude_result(interrupted=False, success=True)
@@ -328,7 +328,7 @@ class TestExecuteOnceWithInterruption:
 
             mock_success.assert_called_once()
 
-    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
     def test_execute_once_creates_runner(self, MockRunnerClass):
         """_execute_once에서 ClaudeRunner가 생성됨"""
         result = make_claude_result()
@@ -361,7 +361,7 @@ class TestExecuteOnceWithInterruption:
 class TestRunWithLockPendingLoop:
     """_run_with_lock의 while 루프로 pending 처리"""
 
-    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
     def test_no_pending_single_execution(self, MockRunnerClass):
         """pending 없으면 한 번만 실행"""
         result = make_claude_result()
@@ -382,7 +382,7 @@ class TestRunWithLockPendingLoop:
         # run_sync이 한 번만 호출됨
         assert mock_runner.run_sync.call_count == 1
 
-    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
     def test_pending_triggers_second_execution(self, MockRunnerClass):
         """pending이 있으면 두 번 실행"""
         result = make_claude_result()
@@ -416,7 +416,7 @@ class TestRunWithLockPendingLoop:
         # pending이 비워짐
         assert "thread_123" not in executor._pending_prompts
 
-    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
     def test_session_running_stopped_called(self, MockRunnerClass):
         """mark_session_running/stopped이 호출됨"""
         result = make_claude_result()
@@ -454,7 +454,7 @@ class TestConsecutiveInterventions:
         mock_runner.interrupt.return_value = True
 
         # get_runner가 mock_runner를 반환하도록 패치
-        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=mock_runner):
+        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=mock_runner):
             # A → B → C 순서로 인터벤션
             for i, prompt in enumerate(["A", "B", "C"]):
                 ctx = _make_ctx(msg_ts=f"msg_{i}")
@@ -493,7 +493,7 @@ class TestModuleLevelRunnerLookup:
 
         ctx = _make_ctx(thread_ts="thread_abc")
 
-        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=mock_runner):
+        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=mock_runner):
             executor._handle_intervention(ctx, "interrupt me")
 
         mock_runner.interrupt.assert_called_once()
@@ -503,7 +503,7 @@ class TestModuleLevelRunnerLookup:
         executor = make_executor()
         ctx = _make_ctx()
 
-        with patch("seosoyoung.claude.agent_runner.get_runner", return_value=None):
+        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=None):
             executor._handle_intervention(ctx, "no runner")
 
         # pending에는 저장됨
@@ -561,7 +561,7 @@ class TestNormalSuccessWithReplace:
 class TestTrelloSuccessWithReplace:
     """_handle_trello_success에서 _replace_thinking_message 사용 확인"""
 
-    @patch("seosoyoung.claude.result_processor.build_trello_header", return_value="[Header]")
+    @patch("seosoyoung.slackbot.claude.result_processor.build_trello_header", return_value="[Header]")
     def test_trello_success_calls_replace_thinking(self, mock_header):
         """트렐로 성공 처리에서 _replace_thinking_message가 호출됨"""
         executor = make_executor()
@@ -592,7 +592,7 @@ class TestTrelloSuccessWithReplace:
 class TestListRunTrelloSuccessNoDelete:
     """정주행 카드 실행 시 chat_delete 방지 테스트"""
 
-    @patch("seosoyoung.claude.result_processor.build_trello_header", return_value="[Header]")
+    @patch("seosoyoung.slackbot.claude.result_processor.build_trello_header", return_value="[Header]")
     def test_list_run_card_uses_chat_update_not_delete(self, mock_header):
         """정주행 카드(list_key='list_run')는 _replace_thinking_message를 호출하지 않음"""
         executor = make_executor()
@@ -656,7 +656,7 @@ class TestListRunTrelloSuccessNoDelete:
 class TestIntegrationInterventionFinalResponse:
     """인터벤션 후 최종 응답 위치 통합 테스트"""
 
-    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
     def test_interrupted_then_pending_success(self, MockRunnerClass):
         """A 중단 → B 실행 → 최종 응답이 올바른 위치에 표시"""
         # 첫 번째 실행은 interrupted, 두 번째는 성공
@@ -693,7 +693,7 @@ class TestIntegrationInterventionFinalResponse:
         # B는 success로 처리
         mock_success.assert_called_once()
 
-    @patch("seosoyoung.claude.executor.ClaudeRunner")
+    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
     def test_triple_intervention_only_last_executes(self, MockRunnerClass):
         """A→B→C 연속 인터벤션: A 중단, B는 덮어씌워지고, C만 실행"""
         interrupted_result = make_claude_result(interrupted=True, success=True)

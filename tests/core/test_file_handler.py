@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from seosoyoung.slack.file_handler import (
+from seosoyoung.slackbot.slack.file_handler import (
     get_file_type,
     ensure_tmp_dir,
     cleanup_thread_files,
@@ -58,7 +58,7 @@ class TestEnsureTmpDir:
 
     def test_creates_directory(self, tmp_path, monkeypatch):
         """스레드별 임시 폴더 생성"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         thread_ts = "1234567890.123456"
         result = ensure_tmp_dir(thread_ts)
@@ -68,7 +68,7 @@ class TestEnsureTmpDir:
 
     def test_handles_existing_directory(self, tmp_path, monkeypatch):
         """기존 폴더가 있어도 정상 동작"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         thread_ts = "1234567890.123456"
         ensure_tmp_dir(thread_ts)  # 첫 번째 생성
@@ -82,7 +82,7 @@ class TestCleanupThreadFiles:
 
     def test_removes_directory(self, tmp_path, monkeypatch):
         """스레드 폴더 삭제"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         thread_ts = "1234567890.123456"
         dir_path = ensure_tmp_dir(thread_ts)
@@ -96,7 +96,7 @@ class TestCleanupThreadFiles:
 
     def test_handles_nonexistent_directory(self, tmp_path, monkeypatch):
         """존재하지 않는 폴더도 에러 없이 처리"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         # 에러 없이 실행되어야 함
         cleanup_thread_files("nonexistent.thread")
@@ -108,7 +108,7 @@ class TestDownloadFile:
     @pytest.mark.asyncio
     async def test_download_text_file(self, tmp_path, monkeypatch):
         """텍스트 파일 다운로드"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         file_content = "Hello, World!"
 
@@ -122,7 +122,7 @@ class TestDownloadFile:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
 
-        with patch("seosoyoung.slack.file_handler.httpx.AsyncClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.slack.file_handler.httpx.AsyncClient", return_value=mock_client):
             result = await download_file(
                 {
                     "id": "F123",
@@ -143,7 +143,7 @@ class TestDownloadFile:
     @pytest.mark.asyncio
     async def test_skip_missing_url(self, tmp_path, monkeypatch):
         """URL 없는 파일 스킵"""
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         result = await download_file(
             {
@@ -184,9 +184,9 @@ class TestDownloadFilesSync:
     def test_download_in_thread_pool(self, tmp_path, monkeypatch):
         """ThreadPoolExecutor에서 파일 다운로드 - 이벤트 루프 없는 환경"""
         from concurrent.futures import ThreadPoolExecutor
-        from seosoyoung.slack.file_handler import download_files_sync
+        from seosoyoung.slackbot.slack.file_handler import download_files_sync
 
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         file_content = "Hello from thread!"
 
@@ -213,7 +213,7 @@ class TestDownloadFilesSync:
             ]
         }
 
-        with patch("seosoyoung.slack.file_handler.httpx.AsyncClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.slack.file_handler.httpx.AsyncClient", return_value=mock_client):
             # ThreadPoolExecutor에서 실행 (Slack Bolt 환경 시뮬레이션)
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(download_files_sync, event, "1234567890.123456")
@@ -226,9 +226,9 @@ class TestDownloadFilesSync:
     def test_download_image_in_thread_pool(self, tmp_path, monkeypatch):
         """ThreadPoolExecutor에서 이미지 파일 다운로드"""
         from concurrent.futures import ThreadPoolExecutor
-        from seosoyoung.slack.file_handler import download_files_sync
+        from seosoyoung.slackbot.slack.file_handler import download_files_sync
 
-        monkeypatch.setattr("seosoyoung.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
+        monkeypatch.setattr("seosoyoung.slackbot.slack.file_handler.TMP_DIR", tmp_path / "slack_files")
 
         # 가짜 PNG 데이터
         image_content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
@@ -255,7 +255,7 @@ class TestDownloadFilesSync:
             ]
         }
 
-        with patch("seosoyoung.slack.file_handler.httpx.AsyncClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.slack.file_handler.httpx.AsyncClient", return_value=mock_client):
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(download_files_sync, event, "1234567890.123456")
                 result = future.result(timeout=10)

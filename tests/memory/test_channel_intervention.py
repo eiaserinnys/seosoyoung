@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from seosoyoung.memory.channel_intervention import (
+from seosoyoung.slackbot.memory.channel_intervention import (
     InterventionAction,
     InterventionHistory,
     intervention_probability,
@@ -22,14 +22,14 @@ from seosoyoung.memory.channel_intervention import (
     send_intervention_probability_debug_log,
     send_multi_judge_debug_log,
 )
-from seosoyoung.memory.channel_observer import (
+from seosoyoung.slackbot.memory.channel_observer import (
     ChannelObserverResult,
     DigestResult,
     JudgeItem,
     JudgeResult,
 )
-from seosoyoung.memory.channel_pipeline import run_channel_pipeline
-from seosoyoung.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
 
 
 # ── parse_intervention_markup ────────────────────────────

@@ -1,6 +1,6 @@
 # api/auth.py
 
-> 경로: `seosoyoung/mcp/soul/api/auth.py`
+> 경로: `seosoyoung/soul/api/auth.py`
 
 ## 개요
 
@@ -23,4 +23,4 @@ Raises:
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.soul.config.get_settings`
+- `seosoyoung.soul.config.get_settings`

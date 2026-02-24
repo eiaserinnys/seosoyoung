@@ -1,6 +1,6 @@
 # memory/migration.py
 
-> 경로: `seosoyoung/memory/migration.py`
+> 경로: `seosoyoung/slackbot/memory/migration.py`
 
 ## 개요
 
@@ -9,7 +9,7 @@ OM 마크다운 → JSON 마이그레이션
 런타임 memory/ 디렉토리의 .md 파일들을 .json으로 일괄 변환합니다.
 
 사용:
-    from seosoyoung.memory.migration import migrate_memory_dir
+    from seosoyoung.slackbot.memory.migration import migrate_memory_dir
     report = migrate_memory_dir("/path/to/memory", dry_run=True)
 
 ## 클래스
@@ -56,5 +56,5 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.memory.store.parse_md_observations`
-- `seosoyoung.memory.store.parse_md_persistent`
+- `seosoyoung.slackbot.memory.store.parse_md_observations`
+- `seosoyoung.slackbot.memory.store.parse_md_persistent`

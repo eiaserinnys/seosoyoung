@@ -4,7 +4,7 @@ import asyncio
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 
-from seosoyoung.handlers.mention import register_mention_handlers
+from seosoyoung.slackbot.handlers.mention import register_mention_handlers
 
 
 def _make_dependencies():
@@ -136,8 +136,8 @@ class TestCompactCommand:
         mock_runner = MagicMock()
         mock_runner.compact_session = AsyncMock(return_value=mock_result)
 
-        with patch("seosoyoung.claude.get_claude_runner", return_value=mock_runner):
-            with patch("seosoyoung.handlers.commands.asyncio") as mock_asyncio:
+        with patch("seosoyoung.slackbot.claude.get_claude_runner", return_value=mock_runner):
+            with patch("seosoyoung.slackbot.handlers.commands.asyncio") as mock_asyncio:
                 mock_asyncio.run.return_value = mock_result
                 handler(event, say, client)
 
@@ -173,8 +173,8 @@ class TestCompactCommand:
         mock_runner = MagicMock()
         mock_runner.compact_session = MagicMock()
 
-        with patch("seosoyoung.claude.get_claude_runner", return_value=mock_runner):
-            with patch("seosoyoung.handlers.commands.asyncio") as mock_asyncio:
+        with patch("seosoyoung.slackbot.claude.get_claude_runner", return_value=mock_runner):
+            with patch("seosoyoung.slackbot.handlers.commands.asyncio") as mock_asyncio:
                 mock_asyncio.run.return_value = mock_result
                 handler(event, say, client)
 
@@ -205,8 +205,8 @@ class TestCompactCommand:
         mock_result.success = False
         mock_result.error = "세션을 찾을 수 없습니다"
 
-        with patch("seosoyoung.claude.get_claude_runner") as mock_get_runner:
-            with patch("seosoyoung.handlers.commands.asyncio") as mock_asyncio:
+        with patch("seosoyoung.slackbot.claude.get_claude_runner") as mock_get_runner:
+            with patch("seosoyoung.slackbot.handlers.commands.asyncio") as mock_asyncio:
                 mock_asyncio.run.return_value = mock_result
                 handler(event, say, client)
 
@@ -232,7 +232,7 @@ class TestCompactCommand:
         say = MagicMock()
         client = MagicMock()
 
-        with patch("seosoyoung.claude.get_claude_runner", side_effect=RuntimeError("connection failed")):
+        with patch("seosoyoung.slackbot.claude.get_claude_runner", side_effect=RuntimeError("connection failed")):
             handler(event, say, client)
 
         calls = say.call_args_list

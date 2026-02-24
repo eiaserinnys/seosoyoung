@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seosoyoung.handlers.mention_tracker import MentionTracker
-from seosoyoung.handlers.channel_collector import ChannelMessageCollector
-from seosoyoung.memory.channel_store import ChannelStore
-from seosoyoung.memory.channel_intervention import InterventionHistory
-from seosoyoung.memory.channel_observer import JudgeItem, JudgeResult
+from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
+from seosoyoung.slackbot.handlers.channel_collector import ChannelMessageCollector
+from seosoyoung.slackbot.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.memory.channel_intervention import InterventionHistory
+from seosoyoung.slackbot.memory.channel_observer import JudgeItem, JudgeResult
 
 
 @pytest.fixture
@@ -220,7 +220,7 @@ class TestPipelineWithMentionTracker:
     @pytest.mark.asyncio
     async def test_mention_thread_filtered_from_pending(self, store, tracker, tmp_path):
         """멘션으로 처리 중인 스레드 메시지가 pending에서 필터링됨"""
-        from seosoyoung.memory.channel_pipeline import run_channel_pipeline
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
 
         channel_id = "C_TEST"
         # pending에 일반 메시지와 멘션 스레드 메시지를 섞어 넣음
@@ -275,7 +275,7 @@ class TestPipelineWithMentionTracker:
     @pytest.mark.asyncio
     async def test_mention_thread_buffers_filtered(self, store, tracker, tmp_path):
         """멘션으로 처리 중인 스레드가 thread_buffers에서 제외됨"""
-        from seosoyoung.memory.channel_pipeline import run_channel_pipeline
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
 
         channel_id = "C_TEST"
         # pending에 일반 메시지
@@ -323,7 +323,7 @@ class TestPipelineWithMentionTracker:
     @pytest.mark.asyncio
     async def test_no_mention_tracker_backward_compatible(self, store, tmp_path):
         """mention_tracker 없이도 기존과 동일하게 동작"""
-        from seosoyoung.memory.channel_pipeline import run_channel_pipeline
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
 
         channel_id = "C_TEST"
         store.append_pending(channel_id, {
@@ -359,7 +359,7 @@ class TestPipelineWithMentionTracker:
     @pytest.mark.asyncio
     async def test_mention_root_message_filtered(self, store, tracker, tmp_path):
         """멘션 루트 메시지 자체도 pending에서 필터링됨"""
-        from seosoyoung.memory.channel_pipeline import run_channel_pipeline
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
 
         channel_id = "C_TEST"
         # 멘션 루트 메시지 (thread_ts 없음, ts가 마킹됨)
@@ -404,7 +404,7 @@ class TestPipelineWithMentionTracker:
     @pytest.mark.asyncio
     async def test_non_mention_channel_mention_unaffected(self, store, tracker, tmp_path):
         """모니터 대상이 아닌 채널의 멘션은 관찰자 동작에 영향 없음"""
-        from seosoyoung.memory.channel_pipeline import run_channel_pipeline
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
 
         channel_id = "C_TEST"
         # 이 채널의 pending은 멘션과 무관

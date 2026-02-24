@@ -1,6 +1,6 @@
 # search/schema.py
 
-> 경로: `seosoyoung/search/schema.py`
+> 경로: `seosoyoung/slackbot/search/schema.py`
 
 ## 개요
 

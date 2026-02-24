@@ -124,7 +124,7 @@ def build_process_configs() -> list[ProcessConfig]:
     configs.append(ProcessConfig(
         name="bot",
         command=str(paths["venv_python"]),
-        args=["-m", "seosoyoung.main"],
+        args=["-m", "seosoyoung.slackbot"],
         cwd=str(paths["workspace"].resolve()),
         env=bot_env,
         restart_policy=RestartPolicy(
@@ -171,7 +171,7 @@ def build_process_configs() -> list[ProcessConfig]:
         command=str(paths["venv_python"]),
         args=[
             "-m", "uvicorn",
-            "seosoyoung.mcp.soul.main:app",
+            "seosoyoung.soul.main:app",
             "--host", "127.0.0.1",
             "--port", "3105",
         ],

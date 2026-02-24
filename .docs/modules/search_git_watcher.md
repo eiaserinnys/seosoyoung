@@ -1,6 +1,6 @@
 # search/git_watcher.py
 
-> 경로: `seosoyoung/search/git_watcher.py`
+> 경로: `seosoyoung/slackbot/search/git_watcher.py`
 
 ## 개요
 

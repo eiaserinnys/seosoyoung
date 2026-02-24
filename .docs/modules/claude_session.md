@@ -1,6 +1,6 @@
 # claude/session.py
 
-> 경로: `seosoyoung/claude/session.py`
+> 경로: `seosoyoung/slackbot/claude/session.py`
 
 ## 개요
 
@@ -60,4 +60,4 @@ Claude Code 세션 관리
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
+- `seosoyoung.slackbot.config.Config`

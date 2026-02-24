@@ -199,7 +199,7 @@ Get-Content "$RUNTIME\.env" | ForEach-Object {
 
 # 봇 실행
 Set-Location $WORKSPACE
-python -m seosoyoung.main
+python -m seosoyoung.slackbot.main
 ```
 
 ### 6. 실행

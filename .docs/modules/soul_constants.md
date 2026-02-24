@@ -1,6 +1,6 @@
 # soul/constants.py
 
-> 경로: `seosoyoung/mcp/soul/constants.py`
+> 경로: `seosoyoung/soul/constants.py`
 
 ## 개요
 

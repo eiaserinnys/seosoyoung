@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from seosoyoung.claude.session_context import (
+from seosoyoung.slackbot.claude.session_context import (
     build_initial_context,
     build_followup_context,
     format_hybrid_context,

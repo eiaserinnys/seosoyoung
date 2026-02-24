@@ -1,6 +1,6 @@
 # memory/promoter.py
 
-> 경로: `seosoyoung/memory/promoter.py`
+> 경로: `seosoyoung/slackbot/memory/promoter.py`
 
 ## 개요
 
@@ -65,7 +65,7 @@ LLM이 id를 반환한 경우 그 ID를 우선 사용합니다.
 
 ## 내부 의존성
 
-- `seosoyoung.memory.prompts.build_compactor_prompt`
-- `seosoyoung.memory.prompts.build_promoter_prompt`
-- `seosoyoung.memory.store.generate_ltm_id`
-- `seosoyoung.memory.token_counter.TokenCounter`
+- `seosoyoung.slackbot.memory.prompts.build_compactor_prompt`
+- `seosoyoung.slackbot.memory.prompts.build_promoter_prompt`
+- `seosoyoung.slackbot.memory.store.generate_ltm_id`
+- `seosoyoung.slackbot.memory.token_counter.TokenCounter`

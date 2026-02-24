@@ -1,6 +1,6 @@
 # memory/injector.py
 
-> 경로: `seosoyoung/memory/injector.py`
+> 경로: `seosoyoung/slackbot/memory/injector.py`
 
 ## 개요
 

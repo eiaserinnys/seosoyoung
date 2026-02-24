@@ -12,7 +12,7 @@ class TestDialogueSearcher:
     @pytest.fixture
     def mock_index(self, tmp_path):
         """테스트용 mock 인덱스 생성."""
-        from seosoyoung.search.schema import dialogue_schema
+        from seosoyoung.slackbot.search.schema import dialogue_schema
 
         index_path = tmp_path / "test_index"
         index_path.mkdir()
@@ -76,7 +76,7 @@ class TestDialogueSearcher:
     @pytest.fixture
     def searcher(self, mock_index):
         """검색기 fixture."""
-        from seosoyoung.search import DialogueSearcher
+        from seosoyoung.slackbot.search import DialogueSearcher
 
         return DialogueSearcher(mock_index)
 
@@ -158,7 +158,7 @@ class TestGetDefaultIndexPath:
 
     def test_get_default_index_path(self):
         """기본 인덱스 경로 반환 테스트."""
-        from seosoyoung.search import get_default_index_path
+        from seosoyoung.slackbot.search import get_default_index_path
 
         index_path = get_default_index_path()
         assert ".local" in str(index_path)
@@ -171,7 +171,7 @@ class TestFormatResults:
 
     def test_format_json(self):
         """JSON 포맷 테스트."""
-        from seosoyoung.search.searcher import format_results
+        from seosoyoung.slackbot.search.searcher import format_results
 
         results = [
             {"dlgId": "test-001", "speaker": "fx", "text_kr": "테스트", "text_en": "Test"}
@@ -182,7 +182,7 @@ class TestFormatResults:
 
     def test_format_brief(self):
         """Brief 포맷 테스트."""
-        from seosoyoung.search.searcher import format_results
+        from seosoyoung.slackbot.search.searcher import format_results
 
         results = [
             {"dlgId": "test-001", "speaker": "fx", "text_kr": "테스트 대사입니다.", "text_en": "Test"}
@@ -197,7 +197,7 @@ class TestDialogueSearcherErrors:
 
     def test_index_not_found(self, tmp_path):
         """인덱스가 없을 때 FileNotFoundError 발생."""
-        from seosoyoung.search import DialogueSearcher
+        from seosoyoung.slackbot.search import DialogueSearcher
 
         with pytest.raises(FileNotFoundError):
             DialogueSearcher(tmp_path / "nonexistent")

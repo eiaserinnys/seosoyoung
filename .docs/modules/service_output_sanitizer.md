@@ -1,6 +1,6 @@
 # service/output_sanitizer.py
 
-> 경로: `seosoyoung/mcp/soul/service/output_sanitizer.py`
+> 경로: `seosoyoung/soul/service/output_sanitizer.py`
 
 ## 개요
 

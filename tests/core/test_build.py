@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from seosoyoung.search.build import build_all, build_whoosh, build_embeddings
+from seosoyoung.slackbot.search.build import build_all, build_whoosh, build_embeddings
 
 
 def _mock_get_embeddings(texts):
@@ -103,7 +103,7 @@ class TestBuildEmbeddings:
         emb_dir = paths["index_root"] / "embeddings"
 
         with patch(
-            "seosoyoung.search.build.EmbeddingIndexBuilder"
+            "seosoyoung.slackbot.search.build.EmbeddingIndexBuilder"
         ) as MockBuilder:
             mock_instance = MagicMock()
             mock_instance.build_dialogue_index.return_value = {
@@ -131,7 +131,7 @@ class TestBuildAll:
         paths = full_data_tree
 
         with patch(
-            "seosoyoung.search.build.EmbeddingIndexBuilder"
+            "seosoyoung.slackbot.search.build.EmbeddingIndexBuilder"
         ) as MockBuilder:
             mock_instance = MagicMock()
             mock_instance.build_dialogue_index.return_value = {
@@ -172,7 +172,7 @@ class TestBuildAll:
         paths = full_data_tree
 
         with patch(
-            "seosoyoung.search.build.EmbeddingIndexBuilder"
+            "seosoyoung.slackbot.search.build.EmbeddingIndexBuilder"
         ) as MockBuilder:
             mock_instance = MagicMock()
             mock_instance.build_dialogue_index.return_value = {

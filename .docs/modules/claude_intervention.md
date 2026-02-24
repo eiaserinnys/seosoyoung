@@ -1,6 +1,6 @@
 # claude/intervention.py
 
-> 경로: `seosoyoung/claude/intervention.py`
+> 경로: `seosoyoung/slackbot/claude/intervention.py`
 
 ## 개요
 
@@ -35,4 +35,4 @@
 
 ## 내부 의존성
 
-- `seosoyoung.trello.watcher.TrackedCard`
+- `seosoyoung.slackbot.trello.watcher.TrackedCard`

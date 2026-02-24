@@ -1,16 +1,16 @@
 # search/build.py
 
-> 경로: `seosoyoung/search/build.py`
+> 경로: `seosoyoung/slackbot/search/build.py`
 
 ## 개요
 
 통합 빌드 스크립트 — Whoosh + 임베딩 인덱스를 한 번에 빌드.
 
 Usage:
-    python -m seosoyoung.search.build                    # 전체 빌드
-    python -m seosoyoung.search.build --whoosh-only      # Whoosh만
-    python -m seosoyoung.search.build --embedding-only   # 임베딩만
-    python -m seosoyoung.search.build --force            # 강제 재빌드
+    python -m seosoyoung.slackbot.search.build                    # 전체 빌드
+    python -m seosoyoung.slackbot.search.build --whoosh-only      # Whoosh만
+    python -m seosoyoung.slackbot.search.build --embedding-only   # 임베딩만
+    python -m seosoyoung.slackbot.search.build --force            # 강제 재빌드
 
 ## 함수
 

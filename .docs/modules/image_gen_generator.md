@@ -39,4 +39,4 @@ Raises:
 
 ## 내부 의존성
 
-- `seosoyoung.config.Config`
+- `seosoyoung.slackbot.config.Config`
