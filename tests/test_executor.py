@@ -133,7 +133,6 @@ def _make_executor():
         mark_session_stopped=MagicMock(),
         get_running_session_count=MagicMock(return_value=1),
         restart_manager=MagicMock(),
-        upload_file_to_slack=MagicMock(),
         send_long_message=MagicMock(),
         send_restart_confirmation=MagicMock(),
     )

@@ -119,16 +119,18 @@ class ResultProcessor:
 
         final_session_id = result.session_id or ctx.session.session_id or ""
         header = build_trello_header(ctx.trello_card, final_session_id)
-        continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
-        if usage_bar:
-            continuation_hint = f"{usage_bar}\n{continuation_hint}"
+        footer = usage_bar or ""
 
-        max_response_len = 3900 - len(header) - len(continuation_hint) - 20
+        max_response_len = 3900 - len(header) - len(footer) - 20
         if len(response) <= max_response_len:
-            final_text = f"{header}\n\n{response}\n\n{continuation_hint}"
+            final_text = f"{header}\n\n{response}"
+            if footer:
+                final_text = f"{final_text}\n\n{footer}"
         else:
             truncated = response[:max_response_len]
-            final_text = f"{header}\n\n{truncated}...\n\n{continuation_hint}"
+            final_text = f"{header}\n\n{truncated}..."
+            if footer:
+                final_text = f"{final_text}\n\n{footer}"
 
         final_blocks = [{
             "type": "section",
@@ -152,13 +154,10 @@ class ResultProcessor:
         is_list_run: bool, usage_bar: Optional[str],
     ):
         """일반 모드(멘션) 성공 처리"""
-        continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
-        if usage_bar:
-            continuation_hint = f"{usage_bar}\n{continuation_hint}"
-
         reply_thread_ts = ctx.thread_ts
 
         if not ctx.is_thread_reply:
+            # 채널 최초 응답: 미리보기를 채널에, 전문은 스레드에
             try:
                 lines = response.strip().split("\n")
                 preview_lines = []
@@ -167,10 +166,13 @@ class ResultProcessor:
                     if len(preview_lines) >= 3:
                         break
                 channel_text = "\n".join(preview_lines)
-                if len(lines) > 3:
+                is_truncated = len(lines) > 3
+                if is_truncated:
                     channel_text += "\n..."
 
-                final_text = f"{channel_text}\n\n{continuation_hint}"
+                final_text = channel_text
+                if usage_bar:
+                    final_text = f"{final_text}\n\n{usage_bar}"
                 final_blocks = [{
                     "type": "section",
                     "text": {"type": "mrkdwn", "text": final_text}
@@ -185,7 +187,9 @@ class ResultProcessor:
                         final_text, final_blocks, thread_ts=reply_thread_ts,
                     )
 
-                self.send_long_message(ctx.say, response, ctx.thread_ts)
+                # 미리보기가 잘린 경우에만 전문을 스레드에 전송
+                if is_truncated:
+                    self.send_long_message(ctx.say, response, ctx.thread_ts)
 
             except Exception:
                 self.send_long_message(ctx.say, response, ctx.thread_ts)
@@ -314,16 +318,15 @@ class ResultProcessor:
 
         if ctx.is_trello_mode:
             header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
-            continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
-            error_text = f"{header}\n\n❌ {error_msg}\n\n{continuation_hint}"
-            update_message(ctx.client, ctx.channel, ctx.main_msg_ts, error_text)
+            error_text = f"{header}\n\n❌ {error_msg}"
+            update_message(ctx.client, ctx.channel, ctx.main_msg_ts, error_text,
+                           blocks=[{"type": "section",
+                                    "text": {"type": "mrkdwn", "text": error_text}}])
         else:
-            if ctx.is_thread_reply:
-                error_text = f"❌ {error_msg}"
-            else:
-                continuation_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
-                error_text = f"❌ {error_msg}\n\n{continuation_hint}"
-            update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text)
+            error_text = f"❌ {error_msg}"
+            update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text,
+                           blocks=[{"type": "section",
+                                    "text": {"type": "mrkdwn", "text": error_text}}])
 
     def handle_exception(self, ctx, e: Exception):
         """예외 처리"""
@@ -339,18 +342,13 @@ class ResultProcessor:
         if ctx.is_trello_mode:
             try:
                 header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
-                continuation_hint = "`작업을 이어가려면 이 대화에 댓글을 달아주세요.`"
                 update_message(ctx.client, ctx.channel, ctx.main_msg_ts,
-                               f"{header}\n\n❌ {error_msg}\n\n{continuation_hint}")
+                               f"{header}\n\n❌ {error_msg}")
             except Exception:
                 ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)
         else:
             try:
-                if ctx.is_thread_reply:
-                    error_text = f"❌ {error_msg}"
-                else:
-                    continuation_hint = "`이 대화를 이어가려면 댓글을 달아주세요.`"
-                    error_text = f"❌ {error_msg}\n\n{continuation_hint}"
+                error_text = f"❌ {error_msg}"
                 update_message(ctx.client, ctx.channel, ctx.last_msg_ts, error_text)
             except Exception:
                 ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)

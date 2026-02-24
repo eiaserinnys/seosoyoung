@@ -24,11 +24,11 @@ Claude 실행 결과 처리
 - `handle_interrupted(self, ctx)` (줄 49): 인터럽트로 중단된 실행의 사고 과정 메시지 정리
 - `handle_success(self, ctx, result)` (줄 74): 성공 결과 처리
 - `handle_trello_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 108): 트렐로 모드 성공 처리
-- `handle_normal_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 150): 일반 모드(멘션) 성공 처리
-- `handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 224): 재기동 마커 처리
-- `handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 247): LIST_RUN 마커 처리 - 정주행 시작
-- `handle_error(self, ctx, error)` (줄 304): 오류 결과 처리
-- `handle_exception(self, ctx, e)` (줄 328): 예외 처리
+- `handle_normal_success(self, ctx, result, response, is_list_run, usage_bar)` (줄 152): 일반 모드(멘션) 성공 처리
+- `handle_restart_marker(self, result, session, channel, thread_ts, say)` (줄 228): 재기동 마커 처리
+- `handle_list_run_marker(self, list_name, channel, thread_ts, say, client)` (줄 251): LIST_RUN 마커 처리 - 정주행 시작
+- `handle_error(self, ctx, error)` (줄 308): 오류 결과 처리
+- `handle_exception(self, ctx, e)` (줄 331): 예외 처리
 
 ## 내부 의존성
 
