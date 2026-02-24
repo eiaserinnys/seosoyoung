@@ -1104,5 +1104,344 @@ class TestGetOperationalListIds:
         assert "list_ip" in ids
 
 
+class _SyncThread:
+    """테스트용: threading.Thread를 동기적으로 실행하는 대체 클래스"""
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None, **extra):
+        self.target = target
+        self.args = args
+        self.kwargs = kwargs or {}
+
+    def start(self):
+        if self.target:
+            self.target(*self.args, **self.kwargs)
+
+
+class TestMultiCardChainingIntegration:
+    """멀티 카드 체이닝 통합 테스트 (card1→card2→card3→COMPLETED)
+
+    _spawn_claude_thread가 별도 스레드를 생성하므로, claude_runner_factory를
+    동기적으로 완료하도록 모킹하여 체이닝 흐름을 검증합니다.
+    on_success 내부의 threading.Thread도 동기화하여 전체 체인을 검증합니다.
+    """
+
+    @patch("seosoyoung.slackbot.trello.watcher.threading.Thread", _SyncThread)
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_three_card_chaining_completes(self, mock_config, mock_trello_client):
+        """3장의 카드가 순차적으로 처리되고 세션이 COMPLETED 상태가 됨"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = "list_inprogress"
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+            mock_slack = MagicMock()
+            mock_slack.chat_postMessage.return_value = {"ts": "thread_123"}
+
+            # _spawn_claude_thread를 오버라이드하여 동기적으로 on_success 호출
+            def sync_spawn(*, session, prompt, thread_ts, channel,
+                           tracked, dm_channel_id=None, dm_thread_ts=None,
+                           on_success=None, on_error=None, on_finally=None):
+                # Claude 실행 성공 시뮬레이션
+                if on_success:
+                    on_success()
+                if on_finally:
+                    on_finally()
+
+            watcher = TrelloWatcher(
+                slack_client=mock_slack,
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+            )
+            watcher._spawn_claude_thread = sync_spawn
+
+            # _preemptive_compact 모킹 (SDK 호출 불필요)
+            watcher._preemptive_compact = MagicMock()
+
+            # 카드 3장 설정
+            cards_data = {
+                "card_a": TrelloCard(
+                    id="card_a", name="Card A", desc="",
+                    url="https://trello.com/c/a", list_id="list_plan", labels=[],
+                ),
+                "card_b": TrelloCard(
+                    id="card_b", name="Card B", desc="",
+                    url="https://trello.com/c/b", list_id="list_plan", labels=[],
+                ),
+                "card_c": TrelloCard(
+                    id="card_c", name="Card C", desc="",
+                    url="https://trello.com/c/c", list_id="list_plan", labels=[],
+                ),
+            }
+            mock_trello.get_card.side_effect = lambda cid: cards_data.get(cid)
+            mock_trello.move_card.return_value = True
+            mock_trello.update_card_name.return_value = True
+
+            # 세션 생성
+            session = list_runner.create_session(
+                list_id="list_plan",
+                list_name="Plan List",
+                card_ids=["card_a", "card_b", "card_c"],
+            )
+
+            # 정주행 시작 (동기적으로 3장 전부 처리됨)
+            watcher._process_list_run_card(session.session_id, "thread_123")
+
+            # 검증: 세션 COMPLETED
+            updated = list_runner.get_session(session.session_id)
+            assert updated.status == SessionStatus.COMPLETED
+            assert updated.current_index == 3
+            assert updated.processed_cards == {
+                "card_a": "completed",
+                "card_b": "completed",
+                "card_c": "completed",
+            }
+
+    @patch("seosoyoung.slackbot.trello.watcher.threading.Thread", _SyncThread)
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_chaining_continues_after_compact_failure(self, mock_config, mock_trello_client):
+        """_preemptive_compact 실패해도 체인이 끊기지 않음"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = "list_inprogress"
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+            mock_slack = MagicMock()
+            mock_slack.chat_postMessage.return_value = {"ts": "thread_123"}
+
+            def sync_spawn(*, session, prompt, thread_ts, channel,
+                           tracked, dm_channel_id=None, dm_thread_ts=None,
+                           on_success=None, on_error=None, on_finally=None):
+                if on_success:
+                    on_success()
+                if on_finally:
+                    on_finally()
+
+            watcher = TrelloWatcher(
+                slack_client=mock_slack,
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+            )
+            watcher._spawn_claude_thread = sync_spawn
+
+            # _preemptive_compact가 매번 예외를 던짐
+            watcher._preemptive_compact = MagicMock(
+                side_effect=RuntimeError("compact hang")
+            )
+
+            cards_data = {
+                "card_a": TrelloCard(
+                    id="card_a", name="Card A", desc="",
+                    url="https://trello.com/c/a", list_id="list_plan", labels=[],
+                ),
+                "card_b": TrelloCard(
+                    id="card_b", name="Card B", desc="",
+                    url="https://trello.com/c/b", list_id="list_plan", labels=[],
+                ),
+            }
+            mock_trello.get_card.side_effect = lambda cid: cards_data.get(cid)
+            mock_trello.move_card.return_value = True
+            mock_trello.update_card_name.return_value = True
+
+            session = list_runner.create_session(
+                list_id="list_plan",
+                list_name="Plan List",
+                card_ids=["card_a", "card_b"],
+            )
+
+            watcher._process_list_run_card(session.session_id, "thread_123")
+
+            # compact 실패에도 2장 모두 처리 완료
+            updated = list_runner.get_session(session.session_id)
+            assert updated.status == SessionStatus.COMPLETED
+            assert updated.current_index == 2
+
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_on_success_exception_does_not_trigger_on_error(self, mock_config, mock_trello_client):
+        """on_success 예외가 on_error를 트리거하지 않음 (_spawn_claude_thread 격리 검증)"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher, TrackedCard
+
+        mock_slack = MagicMock()
+        mock_slack.chat_postMessage.return_value = {"ts": "thread_123"}
+
+        watcher = TrelloWatcher(
+            slack_client=mock_slack,
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),  # 성공 (예외 없음)
+        )
+
+        tracked = TrackedCard(
+            card_id="card_test",
+            card_name="Test Card",
+            card_url="",
+            list_id="list_test",
+            list_key="test",
+            thread_ts="thread_123",
+            channel_id="C12345",
+            detected_at="2026-01-01T00:00:00",
+        )
+
+        on_error_called = []
+
+        def failing_on_success():
+            raise RuntimeError("on_success exploded")
+
+        def tracking_on_error(e):
+            on_error_called.append(e)
+
+        # _spawn_claude_thread 직접 호출 후 스레드 완료 대기
+        watcher.get_session_lock = None
+        watcher._spawn_claude_thread(
+            session=MagicMock(),
+            prompt="test",
+            thread_ts="thread_123",
+            channel="C12345",
+            tracked=tracked,
+            on_success=failing_on_success,
+            on_error=tracking_on_error,
+        )
+
+        # 스레드 완료 대기
+        import time
+        time.sleep(0.5)
+
+        # on_error가 호출되지 않아야 함 (Claude 실행 자체는 성공)
+        assert len(on_error_called) == 0
+
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_process_list_run_card_handles_trello_api_error(self, mock_config, mock_trello_client):
+        """_process_list_run_card에서 Trello API 오류 시 전역 try-except가 잡음"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = "list_ip"
+
+        mock_trello = MagicMock()
+        # get_card가 예외를 던짐
+        mock_trello.get_card.side_effect = ConnectionError("Trello API down")
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+            mock_slack = MagicMock()
+            mock_slack.chat_postMessage.return_value = {"ts": "thread_123"}
+
+            watcher = TrelloWatcher(
+                slack_client=mock_slack,
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+            )
+
+            session = list_runner.create_session(
+                list_id="list_plan",
+                list_name="Plan",
+                card_ids=["card_a"],
+            )
+            list_runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            # 예외가 전파되지 않아야 함 (전역 try-except)
+            watcher._process_list_run_card(session.session_id, "thread_123")
+
+            # 세션이 PAUSED로 변경되어야 함
+            updated = list_runner.get_session(session.session_id)
+            assert updated.status == SessionStatus.PAUSED
+
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_compact_timeout_does_not_block_chain(self, mock_config, mock_trello_client):
+        """_preemptive_compact 타임아웃 시 체인이 계속됨"""
+        import concurrent.futures
+
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.claude.session import Session
+
+        mock_session_manager = MagicMock()
+        mock_session = Session(
+            thread_ts="1234.5678",
+            channel_id="C12345",
+            session_id="test-session",
+        )
+        mock_session_manager.get.return_value = mock_session
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=mock_session_manager,
+            claude_runner_factory=MagicMock(),
+        )
+
+        # future.result()가 TimeoutError를 raise하도록 mock 설정
+        mock_future = MagicMock()
+        mock_future.result.side_effect = concurrent.futures.TimeoutError()
+
+        mock_pool = MagicMock()
+        mock_pool.__enter__ = MagicMock(return_value=mock_pool)
+        mock_pool.__exit__ = MagicMock(return_value=False)
+        mock_pool.submit.return_value = mock_future
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeRunner") as MockRunner, \
+             patch("concurrent.futures.ThreadPoolExecutor", return_value=mock_pool):
+            MockRunner.return_value = MagicMock()
+
+            # TimeoutError가 발생해도 정상 반환 (예외 전파 없음)
+            watcher._preemptive_compact("1234.5678", "C12345", "Test Card")
+
+            # submit이 호출되었는지 확인
+            mock_pool.submit.assert_called_once()
+            # future.result()에 timeout이 전달되었는지 확인
+            mock_future.result.assert_called_once_with(
+                timeout=watcher.COMPACT_TIMEOUT_SECONDS
+            )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

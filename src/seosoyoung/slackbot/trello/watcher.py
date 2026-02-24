@@ -1,5 +1,6 @@
 """Trello 워처 - To Go 리스트 감시 및 처리"""
 
+import concurrent.futures
 import json
 import logging
 import threading
@@ -635,6 +636,8 @@ class TrelloWatcher:
                 lock = self.get_session_lock(thread_ts)
                 lock.acquire()
                 logger.debug(f"워처 락 획득: thread_ts={thread_ts}")
+
+            claude_succeeded = False
             try:
                 def say(text, thread_ts=None, **kwargs):
                     self.slack_client.chat_postMessage(
@@ -654,19 +657,30 @@ class TrelloWatcher:
                     dm_channel_id=dm_channel_id,
                     dm_thread_ts=dm_thread_ts,
                 )
-
-                if on_success:
-                    on_success()
+                claude_succeeded = True
             except Exception as e:
                 logger.exception(f"Claude 실행 오류 (워처): {e}")
                 if on_error:
                     on_error(e)
-            finally:
-                if on_finally:
+
+            # on_success는 Claude 실행과 분리하여 호출
+            # on_success 내부 예외가 on_error를 트리거하지 않도록 격리
+            if claude_succeeded and on_success:
+                try:
+                    on_success()
+                except Exception as e:
+                    logger.exception(
+                        f"on_success 콜백 오류 (체인 중단 가능): {e}"
+                    )
+
+            if on_finally:
+                try:
                     on_finally()
-                if lock:
-                    lock.release()
-                    logger.debug(f"워처 락 해제: thread_ts={thread_ts}")
+                except Exception as e:
+                    logger.exception(f"on_finally 콜백 오류: {e}")
+            if lock:
+                lock.release()
+                logger.debug(f"워처 락 해제: thread_ts={thread_ts}")
 
         claude_thread = threading.Thread(target=run_claude, daemon=True)
         claude_thread.start()
@@ -755,11 +769,16 @@ class TrelloWatcher:
             # 리스트 정주행 시작
             self._start_list_run(list_id, list_name, cards)
 
+    # 선제적 컴팩트 타임아웃 (초)
+    COMPACT_TIMEOUT_SECONDS = 60
+
     def _preemptive_compact(self, thread_ts: str, channel: str, card_name: str):
         """카드 완료 후 선제적 컨텍스트 컴팩트
 
         정주행에서 카드 하나의 처리가 끝난 뒤 다음 카드로 넘어가기 전에
         세션 컨텍스트를 압축하여 자동 압축으로 인한 흐름 끊김을 방지합니다.
+
+        타임아웃을 적용하여 compact_session이 무기한 block되는 것을 방지합니다.
 
         Args:
             thread_ts: 슬랙 스레드 타임스탬프 (세션 조회 키)
@@ -774,7 +793,20 @@ class TrelloWatcher:
         try:
             from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
             runner = ClaudeRunner()
-            result = runner.run_sync(runner.compact_session(session.session_id))
+
+            # 타임아웃 적용: compact가 무기한 block되는 것을 방지
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(
+                    runner.run_sync, runner.compact_session(session.session_id)
+                )
+                try:
+                    result = future.result(timeout=self.COMPACT_TIMEOUT_SECONDS)
+                except concurrent.futures.TimeoutError:
+                    logger.warning(
+                        f"선제적 컴팩트 타임아웃 ({self.COMPACT_TIMEOUT_SECONDS}s, 계속 진행): "
+                        f"card={card_name}, session={session.session_id}"
+                    )
+                    return
 
             if result.success:
                 logger.info(f"선제적 컴팩트 완료: card={card_name}, session={session.session_id}")
@@ -869,6 +901,43 @@ class TrelloWatcher:
 
         channel = run_channel or self.notify_channel
 
+        try:
+            self._process_list_run_card_inner(
+                list_runner, session_id, thread_ts, channel, run_channel
+            )
+        except Exception as e:
+            logger.exception(
+                f"정주행 카드 처리 중 미처리 예외 (Thread B): "
+                f"session={session_id}, error={e}"
+            )
+            # 세션 일시 중단하여 체인 중단 원인을 추적할 수 있도록 함
+            try:
+                from seosoyoung.slackbot.trello.list_runner import SessionStatus
+                list_runner.pause_run(session_id, f"미처리 예외: {e}")
+            except Exception:
+                pass
+            # 슬랙 알림
+            try:
+                self.slack_client.chat_postMessage(
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    text=(
+                        f"⚠️ 정주행 카드 처리 중 예기치 않은 오류가 발생했습니다.\n"
+                        f"세션 ID: `{session_id}`\n오류: {e}"
+                    )
+                )
+            except Exception:
+                pass
+
+    def _process_list_run_card_inner(
+        self,
+        list_runner,
+        session_id: str,
+        thread_ts: str,
+        channel: str,
+        run_channel: str = None,
+    ):
+        """_process_list_run_card의 실제 로직 (전역 try-except로 감싸기 위해 분리)"""
         from seosoyoung.slackbot.trello.list_runner import SessionStatus
 
         session = list_runner.get_session(session_id)
@@ -955,7 +1024,13 @@ class TrelloWatcher:
             list_runner.mark_card_processed(session_id, card.id, "completed")
             self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
             self._untrack_card(card.id)
-            self._preemptive_compact(thread_ts, channel, card.name)
+            # _preemptive_compact 실패해도 체인이 끊기지 않도록 격리
+            try:
+                self._preemptive_compact(thread_ts, channel, card.name)
+            except Exception as compact_err:
+                logger.warning(
+                    f"선제적 컴팩트 실패 (체인 계속): card={card.name}, error={compact_err}"
+                )
             # 다음 카드 처리 (별도 스레드로)
             next_thread = threading.Thread(
                 target=self._process_list_run_card,
@@ -969,10 +1044,18 @@ class TrelloWatcher:
             list_runner.pause_run(session_id, str(e))
             self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
             self._untrack_card(card.id)
+            logger.error(
+                f"정주행 카드 실패 (체인 중단): card={card.name}, "
+                f"session={session_id}, index={session.current_index}, error={e}"
+            )
             self.slack_client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
-                text=f"❌ 카드 처리 실패: {card.name}\n오류: {e}"
+                text=(
+                    f"❌ 카드 처리 실패: {card.name}\n"
+                    f"세션: `{session_id}` | 인덱스: {session.current_index}\n"
+                    f"오류: {e}"
+                )
             )
 
         self._spawn_claude_thread(
