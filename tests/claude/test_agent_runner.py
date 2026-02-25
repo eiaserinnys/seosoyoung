@@ -1977,5 +1977,118 @@ class TestInlineIntervention:
         assert result.success is True
 
 
+class TestClaudeRunnerPooled:
+    """ClaudeRunner pooled 모드 테스트"""
+
+    def test_pooled_false_by_default(self):
+        """pooled 기본값은 False"""
+        runner = ClaudeRunner()
+        assert runner._pooled is False
+
+    def test_pooled_true(self):
+        """pooled=True 설정 가능"""
+        runner = ClaudeRunner(pooled=True)
+        assert runner._pooled is True
+
+    @pytest.mark.asyncio
+    async def test_non_pooled_destroys_client_after_run(self):
+        """pooled=False(기본)는 실행 후 client 파괴"""
+        runner = ClaudeRunner(thread_ts="test_ts_non_pooled")
+        mock_client = _make_mock_client(
+            MockResultMessage(result="완료", session_id="s1"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                result = await runner.run("테스트")
+
+        assert result.success is True
+        # pooled=False이면 실행 후 client가 None이어야 함
+        assert runner.client is None
+        assert runner.execution_loop is None
+        # disconnect 호출 확인
+        mock_client.disconnect.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_pooled_preserves_client_after_run(self):
+        """pooled=True는 실행 후 client 유지"""
+        runner = ClaudeRunner(thread_ts="test_ts_pooled", pooled=True)
+        mock_client = _make_mock_client(
+            MockResultMessage(result="완료", session_id="s1"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                result = await runner.run("테스트")
+
+        assert result.success is True
+        # pooled=True이면 실행 후 client가 유지되어야 함
+        assert runner.client is mock_client
+        # execution_loop는 항상 정리됨
+        assert runner.execution_loop is None
+        # disconnect 미호출 확인
+        mock_client.disconnect.assert_not_called()
+
+    def test_is_idle_no_client(self):
+        """client 없으면 is_idle() = False"""
+        runner = ClaudeRunner()
+        assert runner.is_idle() is False
+
+    def test_is_idle_with_client_not_running(self):
+        """client 있고 실행 중 아니면 is_idle() = True"""
+        runner = ClaudeRunner()
+        runner.client = MagicMock()
+        runner.execution_loop = None
+        assert runner.is_idle() is True
+
+    def test_is_idle_while_running(self):
+        """실행 중이면 is_idle() = False"""
+        runner = ClaudeRunner()
+        runner.client = MagicMock()
+        mock_loop = MagicMock()
+        mock_loop.is_running.return_value = True
+        runner.execution_loop = mock_loop
+        assert runner.is_idle() is False
+
+    def test_detach_client_clears_client_and_pid(self):
+        """detach_client()는 client/pid를 분리하고 disconnect 하지 않음"""
+        runner = ClaudeRunner()
+        mock_client = MagicMock()
+        runner.client = mock_client
+        runner.pid = 12345
+
+        returned_client = runner.detach_client()
+
+        # client와 pid가 None으로 초기화됨
+        assert runner.client is None
+        assert runner.pid is None
+        # 반환값은 원래 client
+        assert returned_client is mock_client
+        # disconnect는 호출하지 않음
+        mock_client.disconnect.assert_not_called()
+
+    def test_detach_client_no_client(self):
+        """client 없으면 detach_client()는 None 반환"""
+        runner = ClaudeRunner()
+        result = runner.detach_client()
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_pooled_registry_cleanup_after_run(self):
+        """pooled 모드에서 실행 후 레지스트리에서 제거됨"""
+        runner = ClaudeRunner(thread_ts="test_ts_pooled_registry", pooled=True)
+        mock_client = _make_mock_client(
+            MockResultMessage(result="완료", session_id="s1"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                result = await runner.run("테스트")
+
+        # 레지스트리에서는 제거됨 (풀이 별도로 관리)
+        assert get_runner("test_ts_pooled_registry") is None
+        assert result.success is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
