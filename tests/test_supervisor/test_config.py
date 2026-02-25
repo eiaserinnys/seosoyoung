@@ -114,8 +114,8 @@ class TestBuildProcessConfigs:
             "mcp-outline", "mcp-slack", "mcp-trello",
         }
         assert required.issubset(names)
-        # rescue-bot은 RESCUE_SLACK_*_TOKEN 환경변수 유무에 따라 선택적
-        assert names - required <= {"rescue-bot"}
+        # rescue-bot, mcp-eb-lore는 환경/패키지 유무에 따라 선택적
+        assert names - required <= {"rescue-bot", "mcp-eb-lore"}
 
     def test_bot_config(self):
         configs = self._build()

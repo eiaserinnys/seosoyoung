@@ -329,14 +329,10 @@ class TestMessageHandlerBotMention:
     def test_message_with_bot_mention_returns(self):
         """봇 멘션 포함 메시지는 message.py에서 무시됨 (mention.py에서 처리)"""
         from seosoyoung.slackbot.handlers.message import _contains_bot_mention
-        from seosoyoung.slackbot.config import Config
 
-        original_bot_id = Config.slack.bot_user_id
-        try:
-            Config.slack.bot_user_id = "BOT123"
+        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
+            mock_config.slack.bot_user_id = "BOT123"
             assert _contains_bot_mention("<@BOT123> hello") is True
             assert _contains_bot_mention("hello <@BOT123>") is True
             assert _contains_bot_mention("hello") is False
             assert _contains_bot_mention("<@OTHER> hello") is False
-        finally:
-            Config.slack.bot_user_id = original_bot_id
