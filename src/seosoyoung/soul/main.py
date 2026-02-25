@@ -35,6 +35,9 @@ _start_time = time.time()
 # 백그라운드 태스크 참조
 _cleanup_task = None
 
+# 전역 풀 참조 (/status 엔드포인트에서 접근)
+_runner_pool: ClaudeRunnerPool | None = None
+
 
 async def periodic_cleanup():
     """주기적 태스크 정리 (24시간 이상 된 완료 태스크)"""
@@ -64,6 +67,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"  Workspace: {settings.workspace_dir}")
 
     # ClaudeRunnerPool 초기화
+    global _runner_pool
     pool = ClaudeRunnerPool(
         max_size=settings.runner_pool_max_size,
         idle_ttl=settings.runner_pool_idle_ttl,
@@ -71,6 +75,7 @@ async def lifespan(app: FastAPI):
         min_generic=settings.runner_pool_min_generic,
         maintenance_interval=settings.runner_pool_maintenance_interval,
     )
+    _runner_pool = pool
     init_soul_engine(pool=pool)
     logger.info(
         f"  Runner pool initialized: max_size={settings.runner_pool_max_size}, "
@@ -206,7 +211,7 @@ async def get_status():
     task_manager = get_task_manager()
     running_tasks = task_manager.get_running_tasks()
 
-    return {
+    response: dict = {
         "active_tasks": len(running_tasks),
         "max_concurrent": resource_manager.max_concurrent,
         "tasks": [
@@ -219,6 +224,12 @@ async def get_status():
             for t in running_tasks
         ],
     }
+
+    # 풀 통계 추가
+    if _runner_pool is not None:
+        response["runner_pool"] = _runner_pool.stats()
+
+    return response
 
 
 # === API Routers ===

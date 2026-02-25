@@ -100,12 +100,20 @@ class ClaudeRunnerPool:
             oldest_key, (runner, _) = next(iter(self._session_pool.items()))
             del self._session_pool[oldest_key]
             self._evictions += 1
-            logger.debug(f"LRU evict (session): {oldest_key}")
+            logger.info(
+                f"LRU evict: session_id={oldest_key} | 이유=pool_full | "
+                f"total_evictions={self._evictions} | "
+                f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}, max={self._max_size}"
+            )
             await self._discard(runner, reason=f"evict_lru session={oldest_key}")
         elif self._generic_pool:
             runner, _ = self._generic_pool.popleft()
             self._evictions += 1
-            logger.debug("LRU evict (generic)")
+            logger.info(
+                f"LRU evict: generic | 이유=pool_full | "
+                f"total_evictions={self._evictions} | "
+                f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}, max={self._max_size}"
+            )
             await self._discard(runner, reason="evict_lru generic")
 
     # -------------------------------------------------------------------------
@@ -119,6 +127,7 @@ class ClaudeRunnerPool:
         - session_id 없음 → generic pool에서 꺼내기 → 없으면 new
         - 풀 full → LRU evict 후 new 생성
         """
+        t0 = time.monotonic()
         async with self._lock:
             now = time.monotonic()
 
@@ -127,23 +136,36 @@ class ClaudeRunnerPool:
                     runner, last_used = self._session_pool.pop(session_id)
                     if now - last_used <= self._idle_ttl:
                         self._hits += 1
-                        logger.debug(f"Pool session hit: {session_id}")
+                        elapsed_ms = (time.monotonic() - t0) * 1000
+                        logger.info(
+                            f"Pool acquire HIT: session_id={session_id} | "
+                            f"소요={elapsed_ms:.1f}ms | "
+                            f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}"
+                        )
                         return runner
                     # TTL 만료 — 폐기
-                    logger.debug(f"Session runner TTL expired: {session_id}")
+                    logger.info(f"Pool acquire: session TTL 만료, 폐기 | session_id={session_id}")
                     await self._discard(runner, reason=f"ttl_expired session={session_id}")
 
                 self._misses += 1
-                logger.debug(f"Pool session miss: {session_id}")
+                logger.info(
+                    f"Pool acquire MISS: session_id={session_id} | "
+                    f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}"
+                )
 
             # generic pool에서 TTL 유효한 runner 찾기
             while self._generic_pool:
                 runner, idle_since = self._generic_pool.popleft()
                 if now - idle_since <= self._idle_ttl:
-                    logger.debug("Pool generic hit")
+                    elapsed_ms = (time.monotonic() - t0) * 1000
+                    logger.info(
+                        f"Pool acquire GENERIC: session_id={session_id} | "
+                        f"소요={elapsed_ms:.1f}ms | "
+                        f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}"
+                    )
                     return runner
                 # TTL 만료 — 폐기
-                logger.debug("Generic runner TTL expired, discarding")
+                logger.info("Pool acquire: generic TTL 만료, 폐기")
                 await self._discard(runner, reason="ttl_expired generic")
 
             # 새 runner 생성 — idle pool이 가득 찼으면 LRU 퇴거
@@ -151,7 +173,12 @@ class ClaudeRunnerPool:
                 await self._evict_lru_unlocked()
 
             runner = self._make_runner()
-            logger.debug("Pool: new runner created")
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            logger.info(
+                f"Pool acquire NEW: session_id={session_id} | "
+                f"소요={elapsed_ms:.1f}ms | "
+                f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}"
+            )
             return runner
 
     async def release(
@@ -179,10 +206,16 @@ class ClaudeRunnerPool:
                     if old_runner is not runner:
                         await self._discard(old_runner, reason=f"session replace: {session_id}")
                 self._session_pool[session_id] = (runner, now)
-                logger.debug(f"Pool: runner released to session pool: {session_id}")
+                logger.info(
+                    f"Pool release → session: session_id={session_id} | "
+                    f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}"
+                )
             else:
                 self._generic_pool.append((runner, now))
-                logger.debug("Pool: runner released to generic pool")
+                logger.info(
+                    f"Pool release → generic | "
+                    f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}"
+                )
 
     async def evict_lru(self) -> None:
         """가장 오래 사용되지 않은 runner를 disconnect & 제거 (공개 API)"""
@@ -202,6 +235,7 @@ class ClaudeRunnerPool:
             return 0
 
         success = 0
+        failed = 0
         for i in range(count):
             try:
                 runner = self._make_runner()
@@ -212,11 +246,15 @@ class ClaudeRunnerPool:
                         await self._evict_lru_unlocked()
                     self._generic_pool.append((runner, now))
                 success += 1
-                logger.info(f"Pre-warm: runner {i + 1}/{count} 예열 완료")
+                logger.info(
+                    f"Pre-warm: runner {i + 1}/{count} 예열 완료 | "
+                    f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}"
+                )
             except Exception as e:
+                failed += 1
                 logger.warning(f"Pre-warm: runner {i + 1}/{count} 예열 실패 (계속 진행): {e}")
 
-        logger.info(f"Pre-warm 완료: {success}/{count}개 성공")
+        logger.info(f"Pre-warm 완료: 성공={success}, 실패={failed}, 요청={count}")
         return success
 
     async def _run_maintenance(self) -> None:
@@ -264,7 +302,15 @@ class ClaudeRunnerPool:
 
         if to_discard:
             reasons = [reason for _, reason in to_discard]
-            logger.info(f"Maintenance: {len(to_discard)}개 runner 정리 ({reasons})")
+            logger.info(
+                f"Maintenance: {len(to_discard)}개 runner 정리 | 이유={reasons} | "
+                f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}"
+            )
+        else:
+            logger.debug(
+                f"Maintenance: 정리 없음 | "
+                f"pool: session={len(self._session_pool)}, generic={len(self._generic_pool)}"
+            )
 
         # --- generic pool 보충 ---
         async with self._lock:
@@ -272,10 +318,12 @@ class ClaudeRunnerPool:
 
         shortage = self._min_generic - current_generic
         if shortage > 0:
-            logger.info(f"Maintenance: generic pool 보충 필요 ({current_generic} < {self._min_generic})")
+            logger.info(
+                f"Maintenance: generic pool 보충 필요 ({current_generic} < {self._min_generic})"
+            )
             replenished = await self.pre_warm(shortage)
             if replenished > 0:
-                logger.info(f"Maintenance: {replenished}개 generic runner 보충")
+                logger.info(f"Maintenance: {replenished}개 generic runner 보충 완료")
 
     async def _maintenance_loop(self) -> None:
         """백그라운드 유지보수 루프
