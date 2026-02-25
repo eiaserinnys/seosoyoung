@@ -891,27 +891,29 @@ class TestSoulHealthTracker:
 # === supervisor config 환경변수 테스트 ===
 
 class TestSupervisorConfig:
-    """supervisor config에 CLAUDE_EXECUTION_MODE 전환 스위치 추가 확인"""
+    """supervisor config의 bot 프로세스 환경변수 구성 확인.
 
-    def test_bot_env_includes_execution_mode(self):
-        """build_process_configs()의 bot 프로세스에 CLAUDE_EXECUTION_MODE가 포함"""
+    CLAUDE_EXECUTION_MODE는 config.env가 아닌 .env에서 프로세스가 직접 읽도록
+    변경됨 (env-consolidation). config.env에는 경로/인코딩 설정만 유지.
+    """
+
+    def test_bot_env_excludes_execution_mode(self):
+        """build_process_configs()의 bot config.env에 CLAUDE_EXECUTION_MODE가 없어야 함.
+
+        프로세스가 load_dotenv()로 .env에서 직접 읽으므로 config.env에서 제거됨.
+        """
         with patch.dict("os.environ", {"CLAUDE_EXECUTION_MODE": "remote"}, clear=False):
             from supervisor.config import build_process_configs
             configs = build_process_configs()
 
             bot_config = next(c for c in configs if c.name == "bot")
-            assert "CLAUDE_EXECUTION_MODE" in bot_config.env
-            assert bot_config.env["CLAUDE_EXECUTION_MODE"] == "remote"
+            assert "CLAUDE_EXECUTION_MODE" not in bot_config.env
 
-    def test_bot_env_default_is_local(self):
-        """CLAUDE_EXECUTION_MODE 미설정 시 기본값 'local'"""
-        env = {k: v for k, v in __import__("os").environ.items()
-               if k != "CLAUDE_EXECUTION_MODE"}
-        with patch.dict("os.environ", env, clear=True):
-            from importlib import reload
-            import supervisor.config as sc
-            reload(sc)
-            configs = sc.build_process_configs()
+    def test_bot_env_has_path_settings_only(self):
+        """bot config.env에는 경로/인코딩 설정만 포함"""
+        from supervisor.config import build_process_configs
+        configs = build_process_configs()
 
-            bot_config = next(c for c in configs if c.name == "bot")
-            assert bot_config.env.get("CLAUDE_EXECUTION_MODE", "local") == "local"
+        bot_config = next(c for c in configs if c.name == "bot")
+        allowed_keys = {"PYTHONUTF8", "PYTHONPATH", "PATH"}
+        assert set(bot_config.env.keys()).issubset(allowed_keys)
