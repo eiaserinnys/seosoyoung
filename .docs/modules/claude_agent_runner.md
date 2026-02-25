@@ -48,25 +48,27 @@ thread_ts 단위 인스턴스: 각 인스턴스가 자신의 client/pid/executio
 #### 메서드
 
 - `__init__(self, thread_ts)` (줄 261): 
-- `async shutdown_all_clients(cls)` (줄 284): 하위 호환: 모듈 레벨 shutdown_all()로 위임
-- `shutdown_all_clients_sync(cls)` (줄 289): 하위 호환: 모듈 레벨 shutdown_all_sync()로 위임
-- `run_sync(self, coro)` (줄 293): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
-- `async _get_or_create_client(self, options)` (줄 297): ClaudeSDKClient를 가져오거나 새로 생성
-- `async _remove_client(self)` (줄 346): 이 러너의 ClaudeSDKClient를 정리
-- `_force_kill_process(pid, thread_ts)` (줄 365): psutil을 사용하여 프로세스를 강제 종료
-- `_is_cli_alive(self)` (줄 382): CLI 서브프로세스가 아직 살아있는지 확인
-- `interrupt(self)` (줄 392): 이 러너에 인터럽트 전송 (동기)
-- `_debug(self, message)` (줄 407): 디버그 메시지 전송 (debug_send_fn이 있을 때만)
-- `_observe_rate_limit(self, data)` (줄 416): InstrumentedClaudeClient 콜백: rate_limit_event 관찰
-- `_observe_unknown_event(self, msg_type, data)` (줄 441): InstrumentedClaudeClient 콜백: unknown event 관찰
-- `_build_compact_hook(self, compact_events)` (줄 445): PreCompact 훅을 생성합니다.
-- `_build_options(self, session_id, compact_events)` (줄 472): ClaudeAgentOptions와 stderr 파일을 반환합니다.
-- `async _notify_compact_events(self, compact_state, on_compact)` (줄 521): 미통지 compact 이벤트를 on_compact 콜백으로 전달
-- `async _receive_messages(self, client, compact_state, msg_state, on_progress, on_compact, on_intervention, on_session)` (줄 539): 내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신
-- `_evaluate_compact_retry(self, compact_state, msg_state, before_snapshot)` (줄 682): Compact retry 판정. True이면 외부 루프 continue, False이면 break.
-- `async run(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session)` (줄 742): Claude Code 실행
-- `async _execute(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session)` (줄 784): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 957): 세션 컴팩트 처리
+- `async shutdown_all_clients(cls)` (줄 286): 하위 호환: 모듈 레벨 shutdown_all()로 위임
+- `shutdown_all_clients_sync(cls)` (줄 291): 하위 호환: 모듈 레벨 shutdown_all_sync()로 위임
+- `run_sync(self, coro)` (줄 295): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
+- `async _get_or_create_client(self, options)` (줄 299): ClaudeSDKClient를 가져오거나 새로 생성
+- `async _remove_client(self)` (줄 348): 이 러너의 ClaudeSDKClient를 정리
+- `detach_client(self)` (줄 366): 풀이 runner를 회수할 때 client/pid를 안전하게 분리
+- `is_idle(self)` (줄 380): client가 연결되어 있고 현재 실행 중이 아닌지 확인
+- `_force_kill_process(pid, thread_ts)` (줄 393): psutil을 사용하여 프로세스를 강제 종료
+- `_is_cli_alive(self)` (줄 410): CLI 서브프로세스가 아직 살아있는지 확인
+- `interrupt(self)` (줄 420): 이 러너에 인터럽트 전송 (동기)
+- `_debug(self, message)` (줄 435): 디버그 메시지 전송 (debug_send_fn이 있을 때만)
+- `_observe_rate_limit(self, data)` (줄 444): InstrumentedClaudeClient 콜백: rate_limit_event 관찰
+- `_observe_unknown_event(self, msg_type, data)` (줄 469): InstrumentedClaudeClient 콜백: unknown event 관찰
+- `_build_compact_hook(self, compact_events)` (줄 473): PreCompact 훅을 생성합니다.
+- `_build_options(self, session_id, compact_events)` (줄 500): ClaudeAgentOptions와 stderr 파일을 반환합니다.
+- `async _notify_compact_events(self, compact_state, on_compact)` (줄 549): 미통지 compact 이벤트를 on_compact 콜백으로 전달
+- `async _receive_messages(self, client, compact_state, msg_state, on_progress, on_compact, on_intervention, on_session)` (줄 567): 내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신
+- `_evaluate_compact_retry(self, compact_state, msg_state, before_snapshot)` (줄 710): Compact retry 판정. True이면 외부 루프 continue, False이면 break.
+- `async run(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session)` (줄 770): Claude Code 실행
+- `async _execute(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session)` (줄 812): 실제 실행 로직 (ClaudeSDKClient 기반)
+- `async compact_session(self, session_id)` (줄 987): 세션 컴팩트 처리
 
 ## 함수
 
@@ -105,7 +107,7 @@ Returns:
 - 설명: collected_messages에서 마지막 assistant 텍스트를 추출 (tool_use 제외)
 
 ### `async main()`
-- 위치: 줄 979
+- 위치: 줄 1009
 
 ## 내부 의존성
 
