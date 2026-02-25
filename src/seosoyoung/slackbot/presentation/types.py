@@ -39,3 +39,7 @@ class PresentationContext:
     dm_channel_id: Optional[str] = None
     dm_thread_ts: Optional[str] = None
     dm_last_reply_ts: Optional[str] = None
+    # 컴팩트 알림 메시지 ts (on_compact가 전송한 메시지, 완료 후 갱신용)
+    compact_msg_ts: Optional[str] = None
+    # stale 사고 과정 체크 타임스탬프 (monotonic, rate-limit용)
+    _last_stale_check: float = 0.0

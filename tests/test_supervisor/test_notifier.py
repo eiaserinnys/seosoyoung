@@ -18,6 +18,10 @@ from supervisor.notifier import (
     notify_deploy_start,
     notify_deploy_success,
     notify_deploy_failure,
+    format_change_detected_message,
+    format_waiting_sessions_message,
+    notify_change_detected,
+    notify_waiting_sessions,
 )
 
 
@@ -245,4 +249,112 @@ class TestNotifyDeployFailure:
     def test_skips_when_no_url(self, tmp_path):
         with patch("supervisor.notifier.send_webhook") as mock_send:
             notify_deploy_failure(tmp_path / "nonexistent.json")
+        mock_send.assert_not_called()
+
+
+class TestFormatChangeDetectedMessage:
+    def test_with_both_repos(self):
+        runtime_commits = ["a1b2c3d feat: runtime change"]
+        seosoyoung_commits = ["e4f5g6h fix: bot fix"]
+        msg = format_change_detected_message(runtime_commits, seosoyoung_commits)
+        assert ":mag:" in msg
+        assert "변경점" in msg
+        assert "*runtime*" in msg
+        assert "`a1b2c3d`" in msg
+        assert "*seosoyoung*" in msg
+        assert "`e4f5g6h`" in msg
+
+    def test_with_no_commits(self):
+        msg = format_change_detected_message([], [])
+        assert ":mag:" in msg
+
+    def test_with_only_runtime(self):
+        msg = format_change_detected_message(["a1b2c3d feat: change"], [])
+        assert "*runtime*" in msg
+        assert "*seosoyoung*" not in msg
+
+
+class TestFormatWaitingSessionsMessage:
+    def test_contains_hourglass_emoji(self):
+        msg = format_waiting_sessions_message()
+        assert ":hourglass_flowing_sand:" in msg
+
+    def test_contains_waiting_text(self):
+        msg = format_waiting_sessions_message()
+        assert "대기" in msg
+
+
+class TestNotifyChangeDetected:
+    def test_sends_when_url_configured(self, tmp_path):
+        config_file = tmp_path / "watchdog_config.json"
+        config_file.write_text(
+            json.dumps({"slackWebhookUrl": "https://hooks.slack.com/test"}),
+            encoding="utf-8",
+        )
+        paths = {"runtime": tmp_path / "runtime", "workspace": tmp_path / "workspace"}
+        paths["runtime"].mkdir()
+        paths["workspace"].mkdir()
+
+        with patch("supervisor.notifier.get_pending_commits") as mock_commits, \
+             patch("supervisor.notifier.send_webhook") as mock_send:
+            mock_commits.return_value = ["abc1234 feat: test"]
+            notify_change_detected(paths, config_file)
+
+        mock_send.assert_called_once()
+        msg = mock_send.call_args[0][1]
+        assert ":mag:" in msg
+
+    def test_skips_when_no_url(self, tmp_path):
+        paths = {"runtime": tmp_path / "runtime", "workspace": tmp_path / "workspace"}
+        paths["runtime"].mkdir()
+        paths["workspace"].mkdir()
+
+        with patch("supervisor.notifier.send_webhook") as mock_send:
+            notify_change_detected(paths, tmp_path / "nonexistent.json")
+
+        mock_send.assert_not_called()
+
+    def test_uses_default_config_when_none(self, tmp_path):
+        """config_path=None이면 paths["runtime"]/data/watchdog_config.json 사용"""
+        runtime = tmp_path / "runtime"
+        data_dir = runtime / "data"
+        data_dir.mkdir(parents=True)
+        config_file = data_dir / "watchdog_config.json"
+        config_file.write_text(
+            json.dumps({"slackWebhookUrl": "https://hooks.slack.com/test"}),
+            encoding="utf-8",
+        )
+        paths = {"runtime": runtime, "workspace": tmp_path / "workspace"}
+        (tmp_path / "workspace").mkdir()
+
+        with patch("supervisor.notifier.get_pending_commits") as mock_commits, \
+             patch("supervisor.notifier.send_webhook") as mock_send:
+            mock_commits.return_value = []
+            notify_change_detected(paths, None)
+
+        mock_send.assert_called_once()
+
+
+class TestNotifyWaitingSessions:
+    def test_sends_when_url_configured(self, tmp_path):
+        config_file = tmp_path / "watchdog_config.json"
+        config_file.write_text(
+            json.dumps({"slackWebhookUrl": "https://hooks.slack.com/test"}),
+            encoding="utf-8",
+        )
+        with patch("supervisor.notifier.send_webhook") as mock_send:
+            notify_waiting_sessions(config_file)
+
+        mock_send.assert_called_once()
+        msg = mock_send.call_args[0][1]
+        assert ":hourglass_flowing_sand:" in msg
+
+    def test_skips_when_no_url(self, tmp_path):
+        with patch("supervisor.notifier.send_webhook") as mock_send:
+            notify_waiting_sessions(tmp_path / "nonexistent.json")
+        mock_send.assert_not_called()
+
+    def test_skips_when_config_path_none(self):
+        with patch("supervisor.notifier.send_webhook") as mock_send:
+            notify_waiting_sessions(None)
         mock_send.assert_not_called()
