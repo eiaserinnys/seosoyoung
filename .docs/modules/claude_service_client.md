@@ -80,11 +80,11 @@ Task API를 사용하여 Claude Code를 원격 실행합니다.
 - `async close(self)` (줄 156): 
 - `async __aenter__(self)` (줄 161): 
 - `async __aexit__(self, exc_type, exc_val, exc_tb)` (줄 164): 
-- `async execute(self, client_id, request_id, prompt, resume_session_id, on_progress, on_compact)` (줄 169): Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
-- `async intervene(self, client_id, request_id, text, user)` (줄 262): 실행 중인 태스크에 개입 메시지 전송
-- `async ack(self, client_id, request_id)` (줄 290): 결과 수신 확인
-- `async reconnect_stream(self, client_id, request_id, on_progress, on_compact)` (줄 304): 태스크 SSE 스트림에 재연결
-- `async health_check(self)` (줄 330): 헬스 체크
-- `async _handle_sse_events(self, response, on_progress, on_compact)` (줄 343): SSE 이벤트 스트림 처리
-- `async _parse_sse_stream(self, response)` (줄 402): SSE 스트림 파싱
-- `async _parse_error(self, response)` (줄 453): 에러 응답 파싱
+- `async execute(self, client_id, request_id, prompt, resume_session_id, on_progress, on_compact, on_debug)` (줄 169): Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
+- `async intervene(self, client_id, request_id, text, user)` (줄 265): 실행 중인 태스크에 개입 메시지 전송
+- `async ack(self, client_id, request_id)` (줄 293): 결과 수신 확인
+- `async reconnect_stream(self, client_id, request_id, on_progress, on_compact, on_debug)` (줄 307): 태스크 SSE 스트림에 재연결
+- `async health_check(self)` (줄 335): 헬스 체크
+- `async _handle_sse_events(self, response, on_progress, on_compact, on_debug)` (줄 348): SSE 이벤트 스트림 처리
+- `async _parse_sse_stream(self, response)` (줄 413): SSE 스트림 파싱
+- `async _parse_error(self, response)` (줄 464): 에러 응답 파싱

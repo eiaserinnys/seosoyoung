@@ -413,6 +413,75 @@ class TestHandleSSEEvents:
         assert compact_events[0] == ("auto", "compacted")
 
     @pytest.mark.asyncio
+    async def test_debug_callback(self, client):
+        """debug 이벤트가 on_debug 콜백을 호출하는지 확인"""
+        sse_data = (
+            b"event:debug\n"
+            b'data:{"type":"debug","message":"rate limit warning: 80% used"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+
+        debug_messages = []
+
+        async def on_debug(message):
+            debug_messages.append(message)
+
+        result = await client._handle_sse_events(mock_response, on_debug=on_debug)
+        assert result.success is True
+        assert len(debug_messages) == 1
+        assert "rate limit warning" in debug_messages[0]
+
+    @pytest.mark.asyncio
+    async def test_debug_callback_not_called_without_handler(self, client):
+        """on_debug가 None이어도 에러 없이 처리"""
+        sse_data = (
+            b"event:debug\n"
+            b'data:{"type":"debug","message":"some debug info"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+
+        # on_debug=None (기본값)으로 호출 — 에러 없어야 함
+        result = await client._handle_sse_events(mock_response)
+        assert result.success is True
+        assert result.result == "done"
+
+    @pytest.mark.asyncio
+    async def test_debug_empty_message_ignored(self, client):
+        """빈 debug 메시지는 콜백을 호출하지 않음"""
+        sse_data = (
+            b"event:debug\n"
+            b'data:{"type":"debug","message":""}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+
+        debug_messages = []
+
+        async def on_debug(message):
+            debug_messages.append(message)
+
+        result = await client._handle_sse_events(mock_response, on_debug=on_debug)
+        assert result.success is True
+        assert len(debug_messages) == 0  # 빈 메시지는 무시
+
+    @pytest.mark.asyncio
     async def test_keepalive_ignored(self, client):
         """SSE 코멘트(keepalive)가 무시되는지 확인"""
         sse_data = (

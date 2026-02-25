@@ -214,27 +214,28 @@
 - `HtmlFetcher` (seosoyoung/slackbot/web/fetcher.py:14): Selenium을 사용한 동적 웹 페이지 HTML 페처
 - `Settings` (seosoyoung/soul/config.py:35): 애플리케이션 설정
 - `SSEEventType` (seosoyoung/soul/models/schemas.py:13): SSE 이벤트 타입
-- `InterveneRequest` (seosoyoung/soul/models/schemas.py:24): 개입 메시지 요청 (Task API 호환)
-- `InterveneResponse` (seosoyoung/soul/models/schemas.py:33): 개입 메시지 응답
-- `AttachmentUploadResponse` (seosoyoung/soul/models/schemas.py:39): 첨부 파일 업로드 응답
-- `AttachmentCleanupResponse` (seosoyoung/soul/models/schemas.py:47): 첨부 파일 정리 응답
-- `HealthResponse` (seosoyoung/soul/models/schemas.py:53): 헬스 체크 응답
-- `ErrorDetail` (seosoyoung/soul/models/schemas.py:63): 에러 상세 정보
-- `ErrorResponse` (seosoyoung/soul/models/schemas.py:70): 에러 응답
-- `ProgressEvent` (seosoyoung/soul/models/schemas.py:77): 진행 상황 이벤트
-- `MemoryEvent` (seosoyoung/soul/models/schemas.py:83): 메모리 사용량 이벤트
-- `InterventionSentEvent` (seosoyoung/soul/models/schemas.py:91): 개입 메시지 전송 확인 이벤트
-- `CompleteEvent` (seosoyoung/soul/models/schemas.py:98): 실행 완료 이벤트
-- `ErrorEvent` (seosoyoung/soul/models/schemas.py:106): 오류 이벤트
-- `ContextUsageEvent` (seosoyoung/soul/models/schemas.py:113): 컨텍스트 사용량 이벤트
-- `CompactEvent` (seosoyoung/soul/models/schemas.py:121): 컴팩트 실행 이벤트
-- `TaskStatus` (seosoyoung/soul/models/schemas.py:130): 태스크 상태
-- `ExecuteRequest` (seosoyoung/soul/models/schemas.py:137): 실행 요청
-- `TaskResponse` (seosoyoung/soul/models/schemas.py:149): 태스크 정보 응답
-- `TaskListResponse` (seosoyoung/soul/models/schemas.py:162): 태스크 목록 응답
-- `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:167): 개입 메시지 요청
-- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:43): 개입 메시지 데이터
-- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:90): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
+- `InterveneRequest` (seosoyoung/soul/models/schemas.py:25): 개입 메시지 요청 (Task API 호환)
+- `InterveneResponse` (seosoyoung/soul/models/schemas.py:34): 개입 메시지 응답
+- `AttachmentUploadResponse` (seosoyoung/soul/models/schemas.py:40): 첨부 파일 업로드 응답
+- `AttachmentCleanupResponse` (seosoyoung/soul/models/schemas.py:48): 첨부 파일 정리 응답
+- `HealthResponse` (seosoyoung/soul/models/schemas.py:54): 헬스 체크 응답
+- `ErrorDetail` (seosoyoung/soul/models/schemas.py:64): 에러 상세 정보
+- `ErrorResponse` (seosoyoung/soul/models/schemas.py:71): 에러 응답
+- `ProgressEvent` (seosoyoung/soul/models/schemas.py:78): 진행 상황 이벤트
+- `MemoryEvent` (seosoyoung/soul/models/schemas.py:84): 메모리 사용량 이벤트
+- `InterventionSentEvent` (seosoyoung/soul/models/schemas.py:92): 개입 메시지 전송 확인 이벤트
+- `CompleteEvent` (seosoyoung/soul/models/schemas.py:99): 실행 완료 이벤트
+- `ErrorEvent` (seosoyoung/soul/models/schemas.py:107): 오류 이벤트
+- `ContextUsageEvent` (seosoyoung/soul/models/schemas.py:114): 컨텍스트 사용량 이벤트
+- `CompactEvent` (seosoyoung/soul/models/schemas.py:122): 컴팩트 실행 이벤트
+- `DebugEvent` (seosoyoung/soul/models/schemas.py:129): 디버그 정보 이벤트 (rate_limit 경고 등)
+- `TaskStatus` (seosoyoung/soul/models/schemas.py:137): 태스크 상태
+- `ExecuteRequest` (seosoyoung/soul/models/schemas.py:144): 실행 요청
+- `TaskResponse` (seosoyoung/soul/models/schemas.py:156): 태스크 정보 응답
+- `TaskListResponse` (seosoyoung/soul/models/schemas.py:169): 태스크 목록 응답
+- `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:174): 개입 메시지 요청
+- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:44): 개입 메시지 데이터
+- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:91): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
 - `FileManager` (seosoyoung/soul/service/file_manager.py:28): 첨부 파일 관리자
 - `ResourceManager` (seosoyoung/soul/service/resource_manager.py:17): 동시 실행 제한 관리자

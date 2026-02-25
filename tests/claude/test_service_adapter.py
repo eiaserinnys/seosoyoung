@@ -219,6 +219,34 @@ class TestExecute:
         assert call_kwargs.get("disallowed_tools") is None
         assert call_kwargs.get("use_mcp") is True
 
+    @pytest.mark.asyncio
+    async def test_on_debug_callback_forwarded(self, adapter, mock_client):
+        """on_debug 콜백이 SoulServiceClient에 전달되는지 확인"""
+        mock_client.execute.return_value = ExecuteResult(success=True, result="done")
+        mock_client.ack.return_value = True
+
+        on_debug = AsyncMock()
+        await adapter.execute(
+            prompt="hello",
+            request_id="thread-14",
+            on_debug=on_debug,
+        )
+
+        call_kwargs = mock_client.execute.call_args.kwargs
+        assert "on_debug" in call_kwargs
+        assert call_kwargs["on_debug"] is on_debug
+
+    @pytest.mark.asyncio
+    async def test_on_debug_default_none(self, adapter, mock_client):
+        """on_debug 미지정 시 None이 전달되는지 확인"""
+        mock_client.execute.return_value = ExecuteResult(success=True, result="done")
+        mock_client.ack.return_value = True
+
+        await adapter.execute(prompt="hello", request_id="thread-15")
+
+        call_kwargs = mock_client.execute.call_args.kwargs
+        assert call_kwargs.get("on_debug") is None
+
 
 class TestIntervene:
     """ClaudeServiceAdapter.intervene() 테스트"""

@@ -391,6 +391,14 @@ class ClaudeExecutor:
         adapter = self._get_service_adapter()
         request_id = thread_ts  # thread_ts를 request_id로 사용
 
+        # debug 콜백: 로컬 모드의 debug_send_fn과 동등한 동작
+        async def on_debug(message: str) -> None:
+            try:
+                presentation.client.chat_postMessage(
+                    channel=presentation.channel, thread_ts=thread_ts, text=message)
+            except Exception as e:
+                logger.warning(f"[Remote] 디버그 메시지 전송 실패: {e}")
+
         # 실행 중인 request_id 추적 (인터벤션용)
         self._active_remote_requests[thread_ts] = request_id
 
@@ -402,6 +410,7 @@ class ClaudeExecutor:
                     resume_session_id=session_id,
                     on_progress=on_progress,
                     on_compact=on_compact,
+                    on_debug=on_debug,
                     allowed_tools=allowed_tools,
                     disallowed_tools=disallowed_tools,
                     use_mcp=use_mcp,

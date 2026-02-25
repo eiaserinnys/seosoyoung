@@ -18,6 +18,7 @@ from seosoyoung.soul.models import (
     CompactEvent,
     CompleteEvent,
     ContextUsageEvent,
+    DebugEvent,
     ErrorEvent,
     InterventionSentEvent,
     ProgressEvent,
@@ -133,9 +134,10 @@ class SoulEngineAdapter:
 
         Yields:
             ProgressEvent | InterventionSentEvent | ContextUsageEvent
-            | CompactEvent | CompleteEvent | ErrorEvent
+            | CompactEvent | DebugEvent | CompleteEvent | ErrorEvent
         """
         queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
 
         # 요청별 도구 설정 적용 (None이면 기본값 사용)
         effective_allowed = allowed_tools if allowed_tools is not None else DEFAULT_ALLOWED_TOOLS
@@ -144,12 +146,24 @@ class SoulEngineAdapter:
         # MCP 설정
         mcp_config_path = self._resolve_mcp_config_path() if use_mcp else None
 
+        # debug_send_fn: 동기 콜백 → 큐 어댑터
+        # ClaudeRunner._debug()는 동기 함수이므로 call_soon_threadsafe로 큐에 enqueue
+        def debug_send_fn(message: str) -> None:
+            try:
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    DebugEvent(message=message),
+                )
+            except Exception:
+                pass  # 큐 닫힘 등 무시
+
         runner = ClaudeRunner(
             thread_ts="",
             working_dir=Path(self._workspace_dir),
             allowed_tools=effective_allowed,
             disallowed_tools=effective_disallowed,
             mcp_config_path=mcp_config_path,
+            debug_send_fn=debug_send_fn,
         )
 
         # --- 콜백 → 큐 어댑터 ---

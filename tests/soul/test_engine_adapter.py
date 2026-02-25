@@ -13,6 +13,7 @@ from seosoyoung.soul.models import (
     CompactEvent,
     CompleteEvent,
     ContextUsageEvent,
+    DebugEvent,
     ErrorEvent,
     InterventionSentEvent,
     ProgressEvent,
@@ -503,3 +504,92 @@ class TestSoulEngineAdapterToolSettings:
 
         call_kwargs = MockRunner.call_args.kwargs
         assert call_kwargs["mcp_config_path"] is None
+
+
+class TestSoulEngineAdapterDebugEvent:
+    """debug_send_fn → DebugEvent 변환 테스트"""
+
+    async def test_debug_send_fn_passed_to_runner(self):
+        """ClaudeRunner 생성 시 debug_send_fn이 전달되는지 확인"""
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+        mock_result = EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = AsyncMock(return_value=mock_result)
+
+            events = await collect_events(adapter, "test")
+
+        call_kwargs = MockRunner.call_args.kwargs
+        assert "debug_send_fn" in call_kwargs
+        assert call_kwargs["debug_send_fn"] is not None
+        assert callable(call_kwargs["debug_send_fn"])
+
+    async def test_debug_send_fn_produces_event_in_stream(self):
+        """debug_send_fn 호출이 실제로 DebugEvent를 스트림에 넣는지 확인"""
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        captured_debug_fn = None
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None):
+            # debug_send_fn을 동기적으로 호출 (ClaudeRunner._debug()와 동일한 패턴)
+            if captured_debug_fn:
+                captured_debug_fn("rate limit warning: 80% used")
+                # 이벤트가 큐에 들어갈 시간을 줌
+                await asyncio.sleep(0.01)
+            return EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            def capture_init(*args, **kwargs):
+                nonlocal captured_debug_fn
+                captured_debug_fn = kwargs.get("debug_send_fn")
+                instance = MagicMock()
+                instance.run = fake_run
+                return instance
+
+            MockRunner.side_effect = capture_init
+
+            events = await collect_events(adapter, "test")
+
+        debug_events = [e for e in events if isinstance(e, DebugEvent)]
+        assert len(debug_events) == 1
+        assert debug_events[0].message == "rate limit warning: 80% used"
+        assert debug_events[0].type == "debug"
+
+    async def test_multiple_debug_events(self):
+        """여러 debug_send_fn 호출 → 여러 DebugEvent"""
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        captured_debug_fn = None
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None):
+            if captured_debug_fn:
+                captured_debug_fn("warning 1")
+                captured_debug_fn("warning 2")
+                await asyncio.sleep(0.01)
+            return EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            def capture_init(*args, **kwargs):
+                nonlocal captured_debug_fn
+                captured_debug_fn = kwargs.get("debug_send_fn")
+                instance = MagicMock()
+                instance.run = fake_run
+                return instance
+
+            MockRunner.side_effect = capture_init
+
+            events = await collect_events(adapter, "test")
+
+        debug_events = [e for e in events if isinstance(e, DebugEvent)]
+        assert len(debug_events) == 2
+        assert debug_events[0].message == "warning 1"
+        assert debug_events[1].message == "warning 2"

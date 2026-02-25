@@ -15,6 +15,7 @@ class SSEEventType(str, Enum):
     PROGRESS = "progress"
     MEMORY = "memory"
     INTERVENTION_SENT = "intervention_sent"
+    DEBUG = "debug"
     COMPLETE = "complete"
     ERROR = "error"
 
@@ -123,6 +124,12 @@ class CompactEvent(BaseModel):
     type: str = "compact"
     trigger: str = Field(..., description="트리거 타입 (manual 또는 auto)")
     message: str = Field(..., description="컴팩트 상태 메시지")
+
+
+class DebugEvent(BaseModel):
+    """디버그 정보 이벤트 (rate_limit 경고 등)"""
+    type: str = "debug"
+    message: str = Field(..., description="디버그 메시지")
 
 
 # === Task API Models ===

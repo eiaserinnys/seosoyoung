@@ -174,6 +174,7 @@ class SoulServiceClient:
         resume_session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         *,
         allowed_tools: Optional[List[str]] = None,
         disallowed_tools: Optional[List[str]] = None,
@@ -188,6 +189,7 @@ class SoulServiceClient:
             resume_session_id: 이전 세션 ID
             on_progress: 진행 상황 콜백
             on_compact: 컴팩션 콜백
+            on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
             allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
             disallowed_tools: 금지 도구 목록
             use_mcp: MCP 서버 연결 여부
@@ -226,6 +228,7 @@ class SoulServiceClient:
                     response=response,
                     on_progress=on_progress,
                     on_compact=on_compact,
+                    on_debug=on_debug,
                 )
             except ConnectionLostError:
                 pass  # 재연결 루프로 진입
@@ -242,7 +245,7 @@ class SoulServiceClient:
 
             try:
                 return await self.reconnect_stream(
-                    client_id, request_id, on_progress, on_compact,
+                    client_id, request_id, on_progress, on_compact, on_debug,
                 )
             except ConnectionLostError:
                 continue
@@ -307,6 +310,7 @@ class SoulServiceClient:
         request_id: str,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> ExecuteResult:
         """태스크 SSE 스트림에 재연결"""
         session = await self._get_session()
@@ -325,6 +329,7 @@ class SoulServiceClient:
                 response=response,
                 on_progress=on_progress,
                 on_compact=on_compact,
+                on_debug=on_debug,
             )
 
     async def health_check(self) -> dict:
@@ -345,6 +350,7 @@ class SoulServiceClient:
         response: aiohttp.ClientResponse,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> ExecuteResult:
         """SSE 이벤트 스트림 처리
 
@@ -368,6 +374,11 @@ class SoulServiceClient:
                             event.data.get("trigger", "auto"),
                             event.data.get("message", "컴팩트 실행됨"),
                         )
+
+                elif event.event == "debug":
+                    message = event.data.get("message", "")
+                    if on_debug and message:
+                        await on_debug(message)
 
                 elif event.event == "complete":
                     result_text = event.data.get("result", "")
