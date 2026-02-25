@@ -237,8 +237,8 @@
 - `TaskResponse` (seosoyoung/soul/models/schemas.py:167): 태스크 정보 응답
 - `TaskListResponse` (seosoyoung/soul/models/schemas.py:180): 태스크 목록 응답
 - `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:185): 개입 메시지 요청
-- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:45): 개입 메시지 데이터
-- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:92): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
+- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:48): 개입 메시지 데이터
+- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:95): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
 - `FileManager` (seosoyoung/soul/service/file_manager.py:28): 첨부 파일 관리자
 - `ResourceManager` (seosoyoung/soul/service/resource_manager.py:17): 동시 실행 제한 관리자
@@ -423,12 +423,13 @@
 - `async intervene_by_session()` (seosoyoung/soul/api/tasks.py:391): session_id 기반 개입 메시지 전송
 - `get_settings()` (seosoyoung/soul/config.py:142): 설정 싱글톤 반환
 - `setup_logging()` (seosoyoung/soul/config.py:147): 로깅 설정
-- `async periodic_cleanup()` (seosoyoung/soul/main.py:37): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
-- `async lifespan()` (seosoyoung/soul/main.py:53): 애플리케이션 라이프사이클 관리
-- `async shutdown()` (seosoyoung/soul/main.py:137): Graceful shutdown 엔드포인트 (supervisor 전용)
-- `async health_check()` (seosoyoung/soul/main.py:162): 헬스 체크 엔드포인트
-- `async get_status()` (seosoyoung/soul/main.py:173): 서비스 상태 조회
-- `async global_exception_handler()` (seosoyoung/soul/main.py:205): 전역 예외 핸들러
+- `async periodic_cleanup()` (seosoyoung/soul/main.py:39): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
+- `async lifespan()` (seosoyoung/soul/main.py:55): 애플리케이션 라이프사이클 관리
+- `async shutdown()` (seosoyoung/soul/main.py:156): Graceful shutdown 엔드포인트 (supervisor 전용)
+- `async health_check()` (seosoyoung/soul/main.py:181): 헬스 체크 엔드포인트
+- `async get_status()` (seosoyoung/soul/main.py:192): 서비스 상태 조회
+- `async global_exception_handler()` (seosoyoung/soul/main.py:224): 전역 예외 핸들러
+- `init_soul_engine()` (seosoyoung/soul/service/engine_adapter.py:282): soul_engine 싱글톤을 (재)초기화한다.
 - `get_task_manager()` (seosoyoung/soul/service/task_manager.py:570): TaskManager 싱글톤 반환
 - `init_task_manager()` (seosoyoung/soul/service/task_manager.py:578): TaskManager 초기화
 - `set_task_manager()` (seosoyoung/soul/service/task_manager.py:585): TaskManager 인스턴스 설정 (테스트용)

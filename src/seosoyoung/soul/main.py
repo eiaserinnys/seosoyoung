@@ -17,6 +17,8 @@ from fastapi.responses import JSONResponse
 from seosoyoung.soul.api import attachments_router
 from seosoyoung.soul.api.tasks import router as tasks_router
 from seosoyoung.soul.service import resource_manager, file_manager
+from seosoyoung.soul.service.engine_adapter import init_soul_engine
+from seosoyoung.soul.service.runner_pool import ClaudeRunnerPool
 from seosoyoung.soul.service.task_manager import init_task_manager, get_task_manager
 from seosoyoung.soul.models import HealthResponse
 from seosoyoung.soul.config import get_settings, setup_logging
@@ -61,6 +63,18 @@ async def lifespan(app: FastAPI):
     logger.info(f"  Max concurrent sessions: {resource_manager.max_concurrent}")
     logger.info(f"  Workspace: {settings.workspace_dir}")
 
+    # ClaudeRunnerPool 초기화
+    pool = ClaudeRunnerPool(
+        max_size=settings.runner_pool_max_size,
+        idle_ttl=settings.runner_pool_idle_ttl,
+        workspace_dir=settings.workspace_dir,
+    )
+    init_soul_engine(pool=pool)
+    logger.info(
+        f"  Runner pool initialized: max_size={settings.runner_pool_max_size}, "
+        f"idle_ttl={settings.runner_pool_idle_ttl}s"
+    )
+
     # TaskManager 초기화 및 로드
     storage_path = Path(settings.workspace_dir) / "data" / "tasks.json"
     task_manager = init_task_manager(storage_path=storage_path)
@@ -94,6 +108,11 @@ async def lifespan(app: FastAPI):
         logger.info("  Saved tasks to storage")
     except RuntimeError:
         pass  # TaskManager가 초기화되지 않은 경우
+
+    # Runner pool 종료
+    shutdown_count = await pool.shutdown()
+    if shutdown_count > 0:
+        logger.info(f"  Shut down {shutdown_count} pooled runners")
 
     # 오래된 첨부 파일 정리
     cleaned = file_manager.cleanup_old_files(max_age_hours=1)
