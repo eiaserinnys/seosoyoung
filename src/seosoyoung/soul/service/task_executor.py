@@ -62,7 +62,7 @@ class TaskExecutor:
         Args:
             client_id: 클라이언트 ID
             request_id: 요청 ID
-            claude_runner: ClaudeCodeRunner 인스턴스
+            claude_runner: SoulEngineAdapter 인스턴스 (execute() 메서드 제공)
             resource_manager: ResourceManager 인스턴스
 
         Returns:

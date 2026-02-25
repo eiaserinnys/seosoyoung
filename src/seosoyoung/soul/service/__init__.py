@@ -1,7 +1,7 @@
 # Business Logic Services
 from .resource_manager import ResourceManager, resource_manager
 from .file_manager import FileManager, AttachmentError, file_manager
-from .claude_runner import ClaudeCodeRunner, claude_runner
+from .engine_adapter import SoulEngineAdapter, soul_engine
 
 __all__ = [
     "ResourceManager",
@@ -9,6 +9,6 @@ __all__ = [
     "FileManager",
     "AttachmentError",
     "file_manager",
-    "ClaudeCodeRunner",
-    "claude_runner",
+    "SoulEngineAdapter",
+    "soul_engine",
 ]

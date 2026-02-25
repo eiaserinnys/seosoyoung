@@ -93,12 +93,9 @@
 - [`soul/constants.py`](modules/soul_constants.md): Seosoyoung Soul - 공통 상수 정의
 - [`soul/main.py`](modules/soul_main.md): Seosoyoung Soul - FastAPI Application
 - [`models/schemas.py`](modules/models_schemas.md): Pydantic 모델 - Request/Response 스키마
-- [`service/attachment_extractor.py`](modules/service_attachment_extractor.md): 첨부 파일 추출 모듈
-- [`service/claude_runner.py`](modules/service_claude_runner.md): ClaudeCodeRunner - Claude Code CLI 실행
+- [`service/engine_adapter.py`](modules/service_engine_adapter.md): soul 엔진 어댑터
 - [`service/file_manager.py`](modules/service_file_manager.md): FileManager - 첨부 파일 관리
-- [`service/output_sanitizer.py`](modules/service_output_sanitizer.md): 출력 민감 정보 마스킹 모듈
 - [`service/resource_manager.py`](modules/service_resource_manager.md): ResourceManager - 동시 실행 제한 관리
-- [`service/session_validator.py`](modules/service_session_validator.md): 세션 검증 모듈 (하위호환 re-export)
 - [`service/task_executor.py`](modules/service_task_executor.md): Task Executor - 백그라운드 태스크 실행 관리
 - [`service/task_listener.py`](modules/service_task_listener.md): Task Listener - SSE 리스너 관리
 - [`service/task_manager.py`](modules/service_task_manager.md): TaskManager - 태스크 라이프사이클 관리
@@ -236,12 +233,11 @@
 - `TaskResponse` (seosoyoung/soul/models/schemas.py:146): 태스크 정보 응답
 - `TaskListResponse` (seosoyoung/soul/models/schemas.py:159): 태스크 목록 응답
 - `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:164): 개입 메시지 요청
-- `AttachmentExtractor` (seosoyoung/soul/service/attachment_extractor.py:15): 첨부 파일 추출기
-- `InterventionMessage` (seosoyoung/soul/service/claude_runner.py:66): 개입 메시지 데이터
-- `ClaudeCodeRunner` (seosoyoung/soul/service/claude_runner.py:73): Claude Code CLI 실행기
+- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:43): 개입 메시지 데이터
+- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:90): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
 - `FileManager` (seosoyoung/soul/service/file_manager.py:28): 첨부 파일 관리자
-- `ResourceManager` (seosoyoung/soul/service/resource_manager.py:18): 동시 실행 제한 관리자
+- `ResourceManager` (seosoyoung/soul/service/resource_manager.py:17): 동시 실행 제한 관리자
 - `TaskExecutor` (seosoyoung/soul/service/task_executor.py:19): 백그라운드 태스크 실행 관리자
 - `TaskListenerManager` (seosoyoung/soul/service/task_listener.py:16): SSE 리스너 관리자
 - `TaskManager` (seosoyoung/soul/service/task_manager.py:52): 태스크 라이프사이클 관리자
@@ -428,7 +424,6 @@
 - `async health_check()` (seosoyoung/soul/main.py:162): 헬스 체크 엔드포인트
 - `async get_status()` (seosoyoung/soul/main.py:173): 서비스 상태 조회
 - `async global_exception_handler()` (seosoyoung/soul/main.py:205): 전역 예외 핸들러
-- `sanitize_output()` (seosoyoung/soul/service/output_sanitizer.py:32): 출력에서 민감 정보를 마스킹합니다.
 - `get_task_manager()` (seosoyoung/soul/service/task_manager.py:486): TaskManager 싱글톤 반환
 - `init_task_manager()` (seosoyoung/soul/service/task_manager.py:494): TaskManager 초기화
 - `set_task_manager()` (seosoyoung/soul/service/task_manager.py:501): TaskManager 인스턴스 설정 (테스트용)

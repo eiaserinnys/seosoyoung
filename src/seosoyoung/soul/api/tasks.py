@@ -27,7 +27,7 @@ from seosoyoung.soul.service.task_manager import (
     TaskNotRunningError,
     TaskStatus,
 )
-from seosoyoung.soul.service import resource_manager, claude_runner
+from seosoyoung.soul.service import resource_manager, soul_engine
 from seosoyoung.soul.api.auth import verify_token
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ async def execute_task(
     await task_manager.start_execution(
         client_id=request.client_id,
         request_id=request.request_id,
-        claude_runner=claude_runner,
+        claude_runner=soul_engine,
         resource_manager=resource_manager,
     )
 

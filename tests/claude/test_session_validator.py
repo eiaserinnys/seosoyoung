@@ -236,27 +236,5 @@ class TestRunnerSessionValidation:
 # ---------------------------------------------------------------------------
 # soul 하위호환 re-export 테스트
 # ---------------------------------------------------------------------------
-
-
-class TestSoulReExport:
-    """soul.service.session_validator가 re-export로 동작하는지 테스트"""
-
-    def test_soul_re_export_validate_session(self):
-        """soul 경로에서 import해도 동일한 함수를 참조"""
-        from seosoyoung.soul.service.session_validator import (
-            validate_session as soul_validate,
-        )
-        from seosoyoung.slackbot.claude.session_validator import (
-            validate_session as claude_validate,
-        )
-        assert soul_validate is claude_validate
-
-    def test_soul_re_export_constants(self):
-        """soul 경로에서 import한 상수가 동일"""
-        from seosoyoung.soul.service.session_validator import (
-            SESSION_NOT_FOUND_CODE as soul_code,
-        )
-        from seosoyoung.slackbot.claude.session_validator import (
-            SESSION_NOT_FOUND_CODE as claude_code,
-        )
-        assert soul_code == claude_code
+# TestSoulReExport: 삭제됨 (soul/service/session_validator.py re-export shim 제거)
+# soul은 이제 slackbot.claude.session_validator를 직접 사용합니다.
