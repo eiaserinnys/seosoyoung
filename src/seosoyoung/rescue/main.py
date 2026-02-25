@@ -17,6 +17,31 @@ soul 서버를 경유하지 않는 독립 경량 봇입니다.
 - 프로필 관리, 정주행, NPC 대화, Remote 모드
 """
 
+# SDK 자동 설치 (임시 조치)
+def _ensure_sdk_installed():
+    """claude-agent-sdk가 없으면 자동 설치 시도"""
+    try:
+        import claude_agent_sdk  # noqa: F401
+        return True
+    except ImportError:
+        import subprocess
+        import sys
+        print("[rescue-bot] claude-agent-sdk가 설치되어 있지 않습니다. 자동 설치를 시도합니다...")
+        try:
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install",
+                "claude-agent-sdk>=0.1.43",
+                "--quiet"
+            ])
+            print("[rescue-bot] claude-agent-sdk 설치 완료!")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"[rescue-bot] claude-agent-sdk 설치 실패: {e}")
+            print("[rescue-bot] 수동으로 설치해주세요: pip install claude-agent-sdk>=0.1.43")
+            return False
+
+_ensure_sdk_installed()
+
 import logging
 import re
 import sys
