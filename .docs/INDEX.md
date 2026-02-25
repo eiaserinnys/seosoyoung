@@ -119,7 +119,8 @@
 - `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:255): Claude Code SDK 기반 실행기
 - `EngineResult` (seosoyoung/slackbot/claude/engine_types.py:13): Claude Code 엔진의 순수 실행 결과
 - `RoleConfig` (seosoyoung/slackbot/claude/engine_types.py:31): 역할별 도구 접근 설정
-- `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:59): Claude Code 실행기
+- `SoulHealthTracker` (seosoyoung/slackbot/claude/executor.py:38): Soul 서버 헬스 상태 추적
+- `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:154): Claude Code 실행기
 - `InstrumentedClaudeClient` (seosoyoung/slackbot/claude/instrumented_client.py:42): rate_limit_event 등 SDK가 skip하는 이벤트를 관찰할 수 있는 확장 클라이언트.
 - `PendingPrompt` (seosoyoung/slackbot/claude/intervention.py:17): 인터벤션 대기 중인 프롬프트 정보
 - `InterventionManager` (seosoyoung/slackbot/claude/intervention.py:34): 인터벤션 관리자

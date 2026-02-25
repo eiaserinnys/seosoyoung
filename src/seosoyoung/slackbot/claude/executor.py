@@ -7,10 +7,13 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 실행 모드 (execution_mode):
 - local: 기존 방식. ClaudeRunner를 직접 사용하여 로컬에서 실행.
 - remote: seosoyoung-soul 서버에 HTTP/SSE로 위임하여 실행.
+         soul 서버 연결 실패 시 local 모드로 자동 폴백.
+         soul 복구 시 remote 모드로 자동 복귀.
 """
 
 import logging
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -23,6 +26,98 @@ from seosoyoung.slackbot.claude.types import UpdateMessageFn
 from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
+
+# === 폴백 상태 관리 ===
+
+# 헬스체크 쿨다운: 연속 실패 시 매번 체크하지 않도록 제한
+_HEALTH_CHECK_COOLDOWN = 30.0  # 초
+# 헬스체크 타임아웃 (빠른 실패를 위해 짧게)
+_HEALTH_CHECK_TIMEOUT = 3.0  # 초
+
+
+class SoulHealthTracker:
+    """Soul 서버 헬스 상태 추적
+
+    - remote 모드에서 soul 연결 가능 여부를 추적
+    - 실패 시 local 폴백, 복구 시 remote 복귀
+    - 쿨다운 기반으로 헬스체크 빈도 제한
+    """
+
+    def __init__(self, soul_url: str, cooldown: float = _HEALTH_CHECK_COOLDOWN):
+        self._soul_url = soul_url.rstrip("/")
+        self._cooldown = cooldown
+        self._is_healthy = True  # 낙관적 초기값
+        self._last_check_time = 0.0
+        self._lock = threading.Lock()
+        self._consecutive_failures = 0
+
+    @property
+    def is_healthy(self) -> bool:
+        return self._is_healthy
+
+    @property
+    def consecutive_failures(self) -> int:
+        return self._consecutive_failures
+
+    def check_health(self) -> bool:
+        """Soul 서버 헬스체크 (쿨다운 적용)
+
+        Returns:
+            True: healthy (remote 사용 가능)
+            False: unhealthy (local 폴백 필요)
+        """
+        now = time.monotonic()
+        with self._lock:
+            # 쿨다운 기간 내에는 캐시된 결과 반환
+            if now - self._last_check_time < self._cooldown:
+                return self._is_healthy
+            self._last_check_time = now
+
+        # 실제 헬스체크 수행
+        healthy = self._do_health_check()
+
+        with self._lock:
+            if healthy:
+                if not self._is_healthy:
+                    logger.info("[Fallback] Soul 서버 복구 감지 → remote 모드 복귀")
+                self._is_healthy = True
+                self._consecutive_failures = 0
+            else:
+                self._consecutive_failures += 1
+                if self._is_healthy:
+                    logger.warning(
+                        "[Fallback] Soul 서버 연결 실패 → local 모드로 폴백"
+                    )
+                self._is_healthy = False
+
+        return healthy
+
+    def mark_healthy(self) -> None:
+        """외부에서 healthy 상태로 강제 설정 (성공적 remote 실행 후)"""
+        with self._lock:
+            self._is_healthy = True
+            self._consecutive_failures = 0
+            self._last_check_time = time.monotonic()
+
+    def mark_unhealthy(self) -> None:
+        """외부에서 unhealthy 상태로 강제 설정 (remote 실행 중 연결 오류 시)"""
+        with self._lock:
+            self._is_healthy = False
+            self._consecutive_failures += 1
+            self._last_check_time = time.monotonic()
+
+    def _do_health_check(self) -> bool:
+        """HTTP GET /health 요청으로 soul 서버 가용성 확인"""
+        import urllib.request
+        import urllib.error
+
+        url = f"{self._soul_url}/health"
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=_HEALTH_CHECK_TIMEOUT) as resp:
+                return resp.status == 200
+        except (urllib.error.URLError, OSError, TimeoutError):
+            return False
 
 
 def _get_mcp_config_path() -> Optional[Path]:
@@ -130,6 +225,10 @@ class ClaudeExecutor:
         # Remote 모드: session_id 확보 전 도착한 인터벤션 버퍼
         self._pending_session_interventions: dict[str, list] = {}  # thread_ts -> [(prompt, ...)]
         self._pending_session_lock = threading.Lock()
+        # Remote 모드: Soul 서버 헬스 상태 추적 (폴백 전략)
+        self._health_tracker: Optional[SoulHealthTracker] = None
+        if execution_mode == "remote" and soul_url:
+            self._health_tracker = SoulHealthTracker(soul_url)
 
     def run(
         self,
@@ -301,11 +400,19 @@ class ClaudeExecutor:
         user_message,
         on_result,
     ):
-        """단일 Claude 실행"""
-        if self.execution_mode == "remote":
+        """단일 Claude 실행
+
+        execution_mode 판별 + 폴백 전략:
+        1. remote 모드: soul 헬스체크 → 성공 시 remote, 실패 시 local 폴백
+        2. local 모드: 직접 ClaudeRunner 사용
+        """
+        effective_role = role or "admin"
+        role_config = self._get_role_config(effective_role)
+
+        use_remote = self._should_use_remote()
+
+        if use_remote:
             # === Remote 모드: soul 서버에 위임 ===
-            effective_role = role or "admin"
-            role_config = self._get_role_config(effective_role)
             logger.info(f"Claude 실행 (remote): thread={thread_ts}, role={effective_role}")
             self._execute_remote(
                 thread_ts, prompt,
@@ -321,8 +428,8 @@ class ClaudeExecutor:
             )
         else:
             # === Local 모드: thread_ts 단위 runner 생성 ===
-            effective_role = role or "admin"
-            role_config = self._get_role_config(effective_role)
+            if self.execution_mode == "remote":
+                logger.warning(f"[Fallback] local 모드로 폴백 실행: thread={thread_ts}")
 
             def _debug_send(msg: str) -> None:
                 presentation.client.chat_postMessage(
@@ -358,6 +465,22 @@ class ClaudeExecutor:
             except Exception as e:
                 logger.exception(f"Claude 실행 오류: {e}")
                 self._result_processor.handle_exception(presentation, e)
+
+    def _should_use_remote(self) -> bool:
+        """remote 모드 사용 여부 판별 (폴백 전략 포함)
+
+        execution_mode가 'remote'이고 soul 서버가 healthy하면 True.
+        soul 서버에 연결할 수 없으면 False (local 폴백).
+        health_tracker가 설정되지 않은 경우 기존 동작 유지 (항상 remote).
+        """
+        if self.execution_mode != "remote":
+            return False
+
+        # health_tracker 미설정 시 낙관적으로 remote 허용 (기존 동작 유지)
+        if self._health_tracker is None:
+            return True
+
+        return self._health_tracker.check_health()
 
     def _get_role_config(self, role: str) -> dict:
         """역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)"""
@@ -469,6 +592,10 @@ class ClaudeExecutor:
                 )
             )
 
+            # 성공적 실행 → health tracker에 healthy 마킹
+            if self._health_tracker and result.success:
+                self._health_tracker.mark_healthy()
+
             # 결과 콜백 호출 (OM 등)
             if on_result:
                 on_result(result, thread_ts, user_message)
@@ -477,6 +604,11 @@ class ClaudeExecutor:
 
         except Exception as e:
             logger.exception(f"[Remote] Claude 실행 오류: {e}")
+            # 연결 오류 시 health tracker에 unhealthy 마킹
+            if self._health_tracker:
+                error_str = str(e).lower()
+                if any(kw in error_str for kw in ("connect", "timeout", "refused", "reset")):
+                    self._health_tracker.mark_unhealthy()
             self._result_processor.handle_exception(presentation, e)
         finally:
             self._active_remote_requests.pop(thread_ts, None)
