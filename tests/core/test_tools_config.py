@@ -29,10 +29,10 @@ class TestRoleToolsSingleSource:
         assert any("slack_attach_file" in t for t in admin_tools)
         assert any("slack_get_context" in t for t in admin_tools)
 
-    def test_admin_has_npc_tools(self):
-        """admin에 NPC 도구가 포함"""
+    def test_admin_has_no_npc_tools(self):
+        """admin에 NPC 도구가 없음 (eb-lore MCP로 이동됨)"""
         admin_tools = Config.auth.role_tools["admin"]
-        assert any("npc_talk" in t for t in admin_tools)
+        assert not any("npc_talk" in t for t in admin_tools)
 
     def test_viewer_is_readonly(self):
         """viewer는 읽기 전용 도구만 포함"""

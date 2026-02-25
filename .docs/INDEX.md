@@ -10,7 +10,6 @@
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
 - [`tools/attach.py`](modules/tools_attach.md): 파일 첨부 및 슬랙 컨텍스트 MCP 도구
 - [`tools/image_gen.py`](modules/tools_image_gen.md): 이미지 생성 및 슬랙 업로드 MCP 도구
-- [`tools/npc_chat.py`](modules/tools_npc_chat.md): NPC 대화 모듈: 캐릭터 로더, 프롬프트 빌더, 세션 관리, Claude API 연동.
 - [`tools/slack_messaging.py`](modules/tools_slack_messaging.md): 슬랙 메시지 전송 MCP 도구
 - [`tools/thread_files.py`](modules/tools_thread_files.md): 스레드 내 파일 다운로드 MCP 도구
 - [`tools/user_profile.py`](modules/tools_user_profile.md): Slack 사용자 프로필 조회 및 아바타 다운로드 MCP 도구
@@ -103,14 +102,11 @@
 ### 주요 클래스
 
 - `GeneratedImage` (seosoyoung/mcp/tools/image_gen.py:32): 생성된 이미지 결과
-- `CharacterLoader` (seosoyoung/mcp/tools/npc_chat.py:30): eb_lore 캐릭터 YAML 파일을 로드하고 필드를 추출한다.
-- `PromptBuilder` (seosoyoung/mcp/tools/npc_chat.py:126): 캐릭터 데이터를 프롬프트 템플릿에 채워 시스템 프롬프트를 생성한다.
-- `NpcSession` (seosoyoung/mcp/tools/npc_chat.py:200): NPC 대화 세션. 세션별 대화 이력과 설정을 보관한다.
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
 - `PendingPrompt` (seosoyoung/rescue/main.py:50): 인터벤션 대기 중인 프롬프트 정보
 - `RescueBotApp` (seosoyoung/rescue/main.py:59): rescue-bot 애플리케이션
-- `RescueResult` (seosoyoung/rescue/runner.py:81): 실행 결과
-- `RescueRunner` (seosoyoung/rescue/runner.py:92): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
+- `RescueResult` (seosoyoung/rescue/runner.py:76): 실행 결과
+- `RescueRunner` (seosoyoung/rescue/runner.py:87): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
 - `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:53): Claude Code 실행 결과
@@ -142,14 +138,14 @@
 - `ConfigurationError` (seosoyoung/slackbot/config.py:18): 설정 오류 예외
 - `SlackConfig` (seosoyoung/slackbot/config.py:60): Slack 연결 설정
 - `AuthConfig` (seosoyoung/slackbot/config.py:70): 권한 설정
-- `TrelloConfig` (seosoyoung/slackbot/config.py:103): Trello 설정
-- `TranslateConfig` (seosoyoung/slackbot/config.py:124): 번역 설정
-- `GeminiConfig` (seosoyoung/slackbot/config.py:145): Gemini 설정 (이미지 생성)
-- `OMConfig` (seosoyoung/slackbot/config.py:153): Observational Memory 설정
-- `ChannelObserverConfig` (seosoyoung/slackbot/config.py:179): Channel Observer 설정
-- `ClaudeConfig` (seosoyoung/slackbot/config.py:232): Claude 실행 모드 설정
-- `EmojiConfig` (seosoyoung/slackbot/config.py:243): 이모지 설정
-- `Config` (seosoyoung/slackbot/config.py:271): 애플리케이션 설정
+- `TrelloConfig` (seosoyoung/slackbot/config.py:97): Trello 설정
+- `TranslateConfig` (seosoyoung/slackbot/config.py:118): 번역 설정
+- `GeminiConfig` (seosoyoung/slackbot/config.py:139): Gemini 설정 (이미지 생성)
+- `OMConfig` (seosoyoung/slackbot/config.py:147): Observational Memory 설정
+- `ChannelObserverConfig` (seosoyoung/slackbot/config.py:173): Channel Observer 설정
+- `ClaudeConfig` (seosoyoung/slackbot/config.py:226): Claude 실행 모드 설정
+- `EmojiConfig` (seosoyoung/slackbot/config.py:237): 이모지 설정
+- `Config` (seosoyoung/slackbot/config.py:265): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/slackbot/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:13): 멘션으로 처리 중인 스레드를 추적
 - `InterventionAction` (seosoyoung/slackbot/memory/channel_intervention.py:31): 개입 액션
@@ -246,31 +242,17 @@
 
 ### 주요 함수
 
-- `slack_attach_file()` (seosoyoung/mcp/server.py:29): 슬랙에 파일을 첨부합니다.
-- `slack_get_context()` (seosoyoung/mcp/server.py:45): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
-- `slack_post_message()` (seosoyoung/mcp/server.py:55): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
-- `async slack_generate_image()` (seosoyoung/mcp/server.py:76): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
-- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:99): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
-- `slack_get_user_profile()` (seosoyoung/mcp/server.py:113): Slack 사용자의 프로필 정보를 조회합니다.
-- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:125): Slack 사용자의 프로필 이미지를 다운로드합니다.
-- `npc_list_characters()` (seosoyoung/mcp/server.py:140): 대화 가능한 NPC 캐릭터 목록을 반환합니다.
-- `npc_open_session()` (seosoyoung/mcp/server.py:150): NPC 대화 세션을 열고 NPC의 첫 반응을 반환합니다.
-- `npc_talk()` (seosoyoung/mcp/server.py:169): NPC에게 말을 걸고 응답을 받습니다.
-- `npc_set_situation()` (seosoyoung/mcp/server.py:182): 대화 중 상황을 변경하고 NPC의 반응을 받습니다.
-- `npc_inject()` (seosoyoung/mcp/server.py:195): 다른 NPC의 대사를 세션 대화 이력에 주입합니다.
-- `npc_close_session()` (seosoyoung/mcp/server.py:210): 세션을 종료하고 전체 대화 이력을 반환합니다.
-- `npc_get_history()` (seosoyoung/mcp/server.py:222): 세션의 대화 이력을 조회합니다 (세션 유지).
+- `slack_attach_file()` (seosoyoung/mcp/server.py:20): 슬랙에 파일을 첨부합니다.
+- `slack_get_context()` (seosoyoung/mcp/server.py:36): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:46): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `async slack_generate_image()` (seosoyoung/mcp/server.py:67): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
+- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:90): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
+- `slack_get_user_profile()` (seosoyoung/mcp/server.py:104): Slack 사용자의 프로필 정보를 조회합니다.
+- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:116): Slack 사용자의 프로필 이미지를 다운로드합니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:57): Gemini API로 이미지를 생성하고 임시 파일로 저장
 - `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:132): 이미지를 생성하고 슬랙 스레드에 업로드
-- `npc_list_characters()` (seosoyoung/mcp/tools/npc_chat.py:185): 대화 가능한 NPC 캐릭터 목록을 반환한다.
-- `npc_open_session()` (seosoyoung/mcp/tools/npc_chat.py:311): NPC 대화 세션을 열고 NPC의 첫 반응을 반환한다.
-- `npc_talk()` (seosoyoung/mcp/tools/npc_chat.py:362): NPC에게 말하기. 사용자 메시지를 보내고 NPC 응답을 받는다.
-- `npc_set_situation()` (seosoyoung/mcp/tools/npc_chat.py:399): 대화 중 상황을 변경한다. NPC가 새 상황에 반응한다.
-- `npc_inject()` (seosoyoung/mcp/tools/npc_chat.py:441): 다른 NPC의 대사를 세션 대화 이력에 주입한다.
-- `npc_close_session()` (seosoyoung/mcp/tools/npc_chat.py:458): 세션을 종료하고 대화 이력을 반환한다.
-- `npc_get_history()` (seosoyoung/mcp/tools/npc_chat.py:477): 세션의 대화 이력을 조회한다 (세션 유지).
 - `post_message()` (seosoyoung/mcp/tools/slack_messaging.py:51): 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부
 - `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
 - `get_user_profile()` (seosoyoung/mcp/tools/user_profile.py:25): Slack 사용자 프로필 정보를 조회
@@ -278,7 +260,7 @@
 - `main()` (seosoyoung/rescue/main.py:616): rescue-bot 진입점
 - `build_context_usage_bar()` (seosoyoung/rescue/message_formatter.py:12): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/rescue/message_formatter.py:41): 텍스트 내 모든 백틱을 이스케이프
-- `get_runner()` (seosoyoung/rescue/runner.py:472): 모듈 레벨 RescueRunner 인스턴스를 반환
+- `get_runner()` (seosoyoung/rescue/runner.py:467): 모듈 레벨 RescueRunner 인스턴스를 반환
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/slackbot/claude/__init__.py:24): Claude 실행기 인스턴스를 반환하는 팩토리 함수

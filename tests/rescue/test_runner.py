@@ -23,15 +23,6 @@ SLACK_MCP_TOOLS = [
     "mcp__seosoyoung-attach__slack_generate_image",
 ]
 
-# NPC 도구 목록 (금지 대상)
-NPC_TOOLS = [
-    "mcp__seosoyoung-attach__npc_list_characters",
-    "mcp__seosoyoung-attach__npc_open_session",
-    "mcp__seosoyoung-attach__npc_talk",
-    "mcp__seosoyoung-attach__npc_set_situation",
-    "mcp__seosoyoung-attach__npc_close_session",
-    "mcp__seosoyoung-attach__npc_get_history",
-]
 
 
 class TestBuildOptions:
@@ -91,9 +82,8 @@ class TestBuildOptions:
             assert tool in ALLOWED_TOOLS, f"{tool} should be in ALLOWED_TOOLS"
 
     def test_build_options_excludes_npc_tools(self):
-        """NPC 도구가 allowed_tools에 없는지 확인"""
-        for tool in NPC_TOOLS:
-            assert tool not in ALLOWED_TOOLS, f"{tool} should NOT be in ALLOWED_TOOLS"
+        """NPC 도구가 allowed_tools에 없는지 확인 (eb-lore MCP로 이동됨)"""
+        assert not any("npc_" in t for t in ALLOWED_TOOLS)
 
 
 class TestClassifyProcessError:
