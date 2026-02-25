@@ -135,8 +135,8 @@ class SoulServiceClient:
         if self._session is None or self._session.closed:
             timeout = aiohttp.ClientTimeout(
                 connect=HTTP_CONNECT_TIMEOUT,
-                sock_read=HTTP_SOCK_READ_TIMEOUT,
-                total=None,
+                sock_read=None,   # 개별 SSE 라인 읽기에 타임아웃 없음 (Claude 실행이 180초 이상 걸릴 수 있음)
+                total=600,        # 전체 스트림 최대 10분 제한
             )
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
@@ -430,8 +430,10 @@ class SoulServiceClient:
 
         except asyncio.TimeoutError:
             error_message = "응답 대기 시간 초과"
+            logger.error("[SSE] asyncio.TimeoutError: 전체 스트림 10분 제한 초과")
         except aiohttp.ClientError as e:
             error_message = f"네트워크 오류: {e}"
+            logger.error(f"[SSE] aiohttp.ClientError: {e}")
 
         if error_message:
             return ExecuteResult(
@@ -457,15 +459,17 @@ class SoulServiceClient:
         """
         current_event = "message"
         current_data: list[str] = []
+        last_event_name = "none"  # 로깅용: 마지막으로 수신한 이벤트 이름
 
         while True:
             try:
-                line_bytes = await asyncio.wait_for(
-                    response.content.readline(),
-                    timeout=HTTP_SOCK_READ_TIMEOUT,
-                )
+                # asyncio.wait_for 타임아웃 제거: Claude 실행이 180초 이상 걸릴 수 있음.
+                # soul 서버가 주기적으로 keepalive 이벤트(:)를 보내므로 readline()은 블로킹되지 않음.
+                # 전체 스트림 타임아웃은 aiohttp.ClientTimeout(total=600)으로 제한.
+                line_bytes = await response.content.readline()
 
                 if not line_bytes:
+                    logger.debug(f"[SSE] 스트림 종료 (마지막 이벤트: {last_event_name})")
                     break
 
                 line = line_bytes.decode("utf-8").rstrip("\r\n")
@@ -484,15 +488,22 @@ class SoulServiceClient:
                         except json.JSONDecodeError:
                             data = {"raw": data_str}
 
+                        last_event_name = current_event
                         yield SSEEvent(event=current_event, data=data)
 
                         current_event = "message"
                         current_data = []
 
             except asyncio.TimeoutError:
+                logger.error(
+                    f"[SSE] 전체 스트림 타임아웃 발생 (마지막 이벤트: {last_event_name})"
+                )
                 raise
 
             except aiohttp.ClientError as e:
+                logger.error(
+                    f"[SSE] 네트워크 오류로 연결 끊김 (마지막 이벤트: {last_event_name}): {e}"
+                )
                 raise ConnectionLostError(
                     f"소울 서비스 연결이 끊어졌습니다: {e}"
                 )

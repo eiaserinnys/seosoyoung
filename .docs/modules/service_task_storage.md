@@ -23,8 +23,8 @@ JSON 파일을 통해 태스크 상태를 영속화합니다.
 - `__init__(self, storage_path)` (줄 32): Args:
 - `async load(self, tasks)` (줄 40): 파일에서 태스크 로드
 - `async _save(self, tasks)` (줄 88): 태스크를 파일에 저장 (내부용)
-- `async save(self, tasks)` (줄 112): 태스크 상태 저장 (public interface)
-- `async schedule_save(self, tasks)` (줄 116): 저장 예약 (debounce)
+- `async save(self, tasks)` (줄 114): 태스크 상태 저장 (public interface)
+- `async schedule_save(self, tasks)` (줄 118): 저장 예약 (debounce)
 
 ## 내부 의존성
 
