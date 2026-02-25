@@ -365,13 +365,14 @@ class TestRunWithSessionResume:
             captured_options.append(opts)
             return opts
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
-            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
-                with patch.object(runner, "_build_options", side_effect=capture_build):
-                    result = await runner.run(
-                        "테스트",
-                        session_id="existing-session",
-                    )
+        with patch("seosoyoung.slackbot.claude.agent_runner.validate_session", return_value=None):
+            with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch.object(runner, "_build_options", side_effect=capture_build):
+                        result = await runner.run(
+                            "테스트",
+                            session_id="existing-session",
+                        )
 
         assert len(captured_options) > 0
         options, _stderr_file = captured_options[0]

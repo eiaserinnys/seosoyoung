@@ -34,6 +34,7 @@
 - [`claude/service_client.py`](modules/claude_service_client.md): Claude Soul Service HTTP + SSE 클라이언트
 - [`claude/session.py`](modules/claude_session.md): Claude Code 세션 관리
 - [`claude/session_context.py`](modules/claude_session_context.md): 세션 컨텍스트 주입
+- [`claude/session_validator.py`](modules/claude_session_validator.md): 세션 검증 모듈
 - [`claude/types.py`](modules/claude_types.md): claude/ 모듈 내부 Protocol 정의
 - [`slackbot/config.py`](modules/slackbot_config.md): 설정 관리
 - [`slackbot/formatting.py`](modules/slackbot_formatting.md): 슬랙 메시지 포맷팅 — 공유 리프 모듈
@@ -97,7 +98,7 @@
 - [`service/file_manager.py`](modules/service_file_manager.md): FileManager - 첨부 파일 관리
 - [`service/output_sanitizer.py`](modules/service_output_sanitizer.md): 출력 민감 정보 마스킹 모듈
 - [`service/resource_manager.py`](modules/service_resource_manager.md): ResourceManager - 동시 실행 제한 관리
-- [`service/session_validator.py`](modules/service_session_validator.md): 세션 검증 모듈
+- [`service/session_validator.py`](modules/service_session_validator.md): 세션 검증 모듈 (하위호환 re-export)
 - [`service/task_executor.py`](modules/service_task_executor.md): Task Executor - 백그라운드 태스크 실행 관리
 - [`service/task_listener.py`](modules/service_task_listener.md): Task Listener - SSE 리스너 관리
 - [`service/task_manager.py`](modules/service_task_manager.md): TaskManager - 태스크 라이프사이클 관리
@@ -117,10 +118,10 @@
 - `RescueRunner` (seosoyoung/rescue/runner.py:115): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
-- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:79): Claude Code 실행 결과 (하위호환 레이어)
-- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:201): Compact retry 외부 루프 상태
-- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:223): 메시지 수신 루프 상태
-- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:254): Claude Code SDK 기반 실행기
+- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:80): Claude Code 실행 결과 (하위호환 레이어)
+- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:202): Compact retry 외부 루프 상태
+- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:224): 메시지 수신 루프 상태
+- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:255): Claude Code SDK 기반 실행기
 - `EngineResult` (seosoyoung/slackbot/claude/engine_types.py:13): Claude Code 엔진의 순수 실행 결과
 - `RoleConfig` (seosoyoung/slackbot/claude/engine_types.py:31): 역할별 도구 접근 설정
 - `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:59): Claude Code 실행기
@@ -276,12 +277,12 @@
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/slackbot/claude/__init__.py:25): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:124): 레지스트리에서 러너 조회
-- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:130): 레지스트리에 러너 등록
-- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:136): 레지스트리에서 러너 제거
-- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:142): 모든 등록된 러너의 클라이언트를 종료
-- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:177): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:954): 
+- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:125): 레지스트리에서 러너 조회
+- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:131): 레지스트리에 러너 등록
+- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:137): 레지스트리에서 러너 제거
+- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:143): 모든 등록된 러너의 클라이언트를 종료
+- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:178): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:966): 
 - `read_stderr_tail()` (seosoyoung/slackbot/claude/diagnostics.py:24): 세션별 cli_stderr 로그의 마지막 N줄 읽기
 - `build_session_dump()` (seosoyoung/slackbot/claude/diagnostics.py:57): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/slackbot/claude/diagnostics.py:102): ProcessError를 사용자 친화적 메시지로 변환.
@@ -291,6 +292,8 @@
 - `build_initial_context()` (seosoyoung/slackbot/claude/session_context.py:23): 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
 - `build_followup_context()` (seosoyoung/slackbot/claude/session_context.py:75): 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
 - `format_hybrid_context()` (seosoyoung/slackbot/claude/session_context.py:142): hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
+- `find_session_file()` (seosoyoung/slackbot/claude/session_validator.py:16): 세션 파일을 찾습니다.
+- `validate_session()` (seosoyoung/slackbot/claude/session_validator.py:44): 세션 ID가 유효한지 검증합니다.
 - `escape_backticks()` (seosoyoung/slackbot/formatting.py:33): 텍스트 내 모든 백틱을 이스케이프
 - `truncate_progress_text()` (seosoyoung/slackbot/formatting.py:43): 진행 상황 텍스트를 표시용으로 정리
 - `format_as_blockquote()` (seosoyoung/slackbot/formatting.py:53): 텍스트를 슬랙 blockquote 형식으로 변환
@@ -426,8 +429,6 @@
 - `async get_status()` (seosoyoung/soul/main.py:173): 서비스 상태 조회
 - `async global_exception_handler()` (seosoyoung/soul/main.py:205): 전역 예외 핸들러
 - `sanitize_output()` (seosoyoung/soul/service/output_sanitizer.py:32): 출력에서 민감 정보를 마스킹합니다.
-- `find_session_file()` (seosoyoung/soul/service/session_validator.py:16): 세션 파일을 찾습니다.
-- `validate_session()` (seosoyoung/soul/service/session_validator.py:44): 세션 ID가 유효한지 검증합니다.
 - `get_task_manager()` (seosoyoung/soul/service/task_manager.py:486): TaskManager 싱글톤 반환
 - `init_task_manager()` (seosoyoung/soul/service/task_manager.py:494): TaskManager 초기화
 - `set_task_manager()` (seosoyoung/soul/service/task_manager.py:501): TaskManager 인스턴스 설정 (테스트용)

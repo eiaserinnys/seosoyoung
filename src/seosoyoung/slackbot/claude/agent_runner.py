@@ -63,6 +63,7 @@ from seosoyoung.slackbot.claude.diagnostics import (
 from seosoyoung.slackbot.claude.engine_types import EngineResult, InterventionCallback
 from seosoyoung.slackbot.claude.instrumented_client import InstrumentedClaudeClient
 from seosoyoung.slackbot.claude.sdk_compat import ParseAction, classify_parse_error
+from seosoyoung.slackbot.claude.session_validator import validate_session
 from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
@@ -755,6 +756,17 @@ class ClaudeRunner:
                 응용 마커(UPDATE/RESTART/LIST_RUN) 파싱과
                 OM 관찰 트리거는 호출부에서 수행합니다.
         """
+        # 세션 ID 사전 검증 (resume 시)
+        if session_id:
+            validation_error = validate_session(session_id)
+            if validation_error:
+                logger.warning(f"세션 검증 실패: {validation_error}")
+                return EngineResult(
+                    success=False,
+                    output="",
+                    error=validation_error,
+                )
+
         return await self._execute(prompt, session_id, on_progress, on_compact, on_intervention)
 
     async def _execute(
