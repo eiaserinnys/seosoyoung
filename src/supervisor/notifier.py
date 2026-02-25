@@ -156,3 +156,54 @@ def notify_deploy_failure(
     if not url:
         return
     send_webhook(url, format_deploy_failure_message(error))
+
+
+def format_change_detected_message(
+    runtime_commits: list[str],
+    seosoyoung_commits: list[str],
+) -> str:
+    """변경점 감지 메시지를 생성한다."""
+    lines = [":mag: *변경점이 발견됐습니다*"]
+    lines.extend(_format_commit_section("runtime", runtime_commits))
+    lines.extend(_format_commit_section("seosoyoung", seosoyoung_commits))
+    return "\n".join(lines)
+
+
+def format_waiting_sessions_message() -> str:
+    """세션 대기 메시지를 생성한다."""
+    return ":hourglass_flowing_sand: *재시작을 대기합니다...*"
+
+
+def notify_change_detected(
+    paths: dict[str, Path],
+    config_path: Path | None = None,
+) -> None:
+    """변경점 감지 알림을 전송한다."""
+    if config_path is None:
+        config_path = _get_default_config_path(paths)
+    url = load_webhook_url(config_path)
+    if not url:
+        return
+
+    runtime_commits = get_pending_commits(paths["runtime"])
+    dev_seosoyoung = paths["workspace"] / "seosoyoung"
+    seosoyoung_commits = (
+        get_pending_commits(dev_seosoyoung)
+        if dev_seosoyoung.exists()
+        else []
+    )
+
+    message = format_change_detected_message(runtime_commits, seosoyoung_commits)
+    send_webhook(url, message)
+
+
+def notify_waiting_sessions(
+    config_path: Path | None = None,
+) -> None:
+    """세션 대기 알림을 전송한다."""
+    if config_path is None:
+        return
+    url = load_webhook_url(config_path)
+    if not url:
+        return
+    send_webhook(url, format_waiting_sessions_message())

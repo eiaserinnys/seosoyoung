@@ -13,6 +13,8 @@ from .notifier import (
     notify_deploy_start,
     notify_deploy_success,
     notify_deploy_failure,
+    notify_change_detected,
+    notify_waiting_sessions,
 )
 
 if TYPE_CHECKING:
@@ -65,6 +67,10 @@ class Deployer:
         if self._state == DeployState.IDLE:
             self._state = DeployState.PENDING
             logger.info("배포 상태: idle → pending")
+            try:
+                notify_change_detected(self._paths, self._webhook_config)
+            except Exception:
+                logger.exception("변경 감지 알림 전송 실패")
 
     def tick(self) -> None:
         """상태 머신 한 스텝 진행."""
@@ -95,6 +101,10 @@ class Deployer:
                 self._state = DeployState.WAITING_SESSIONS
                 self._waiting_since = time.monotonic()
                 logger.info("배포 상태: pending → waiting_sessions (세션 대기)")
+                try:
+                    notify_waiting_sessions(self._webhook_config)
+                except Exception:
+                    logger.exception("세션 대기 알림 전송 실패")
 
     def _get_changed_files(self) -> list[str]:
         """원격 대비 변경된 파일 목록을 가져온다."""

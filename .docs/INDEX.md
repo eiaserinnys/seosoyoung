@@ -380,7 +380,7 @@
 - `generate_ltm_id()` (seosoyoung/slackbot/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
 - `parse_md_observations()` (seosoyoung/slackbot/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.
 - `parse_md_persistent()` (seosoyoung/slackbot/memory/store.py:192): 마크다운 장기 기억을 항목 리스트로 파싱합니다.
-- `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:25): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
+- `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:29): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slackbot/slack/file_handler.py:67): 스레드별 임시 폴더 생성

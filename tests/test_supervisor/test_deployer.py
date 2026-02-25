@@ -286,3 +286,70 @@ class TestStatus:
         deployer.notify_change()
         info = deployer.status()
         assert info["state"] == "pending"
+
+
+class TestChangeDetectedNotification:
+    """변경 감지 알림 테스트"""
+
+    def test_notify_change_sends_change_detected(self, deployer):
+        """idle → pending 전환 시 change_detected 알림 전송"""
+        with patch("supervisor.deployer.notify_change_detected") as mock_notify:
+            deployer.notify_change()
+
+        mock_notify.assert_called_once_with(deployer._paths, deployer._webhook_config)
+
+    def test_notify_change_already_pending_no_second_notification(self, deployer):
+        """이미 pending 상태이면 알림을 다시 보내지 않음"""
+        with patch("supervisor.deployer.notify_change_detected") as mock_notify:
+            deployer.notify_change()
+            deployer.notify_change()  # 두 번째 호출
+
+        mock_notify.assert_called_once()  # 한 번만 호출
+
+    def test_notify_change_webhook_failure_does_not_block(self, deployer):
+        """알림 전송 실패가 상태 전환을 막지 않음"""
+        with patch(
+            "supervisor.deployer.notify_change_detected",
+            side_effect=Exception("webhook error"),
+        ):
+            deployer.notify_change()  # 예외가 전파되지 않아야 함
+
+        assert deployer.state == DeployState.PENDING
+
+
+class TestWaitingSessionsNotification:
+    """세션 대기 알림 테스트"""
+
+    def test_pending_to_waiting_sends_waiting_notification(self, deployer, mock_session_monitor):
+        """pending → waiting_sessions 전환 시 waiting_sessions 알림 전송"""
+        deployer.notify_change()
+        mock_session_monitor.is_safe_to_deploy.return_value = False
+
+        with patch("supervisor.deployer.notify_waiting_sessions") as mock_notify:
+            deployer.tick()
+
+        mock_notify.assert_called_once_with(deployer._webhook_config)
+
+    def test_waiting_sessions_stays_no_repeat_notification(self, deployer, mock_session_monitor):
+        """waiting_sessions 상태 유지 시 추가 알림을 보내지 않음"""
+        from supervisor.deployer import DeployState
+        deployer._state = DeployState.WAITING_SESSIONS
+        mock_session_monitor.is_safe_to_deploy.return_value = False
+
+        with patch("supervisor.deployer.notify_waiting_sessions") as mock_notify:
+            deployer.tick()
+
+        mock_notify.assert_not_called()
+
+    def test_waiting_sessions_webhook_failure_does_not_block(self, deployer, mock_session_monitor):
+        """세션 대기 알림 실패가 상태 전환을 막지 않음"""
+        deployer.notify_change()
+        mock_session_monitor.is_safe_to_deploy.return_value = False
+
+        with patch(
+            "supervisor.deployer.notify_waiting_sessions",
+            side_effect=Exception("webhook error"),
+        ):
+            deployer.tick()  # 예외가 전파되지 않아야 함
+
+        assert deployer.state == DeployState.WAITING_SESSIONS

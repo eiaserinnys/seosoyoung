@@ -12,7 +12,7 @@ PresentationContext를 캡처하는 클로저 쌍을 반환합니다.
 ## 함수
 
 ### `build_progress_callbacks(pctx, update_message_fn)`
-- 위치: 줄 25
+- 위치: 줄 29
 - 설명: PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
 
 Args:
