@@ -30,11 +30,13 @@ from seosoyoung.slackbot.claude.diagnostics import (
     format_rate_limit_warning,
     send_debug_to_slack,
 )
+from seosoyoung.slackbot.claude.engine_types import EngineResult
 from seosoyoung.slackbot.claude.types import (
     PrepareMemoryFn,
     TriggerObservationFn,
     OnCompactOMFlagFn,
 )
+from seosoyoung.slackbot.marker_parser import parse_markers as _parse_markers
 from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
@@ -48,20 +50,51 @@ DEFAULT_DISALLOWED_TOOLS = [
 
 
 @dataclass
-class ClaudeResult:
-    """Claude Code 실행 결과"""
-    success: bool
-    output: str
-    session_id: Optional[str] = None
-    error: Optional[str] = None
+class ClaudeResult(EngineResult):
+    """Claude Code 실행 결과 (하위호환 레이어)
+
+    EngineResult를 상속하며, 응용 마커 필드를 추가합니다.
+    Phase 2 이후 마커 필드는 외부에서 ParsedMarkers로 대체될 예정입니다.
+    """
+
     update_requested: bool = False
     restart_requested: bool = False
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
-    collected_messages: list[dict] = field(default_factory=list)  # OM용 대화 수집
-    interrupted: bool = False  # interrupt로 중단된 경우 True
-    is_error: bool = False  # ResultMessage.is_error가 True인 경우
-    usage: Optional[dict] = None  # ResultMessage.usage (input_tokens, output_tokens 등)
     anchor_ts: str = ""  # OM 디버그 채널 세션 스레드 앵커 ts
+
+    @classmethod
+    def from_engine_result(
+        cls,
+        result: EngineResult,
+        markers: "ParsedMarkers | None" = None,
+        anchor_ts: str = "",
+    ) -> "ClaudeResult":
+        """EngineResult + ParsedMarkers → ClaudeResult 변환
+
+        Args:
+            result: 엔진 순수 결과
+            markers: 파싱된 응용 마커 (None이면 기본값 사용)
+            anchor_ts: OM 앵커 ts
+        """
+        from seosoyoung.slackbot.marker_parser import ParsedMarkers
+
+        if markers is None:
+            markers = ParsedMarkers()
+
+        return cls(
+            success=result.success,
+            output=result.output,
+            session_id=result.session_id,
+            error=result.error,
+            is_error=result.is_error,
+            interrupted=result.interrupted,
+            usage=result.usage,
+            collected_messages=result.collected_messages,
+            update_requested=markers.update_requested,
+            restart_requested=markers.restart_requested,
+            list_run=markers.list_run,
+            anchor_ts=anchor_ts,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -791,25 +824,22 @@ class ClaudeRunner:
 
             # 정상 완료
             output = msg_state.result_text or msg_state.current_text
-            update_requested = "<!-- UPDATE -->" in output
-            restart_requested = "<!-- RESTART -->" in output
-            list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
-            list_run = list_run_match.group(1).strip() if list_run_match else None
+            markers = _parse_markers(output)
 
-            if update_requested:
+            if markers.update_requested:
                 logger.info("업데이트 요청 마커 감지: <!-- UPDATE -->")
-            if restart_requested:
+            if markers.restart_requested:
                 logger.info("재시작 요청 마커 감지: <!-- RESTART -->")
-            if list_run:
-                logger.info(f"리스트 정주행 요청 마커 감지: {list_run}")
+            if markers.list_run:
+                logger.info(f"리스트 정주행 요청 마커 감지: {markers.list_run}")
 
             return ClaudeResult(
                 success=not msg_state.is_error,
                 output=output,
                 session_id=msg_state.session_id,
-                update_requested=update_requested,
-                restart_requested=restart_requested,
-                list_run=list_run,
+                update_requested=markers.update_requested,
+                restart_requested=markers.restart_requested,
+                list_run=markers.list_run,
                 collected_messages=msg_state.collected_messages,
                 is_error=msg_state.is_error,
                 usage=msg_state.usage,

@@ -21,6 +21,7 @@ class TestModuleImports:
     SUBMODULES = [
         "seosoyoung.slackbot.claude",
         "seosoyoung.slackbot.claude.types",
+        "seosoyoung.slackbot.claude.engine_types",
         "seosoyoung.slackbot.claude.agent_runner",
         "seosoyoung.slackbot.claude.session",
         "seosoyoung.slackbot.claude.session_context",

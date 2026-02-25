@@ -37,3 +37,8 @@ claude/ 모듈이 사용하는 Slack API 메서드만 정의합니다.
 
 - `chat_postMessage(self)` (줄 46): 
 - `chat_update(self)` (줄 47): 
+
+## 내부 의존성
+
+- `seosoyoung.slackbot.claude.engine_types.CompactCallback`
+- `seosoyoung.slackbot.claude.engine_types.ProgressCallback`

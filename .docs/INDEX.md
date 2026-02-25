@@ -24,6 +24,7 @@
 - [`slackbot/auth.py`](modules/slackbot_auth.md): 권한 및 역할 관리
 - [`claude/agent_runner.py`](modules/claude_agent_runner.md): Claude Code SDK 기반 실행기
 - [`claude/diagnostics.py`](modules/claude_diagnostics.md): 세션 진단 및 에러 분류 로직
+- [`claude/engine_types.py`](modules/claude_engine_types.md): Claude 엔진 전용 타입 정의
 - [`claude/executor.py`](modules/claude_executor.md): Claude Code 실행 로직
 - [`claude/intervention.py`](modules/claude_intervention.md): 인터벤션(Intervention) 관리
 - [`claude/message_formatter.py`](modules/claude_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티
@@ -43,6 +44,7 @@
 - [`handlers/translate.py`](modules/handlers_translate.md): 번역 핸들러
 - [`slackbot/logging_config.py`](modules/slackbot_logging_config.md): 로깅 설정 모듈
 - [`slackbot/main.py`](modules/slackbot_main.md): SeoSoyoung 슬랙 봇 메인
+- [`slackbot/marker_parser.py`](modules/slackbot_marker_parser.md): 응용 마커 파서
 - [`memory/channel_intervention.py`](modules/memory_channel_intervention.md): 채널 개입(intervention) 모듈
 - [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
 - [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화/판단 파이프라인
@@ -113,10 +115,12 @@
 - `RescueRunner` (seosoyoung/rescue/runner.py:92): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
-- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:51): Claude Code 실행 결과
-- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:151): Compact retry 외부 루프 상태
-- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:173): 메시지 수신 루프 상태
-- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:204): Claude Code SDK 기반 실행기
+- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:53): Claude Code 실행 결과 (하위호환 레이어)
+- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:184): Compact retry 외부 루프 상태
+- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:206): 메시지 수신 루프 상태
+- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:237): Claude Code SDK 기반 실행기
+- `EngineResult` (seosoyoung/slackbot/claude/engine_types.py:13): Claude Code 엔진의 순수 실행 결과
+- `RoleConfig` (seosoyoung/slackbot/claude/engine_types.py:31): 역할별 도구 접근 설정
 - `ExecutionContext` (seosoyoung/slackbot/claude/executor.py:44): 실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
 - `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:82): Claude Code 실행기
 - `PendingPrompt` (seosoyoung/slackbot/claude/intervention.py:19): 인터벤션 대기 중인 프롬프트 정보
@@ -152,6 +156,7 @@
 - `Config` (seosoyoung/slackbot/config.py:271): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/slackbot/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:13): 멘션으로 처리 중인 스레드를 추적
+- `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
 - `InterventionAction` (seosoyoung/slackbot/memory/channel_intervention.py:31): 개입 액션
 - `InterventionHistory` (seosoyoung/slackbot/memory/channel_intervention.py:154): 개입 이력 관리
 - `ChannelObserverResult` (seosoyoung/slackbot/memory/channel_observer.py:30): 채널 관찰 결과 (하위호환 유지)
@@ -282,12 +287,12 @@
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/slackbot/claude/__init__.py:24): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:74): 레지스트리에서 러너 조회
-- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:80): 레지스트리에 러너 등록
-- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:86): 레지스트리에서 러너 제거
-- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:92): 모든 등록된 러너의 클라이언트를 종료
-- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:127): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:909): 
+- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:107): 레지스트리에서 러너 조회
+- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:113): 레지스트리에 러너 등록
+- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:119): 레지스트리에서 러너 제거
+- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:125): 모든 등록된 러너의 클라이언트를 종료
+- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:160): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:939): 
 - `read_stderr_tail()` (seosoyoung/slackbot/claude/diagnostics.py:17): 세션별 cli_stderr 로그의 마지막 N줄 읽기
 - `build_session_dump()` (seosoyoung/slackbot/claude/diagnostics.py:50): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/slackbot/claude/diagnostics.py:95): ProcessError를 사용자 친화적 메시지로 변환.
@@ -335,6 +340,7 @@
 - `start_list_runner()` (seosoyoung/slackbot/main.py:273): 리스트 러너 초기화
 - `init_bot_user_id()` (seosoyoung/slackbot/main.py:283): 봇 사용자 ID 초기화
 - `main()` (seosoyoung/slackbot/main.py:293): 봇 메인 진입점
+- `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `parse_intervention_markup()` (seosoyoung/slackbot/memory/channel_intervention.py:39): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
 - `async execute_interventions()` (seosoyoung/slackbot/memory/channel_intervention.py:80): InterventionAction 리스트를 슬랙 API로 발송합니다.
 - `intervention_probability()` (seosoyoung/slackbot/memory/channel_intervention.py:132): 시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.

@@ -47,9 +47,8 @@ class SlackClient(Protocol):
     def chat_update(self, **kwargs) -> dict: ...
 
 
-# Callback 타입 별칭
-ProgressCallback = Callable[[str], Coroutine[Any, Any, None]]
-CompactCallback = Callable[[str, str], Coroutine[Any, Any, None]]
+# Callback 타입 별칭 (engine_types에서 정의, 여기서 re-export)
+from seosoyoung.slackbot.claude.engine_types import ProgressCallback, CompactCallback
 SayFunction = Callable[..., Any]
 UpdateMessageFn = Callable[..., None]  # (client, channel, ts, text, *, blocks=None) -> None
 
