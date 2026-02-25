@@ -46,18 +46,18 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 #### 메서드
 
 - `__init__(self, session_manager, session_runtime, restart_manager, send_long_message, send_restart_confirmation, update_message_fn)` (줄 161): 
-- `run(self, prompt, thread_ts, msg_ts)` (줄 233): 세션 내에서 Claude Code 실행 (공통 로직)
-- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 295): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
-- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 336): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
-- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 389): 단일 Claude 실행
-- `_should_use_remote(self)` (줄 469): remote 모드 사용 여부 판별 (폴백 전략 포함)
-- `_get_role_config(self, role)` (줄 485): 역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)
-- `_get_service_adapter(self)` (줄 489): Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환
-- `_register_session_id(self, thread_ts, session_id)` (줄 507): thread_ts ↔ session_id 매핑 등록 및 버퍼된 인터벤션 flush
-- `_unregister_session_id(self, thread_ts)` (줄 531): thread_ts ↔ session_id 매핑 해제
-- `_get_session_id(self, thread_ts)` (줄 540): thread_ts에 대응하는 session_id 조회
-- `_execute_remote(self, thread_ts, prompt)` (줄 545): Remote 모드: soul 서버에 실행을 위임
-- `_process_result(self, presentation, result, thread_ts)` (줄 617): 실행 결과 처리
+- `run(self, prompt, thread_ts, msg_ts)` (줄 230): 세션 내에서 Claude Code 실행 (공통 로직)
+- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 292): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
+- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 333): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
+- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 386): 단일 Claude 실행
+- `_should_use_remote(self)` (줄 466): remote 모드 사용 여부 판별 (폴백 전략 포함)
+- `_get_role_config(self, role)` (줄 482): 역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)
+- `_get_service_adapter(self)` (줄 486): Remote 모드용 ClaudeServiceAdapter를 생성하여 반환 (호출마다 새 인스턴스)
+- `_register_session_id(self, thread_ts, session_id)` (줄 506): thread_ts ↔ session_id 매핑 등록 및 버퍼된 인터벤션 flush
+- `_unregister_session_id(self, thread_ts)` (줄 530): thread_ts ↔ session_id 매핑 해제
+- `_get_session_id(self, thread_ts)` (줄 539): thread_ts에 대응하는 session_id 조회
+- `_execute_remote(self, thread_ts, prompt)` (줄 544): Remote 모드: soul 서버에 실행을 위임
+- `_process_result(self, presentation, result, thread_ts)` (줄 616): 실행 결과 처리
 
 ## 함수
 
