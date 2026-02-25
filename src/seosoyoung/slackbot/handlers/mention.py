@@ -8,6 +8,7 @@ import logging
 
 from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.slack import download_files_sync, build_file_context
+from seosoyoung.slackbot.slack.message_formatter import format_slack_message
 from seosoyoung.slackbot.handlers.message import process_thread_message, build_slack_context
 from seosoyoung.slackbot.handlers.commands import (
     handle_help,
@@ -99,19 +100,16 @@ def _get_channel_messages(client, channel: str, limit: int = 20) -> list[dict]:
         return []
 
 
-def _format_context_messages(messages: list[dict]) -> str:
+def _format_context_messages(messages: list[dict], channel: str = "") -> str:
     """메시지 dict 리스트를 컨텍스트 문자열로 포맷팅"""
-    context_lines = []
-    for msg in messages:
-        user = msg.get("user", "unknown")
-        text = msg.get("text", "")
-        context_lines.append(f"<{user}>: {text}")
-    return "\n".join(context_lines)
+    return "\n".join(
+        format_slack_message(msg, channel=channel) for msg in messages
+    )
 
 
 def get_channel_history(client, channel: str, limit: int = 20) -> str:
     """채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환"""
-    return _format_context_messages(_get_channel_messages(client, channel, limit))
+    return _format_context_messages(_get_channel_messages(client, channel, limit), channel=channel)
 
 
 _ADMIN_COMMANDS = frozenset({
@@ -296,7 +294,7 @@ def create_session_and_run_claude(
 
     # 채널 컨텍스트 포맷팅
     context = format_hybrid_context(
-        initial_ctx["messages"], initial_ctx["source_type"]
+        initial_ctx["messages"], initial_ctx["source_type"], channel=channel,
     )
 
     # 슬랙 컨텍스트 생성

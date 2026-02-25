@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Optional
 
 from seosoyoung.slackbot.memory.store import MemoryStore
 from seosoyoung.slackbot.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.slack.message_formatter import format_slack_message
 
 if TYPE_CHECKING:
     from seosoyoung.slackbot.memory.channel_store import ChannelStore
@@ -255,9 +256,13 @@ class ContextBuilder:
             sections.append(f"<digest>\n{digest_content}\n</digest>")
 
         # channel buffer (미소화 채널 루트 메시지)
+        # XML 블록이 이미 채널 컨텍스트를 제공하므로 include_meta=False
         channel_messages = self.channel_store.load_channel_buffer(channel_id)
         if channel_messages:
-            lines = [json.dumps(m, ensure_ascii=False) for m in channel_messages]
+            lines = [
+                format_slack_message(m, channel=channel_id, include_meta=False)
+                for m in channel_messages
+            ]
             buf_text = "\n".join(lines)
             buffer_tokens += self._counter.count_string(buf_text)
             sections.append(f"<recent-channel>\n{buf_text}\n</recent-channel>")
@@ -268,7 +273,10 @@ class ContextBuilder:
                 channel_id, thread_ts
             )
             if thread_messages:
-                lines = [json.dumps(m, ensure_ascii=False) for m in thread_messages]
+                lines = [
+                    format_slack_message(m, channel=channel_id, include_meta=False)
+                    for m in thread_messages
+                ]
                 buf_text = "\n".join(lines)
                 buffer_tokens += self._counter.count_string(buf_text)
                 sections.append(

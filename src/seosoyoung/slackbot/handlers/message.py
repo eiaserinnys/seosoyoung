@@ -8,6 +8,7 @@ from seosoyoung.slackbot.config import Config
 from seosoyoung.utils.async_bridge import run_in_new_loop
 from seosoyoung.slackbot.handlers.translate import process_translate_message
 from seosoyoung.slackbot.slack import download_files_sync, build_file_context
+from seosoyoung.slackbot.slack.message_formatter import format_slack_message
 from seosoyoung.slackbot.claude import get_claude_runner
 from seosoyoung.slackbot.claude.session_context import build_followup_context
 
@@ -94,15 +95,10 @@ def process_thread_message(
             monitored_channels=Config.channel_observer.channels,
         )
         if followup["messages"]:
-            lines = []
-            for msg in followup["messages"]:
-                user = msg.get("user", "unknown")
-                msg_text = msg.get("text", "")
-                linked = msg.get("linked_message_ts", "")
-                line = f"<{user}>: {msg_text}"
-                if linked:
-                    line += f" [linked:{linked}]"
-                lines.append(line)
+            lines = [
+                format_slack_message(msg, channel=channel)
+                for msg in followup["messages"]
+            ]
             followup_context = (
                 "[이전 대화 이후 채널에서 새로 발생한 대화입니다]\n"
                 + "\n".join(lines)

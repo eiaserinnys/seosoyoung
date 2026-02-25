@@ -43,10 +43,14 @@ def slack_attach_file(file_path: str, channel: str, thread_ts: str) -> dict:
 
 @mcp.tool()
 def slack_get_context() -> dict:
-    """현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
+    """[DEPRECATED] 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
 
     환경변수 SLACK_CHANNEL, SLACK_THREAD_TS에서 읽어 반환합니다.
     attach_file 호출 전에 컨텍스트를 조회할 때 사용합니다.
+
+    Deprecated: 프롬프트에 채널/ts 메타데이터가 직접 포함되므로
+    이 도구 대신 프롬프트의 [channel:ts] 프리픽스를 참조하세요.
+    향후 env 주입 제거 시 함께 제거될 예정입니다.
     """
     return get_slack_context()
 

@@ -7,6 +7,8 @@
 import logging
 from typing import Optional, Protocol, runtime_checkable
 
+from seosoyoung.slackbot.slack.message_formatter import format_slack_message
+
 logger = logging.getLogger(__name__)
 
 
@@ -139,12 +141,17 @@ def build_followup_context(
     }
 
 
-def format_hybrid_context(messages: list[dict], source_type: str) -> str:
+def format_hybrid_context(
+    messages: list[dict],
+    source_type: str,
+    channel: str = "",
+) -> str:
     """hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
 
     Args:
         messages: 시간순 정렬된 메시지 목록
         source_type: "thread" | "channel" | "hybrid"
+        channel: 슬랙 채널 ID (메타데이터 부착용)
 
     Returns:
         포맷된 컨텍스트 문자열
@@ -160,15 +167,7 @@ def format_hybrid_context(messages: list[dict], source_type: str) -> str:
     else:
         header = "아래는 Slack 채널의 최근 대화입니다:"
 
-    lines = []
-    for msg in messages:
-        user = msg.get("user", "unknown")
-        text = msg.get("text", "")
-        linked = msg.get("linked_message_ts", "")
-        line = f"<{user}>: {text}"
-        if linked:
-            line += f" [linked:{linked}]"
-        lines.append(line)
+    lines = [format_slack_message(msg, channel=channel) for msg in messages]
 
     return f"{header}\n\n" + "\n".join(lines)
 
