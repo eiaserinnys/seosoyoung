@@ -32,7 +32,7 @@ SIGTERM, SIGINT 수신 시 모든 클라이언트를 정리하고 프로세스�
 - 설명: PreCompact 훅에서 OM inject 플래그 설정
 
 ### `_init_channel_observer(slack_client, mention_tracker)`
-- 위치: 줄 138
+- 위치: 줄 135
 - 설명: 채널 관찰 시스템 초기화
 
 Returns:
@@ -40,31 +40,31 @@ Returns:
            비활성화 시 모두 None.
 
 ### `_build_dependencies()`
-- 위치: 줄 205
+- 위치: 줄 202
 - 설명: 핸들러 의존성 딕셔너리 빌드
 
 ### `notify_startup()`
-- 위치: 줄 231
+- 위치: 줄 233
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 242
+- 위치: 줄 244
 - 설명: 봇 종료 알림
 
 ### `start_trello_watcher()`
-- 위치: 줄 253
+- 위치: 줄 255
 - 설명: Trello 워처 시작
 
 ### `start_list_runner()`
-- 위치: 줄 273
+- 위치: 줄 275
 - 설명: 리스트 러너 초기화
 
 ### `init_bot_user_id()`
-- 위치: 줄 283
+- 위치: 줄 285
 - 설명: 봇 사용자 ID 초기화
 
 ### `main()`
-- 위치: 줄 293
+- 위치: 줄 295
 - 설명: 봇 메인 진입점
 
 ## 내부 의존성

@@ -62,14 +62,13 @@ To Go 리스트에 새 카드가 들어오면:
 - `_open_dm_thread(self, card_name, card_url)` (줄 444): DM 채널을 열고 앵커 메시지를 전송하여 DM 스레드를 생성
 - `_handle_new_card(self, card, list_key)` (줄 481): 새 카드 처리: In Progress 이동 → 알림 → 🌀 추가 → Claude 실행
 - `build_reaction_execute_prompt(self, info)` (줄 591): 하위 호환: PromptBuilder에 위임
-- `_build_to_go_prompt(self, card, has_execute)` (줄 595): 하위 호환: PromptBuilder에 위임
-- `_spawn_claude_thread(self)` (줄 599): Claude 실행 스레드 스포닝 (공통)
-- `_get_operational_list_ids(self)` (줄 688): 운영 리스트 ID 집합 반환 (정주행 대상에서 제외할 리스트)
-- `_check_run_list_labels(self)` (줄 708): 🏃 Run List 레이블을 가진 카드 감지 및 리스트 정주행 시작
-- `_preemptive_compact(self, thread_ts, channel, card_name)` (줄 777): 카드 완료 후 선제적 컨텍스트 컴팩트
-- `_start_list_run(self, list_id, list_name, cards)` (줄 824): 리스트 정주행 시작
-- `_process_list_run_card(self, session_id, thread_ts, run_channel)` (줄 892): 리스트 정주행 카드 처리
-- `_process_list_run_card_inner(self, list_runner, session_id, thread_ts, channel, run_channel)` (줄 934): _process_list_run_card의 실제 로직 (전역 try-except로 감싸기 위해 분리)
+- `_spawn_claude_thread(self)` (줄 595): Claude 실행 스레드 스포닝 (공통)
+- `_get_operational_list_ids(self)` (줄 707): 운영 리스트 ID 집합 반환 (정주행 대상에서 제외할 리스트)
+- `_check_run_list_labels(self)` (줄 727): 🏃 Run List 레이블을 가진 카드 감지 및 리스트 정주행 시작
+- `_preemptive_compact(self, thread_ts, channel, card_name)` (줄 796): 카드 완료 후 선제적 컨텍스트 컴팩트
+- `_start_list_run(self, list_id, list_name, cards)` (줄 843): 리스트 정주행 시작
+- `_process_list_run_card(self, session_id, thread_ts, run_channel)` (줄 911): 리스트 정주행 카드 처리
+- `_process_list_run_card_inner(self, list_runner, session_id, thread_ts, channel, run_channel)` (줄 953): _process_list_run_card의 실제 로직 (전역 try-except로 감싸기 위해 분리)
 
 ## 내부 의존성
 

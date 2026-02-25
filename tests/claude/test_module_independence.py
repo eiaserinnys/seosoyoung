@@ -51,6 +51,41 @@ class TestModuleImports:
         for mod in [types, session, intervention]:
             assert "Config" not in dir(mod), f"{mod.__name__}에 Config가 있음"
 
+    def test_intervention_no_slack_types_import(self):
+        """intervention.py가 claude/types.py의 Slack 타입을 import하지 않는다"""
+        import seosoyoung.slackbot.claude.intervention as intervention_mod
+        importlib.reload(intervention_mod)
+
+        # CardInfo, SlackClient, SayFunction이 없어야 함
+        for name in ["CardInfo", "SlackClient", "SayFunction"]:
+            assert name not in dir(intervention_mod), (
+                f"intervention.py에 {name}이 있음 — claude/types.py 의존 제거 필요"
+            )
+
+    def test_presentation_context_outside_claude(self):
+        """PresentationContext가 claude/ 패키지 밖에 위치한다"""
+        from seosoyoung.slackbot.presentation.types import PresentationContext
+        module_name = PresentationContext.__module__
+        assert "claude" not in module_name, (
+            f"PresentationContext가 claude/ 안에 있음: {module_name}"
+        )
+        assert "presentation" in module_name
+
+    def test_executor_no_execution_context(self):
+        """executor.py에서 ExecutionContext가 제거되었다"""
+        import seosoyoung.slackbot.claude.executor as executor_mod
+        assert not hasattr(executor_mod, "ExecutionContext"), (
+            "executor.py에 ExecutionContext가 여전히 존재함"
+        )
+
+    def test_types_no_om_callbacks(self):
+        """claude/types.py에서 OM 콜백 타입이 제거되었다"""
+        import seosoyoung.slackbot.claude.types as types_mod
+        for name in ["PrepareMemoryFn", "TriggerObservationFn", "OnCompactOMFlagFn"]:
+            assert not hasattr(types_mod, name), (
+                f"types.py에 {name}이 여전히 존재함"
+            )
+
 
 # === Protocol 호환성 테스트 ===
 
@@ -183,28 +218,25 @@ class TestEndToEndFlow:
         sr.mark_session_stopped("ts1")
         assert sr.get_running_session_count() == 0
 
-    def test_execution_context_construction(self, tmp_path):
-        """ExecutionContext가 stub 객체들로 구성된다"""
-        from seosoyoung.slackbot.claude.session import Session
-        from seosoyoung.slackbot.claude.executor import ExecutionContext
+    def test_presentation_context_construction(self, tmp_path):
+        """PresentationContext가 stub 객체들로 구성된다"""
+        from seosoyoung.slackbot.presentation.types import PresentationContext
 
-        session = Session(thread_ts="ts1", channel_id="C1", role="admin")
         mock_say = MagicMock()
         mock_client = MagicMock()
 
-        ctx = ExecutionContext(
-            session=session,
+        pctx = PresentationContext(
             channel="C1",
+            thread_ts="ts1",
+            msg_ts="msg1",
             say=mock_say,
             client=mock_client,
-            msg_ts="msg1",
             effective_role="admin",
-            thread_ts="ts1",
         )
 
-        assert ctx.original_thread_ts == "ts1"
-        assert ctx.is_trello_mode is False
-        assert ctx.effective_role == "admin"
+        assert pctx.thread_ts == "ts1"
+        assert pctx.is_trello_mode is False
+        assert pctx.effective_role == "admin"
 
     def test_message_formatter_independence(self):
         """message_formatter 함수들이 독립적으로 동작한다"""

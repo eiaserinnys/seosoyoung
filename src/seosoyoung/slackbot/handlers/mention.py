@@ -226,11 +226,18 @@ def create_session_and_run_claude(
         client: Slack 클라이언트
         deps: 의존성 딕셔너리
     """
+    from seosoyoung.slackbot.presentation.types import PresentationContext
+    from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
+
     session_manager = deps["session_manager"]
     run_claude_in_session = deps["run_claude_in_session"]
     get_user_role = deps["get_user_role"]
     channel_store = deps.get("channel_store")
     mention_tracker = deps.get("mention_tracker")
+    update_message_fn = deps.get("update_message_fn")
+    prepare_memory_fn = deps.get("prepare_memory_fn")
+    trigger_observation_fn = deps.get("trigger_observation_fn")
+    on_compact_om_flag = deps.get("on_compact_om_flag")
 
     user_info = get_user_role(user_id, client)
     if not user_info:
@@ -280,7 +287,8 @@ def create_session_and_run_claude(
         return
 
     # 초기 메시지 표시
-    initial_text = "> 소영이 생각합니다..."
+    initial_text = ("> 소영이 생각합니다..." if user_info["role"] == "admin"
+                    else "> 소영이 조회 전용 모드로 생각합니다...")
     initial_msg = client.chat_postMessage(
         channel=channel,
         thread_ts=session_thread_ts,
@@ -291,6 +299,24 @@ def create_session_and_run_claude(
         }]
     )
     initial_msg_ts = initial_msg["ts"]
+
+    # PresentationContext 구성
+    pctx = PresentationContext(
+        channel=channel,
+        thread_ts=session_thread_ts,
+        msg_ts=ts,
+        say=say,
+        client=client,
+        effective_role=user_info["role"],
+        session_id=session.session_id,
+        user_id=user_id,
+        last_msg_ts=initial_msg_ts,
+        is_existing_thread=is_existing_thread,
+        is_thread_reply=session.message_count > 0 or is_existing_thread,
+    )
+
+    # 콜백 팩토리
+    on_progress, on_compact = build_progress_callbacks(pctx, update_message_fn)
 
     # 채널 컨텍스트 포맷팅
     context = format_hybrid_context(
@@ -313,12 +339,58 @@ def create_session_and_run_claude(
         slack_context=slack_ctx,
     )
 
+    # OM: 메모리 주입
+    effective_prompt = prompt
+    anchor_ts = ""
+    if prepare_memory_fn:
+        memory_prompt, anchor_ts = prepare_memory_fn(
+            session_thread_ts, channel, session.session_id, prompt,
+        )
+        if memory_prompt:
+            effective_prompt = (
+                f"{memory_prompt}\n\n"
+                f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
+                f"사용자의 질문: {prompt}"
+            )
+
+    # OM: on_compact에 OM 플래그 래핑
+    if on_compact_om_flag:
+        original_on_compact = on_compact
+
+        async def on_compact_with_om(trigger, message):
+            try:
+                on_compact_om_flag(session_thread_ts)
+            except Exception as e:
+                logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
+            await original_on_compact(trigger, message)
+
+        on_compact = on_compact_with_om
+
+    # OM: 결과 핸들러 (observation 트리거)
+    def on_result(result, thread_ts_arg, user_message_arg):
+        if (trigger_observation_fn
+                and result.success
+                and session.user_id
+                and thread_ts_arg
+                and result.collected_messages):
+            observation_input = user_message_arg if user_message_arg is not None else prompt
+            trigger_observation_fn(
+                thread_ts_arg, session.user_id, observation_input,
+                result.collected_messages, anchor_ts=getattr(result, "anchor_ts", anchor_ts),
+            )
+
     # Claude 실행
     run_claude_in_session(
-        session, prompt, ts, channel, say, client,
-        is_existing_thread=is_existing_thread,
-        initial_msg_ts=initial_msg_ts,
+        prompt=effective_prompt,
+        thread_ts=session_thread_ts,
+        msg_ts=ts,
+        on_progress=on_progress,
+        on_compact=on_compact,
+        presentation=pctx,
+        session_id=session.session_id,
+        role=user_info["role"],
         user_message=clean_text,
+        on_result=on_result,
     )
 
 
@@ -400,6 +472,10 @@ def register_mention_handlers(app, dependencies: dict):
                     event, text, thread_ts, ts, channel, session, say, client,
                     get_user_role, run_claude_in_session, log_prefix="스레드 멘션",
                     channel_store=channel_store, session_manager=session_manager,
+                    update_message_fn=dependencies.get("update_message_fn"),
+                    prepare_memory_fn=dependencies.get("prepare_memory_fn"),
+                    trigger_observation_fn=dependencies.get("trigger_observation_fn"),
+                    on_compact_om_flag=dependencies.get("on_compact_om_flag"),
                 )
                 return
             logger.debug("스레드에서 멘션됨 (세션 없음) - 원샷 답변")

@@ -48,6 +48,8 @@ def process_thread_message(
     event, text, thread_ts, ts, channel, session, say, client,
     get_user_role, run_claude_in_session, log_prefix="메시지",
     channel_store=None, session_manager=None,
+    update_message_fn=None, prepare_memory_fn=None,
+    trigger_observation_fn=None, on_compact_om_flag=None,
 ):
     """세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 
@@ -56,6 +58,9 @@ def process_thread_message(
     Returns:
         True if processed, False if skipped (empty message)
     """
+    from seosoyoung.slackbot.presentation.types import PresentationContext
+    from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
+
     user_id = event["user"]
 
     clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
@@ -123,7 +128,75 @@ def process_thread_message(
         f"text={clean_text[:50] if clean_text else '(파일 첨부)'}"
     )
 
-    run_claude_in_session(session, prompt, ts, channel, say, client, role=user_info["role"], user_message=clean_text)
+    # PresentationContext 구성
+    pctx = PresentationContext(
+        channel=channel,
+        thread_ts=thread_ts,
+        msg_ts=ts,
+        say=say,
+        client=client,
+        effective_role=user_info["role"],
+        session_id=session.session_id,
+        user_id=user_id,
+        is_existing_thread=True,
+        is_thread_reply=True,
+    )
+
+    # 콜백 팩토리
+    on_progress, on_compact = build_progress_callbacks(pctx, update_message_fn)
+
+    # OM: 메모리 주입
+    effective_prompt = prompt
+    anchor_ts = ""
+    if prepare_memory_fn:
+        memory_prompt, anchor_ts = prepare_memory_fn(
+            thread_ts, channel, session.session_id, prompt,
+        )
+        if memory_prompt:
+            effective_prompt = (
+                f"{memory_prompt}\n\n"
+                f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
+                f"사용자의 질문: {prompt}"
+            )
+
+    # OM: on_compact에 OM 플래그 래핑
+    if on_compact_om_flag:
+        original_on_compact = on_compact
+
+        async def on_compact_with_om(trigger, message):
+            try:
+                on_compact_om_flag(thread_ts)
+            except Exception as e:
+                logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
+            await original_on_compact(trigger, message)
+
+        on_compact = on_compact_with_om
+
+    # OM: 결과 핸들러
+    def on_result(result, thread_ts_arg, user_message_arg):
+        if (trigger_observation_fn
+                and result.success
+                and session.user_id
+                and thread_ts_arg
+                and result.collected_messages):
+            observation_input = user_message_arg if user_message_arg is not None else prompt
+            trigger_observation_fn(
+                thread_ts_arg, session.user_id, observation_input,
+                result.collected_messages, anchor_ts=getattr(result, "anchor_ts", anchor_ts),
+            )
+
+    run_claude_in_session(
+        prompt=effective_prompt,
+        thread_ts=thread_ts,
+        msg_ts=ts,
+        on_progress=on_progress,
+        on_compact=on_compact,
+        presentation=pctx,
+        session_id=session.session_id,
+        role=user_info["role"],
+        user_message=clean_text,
+        on_result=on_result,
+    )
     return True
 
 
@@ -183,6 +256,10 @@ def _handle_dm_message(event, say, client, dependencies):
             event, text, thread_ts, ts, channel, session, say, client,
             get_user_role, run_claude_in_session, log_prefix="DM 메시지",
             channel_store=channel_store, session_manager=session_manager,
+            update_message_fn=dependencies.get("update_message_fn"),
+            prepare_memory_fn=dependencies.get("prepare_memory_fn"),
+            trigger_observation_fn=dependencies.get("trigger_observation_fn"),
+            on_compact_om_flag=dependencies.get("on_compact_om_flag"),
         )
         return
 
@@ -309,6 +386,10 @@ def register_message_handlers(app, dependencies: dict):
             event, text, thread_ts, ts, channel, session, say, client,
             get_user_role, run_claude_in_session, log_prefix="메시지",
             channel_store=channel_store, session_manager=session_manager,
+            update_message_fn=dependencies.get("update_message_fn"),
+            prepare_memory_fn=dependencies.get("prepare_memory_fn"),
+            trigger_observation_fn=dependencies.get("trigger_observation_fn"),
+            on_compact_om_flag=dependencies.get("on_compact_om_flag"),
         )
 
     @app.event("reaction_added")
@@ -451,15 +532,38 @@ def register_message_handlers(app, dependencies: dict):
                         text=text
                     )
 
-                # Claude 실행 (trello_card 정보 전달)
-                run_claude_in_session(
-                    session=session,
-                    prompt=prompt,
-                    msg_ts=start_msg_ts,
+                # PresentationContext 구성 (트렐로 모드)
+                from seosoyoung.slackbot.presentation.types import PresentationContext
+                from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
+
+                pctx = PresentationContext(
                     channel=item_channel,
+                    thread_ts=item_ts,
+                    msg_ts=start_msg_ts,
                     say=say,
                     client=client,
-                    trello_card=tracked
+                    effective_role="admin",
+                    session_id=session.session_id,
+                    user_id=user_id,
+                    last_msg_ts=start_msg_ts,
+                    main_msg_ts=start_msg_ts,
+                    trello_card=tracked,
+                    is_trello_mode=True,
+                )
+
+                update_message_fn = dependencies.get("update_message_fn")
+                on_progress, on_compact = build_progress_callbacks(pctx, update_message_fn)
+
+                # Claude 실행 (trello_card 정보 전달)
+                run_claude_in_session(
+                    prompt=prompt,
+                    thread_ts=item_ts,
+                    msg_ts=start_msg_ts,
+                    on_progress=on_progress,
+                    on_compact=on_compact,
+                    presentation=pctx,
+                    session_id=session.session_id,
+                    role="admin",
                 )
 
             except Exception as e:

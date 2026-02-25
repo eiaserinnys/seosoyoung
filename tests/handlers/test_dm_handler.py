@@ -148,7 +148,7 @@ class TestDmFirstMessage:
 
         from seosoyoung.slackbot.handlers.message import register_message_handlers
 
-        mock_session = MagicMock(source_type="thread", last_seen_ts="")
+        mock_session = MagicMock(source_type="thread", last_seen_ts="", message_count=0)
         deps = _make_deps()
         deps["session_manager"].create.return_value = mock_session
 

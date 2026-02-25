@@ -11,24 +11,15 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 
 import logging
 import threading
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from seosoyoung.slackbot.claude.agent_runner import ClaudeResult, ClaudeRunner
 from seosoyoung.slackbot.claude.intervention import InterventionManager, PendingPrompt
 from seosoyoung.slackbot.claude.result_processor import ResultProcessor
-from seosoyoung.slackbot.claude.session import Session, SessionManager, SessionRuntime
-from seosoyoung.slackbot.claude.message_formatter import (
-    truncate_progress_text,
-    format_as_blockquote,
-    format_trello_progress,
-    format_dm_progress,
-)
-from seosoyoung.slackbot.claude.types import (
-    CardInfo, SlackClient, SayFunction, ProgressCallback, CompactCallback,
-    UpdateMessageFn, PrepareMemoryFn, TriggerObservationFn, OnCompactOMFlagFn,
-)
+from seosoyoung.slackbot.claude.session import SessionManager, SessionRuntime
+from seosoyoung.slackbot.claude.engine_types import ProgressCallback, CompactCallback
+from seosoyoung.slackbot.claude.types import UpdateMessageFn
 from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
@@ -38,45 +29,6 @@ def _get_mcp_config_path() -> Optional[Path]:
     """MCP 설정 파일 경로 반환 (없으면 None)"""
     config_path = Path(__file__).resolve().parents[4] / "mcp_config.json"
     return config_path if config_path.exists() else None
-
-
-@dataclass
-class ExecutionContext:
-    """실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
-
-    executor 내부 메서드들이 공유하는 상태를 하나의 객체로 캡슐화합니다.
-    """
-    session: Session
-    channel: str
-    say: SayFunction
-    client: SlackClient
-    msg_ts: str
-    effective_role: str
-    # Slack 메시지 ts 추적
-    thread_ts: str = ""  # 실제 사용될 thread_ts (override 가능)
-    last_msg_ts: Optional[str] = None
-    main_msg_ts: Optional[str] = None  # 트렐로 모드 메인 메시지 ts
-    # 트렐로 관련
-    trello_card: Optional[CardInfo] = None
-    is_trello_mode: bool = False
-    # 스레드 관련
-    is_existing_thread: bool = False
-    is_thread_reply: bool = False
-    initial_msg_ts: Optional[str] = None
-    # DM 스레드 (트렐로 모드용)
-    dm_channel_id: Optional[str] = None
-    dm_thread_ts: Optional[str] = None
-    dm_last_reply_ts: Optional[str] = None
-    # 사용자 메시지
-    user_message: Optional[str] = None
-    # 콜백 (실행 중 설정)
-    on_progress: Optional[ProgressCallback] = field(default=None, repr=False)
-    on_compact: Optional[CompactCallback] = field(default=None, repr=False)
-
-    @property
-    def original_thread_ts(self) -> str:
-        """세션의 원래 thread_ts"""
-        return self.session.thread_ts
 
 
 class ClaudeExecutor:
@@ -105,9 +57,6 @@ class ClaudeExecutor:
         restart_type_restart=None,
         trello_watcher_ref: Optional[Callable] = None,
         list_runner_ref: Optional[Callable] = None,
-        prepare_memory_fn: Optional[PrepareMemoryFn] = None,
-        trigger_observation_fn: Optional[TriggerObservationFn] = None,
-        on_compact_om_flag: Optional[OnCompactOMFlagFn] = None,
     ):
         self.session_manager = session_manager
         self.session_runtime = session_runtime
@@ -123,9 +72,6 @@ class ClaudeExecutor:
         self.soul_client_id = soul_client_id
         self.trello_watcher_ref = trello_watcher_ref
         self.list_runner_ref = list_runner_ref
-        self.prepare_memory_fn = prepare_memory_fn
-        self.trigger_observation_fn = trigger_observation_fn
-        self.on_compact_om_flag = on_compact_om_flag
 
         # 하위 호환 프로퍼티 (기존 코드에서 직접 접근하는 경우 대비)
         self.get_session_lock = session_runtime.get_session_lock
@@ -157,95 +103,93 @@ class ClaudeExecutor:
 
     def run(
         self,
-        session: Session,
         prompt: str,
+        thread_ts: str,
         msg_ts: str,
-        channel: str,
-        say,
-        client,
-        role: str = None,
-        trello_card: CardInfo = None,
-        is_existing_thread: bool = False,
-        initial_msg_ts: str = None,
-        dm_channel_id: str = None,
-        dm_thread_ts: str = None,
-        user_message: str = None,
+        *,
+        on_progress: ProgressCallback,
+        on_compact: CompactCallback,
+        presentation: Any,         # PresentationContext (opaque)
+        session_id: Optional[str] = None,
+        role: Optional[str] = None,
+        user_message: Optional[str] = None,
+        on_result: Optional[Callable] = None,  # (result, thread_ts, user_message) -> None
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
         인터벤션 지원:
-        - 락 획득 실패 시 ⚡ 리액션 + pending 저장 + interrupt
+        - 락 획득 실패 시 pending 저장 + interrupt
         - 실행 완료 후 pending이 있으면 이어서 실행
 
         Args:
-            session: Session 객체
             prompt: Claude에 전달할 프롬프트
-            msg_ts: 원본 메시지 타임스탬프 (이모지 추가용)
-            channel: Slack 채널 ID
-            say: Slack say 함수
-            client: Slack client
-            role: 실행할 역할 (None이면 session.role 사용)
-            trello_card: 트렐로 워처에서 호출된 경우 TrackedCard 정보
-            is_existing_thread: 기존 스레드에서 호출된 경우 True (세션 없이 스레드에서 처음 호출)
-            initial_msg_ts: 이미 생성된 초기 메시지 ts (있으면 새로 생성하지 않음)
-            dm_channel_id: 트렐로 모드에서 사고 과정을 출력할 DM 채널 ID
-            dm_thread_ts: DM 스레드의 앵커 메시지 ts
-            user_message: 사용자 원본 메시지 (OM Observer용, 선택)
+            thread_ts: 세션의 스레드 타임스탬프
+            msg_ts: 원본 메시지 타임스탬프
+            on_progress: 진행 상태 콜백
+            on_compact: 컴팩션 알림 콜백
+            presentation: PresentationContext (opaque - ResultProcessor에 전달)
+            session_id: Claude 세션 ID (이어서 실행용)
+            role: 실행 역할
+            user_message: 사용자 원본 메시지
+            on_result: 결과 핸들러 콜백
         """
-        thread_ts = session.thread_ts
-        effective_role = role or session.role
-        is_trello_mode = trello_card is not None
-
-        ctx = ExecutionContext(
-            session=session,
-            channel=channel,
-            say=say,
-            client=client,
-            msg_ts=msg_ts,
-            effective_role=effective_role,
-            thread_ts=thread_ts,
-            trello_card=trello_card,
-            is_trello_mode=is_trello_mode,
-            is_existing_thread=is_existing_thread,
-            initial_msg_ts=initial_msg_ts,
-            dm_channel_id=dm_channel_id,
-            dm_thread_ts=dm_thread_ts,
-            user_message=user_message,
-        )
-
         # 스레드별 락으로 동시 실행 방지
         lock = self.get_session_lock(thread_ts)
         if not lock.acquire(blocking=False):
-            # 인터벤션: 리액션만 추가하고 pending에 저장 후 interrupt
-            self._handle_intervention(ctx, prompt)
+            # 인터벤션: pending에 저장 후 interrupt
+            self._handle_intervention(
+                thread_ts, prompt, msg_ts,
+                on_progress=on_progress,
+                on_compact=on_compact,
+                presentation=presentation,
+                role=role,
+                user_message=user_message,
+                on_result=on_result,
+                session_id=session_id,
+            )
             return
 
         try:
-            self._run_with_lock(ctx, prompt)
+            self._run_with_lock(
+                thread_ts, prompt, msg_ts,
+                on_progress=on_progress,
+                on_compact=on_compact,
+                presentation=presentation,
+                session_id=session_id,
+                role=role,
+                user_message=user_message,
+                on_result=on_result,
+            )
         finally:
             lock.release()
 
-    def _handle_intervention(self, ctx: ExecutionContext, prompt: str):
-        """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
-
-        pending 저장 → interrupt fire → 즉시 return
-        """
-        thread_ts = ctx.thread_ts
+    def _handle_intervention(
+        self,
+        thread_ts: str,
+        prompt: str,
+        msg_ts: str,
+        *,
+        on_progress,
+        on_compact,
+        presentation,
+        role,
+        user_message,
+        on_result,
+        session_id,
+    ):
+        """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우"""
         logger.info(f"인터벤션 발생: thread={thread_ts}")
 
         pending = PendingPrompt(
             prompt=prompt,
-            msg_ts=ctx.msg_ts,
-            channel=ctx.channel,
-            say=ctx.say,
-            client=ctx.client,
-            role=ctx.effective_role,
-            trello_card=ctx.trello_card,
-            is_existing_thread=ctx.is_existing_thread,
-            initial_msg_ts=ctx.initial_msg_ts,
-            dm_channel_id=ctx.dm_channel_id,
-            dm_thread_ts=ctx.dm_thread_ts,
-            user_message=ctx.user_message,
+            msg_ts=msg_ts,
+            on_progress=on_progress,
+            on_compact=on_compact,
+            presentation=presentation,
+            role=role,
+            user_message=user_message,
+            on_result=on_result,
+            session_id=session_id,
         )
         self._intervention.save_pending(thread_ts, pending)
 
@@ -257,152 +201,94 @@ class ClaudeExecutor:
         else:
             self._intervention.fire_interrupt_local(thread_ts)
 
-    def _run_with_lock(self, ctx: ExecutionContext, prompt: str):
+    def _run_with_lock(
+        self,
+        thread_ts: str,
+        prompt: str,
+        msg_ts: str,
+        *,
+        on_progress,
+        on_compact,
+        presentation,
+        session_id,
+        role,
+        user_message,
+        on_result,
+    ):
         """락을 보유한 상태에서 실행 (while 루프로 pending 처리)"""
-        original_thread_ts = ctx.original_thread_ts
-
         # 실행 중 세션으로 표시
-        self.mark_session_running(original_thread_ts)
+        self.mark_session_running(thread_ts)
 
         try:
             # 첫 번째 실행
-            self._execute_once(ctx, prompt)
+            self._execute_once(
+                thread_ts, prompt, msg_ts,
+                on_progress=on_progress,
+                on_compact=on_compact,
+                presentation=presentation,
+                session_id=session_id,
+                role=role,
+                user_message=user_message,
+                on_result=on_result,
+            )
 
             # pending 확인 → while 루프
             while True:
-                pending = self._intervention.pop_pending(original_thread_ts)
+                pending = self._intervention.pop_pending(thread_ts)
                 if not pending:
                     break
 
-                logger.info(f"인터벤션 이어가기: thread={original_thread_ts}")
+                logger.info(f"인터벤션 이어가기: thread={thread_ts}")
 
-                # pending의 정보로 컨텍스트 갱신
-                ctx.msg_ts = pending.msg_ts
-                ctx.channel = pending.channel
-                ctx.say = pending.say
-                ctx.client = pending.client
-                ctx.effective_role = pending.role or ctx.session.role
-                ctx.trello_card = pending.trello_card
-                ctx.is_trello_mode = pending.trello_card is not None
-                ctx.is_existing_thread = pending.is_existing_thread
-                ctx.initial_msg_ts = pending.initial_msg_ts
-                ctx.dm_channel_id = pending.dm_channel_id or ctx.dm_channel_id
-                ctx.dm_thread_ts = pending.dm_thread_ts or ctx.dm_thread_ts
-                ctx.user_message = pending.user_message
-                # thread_ts는 이전 실행에서 업데이트된 것을 유지
-
-                self._execute_once(ctx, pending.prompt)
+                self._execute_once(
+                    thread_ts, pending.prompt, pending.msg_ts,
+                    on_progress=pending.on_progress,
+                    on_compact=pending.on_compact,
+                    presentation=pending.presentation,
+                    session_id=pending.session_id,
+                    role=pending.role,
+                    user_message=pending.user_message,
+                    on_result=pending.on_result,
+                )
 
         finally:
-            self.mark_session_stopped(original_thread_ts)
+            self.mark_session_stopped(thread_ts)
 
-    def _execute_once(self, ctx: ExecutionContext, prompt: str):
-        """단일 Claude 실행
-
-        ctx의 last_msg_ts, thread_ts, dm_last_reply_ts 등을 in-place로 갱신합니다.
-        """
-        thread_ts = ctx.thread_ts
-        session = ctx.session
-
-        # 마지막 메시지 ts 추적 (최종 답변으로 교체할 대상)
-        ctx.last_msg_ts = None
-        ctx.main_msg_ts = ctx.msg_ts if ctx.is_trello_mode else None
-
-        ctx.dm_last_reply_ts = None
-        ctx.is_thread_reply = session.message_count > 0 or ctx.is_existing_thread
-
-        if ctx.is_trello_mode:
-            ctx.last_msg_ts = ctx.msg_ts
-        elif ctx.initial_msg_ts:
-            ctx.last_msg_ts = ctx.initial_msg_ts
-        else:
-            initial_text = ("소영이 생각합니다..." if ctx.effective_role == "admin"
-                            else "소영이 조회 전용 모드로 생각합니다...")
-            quote_text = f"> {initial_text}"
-            initial_msg = ctx.client.chat_postMessage(
-                channel=ctx.channel,
-                thread_ts=thread_ts,
-                text=quote_text,
-                blocks=[{"type": "section", "text": {"type": "mrkdwn", "text": quote_text}}]
-            )
-            ctx.last_msg_ts = initial_msg["ts"]
-
-        async def on_progress(current_text: str):
-            try:
-                display_text = truncate_progress_text(current_text)
-                if not display_text:
-                    return
-
-                if ctx.is_trello_mode:
-                    if ctx.dm_channel_id and ctx.dm_thread_ts:
-                        quote_text = format_dm_progress(display_text)
-                        reply = ctx.client.chat_postMessage(
-                            channel=ctx.dm_channel_id,
-                            thread_ts=ctx.dm_thread_ts,
-                            text=quote_text,
-                            blocks=[{"type": "section", "text": {"type": "mrkdwn", "text": quote_text}}]
-                        )
-                        ctx.dm_last_reply_ts = reply["ts"]
-                    else:
-                        update_text = format_trello_progress(
-                            display_text, ctx.trello_card, session.session_id or "")
-                        self.update_message_fn(ctx.client, ctx.channel, ctx.main_msg_ts, update_text)
-                else:
-                    quote_text = format_as_blockquote(display_text)
-                    self.update_message_fn(ctx.client, ctx.channel, ctx.last_msg_ts, quote_text)
-            except Exception as e:
-                logger.warning(f"사고 과정 메시지 전송 실패: {e}")
-
-        async def on_compact(trigger: str, message: str):
-            try:
-                text = ("🔄 컨텍스트가 자동 압축됩니다..." if trigger == "auto"
-                        else "📦 컨텍스트를 압축하는 중입니다...")
-                ctx.say(text=text, thread_ts=ctx.thread_ts)
-            except Exception as e:
-                logger.warning(f"컴팩션 알림 전송 실패: {e}")
-
-        ctx.on_progress = on_progress
-        ctx.on_compact = on_compact
-        original_thread_ts = ctx.original_thread_ts
-
+    def _execute_once(
+        self,
+        thread_ts: str,
+        prompt: str,
+        msg_ts: str,
+        *,
+        on_progress,
+        on_compact,
+        presentation,
+        session_id,
+        role,
+        user_message,
+        on_result,
+    ):
+        """단일 Claude 실행"""
         if self.execution_mode == "remote":
             # === Remote 모드: soul 서버에 위임 ===
-            logger.info(f"Claude 실행 (remote): thread={thread_ts}, role={ctx.effective_role}")
-            self._execute_remote(ctx, prompt)
+            logger.info(f"Claude 실행 (remote): thread={thread_ts}, role={role}")
+            self._execute_remote(
+                thread_ts, prompt,
+                on_progress=on_progress,
+                on_compact=on_compact,
+                presentation=presentation,
+                session_id=session_id,
+                user_message=user_message,
+                on_result=on_result,
+            )
         else:
             # === Local 모드: thread_ts 단위 runner 생성 ===
-            role_config = self._get_role_config(ctx.effective_role)
+            effective_role = role or "admin"
+            role_config = self._get_role_config(effective_role)
 
             def _debug_send(msg: str) -> None:
-                ctx.client.chat_postMessage(channel=ctx.channel, thread_ts=thread_ts, text=msg)
-
-            # OM: 메모리를 호출부에서 준비하여 프롬프트에 주입
-            effective_prompt = prompt
-            anchor_ts = ""
-            if self.prepare_memory_fn:
-                memory_prompt, anchor_ts = self.prepare_memory_fn(
-                    thread_ts, ctx.channel, session.session_id, prompt,
-                )
-                if memory_prompt:
-                    effective_prompt = (
-                        f"{memory_prompt}\n\n"
-                        f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
-                        f"사용자의 질문: {prompt}"
-                    )
-                    logger.info(f"OM 메모리 프리픽스 주입 완료 (prompt 길이: {len(effective_prompt)})")
-
-            # OM: on_compact 콜백에 OM 플래그 설정 로직 포함
-            original_on_compact = on_compact
-
-            async def on_compact_with_om(trigger: str, message: str):
-                # OM: 컴팩션 시 다음 요청에 관찰 로그 재주입하도록 플래그 설정
-                if thread_ts and self.on_compact_om_flag:
-                    try:
-                        self.on_compact_om_flag(thread_ts)
-                    except Exception as e:
-                        logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
-                if original_on_compact:
-                    await original_on_compact(trigger, message)
+                presentation.client.chat_postMessage(
+                    channel=presentation.channel, thread_ts=thread_ts, text=msg)
 
             runner = ClaudeRunner(
                 thread_ts,
@@ -411,41 +297,31 @@ class ClaudeExecutor:
                 mcp_config_path=role_config["mcp_config_path"],
                 debug_send_fn=_debug_send,
             )
-            logger.info(f"Claude 실행 (local): thread={thread_ts}, role={ctx.effective_role}")
+            logger.info(f"Claude 실행 (local): thread={thread_ts}, role={effective_role}")
 
             try:
                 from seosoyoung.slackbot.marker_parser import parse_markers as _parse_markers
 
                 engine_result = runner.run_sync(runner.run(
-                    prompt=effective_prompt,
-                    session_id=session.session_id,
+                    prompt=prompt,
+                    session_id=session_id,
                     on_progress=on_progress,
-                    on_compact=on_compact_with_om,
+                    on_compact=on_compact,
                 ))
 
-                # 응용 마커 파싱 + ClaudeResult 변환 (호출부에서 수행)
+                # 응용 마커 파싱 + ClaudeResult 변환
                 markers = _parse_markers(engine_result.output)
-                result = ClaudeResult.from_engine_result(
-                    engine_result, markers=markers, anchor_ts=anchor_ts,
-                )
+                result = ClaudeResult.from_engine_result(engine_result, markers=markers)
 
-                # OM: 세션 종료 후 관찰 파이프라인 트리거
-                if (self.trigger_observation_fn
-                        and result.success
-                        and session.user_id
-                        and thread_ts
-                        and result.collected_messages):
-                    observation_input = ctx.user_message if ctx.user_message is not None else prompt
-                    self.trigger_observation_fn(
-                        thread_ts, session.user_id, observation_input,
-                        result.collected_messages, anchor_ts=result.anchor_ts,
-                    )
+                # 결과 콜백 호출 (OM 등)
+                if on_result:
+                    on_result(result, thread_ts, user_message)
 
-                self._process_result(ctx, result)
+                self._process_result(presentation, result, thread_ts)
 
             except Exception as e:
                 logger.exception(f"Claude 실행 오류: {e}")
-                self._result_processor.handle_exception(ctx, e)
+                self._result_processor.handle_exception(presentation, e)
 
     def _get_role_config(self, role: str) -> dict:
         """역할에 맞는 runner 설정을 반환
@@ -484,53 +360,65 @@ class ClaudeExecutor:
                     )
         return self._service_adapter
 
-    def _execute_remote(self, ctx: ExecutionContext, prompt: str):
+    def _execute_remote(
+        self,
+        thread_ts: str,
+        prompt: str,
+        *,
+        on_progress,
+        on_compact,
+        presentation,
+        session_id,
+        user_message,
+        on_result,
+    ):
         """Remote 모드: soul 서버에 실행을 위임"""
         adapter = self._get_service_adapter()
-        original_thread_ts = ctx.original_thread_ts
-        request_id = original_thread_ts  # thread_ts를 request_id로 사용
+        request_id = thread_ts  # thread_ts를 request_id로 사용
 
         # 실행 중인 request_id 추적 (인터벤션용)
-        self._active_remote_requests[original_thread_ts] = request_id
+        self._active_remote_requests[thread_ts] = request_id
 
         try:
             result = run_in_new_loop(
                 adapter.execute(
                     prompt=prompt,
                     request_id=request_id,
-                    resume_session_id=ctx.session.session_id,
-                    on_progress=ctx.on_progress,
-                    on_compact=ctx.on_compact,
+                    resume_session_id=session_id,
+                    on_progress=on_progress,
+                    on_compact=on_compact,
                 )
             )
 
-            self._process_result(ctx, result)
+            # 결과 콜백 호출 (OM 등)
+            if on_result:
+                on_result(result, thread_ts, user_message)
+
+            self._process_result(presentation, result, thread_ts)
 
         except Exception as e:
             logger.exception(f"[Remote] Claude 실행 오류: {e}")
-            self._result_processor.handle_exception(ctx, e)
+            self._result_processor.handle_exception(presentation, e)
         finally:
-            self._active_remote_requests.pop(original_thread_ts, None)
+            self._active_remote_requests.pop(thread_ts, None)
 
-    def _process_result(self, ctx: ExecutionContext, result):
+    def _process_result(self, presentation: Any, result, thread_ts: str):
         """실행 결과 처리
 
         세션 업데이트 후 결과 타입에 따라 핸들러를 호출합니다.
-        핸들러 메서드를 거쳐 ResultProcessor에 위임합니다.
         """
-        thread_ts = ctx.thread_ts
-
-        if result.session_id and result.session_id != ctx.session.session_id:
+        if result.session_id:
             self.session_manager.update_session_id(thread_ts, result.session_id)
+            # pctx에도 session_id 반영 (후속 콜백/핸들러에서 사용)
+            presentation.session_id = result.session_id
 
         self.session_manager.increment_message_count(thread_ts)
 
         if result.interrupted:
-            self._result_processor.handle_interrupted(ctx)
+            self._result_processor.handle_interrupted(presentation)
         elif result.is_error:
-            self._result_processor.handle_error(ctx, result.output or result.error)
+            self._result_processor.handle_error(presentation, result.output or result.error)
         elif result.success:
-            self._result_processor.handle_success(ctx, result)
+            self._result_processor.handle_success(presentation, result)
         else:
-            self._result_processor.handle_error(ctx, result.error)
-
+            self._result_processor.handle_error(presentation, result.error)

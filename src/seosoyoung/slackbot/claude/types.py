@@ -51,11 +51,3 @@ class SlackClient(Protocol):
 from seosoyoung.slackbot.claude.engine_types import ProgressCallback, CompactCallback
 SayFunction = Callable[..., Any]
 UpdateMessageFn = Callable[..., None]  # (client, channel, ts, text, *, blocks=None) -> None
-
-# OM(Observational Memory) 콜백 타입
-PrepareMemoryFn = Callable[
-    [str, Optional[str], Optional[str], Optional[str]],
-    tuple[Optional[str], str],
-]  # (thread_ts, channel, session_id, prompt) -> (memory_prompt, anchor_ts)
-TriggerObservationFn = Callable[..., None]  # (thread_ts, user_id, prompt, collected, anchor_ts) -> None
-OnCompactOMFlagFn = Callable[[str], None]  # (thread_ts) -> None

@@ -29,9 +29,9 @@ class TestProcessThreadMessage:
 
         assert result is True
         run_claude.assert_called_once()
-        args = run_claude.call_args
+        kwargs = run_claude.call_args.kwargs
         # 프롬프트에서 멘션이 제거되었는지 확인
-        prompt = args[0][1]
+        prompt = kwargs["prompt"]
         assert "<@BOT>" not in prompt
         assert "질문입니다" in prompt
 
@@ -71,7 +71,7 @@ class TestProcessThreadMessage:
         )
 
         run_claude.assert_called_once()
-        kwargs = run_claude.call_args[1]
+        kwargs = run_claude.call_args.kwargs
         assert kwargs["role"] == "admin"
 
     def test_handles_file_attachment(self):
@@ -196,6 +196,9 @@ class TestMentionHandlerThreadSession:
         """스레드 멘션 + 세션 없음 → 원샷 답변 경로"""
         handler_deps["session_manager"].get.return_value = None
         handler_deps["session_manager"].exists.return_value = False
+        mock_session = MagicMock()
+        mock_session.message_count = 0
+        handler_deps["session_manager"].create.return_value = mock_session
 
         with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process, \
              patch("seosoyoung.slackbot.handlers.mention.get_channel_history", return_value=""):
@@ -237,6 +240,9 @@ class TestMentionHandlerThreadSession:
     def test_channel_mention_not_affected(self, handler_deps):
         """채널 멘션 (thread_ts 없음) → 기존 로직 유지"""
         handler_deps["session_manager"].get.return_value = None
+        mock_session = MagicMock()
+        mock_session.message_count = 0
+        handler_deps["session_manager"].create.return_value = mock_session
 
         with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process, \
              patch("seosoyoung.slackbot.handlers.mention.get_channel_history", return_value=""):
