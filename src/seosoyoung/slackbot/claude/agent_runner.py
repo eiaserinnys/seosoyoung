@@ -10,17 +10,49 @@ from pathlib import Path
 from typing import IO, Any, Optional, Callable, Awaitable
 
 import psutil
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher, HookContext
-from claude_agent_sdk._errors import MessageParseError, ProcessError
-from claude_agent_sdk.types import (
-    AssistantMessage,
-    HookJSONOutput,
-    ResultMessage,
-    SystemMessage,
-    TextBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-)
+
+try:
+    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher, HookContext
+    from claude_agent_sdk._errors import MessageParseError, ProcessError
+    from claude_agent_sdk.types import (
+        AssistantMessage,
+        HookJSONOutput,
+        ResultMessage,
+        SystemMessage,
+        TextBlock,
+        ToolResultBlock,
+        ToolUseBlock,
+    )
+    SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
+    # 더미 클래스 (import 에러 방지)
+    class ClaudeAgentOptions:
+        pass
+    class ClaudeSDKClient:
+        pass
+    class HookMatcher:
+        pass
+    class HookContext:
+        pass
+    class MessageParseError(Exception):
+        pass
+    class ProcessError(Exception):
+        pass
+    class AssistantMessage:
+        pass
+    class HookJSONOutput:
+        pass
+    class ResultMessage:
+        pass
+    class SystemMessage:
+        pass
+    class TextBlock:
+        pass
+    class ToolResultBlock:
+        pass
+    class ToolUseBlock:
+        pass
 
 from seosoyoung.slackbot.claude.diagnostics import (
     DebugSendFn,

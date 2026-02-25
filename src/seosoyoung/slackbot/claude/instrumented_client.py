@@ -10,9 +10,22 @@ raw 스트림 단계에서 가로채어 관찰할 수 있게 한다.
 import logging
 from typing import AsyncIterator, Callable, Optional
 
-from claude_agent_sdk import ClaudeSDKClient
-from claude_agent_sdk._errors import CLIConnectionError
-from claude_agent_sdk.types import Message, ResultMessage
+try:
+    from claude_agent_sdk import ClaudeSDKClient
+    from claude_agent_sdk._errors import CLIConnectionError
+    from claude_agent_sdk.types import Message, ResultMessage
+    _SDK_AVAILABLE = True
+except ImportError:
+    _SDK_AVAILABLE = False
+    # 더미 클래스
+    class ClaudeSDKClient:
+        pass
+    class CLIConnectionError(Exception):
+        pass
+    class Message:
+        pass
+    class ResultMessage:
+        pass
 
 logger = logging.getLogger(__name__)
 

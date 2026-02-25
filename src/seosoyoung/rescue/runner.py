@@ -20,15 +20,42 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher, HookContext
-from claude_agent_sdk._errors import MessageParseError, ProcessError
-from claude_agent_sdk.types import (
-    AssistantMessage,
-    HookJSONOutput,
-    ResultMessage,
-    SystemMessage,
-    TextBlock,
-)
+try:
+    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher, HookContext
+    from claude_agent_sdk._errors import MessageParseError, ProcessError
+    from claude_agent_sdk.types import (
+        AssistantMessage,
+        HookJSONOutput,
+        ResultMessage,
+        SystemMessage,
+        TextBlock,
+    )
+    SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
+    # 더미 클래스 (import 에러 방지)
+    class ClaudeAgentOptions:
+        pass
+    class ClaudeSDKClient:
+        pass
+    class HookMatcher:
+        pass
+    class HookContext:
+        pass
+    class MessageParseError(Exception):
+        pass
+    class ProcessError(Exception):
+        pass
+    class AssistantMessage:
+        pass
+    class HookJSONOutput:
+        pass
+    class ResultMessage:
+        pass
+    class SystemMessage:
+        pass
+    class TextBlock:
+        pass
 
 from seosoyoung.rescue.config import RescueConfig
 from seosoyoung.slackbot.claude.sdk_compat import ParseAction, classify_parse_error
@@ -306,6 +333,13 @@ class RescueRunner:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
     ) -> RescueResult:
         """실제 실행 로직 (메인 봇 _execute와 동일한 구조)"""
+        if not SDK_AVAILABLE:
+            return RescueResult(
+                success=False,
+                output="",
+                error="Claude Agent SDK가 설치되지 않았습니다. pip install claude-agent-sdk를 실행하세요.",
+            )
+
         compact_events: list[dict] = []
         compact_notified_count = 0
         options, stderr_file = self._build_options(

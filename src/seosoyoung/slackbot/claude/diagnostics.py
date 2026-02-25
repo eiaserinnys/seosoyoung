@@ -10,7 +10,13 @@ from collections import deque
 from pathlib import Path
 from typing import Callable, Optional
 
-from claude_agent_sdk._errors import ProcessError
+try:
+    from claude_agent_sdk._errors import ProcessError
+except ImportError:
+    class ProcessError(Exception):
+        """더미 ProcessError"""
+        exit_code: int = 1
+        stderr: str = ""
 
 logger = logging.getLogger(__name__)
 

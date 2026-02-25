@@ -11,6 +11,7 @@ from seosoyoung.slackbot.claude.types import (
     CompactCallback,
 )
 from seosoyoung.slackbot.claude.agent_runner import (
+    SDK_AVAILABLE,
     ClaudeResult,
     ClaudeRunner,
     get_runner,
@@ -50,6 +51,7 @@ def get_claude_runner(
 
 
 __all__ = [
+    "SDK_AVAILABLE",
     "get_claude_runner",
     "ClaudeRunner",
     "ClaudeResult",
