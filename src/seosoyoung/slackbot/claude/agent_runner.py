@@ -503,7 +503,10 @@ class ClaudeRunner:
             except StopAsyncIteration:
                 return
             except MessageParseError as e:
-                if e.data and e.data.get("type") == "rate_limit_event":
+                msg_type = e.data.get("type") if isinstance(e.data, dict) else None
+
+                if msg_type == "rate_limit_event":
+                    # Agent SDK 방식: 모든 status에서 continue (CLI가 자체 처리)
                     rate_limit_info = e.data.get("rate_limit_info", {})
                     status = rate_limit_info.get("status", "")
 
@@ -516,20 +519,24 @@ class ClaudeRunner:
                         self._debug(warning_msg)
                         continue
 
-                    debug_msg = (
-                        f"🔍 rate_limit_event:\n"
-                        f"• status: `{status}`\n"
-                        f"• data: `{json.dumps(e.data, ensure_ascii=False)[:500]}`\n"
-                        f"• current_text: {len(msg_state.current_text)} chars"
-                    )
-                    self._debug(debug_msg)
-
+                    # rejected, rate_limited 등 — CLI가 자체 대기/재시도하므로 skip
                     logger.warning(
-                        f"rate_limit_event 발생 (status={status}): "
+                        f"rate_limit_event skip (status={status}): "
                         f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
                         f"resetsAt={rate_limit_info.get('resetsAt')}"
                     )
-                    return
+                    self._debug(
+                        f"⚠️ rate_limit `{status}` "
+                        f"(CLI 자체 처리 중, type={rate_limit_info.get('rateLimitType')})"
+                    )
+                    continue  # 핵심 변경: return → continue
+
+                if msg_type is not None:
+                    # 미래의 unknown type → forward-compatible skip
+                    logger.debug(f"Unknown message type skipped: {msg_type}")
+                    continue
+
+                # type 필드조차 없는 진짜 파싱 에러
                 raise
 
             msg_state.msg_count += 1
@@ -805,14 +812,27 @@ class ClaudeRunner:
                 error=friendly_msg,
             )
         except MessageParseError as e:
-            if e.data and e.data.get("type") == "rate_limit_event":
-                logger.warning(f"rate_limit_event로 실행 실패: {e}")
+            msg_type = e.data.get("type") if isinstance(e.data, dict) else None
+
+            if msg_type == "rate_limit_event":
+                logger.warning(f"rate_limit_event (외부 catch): {e}")
                 return EngineResult(
                     success=False,
                     output=msg_state.current_text,
                     session_id=msg_state.session_id,
                     error="사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요.",
                 )
+
+            if msg_type is not None:
+                # unknown type이 외부까지 전파된 경우
+                logger.warning(f"Unknown message type escaped loop: {msg_type}")
+                return EngineResult(
+                    success=False,
+                    output=msg_state.current_text,
+                    session_id=msg_state.session_id,
+                    error=f"알 수 없는 메시지 타입: {msg_type}",
+                )
+
             logger.exception(f"SDK 메시지 파싱 오류: {e}")
             return EngineResult(
                 success=False,
