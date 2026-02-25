@@ -19,16 +19,18 @@ class TestGetRoleConfigMCP:
     def test_admin_config_has_mcp_config(self):
         """admin 역할 config에 mcp_config_path가 설정됨"""
         from seosoyoung.slackbot.claude.executor import _get_role_config
+        from seosoyoung.slackbot.config import Config
 
-        config = _get_role_config("admin")
+        config = _get_role_config("admin", Config.auth.role_tools)
         assert config["mcp_config_path"] is not None
         assert config["mcp_config_path"].name == "mcp_config.json"
 
     def test_viewer_config_no_mcp_config(self):
         """viewer 역할은 MCP 도구를 사용하지 않음"""
         from seosoyoung.slackbot.claude.executor import _get_role_config
+        from seosoyoung.slackbot.config import Config
 
-        config = _get_role_config("viewer")
+        config = _get_role_config("viewer", Config.auth.role_tools)
         assert config["mcp_config_path"] is None
 
 
@@ -50,43 +52,6 @@ class TestMCPToolsInAllowedTools:
         viewer_tools = Config.auth.role_tools["viewer"]
         mcp_tools = [t for t in viewer_tools if t.startswith("mcp__")]
         assert len(mcp_tools) == 0, "viewer에 MCP 도구가 있으면 안됨"
-
-
-class TestBuildOptionsEnvInjection:
-    """_build_options()가 SLACK_CHANNEL/SLACK_THREAD_TS를 env에 주입하는지 검증"""
-
-    def test_env_includes_slack_context_when_channel_and_thread_provided(self):
-        """channel과 thread_ts가 주어지면 env에 포함됨"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
-
-        runner = ClaudeRunner("1234567890.123456", channel="C12345")
-        options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
-
-        assert options.env is not None
-        assert options.env.get("SLACK_CHANNEL") == "C12345"
-        assert options.env.get("SLACK_THREAD_TS") == "1234567890.123456"
-
-    def test_env_is_always_dict(self):
-        """env는 항상 dict (SDK가 os.environ과 merge하므로)"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
-
-        runner = ClaudeRunner("1234567890.123456", channel="C12345")
-        options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
-
-        assert isinstance(options.env, dict)
-        # SDK가 {**os.environ, **options.env}로 merge하므로
-        # options.env에는 슬랙 컨텍스트만 있어도 됨
-        assert "SLACK_CHANNEL" in options.env
-
-    def test_env_no_slack_context_when_no_channel_or_thread(self):
-        """channel/thread_ts가 없으면 env에 슬랙 컨텍스트가 없음"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
-
-        runner = ClaudeRunner()  # channel/thread_ts 미지정
-        options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
-
-        assert isinstance(options.env, dict)
-        assert "SLACK_CHANNEL" not in options.env
 
 
 class TestMCPConfigFile:

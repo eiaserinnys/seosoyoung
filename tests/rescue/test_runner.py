@@ -17,7 +17,6 @@ from seosoyoung.rescue.runner import (
 # MCP 슬랙 도구 목록 (허용 대상)
 SLACK_MCP_TOOLS = [
     "mcp__seosoyoung-attach__slack_attach_file",
-    "mcp__seosoyoung-attach__slack_get_context",
     "mcp__seosoyoung-attach__slack_post_message",
     "mcp__seosoyoung-attach__slack_download_thread_files",
     "mcp__seosoyoung-attach__slack_generate_image",

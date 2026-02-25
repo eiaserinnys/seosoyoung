@@ -124,7 +124,7 @@
 - `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:224): Claude Code SDK 기반 실행기
 - `EngineResult` (seosoyoung/slackbot/claude/engine_types.py:13): Claude Code 엔진의 순수 실행 결과
 - `RoleConfig` (seosoyoung/slackbot/claude/engine_types.py:31): 역할별 도구 접근 설정
-- `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:34): Claude Code 실행기
+- `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:59): Claude Code 실행기
 - `PendingPrompt` (seosoyoung/slackbot/claude/intervention.py:17): 인터벤션 대기 중인 프롬프트 정보
 - `InterventionManager` (seosoyoung/slackbot/claude/intervention.py:34): 인터벤션 관리자
 - `ResultProcessor` (seosoyoung/slackbot/claude/result_processor.py:20): Claude 실행 결과를 처리하여 슬랙에 응답
@@ -148,14 +148,14 @@
 - `ConfigurationError` (seosoyoung/slackbot/config.py:18): 설정 오류 예외
 - `SlackConfig` (seosoyoung/slackbot/config.py:60): Slack 연결 설정
 - `AuthConfig` (seosoyoung/slackbot/config.py:70): 권한 설정
-- `TrelloConfig` (seosoyoung/slackbot/config.py:103): Trello 설정
-- `TranslateConfig` (seosoyoung/slackbot/config.py:124): 번역 설정
-- `GeminiConfig` (seosoyoung/slackbot/config.py:145): Gemini 설정 (이미지 생성)
-- `OMConfig` (seosoyoung/slackbot/config.py:153): Observational Memory 설정
-- `ChannelObserverConfig` (seosoyoung/slackbot/config.py:179): Channel Observer 설정
-- `ClaudeConfig` (seosoyoung/slackbot/config.py:232): Claude 실행 모드 설정
-- `EmojiConfig` (seosoyoung/slackbot/config.py:243): 이모지 설정
-- `Config` (seosoyoung/slackbot/config.py:271): 애플리케이션 설정
+- `TrelloConfig` (seosoyoung/slackbot/config.py:102): Trello 설정
+- `TranslateConfig` (seosoyoung/slackbot/config.py:123): 번역 설정
+- `GeminiConfig` (seosoyoung/slackbot/config.py:144): Gemini 설정 (이미지 생성)
+- `OMConfig` (seosoyoung/slackbot/config.py:152): Observational Memory 설정
+- `ChannelObserverConfig` (seosoyoung/slackbot/config.py:178): Channel Observer 설정
+- `ClaudeConfig` (seosoyoung/slackbot/config.py:231): Claude 실행 모드 설정
+- `EmojiConfig` (seosoyoung/slackbot/config.py:242): 이모지 설정
+- `Config` (seosoyoung/slackbot/config.py:270): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/slackbot/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:13): 멘션으로 처리 중인 스레드를 추적
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커

@@ -234,10 +234,7 @@ class TestRunWithSDKClient:
                 with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
                     with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                         with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
-                            result = await runner.run(
-                                "테스트",
-                                user_id="user-1",
-                            )
+                            result = await runner.run("테스트")
 
         assert result.success is True
         assert len(result.collected_messages) > 0
@@ -354,7 +351,7 @@ class TestRunWithSessionResume:
 
     async def test_run_with_session_id_sets_resume(self):
         """session_id가 있으면 options.resume에 설정되는지 확인"""
-        runner = ClaudeRunner("thread-1", channel="C12345")
+        runner = ClaudeRunner("thread-1")
 
         captured_options = []
         mock_client = _make_mock_client(
@@ -363,8 +360,8 @@ class TestRunWithSessionResume:
 
         original_build = runner._build_options
 
-        def capture_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            opts = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+        def capture_build(session_id=None, compact_events=None):
+            opts = original_build(session_id=session_id, compact_events=compact_events)
             captured_options.append(opts)
             return opts
 
@@ -377,7 +374,7 @@ class TestRunWithSessionResume:
                     )
 
         assert len(captured_options) > 0
-        options, _memory_prompt, _anchor_ts, _stderr_file = captured_options[0]
+        options, _stderr_file = captured_options[0]
         assert options.resume == "existing-session"
 
 

@@ -243,13 +243,13 @@ class TestAutoMoveNoticeInPrompts:
     def test_to_go_execute_prompt_has_auto_move_notice(self, mock_config, mock_trello_client):
         """실행 모드 프롬프트에 자동 이동 안내 포함"""
         mock_config.get_session_path.return_value = "/tmp/sessions"
-        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
-        mock_config.TRELLO_WATCH_LISTS = {}
-        mock_config.TRELLO_REVIEW_LIST_ID = None
-        mock_config.TRELLO_DONE_LIST_ID = None
-        mock_config.TRELLO_DRAFT_LIST_ID = None
-        mock_config.TRELLO_BACKLOG_LIST_ID = None
-        mock_config.TRELLO_BLOCKED_LIST_ID = None
+        mock_config.trello.notify_channel = "C12345"
+        mock_config.trello.watch_lists = {}
+        mock_config.trello.review_list_id = None
+        mock_config.trello.done_list_id = None
+        mock_config.trello.draft_list_id = None
+        mock_config.trello.backlog_list_id = None
+        mock_config.trello.blocked_list_id = None
 
         from seosoyoung.slackbot.trello.watcher import TrelloWatcher
         from seosoyoung.slackbot.trello.client import TrelloCard
@@ -269,7 +269,7 @@ class TestAutoMoveNoticeInPrompts:
             labels=[],
         )
 
-        prompt = watcher._build_to_go_prompt(card, has_execute=True)
+        prompt = watcher.prompt_builder.build_to_go(card, has_execute=True)
         assert "이미 워처에 의해 🔨 In Progress로 이동되었습니다" in prompt
         assert "In Progress로 이동하지 마세요" in prompt
 
@@ -278,13 +278,13 @@ class TestAutoMoveNoticeInPrompts:
     def test_to_go_plan_prompt_has_auto_move_notice(self, mock_config, mock_trello_client):
         """계획 모드 프롬프트에 자동 이동 안내 포함"""
         mock_config.get_session_path.return_value = "/tmp/sessions"
-        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
-        mock_config.TRELLO_WATCH_LISTS = {}
-        mock_config.TRELLO_REVIEW_LIST_ID = None
-        mock_config.TRELLO_DONE_LIST_ID = None
-        mock_config.TRELLO_DRAFT_LIST_ID = None
-        mock_config.TRELLO_BACKLOG_LIST_ID = None
-        mock_config.TRELLO_BLOCKED_LIST_ID = None
+        mock_config.trello.notify_channel = "C12345"
+        mock_config.trello.watch_lists = {}
+        mock_config.trello.review_list_id = None
+        mock_config.trello.done_list_id = None
+        mock_config.trello.draft_list_id = None
+        mock_config.trello.backlog_list_id = None
+        mock_config.trello.blocked_list_id = None
 
         from seosoyoung.slackbot.trello.watcher import TrelloWatcher
         from seosoyoung.slackbot.trello.client import TrelloCard
@@ -304,7 +304,7 @@ class TestAutoMoveNoticeInPrompts:
             labels=[],
         )
 
-        prompt = watcher._build_to_go_prompt(card, has_execute=False)
+        prompt = watcher.prompt_builder.build_to_go(card, has_execute=False)
         assert "이미 워처에 의해 🔨 In Progress로 이동되었습니다" in prompt
         assert "In Progress로 이동하지 마세요" in prompt
         assert "📦 Backlog로 이동하세요" in prompt
@@ -322,11 +322,11 @@ class TestListRunSaySignature:
         정주행용 say()도 thread_ts 키워드를 받아야 TypeError가 발생하지 않음.
         """
         mock_config.get_session_path.return_value = "/tmp/sessions"
-        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
-        mock_config.TRELLO_WATCH_LISTS = {}
-        mock_config.TRELLO_REVIEW_LIST_ID = None
-        mock_config.TRELLO_DONE_LIST_ID = None
-        mock_config.TRELLO_IN_PROGRESS_LIST_ID = None
+        mock_config.trello.notify_channel = "C12345"
+        mock_config.trello.watch_lists = {}
+        mock_config.trello.review_list_id = None
+        mock_config.trello.done_list_id = None
+        mock_config.trello.in_progress_list_id = None
 
         from seosoyoung.slackbot.trello.watcher import TrelloWatcher, TrackedCard
         from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
@@ -365,30 +365,26 @@ class TestListRunSaySignature:
                 labels=[],
             )
 
-            # _process_list_run_card 내부에서 생성되는 say 함수를 시뮬레이션
-            # watcher._process_list_run_card를 직접 호출하지 않고,
-            # 해당 메서드 내의 say 함수 패턴을 재현하여 테스트
             thread_ts = "1234567890.123456"
 
-            # say 함수를 캡처하기 위해 claude_runner_factory를 이용
-            captured_say = {}
+            # say를 PresentationContext에서 캡처하기 위해 claude_runner_factory를 이용
+            captured_pctx = {}
 
             def capturing_factory(**kwargs):
-                captured_say["say"] = kwargs.get("say")
+                captured_pctx["presentation"] = kwargs.get("presentation")
                 # 실행 완료 표시를 위해 mark_card_processed 호출
                 list_runner.mark_card_processed(session.session_id, card.id, "completed")
 
             watcher.claude_runner_factory = capturing_factory
 
-            # _process_list_run_card 호출 (별도 스레드 방지를 위해 직접 호출)
             # get_session_lock을 None으로 설정하여 lock 부분 스킵
             watcher.get_session_lock = None
 
             watcher._process_list_run_card(session.session_id, thread_ts)
 
-            # say 함수가 캡처되었는지 확인
-            assert "say" in captured_say, "say 함수가 claude_runner_factory에 전달되어야 함"
-            say_fn = captured_say["say"]
+            # PresentationContext에서 say 함수를 가져옴
+            assert "presentation" in captured_pctx, "presentation이 claude_runner_factory에 전달되어야 함"
+            say_fn = captured_pctx["presentation"].say
 
             # 핵심 테스트: send_long_message를 통해 호출했을 때 TypeError가 발생하지 않아야 함
             # send_long_message는 say(text=..., thread_ts=thread_ts)로 호출

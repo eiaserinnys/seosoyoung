@@ -35,7 +35,6 @@ class TestMCPServerStandalone:
 
         tools = list(mcp._tool_manager._tools.keys())
         assert "slack_attach_file" in tools
-        assert "slack_get_context" in tools
         assert "slack_post_message" in tools
         assert "slack_generate_image" in tools
         assert "slack_download_thread_files" in tools
@@ -48,7 +47,7 @@ class TestMCPServerStandalone:
         assert "npc_inject" in tools
         assert "slack_download_user_avatar" in tools
         assert "slack_get_user_profile" in tools
-        assert len(tools) == 14
+        assert len(tools) == 13
 
     def test_get_context_reads_env(self):
         """slack_get_context가 환경변수에서 값을 읽음"""
@@ -168,16 +167,6 @@ class TestMCPE2ETrelloFlow:
         tmp.close()
         return tmp.name
 
-    def test_runner_env_injection_for_trello(self):
-        """트렐로 모드: _build_options에서 SLACK_CHANNEL/THREAD_TS가 env에 주입됨"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
-
-        runner = ClaudeRunner("2222222222.000001", channel="C_TRELLO_NOTIFY")
-        options, _memory_prompt, _anchor_ts, _stderr_file = runner._build_options()
-
-        assert options.env["SLACK_CHANNEL"] == "C_TRELLO_NOTIFY"
-        assert options.env["SLACK_THREAD_TS"] == "2222222222.000001"
-
     @patch("seosoyoung.mcp.tools.attach._get_slack_client")
     def test_attach_in_trello_thread(self, mock_get_client):
         """트렐로 스레드에서 파일 첨부"""
@@ -204,8 +193,9 @@ class TestMCPE2ETrelloFlow:
     def test_admin_config_has_mcp_for_trello(self):
         """admin 역할 config에 MCP 설정이 있어 트렐로 모드에서도 첨부 가능"""
         from seosoyoung.slackbot.claude.executor import _get_role_config
+        from seosoyoung.slackbot.config import Config
 
-        config = _get_role_config("admin")
+        config = _get_role_config("admin", Config.auth.role_tools)
         assert config["mcp_config_path"] is not None
         assert "mcp__seosoyoung-attach__slack_attach_file" in config["allowed_tools"]
 
@@ -362,7 +352,7 @@ class TestMCPConfigIntegrity:
         from seosoyoung.slackbot.config import Config
 
         mcp_tools = [t for t in Config.auth.role_tools["admin"] if "seosoyoung-attach" in t]
-        assert len(mcp_tools) == 11
+        assert len(mcp_tools) == 10
 
     def test_viewer_has_no_mcp_tools(self):
         """viewer 역할에는 MCP 도구 없음"""

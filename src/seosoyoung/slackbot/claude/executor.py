@@ -31,6 +31,31 @@ def _get_mcp_config_path() -> Optional[Path]:
     return config_path if config_path.exists() else None
 
 
+def _get_role_config(role: str, role_tools: dict) -> dict:
+    """역할에 맞는 runner 설정을 반환 (모듈 레벨 함수)
+
+    Args:
+        role: 실행 역할 ("admin", "viewer" 등)
+        role_tools: 역할별 허용 도구 딕셔너리
+
+    Returns:
+        dict with keys: allowed_tools, disallowed_tools, mcp_config_path
+    """
+    allowed_tools = role_tools.get(role, role_tools.get("viewer", []))
+
+    if role == "viewer":
+        return {
+            "allowed_tools": allowed_tools,
+            "disallowed_tools": ["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"],
+            "mcp_config_path": None,
+        }
+    return {
+        "allowed_tools": allowed_tools,
+        "disallowed_tools": None,
+        "mcp_config_path": _get_mcp_config_path(),
+    }
+
+
 class ClaudeExecutor:
     """Claude Code 실행기
 
@@ -324,24 +349,8 @@ class ClaudeExecutor:
                 self._result_processor.handle_exception(presentation, e)
 
     def _get_role_config(self, role: str) -> dict:
-        """역할에 맞는 runner 설정을 반환
-
-        Returns:
-            dict with keys: allowed_tools, disallowed_tools, mcp_config_path
-        """
-        allowed_tools = self.role_tools.get(role, self.role_tools.get("viewer", []))
-
-        if role == "viewer":
-            return {
-                "allowed_tools": allowed_tools,
-                "disallowed_tools": ["Write", "Edit", "Bash", "TodoWrite", "WebFetch", "WebSearch", "Task"],
-                "mcp_config_path": None,
-            }
-        return {
-            "allowed_tools": allowed_tools,
-            "disallowed_tools": None,
-            "mcp_config_path": _get_mcp_config_path(),
-        }
+        """역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)"""
+        return _get_role_config(role, self.role_tools)
 
     def _get_service_adapter(self):
         """Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환"""
