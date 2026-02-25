@@ -111,7 +111,7 @@ class TestOptimizeForContext:
 
     def test_single_large_section(self):
         """단일 섹션이 max_tokens를 초과할 때"""
-        text = "x" * 100000
+        text = "x" * 5000
         result = optimize_for_context(text, max_tokens=100)
         assert len(result) < len(text)
 
