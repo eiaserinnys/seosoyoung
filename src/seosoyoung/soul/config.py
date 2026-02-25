@@ -78,8 +78,11 @@ class Settings:
     session_timeout_seconds: int = 1800  # 30분
 
     # Runner Pool 설정
-    runner_pool_max_size: int = 5       # idle pool 최대 크기 (session + generic 합산)
-    runner_pool_idle_ttl: float = 300.0  # 유휴 runner TTL (초)
+    runner_pool_max_size: int = 5           # idle pool 최대 크기 (session + generic 합산)
+    runner_pool_idle_ttl: float = 300.0     # 유휴 runner TTL (초)
+    runner_pool_pre_warm: int = 2           # 기동 시 예열할 generic runner 수
+    runner_pool_maintenance_interval: float = 60.0  # 유지보수 루프 실행 간격 (초)
+    runner_pool_min_generic: int = 1        # generic pool 최소 유지 수량
 
     # 로깅
     log_level: str = "INFO"
@@ -119,6 +122,21 @@ class Settings:
                 os.getenv("RUNNER_POOL_IDLE_TTL", str(cls.runner_pool_idle_ttl)),
                 cls.runner_pool_idle_ttl,
                 "RUNNER_POOL_IDLE_TTL"
+            ),
+            runner_pool_pre_warm=_safe_int(
+                os.getenv("RUNNER_POOL_PRE_WARM", str(cls.runner_pool_pre_warm)),
+                cls.runner_pool_pre_warm,
+                "RUNNER_POOL_PRE_WARM"
+            ),
+            runner_pool_maintenance_interval=_safe_float(
+                os.getenv("RUNNER_POOL_MAINTENANCE_INTERVAL", str(cls.runner_pool_maintenance_interval)),
+                cls.runner_pool_maintenance_interval,
+                "RUNNER_POOL_MAINTENANCE_INTERVAL"
+            ),
+            runner_pool_min_generic=_safe_int(
+                os.getenv("RUNNER_POOL_MIN_GENERIC", str(cls.runner_pool_min_generic)),
+                cls.runner_pool_min_generic,
+                "RUNNER_POOL_MIN_GENERIC"
             ),
             log_level=os.getenv("LOG_LEVEL", cls.log_level),
             log_format=os.getenv("LOG_FORMAT", cls.log_format),

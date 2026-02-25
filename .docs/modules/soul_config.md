@@ -16,9 +16,9 @@ Seosoyoung Soul - Configuration
 
 #### 메서드
 
-- `from_env(cls)` (줄 92): 환경변수에서 설정 로드
-- `is_production(self)` (줄 133): 
-- `is_development(self)` (줄 137): 
+- `from_env(cls)` (줄 95): 환경변수에서 설정 로드
+- `is_production(self)` (줄 151): 
+- `is_development(self)` (줄 155): 
 
 ## 함수
 
@@ -47,12 +47,12 @@ Returns:
     변환된 float 값 또는 기본값
 
 ### `get_settings()`
-- 위치: 줄 142
+- 위치: 줄 160
 - 데코레이터: lru_cache
 - 설명: 설정 싱글톤 반환
 
 ### `setup_logging(settings)`
-- 위치: 줄 147
+- 위치: 줄 165
 - 설명: 로깅 설정
 
 프로덕션: JSON 포맷 (구조화된 로그)

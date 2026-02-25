@@ -68,12 +68,24 @@ async def lifespan(app: FastAPI):
         max_size=settings.runner_pool_max_size,
         idle_ttl=settings.runner_pool_idle_ttl,
         workspace_dir=settings.workspace_dir,
+        min_generic=settings.runner_pool_min_generic,
+        maintenance_interval=settings.runner_pool_maintenance_interval,
     )
     init_soul_engine(pool=pool)
     logger.info(
         f"  Runner pool initialized: max_size={settings.runner_pool_max_size}, "
-        f"idle_ttl={settings.runner_pool_idle_ttl}s"
+        f"idle_ttl={settings.runner_pool_idle_ttl}s, "
+        f"min_generic={settings.runner_pool_min_generic}"
     )
+
+    # Pre-warm: generic runner 예열
+    if settings.runner_pool_pre_warm > 0:
+        warmed = await pool.pre_warm(settings.runner_pool_pre_warm)
+        logger.info(f"  Runner pool pre-warmed: {warmed}/{settings.runner_pool_pre_warm}개")
+
+    # 유지보수 루프 시작
+    await pool.start_maintenance()
+    logger.info(f"  Runner pool maintenance loop started (interval={settings.runner_pool_maintenance_interval}s)")
 
     # TaskManager 초기화 및 로드
     storage_path = Path(settings.workspace_dir) / "data" / "tasks.json"

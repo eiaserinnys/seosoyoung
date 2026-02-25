@@ -38,6 +38,8 @@ class ClaudeRunnerPool:
         allowed_tools: Optional[list] = None,
         disallowed_tools: Optional[list] = None,
         mcp_config_path: Optional[Path] = None,
+        min_generic: int = 1,
+        maintenance_interval: float = 60.0,
     ):
         self._max_size = max_size
         self._idle_ttl = idle_ttl
@@ -45,6 +47,8 @@ class ClaudeRunnerPool:
         self._allowed_tools = allowed_tools
         self._disallowed_tools = disallowed_tools
         self._mcp_config_path = mcp_config_path
+        self._min_generic = min_generic
+        self._maintenance_interval = maintenance_interval
 
         # session pool: session_id → (runner, last_used_time)
         # OrderedDict 순서 = 삽입/갱신 순서 → 첫 번째 항목이 LRU
@@ -60,6 +64,9 @@ class ClaudeRunnerPool:
 
         self._lock = asyncio.Lock()
 
+        # 유지보수 루프 태스크 참조
+        self._maintenance_task: Optional[asyncio.Task] = None
+
     # -------------------------------------------------------------------------
     # 내부 헬퍼
     # -------------------------------------------------------------------------
@@ -69,13 +76,14 @@ class ClaudeRunnerPool:
         return len(self._session_pool) + len(self._generic_pool)
 
     def _make_runner(self) -> ClaudeRunner:
-        """새 ClaudeRunner 인스턴스 생성"""
+        """새 ClaudeRunner 인스턴스 생성 (pooled=True)"""
         return ClaudeRunner(
             thread_ts="",
             working_dir=Path(self._workspace_dir) if self._workspace_dir else None,
             allowed_tools=self._allowed_tools,
             disallowed_tools=self._disallowed_tools,
             mcp_config_path=self._mcp_config_path,
+            pooled=True,
         )
 
     async def _discard(self, runner: ClaudeRunner, reason: str = "") -> None:
@@ -181,12 +189,147 @@ class ClaudeRunnerPool:
         async with self._lock:
             await self._evict_lru_unlocked()
 
+    async def pre_warm(self, count: int) -> int:
+        """N개의 generic runner를 미리 생성하여 generic pool에 추가
+
+        각 runner는 ClaudeRunner(pooled=True)로 생성 후 _get_or_create_client()를 호출합니다.
+        에러는 로그만 남기고 계속 진행합니다 (부분 예열 허용).
+
+        Returns:
+            성공적으로 예열된 runner 수
+        """
+        if count <= 0:
+            return 0
+
+        success = 0
+        for i in range(count):
+            try:
+                runner = self._make_runner()
+                await runner._get_or_create_client()
+                async with self._lock:
+                    now = time.monotonic()
+                    if self._total_size() >= self._max_size:
+                        await self._evict_lru_unlocked()
+                    self._generic_pool.append((runner, now))
+                success += 1
+                logger.info(f"Pre-warm: runner {i + 1}/{count} 예열 완료")
+            except Exception as e:
+                logger.warning(f"Pre-warm: runner {i + 1}/{count} 예열 실패 (계속 진행): {e}")
+
+        logger.info(f"Pre-warm 완료: {success}/{count}개 성공")
+        return success
+
+    async def _run_maintenance(self) -> None:
+        """유지보수 작업 1회 실행
+
+        - TTL 초과 유휴 runner 정리 (session + generic)
+        - 죽은 subprocess 감지 및 제거
+        - generic pool이 min_generic 미만이면 보충
+        """
+        now = time.monotonic()
+        to_discard: list[tuple[ClaudeRunner, str]] = []
+
+        async with self._lock:
+            # --- generic pool 정리 ---
+            new_generic: deque[tuple[ClaudeRunner, float]] = deque()
+            while self._generic_pool:
+                runner, idle_since = self._generic_pool.popleft()
+                # TTL 초과 확인
+                if now - idle_since > self._idle_ttl:
+                    to_discard.append((runner, "generic ttl_expired"))
+                    continue
+                # 죽은 subprocess 감지
+                if not runner._is_cli_alive():
+                    to_discard.append((runner, "generic dead_subprocess"))
+                    continue
+                new_generic.append((runner, idle_since))
+            self._generic_pool = new_generic
+
+            # --- session pool 정리 ---
+            dead_sessions: list[str] = []
+            for session_id, (runner, last_used) in list(self._session_pool.items()):
+                if now - last_used > self._idle_ttl:
+                    dead_sessions.append(session_id)
+                    to_discard.append((runner, f"session ttl_expired: {session_id}"))
+                elif not runner._is_cli_alive():
+                    dead_sessions.append(session_id)
+                    to_discard.append((runner, f"session dead_subprocess: {session_id}"))
+
+            for session_id in dead_sessions:
+                del self._session_pool[session_id]
+
+        # 락 바깥에서 discard (disconnect는 느릴 수 있음)
+        for runner, reason in to_discard:
+            await self._discard(runner, reason=reason)
+
+        if to_discard:
+            logger.info(f"Maintenance: {len(to_discard)}개 runner 정리 ({[r for _, r in to_discard]})")
+
+        # --- generic pool 보충 ---
+        async with self._lock:
+            current_generic = len(self._generic_pool)
+
+        shortage = self._min_generic - current_generic
+        if shortage > 0:
+            logger.info(f"Maintenance: generic pool 보충 필요 ({current_generic} < {self._min_generic})")
+            replenished = 0
+            for _ in range(shortage):
+                try:
+                    runner = self._make_runner()
+                    await runner._get_or_create_client()
+                    async with self._lock:
+                        now = time.monotonic()
+                        if self._total_size() >= self._max_size:
+                            await self._evict_lru_unlocked()
+                        self._generic_pool.append((runner, now))
+                    replenished += 1
+                except Exception as e:
+                    logger.warning(f"Maintenance: generic runner 보충 실패: {e}")
+            logger.info(f"Maintenance: {replenished}개 generic runner 보충")
+
+    async def _maintenance_loop(self) -> None:
+        """백그라운드 유지보수 루프
+
+        _maintenance_interval 초마다 _run_maintenance()를 호출합니다.
+        asyncio.CancelledError가 발생하면 정상 종료합니다.
+        """
+        logger.info(f"Maintenance loop 시작 (interval={self._maintenance_interval}s)")
+        try:
+            while True:
+                await asyncio.sleep(self._maintenance_interval)
+                try:
+                    await self._run_maintenance()
+                except Exception as e:
+                    logger.error(f"Maintenance loop 오류 (계속 진행): {e}")
+        except asyncio.CancelledError:
+            logger.info("Maintenance loop 종료")
+
+    async def start_maintenance(self) -> None:
+        """유지보수 루프 백그라운드 태스크 시작
+
+        이미 실행 중인 경우 중복 시작하지 않습니다.
+        """
+        if self._maintenance_task is not None and not self._maintenance_task.done():
+            logger.debug("Maintenance loop already running, skipping start")
+            return
+        self._maintenance_task = asyncio.create_task(self._maintenance_loop())
+        logger.info("Maintenance loop task started")
+
     async def shutdown(self) -> int:
-        """모든 runner disconnect
+        """모든 runner disconnect 및 유지보수 루프 취소
 
         Returns:
             종료된 runner 수
         """
+        # 유지보수 루프 취소
+        if self._maintenance_task and not self._maintenance_task.done():
+            self._maintenance_task.cancel()
+            try:
+                await self._maintenance_task
+            except asyncio.CancelledError:
+                pass
+            self._maintenance_task = None
+
         async with self._lock:
             count = 0
 

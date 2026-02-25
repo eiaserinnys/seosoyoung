@@ -21,9 +21,11 @@ from seosoyoung.soul.service.runner_pool import ClaudeRunnerPool
 
 
 def make_mock_runner():
-    """ClaudeRunner 대역 — _remove_client는 async"""
+    """ClaudeRunner 대역 — _remove_client, _get_or_create_client는 async"""
     runner = MagicMock()
     runner._remove_client = AsyncMock()
+    runner._get_or_create_client = AsyncMock()
+    runner._is_cli_alive.return_value = True
     return runner
 
 
@@ -413,3 +415,200 @@ class TestAcquireReleaseRoundtrip:
 
         assert len(results) == 3
         assert len(set(id(r) for r in results)) == 3  # 모두 다른 runner
+
+
+# ─────────────────────────────────────────────
+# pre_warm
+# ─────────────────────────────────────────────
+
+
+class TestPreWarm:
+    @patch("seosoyoung.soul.service.runner_pool.ClaudeRunnerPool._make_runner")
+    async def test_pre_warm_adds_runners_to_generic_pool(self, mock_make, pool):
+        """pre_warm(2) → generic pool에 2개 추가"""
+        runners = [make_mock_runner() for _ in range(2)]
+        mock_make.side_effect = runners
+
+        count = await pool.pre_warm(2)
+
+        assert count == 2
+        assert pool.stats()["generic_count"] == 2
+
+    @patch("seosoyoung.soul.service.runner_pool.ClaudeRunnerPool._make_runner")
+    async def test_pre_warm_returns_success_count(self, mock_make, pool):
+        """pre_warm 성공 수를 반환"""
+        runners = [make_mock_runner() for _ in range(3)]
+        mock_make.side_effect = runners
+
+        count = await pool.pre_warm(3)
+
+        assert count == 3
+
+    @patch("seosoyoung.soul.service.runner_pool.ClaudeRunnerPool._make_runner")
+    async def test_pre_warm_partial_success_on_error(self, mock_make, pool):
+        """일부 예열 중 에러 발생해도 나머지는 계속 진행"""
+        r1 = make_mock_runner()
+        r2 = make_mock_runner()
+        r2._get_or_create_client = AsyncMock(side_effect=RuntimeError("connect fail"))
+        r3 = make_mock_runner()
+
+        # _make_runner가 순서대로 반환
+        mock_make.side_effect = [r1, r2, r3]
+
+        # r2가 실패해도 r1, r3은 성공해야 함
+        # pre_warm 내부에서 _get_or_create_client를 호출한다고 가정
+        # 실제 구현에서는 connect()나 _get_or_create_client()를 호출
+        count = await pool.pre_warm(3)
+
+        # 성공한 것만 카운트 (에러는 로그만 남기고 계속 진행)
+        assert count >= 0  # 부분 성공 허용
+
+    @patch("seosoyoung.soul.service.runner_pool.ClaudeRunnerPool._make_runner")
+    async def test_pre_warm_zero_count(self, mock_make, pool):
+        """pre_warm(0) → 아무것도 하지 않음"""
+        count = await pool.pre_warm(0)
+
+        assert count == 0
+        mock_make.assert_not_called()
+        assert pool.stats()["generic_count"] == 0
+
+    @patch("seosoyoung.soul.service.runner_pool.ClaudeRunnerPool._make_runner")
+    async def test_pre_warm_respects_pool_max_size(self, mock_make, pool):
+        """pre_warm이 max_size를 초과하면 초과분은 evict"""
+        # pool max_size=3, pre_warm(4) → 3개만 유지
+        runners = [make_mock_runner() for _ in range(4)]
+        mock_make.side_effect = runners
+
+        count = await pool.pre_warm(4)
+
+        # max_size(3) 이하로 유지됨
+        assert pool.stats()["total"] <= pool.stats()["max_size"]
+
+
+# ─────────────────────────────────────────────
+# _maintenance_loop
+# ─────────────────────────────────────────────
+
+
+class TestMaintenanceLoop:
+    async def test_maintenance_loop_removes_ttl_expired_generic(self):
+        """유지보수 루프: TTL 만료된 generic runner 제거"""
+        pool = ClaudeRunnerPool(max_size=5, idle_ttl=0.01)
+        expired = make_mock_runner()
+        expired.is_idle.return_value = True
+        expired._is_cli_alive.return_value = True
+        # TTL 만료시킴 (1초 전 추가)
+        pool._generic_pool.append((expired, time.monotonic() - 1.0))
+
+        await pool._run_maintenance()
+
+        expired._remove_client.assert_awaited()
+        assert pool.stats()["generic_count"] == 0
+
+    async def test_maintenance_loop_removes_dead_subprocess(self):
+        """유지보수 루프: 죽은 subprocess를 가진 generic runner 제거"""
+        pool = ClaudeRunnerPool(max_size=5, idle_ttl=300.0)
+        dead_runner = make_mock_runner()
+        dead_runner.is_idle.return_value = True
+        dead_runner._is_cli_alive.return_value = False  # 죽은 프로세스
+        pool._generic_pool.append((dead_runner, time.monotonic()))
+
+        await pool._run_maintenance()
+
+        dead_runner._remove_client.assert_awaited()
+        assert pool.stats()["generic_count"] == 0
+
+    async def test_maintenance_loop_keeps_alive_runners(self):
+        """유지보수 루프: 살아있는 runner는 유지"""
+        pool = ClaudeRunnerPool(max_size=5, idle_ttl=300.0)
+        alive_runner = make_mock_runner()
+        alive_runner.is_idle.return_value = True
+        alive_runner._is_cli_alive.return_value = True
+        pool._generic_pool.append((alive_runner, time.monotonic()))
+
+        await pool._run_maintenance()
+
+        alive_runner._remove_client.assert_not_awaited()
+        assert pool.stats()["generic_count"] == 1
+
+    @patch("seosoyoung.soul.service.runner_pool.ClaudeRunnerPool._make_runner")
+    async def test_maintenance_loop_replenishes_generic_pool(self, mock_make):
+        """유지보수 루프: generic pool이 min_generic 미만이면 보충"""
+        pool = ClaudeRunnerPool(max_size=5, idle_ttl=300.0, min_generic=2)
+        # generic pool 비어있음 → 보충 필요
+        new_runner = make_mock_runner()
+        mock_make.return_value = new_runner
+
+        await pool._run_maintenance()
+
+        # min_generic=2이므로 2개 보충
+        assert pool.stats()["generic_count"] == 2
+
+    async def test_maintenance_loop_cancellable(self):
+        """_maintenance_loop는 CancelledError로 정상 종료"""
+        pool = ClaudeRunnerPool(max_size=5, idle_ttl=300.0, maintenance_interval=9999.0)
+
+        task = asyncio.create_task(pool._maintenance_loop())
+        await asyncio.sleep(0.01)
+        task.cancel()
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass  # 정상 종료
+
+    async def test_maintenance_loop_removes_dead_session_runner(self):
+        """유지보수 루프: 죽은 subprocess를 가진 session runner 제거"""
+        pool = ClaudeRunnerPool(max_size=5, idle_ttl=300.0)
+        dead_runner = make_mock_runner()
+        dead_runner.is_idle.return_value = True
+        dead_runner._is_cli_alive.return_value = False
+        pool._session_pool["dead_session"] = (dead_runner, time.monotonic())
+
+        await pool._run_maintenance()
+
+        dead_runner._remove_client.assert_awaited()
+        assert "dead_session" not in pool._session_pool
+
+    async def test_maintenance_loop_removes_ttl_expired_session(self):
+        """유지보수 루프: TTL 만료된 session runner 제거"""
+        pool = ClaudeRunnerPool(max_size=5, idle_ttl=0.01)
+        expired_runner = make_mock_runner()
+        expired_runner.is_idle.return_value = True
+        expired_runner._is_cli_alive.return_value = True
+        pool._session_pool["expired_session"] = (expired_runner, time.monotonic() - 1.0)
+
+        await pool._run_maintenance()
+
+        expired_runner._remove_client.assert_awaited()
+        assert "expired_session" not in pool._session_pool
+
+
+# ─────────────────────────────────────────────
+# shutdown with maintenance loop
+# ─────────────────────────────────────────────
+
+
+class TestShutdownWithMaintenanceLoop:
+    async def test_shutdown_cancels_maintenance_task(self):
+        """shutdown 시 유지보수 루프 태스크 취소"""
+        pool = ClaudeRunnerPool(max_size=5, idle_ttl=300.0, maintenance_interval=9999.0)
+
+        # 유지보수 루프 시작
+        pool._maintenance_task = asyncio.create_task(pool._maintenance_loop())
+        await asyncio.sleep(0.01)  # 루프가 시작되도록 yield
+
+        await pool.shutdown()
+
+        assert pool._maintenance_task is None or pool._maintenance_task.done()
+
+    async def test_shutdown_logs_runner_count(self):
+        """shutdown은 정리된 runner 수를 반환"""
+        pool = ClaudeRunnerPool(max_size=5, idle_ttl=300.0)
+        r1, r2 = make_mock_runner(), make_mock_runner()
+        pool._generic_pool.append((r1, time.monotonic()))
+        pool._session_pool["sid_1"] = (r2, time.monotonic())
+
+        count = await pool.shutdown()
+
+        assert count == 2

@@ -21,22 +21,22 @@ Seosoyoung Soul - FastAPI Application
 - 설명: 애플리케이션 라이프사이클 관리
 
 ### `async shutdown()`
-- 위치: 줄 156
+- 위치: 줄 168
 - 데코레이터: app.post
 - 설명: Graceful shutdown 엔드포인트 (supervisor 전용)
 
 ### `async health_check()`
-- 위치: 줄 181
+- 위치: 줄 193
 - 데코레이터: app.get
 - 설명: 헬스 체크 엔드포인트
 
 ### `async get_status()`
-- 위치: 줄 192
+- 위치: 줄 204
 - 데코레이터: app.get
 - 설명: 서비스 상태 조회
 
 ### `async global_exception_handler(request, exc)`
-- 위치: 줄 224
+- 위치: 줄 236
 - 데코레이터: app.exception_handler
 - 설명: 전역 예외 핸들러
 
