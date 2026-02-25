@@ -15,9 +15,9 @@
 - [`tools/user_profile.py`](modules/tools_user_profile.md): Slack 사용자 프로필 조회 및 아바타 다운로드 MCP 도구
 - [`rescue/__main__.py`](modules/rescue___main__.md): python -m seosoyoung.rescue.main 실행 지원
 - [`rescue/config.py`](modules/rescue_config.md): rescue-bot 환경변수 설정
+- [`rescue/engine_adapter.py`](modules/rescue_engine_adapter.md): rescue-bot 엔진 어댑터
 - [`rescue/main.py`](modules/rescue_main.md): rescue-bot 메인 모듈 (메인 봇 기본 대화 기능 완전 복제)
 - [`rescue/message_formatter.py`](modules/rescue_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티 (rescue-bot 경량 버전)
-- [`rescue/runner.py`](modules/rescue_runner.md): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
 - [`rescue/session.py`](modules/rescue_session.md): rescue-bot 세션 관리 (경량 in-memory 버전)
 - [`slackbot/__main__.py`](modules/slackbot___main__.md): python -m seosoyoung.slackbot 실행 지원
 - [`slackbot/auth.py`](modules/slackbot_auth.md): 권한 및 역할 관리
@@ -112,10 +112,8 @@
 
 - `GeneratedImage` (seosoyoung/mcp/tools/image_gen.py:32): 생성된 이미지 결과
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
-- `PendingPrompt` (seosoyoung/rescue/main.py:75): 인터벤션 대기 중인 프롬프트 정보
-- `RescueBotApp` (seosoyoung/rescue/main.py:84): rescue-bot 애플리케이션
-- `RescueResult` (seosoyoung/rescue/runner.py:104): 실행 결과
-- `RescueRunner` (seosoyoung/rescue/runner.py:115): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
+- `PendingPrompt` (seosoyoung/rescue/main.py:76): 인터벤션 대기 중인 프롬프트 정보
+- `RescueBotApp` (seosoyoung/rescue/main.py:85): rescue-bot 애플리케이션
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
 - `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:80): Claude Code 실행 결과 (하위호환 레이어)
@@ -270,10 +268,12 @@
 - `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
 - `get_user_profile()` (seosoyoung/mcp/tools/user_profile.py:25): Slack 사용자 프로필 정보를 조회
 - `async download_user_avatar()` (seosoyoung/mcp/tools/user_profile.py:67): Slack 사용자 프로필 이미지를 다운로드
-- `main()` (seosoyoung/rescue/main.py:641): rescue-bot 진입점
+- `create_runner()` (seosoyoung/rescue/engine_adapter.py:29): rescue-bot용 ClaudeRunner를 생성합니다.
+- `interrupt()` (seosoyoung/rescue/engine_adapter.py:43): 실행 중인 스레드에 인터럽트 전송
+- `compact_session_sync()` (seosoyoung/rescue/engine_adapter.py:51): 세션 컴팩트 (동기)
+- `main()` (seosoyoung/rescue/main.py:638): rescue-bot 진입점
 - `build_context_usage_bar()` (seosoyoung/rescue/message_formatter.py:12): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/rescue/message_formatter.py:41): 텍스트 내 모든 백틱을 이스케이프
-- `get_runner()` (seosoyoung/rescue/runner.py:504): 모듈 레벨 RescueRunner 인스턴스를 반환
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/slackbot/claude/__init__.py:25): Claude 실행기 인스턴스를 반환하는 팩토리 함수

@@ -62,14 +62,10 @@ class TestProgressCallback:
     """on_progress 콜백 테스트"""
 
     def test_progress_callback_updates(self):
-        """on_progress는 2초 간격으로 호출"""
-        from seosoyoung.rescue.runner import RescueRunner
+        """on_progress는 ClaudeRunner.run()에 전달 가능"""
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
-        runner = RescueRunner()
-        options, stderr_file = runner._build_options()
-
-        if stderr_file is not None:
-            stderr_file.close()
+        runner = ClaudeRunner()
 
         # on_progress, on_compact 콜백을 run()에 전달할 수 있는지 확인
         # (실제 SDK 호출 없이 시그니처 확인)
@@ -148,7 +144,7 @@ class TestEmptyResponseHandling:
     def test_empty_response_handling(self):
         """빈 응답은 (중단됨) 메시지로 처리"""
         from seosoyoung.rescue.main import RescueBotApp
-        from seosoyoung.rescue.runner import RescueResult
+        from seosoyoung.slackbot.claude.engine_types import EngineResult
         from seosoyoung.rescue.session import SessionManager
 
         app = RescueBotApp.__new__(RescueBotApp)
@@ -165,7 +161,7 @@ class TestEmptyResponseHandling:
         client = MagicMock()
 
         # 빈 output의 성공 결과
-        result = RescueResult(success=True, output="", session_id="sess_1")
+        result = EngineResult(success=True, output="", session_id="sess_1")
 
         app._handle_success(
             result, "C123", "thread_123", "msg_ts_123", say, client,
