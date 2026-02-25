@@ -10,19 +10,8 @@
 
 ## 함수
 
-### `build_context_usage_bar(usage, bar_length)`
-- 위치: 줄 12
-- 설명: usage dict에서 컨텍스트 사용량 바를 생성
-
-Args:
-    usage: ResultMessage.usage dict
-    bar_length: 바의 전체 칸 수
-
-Returns:
-    "Context | ■■■■■■□□□□□□□□□□□□□□ | 30%" 형태 문자열, 또는 None
-
 ### `escape_backticks(text)`
-- 위치: 줄 41
+- 위치: 줄 6
 - 설명: 텍스트 내 모든 백틱을 이스케이프
 
 슬랙에서 백틱은 인라인 코드(`)나 코드 블록(```)을 만드므로,

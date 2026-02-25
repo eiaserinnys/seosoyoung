@@ -9,7 +9,6 @@ from typing import Any, Callable, Optional
 from seosoyoung.slackbot.claude.message_formatter import (
     PROGRESS_MAX_LEN,
     SLACK_MSG_MAX_LEN,
-    build_context_usage_bar,
     build_trello_header,
 )
 from seosoyoung.slackbot.claude.types import UpdateMessageFn
@@ -33,7 +32,6 @@ class ResultProcessor:
         update_message_fn: UpdateMessageFn,
         *,
         trello_watcher_ref: Optional[Callable] = None,
-        show_context_usage: bool = False,
         restart_type_update: Any = None,
         restart_type_restart: Any = None,
     ):
@@ -43,7 +41,6 @@ class ResultProcessor:
         self.send_restart_confirmation = send_restart_confirmation
         self.update_message_fn = update_message_fn
         self.trello_watcher_ref = trello_watcher_ref
-        self.show_context_usage = show_context_usage
         self.restart_type_update = restart_type_update
         self.restart_type_restart = restart_type_restart
 
@@ -88,10 +85,6 @@ class ResultProcessor:
             self.handle_interrupted(pctx)
             return
 
-        usage_bar = None
-        if self.show_context_usage:
-            usage_bar = build_context_usage_bar(result.usage)
-
         is_list_run_from_marker = bool(pctx.effective_role == "admin" and result.list_run)
         is_list_run_from_card = bool(
             pctx.trello_card and getattr(pctx.trello_card, "list_key", None) == "list_run"
@@ -99,9 +92,9 @@ class ResultProcessor:
         is_list_run = is_list_run_from_marker or is_list_run_from_card
 
         if pctx.is_trello_mode:
-            self.handle_trello_success(pctx, result, response, is_list_run, usage_bar)
+            self.handle_trello_success(pctx, result, response, is_list_run)
         else:
-            self.handle_normal_success(pctx, result, response, is_list_run, usage_bar)
+            self.handle_normal_success(pctx, result, response, is_list_run)
 
         if pctx.effective_role == "admin":
             if result.update_requested or result.restart_requested:
@@ -117,7 +110,7 @@ class ResultProcessor:
 
     def handle_trello_success(
         self, pctx, result, response: str,
-        is_list_run: bool, usage_bar: Optional[str],
+        is_list_run: bool,
     ):
         """트렐로 모드 성공 처리"""
         if pctx.dm_channel_id and pctx.dm_last_reply_ts:
@@ -129,18 +122,13 @@ class ResultProcessor:
 
         final_session_id = result.session_id or pctx.session_id or ""
         header = build_trello_header(pctx.trello_card, final_session_id)
-        footer = usage_bar or ""
 
-        max_response_len = SLACK_MSG_MAX_LEN - len(header) - len(footer) - 20
+        max_response_len = SLACK_MSG_MAX_LEN - len(header) - 20
         if len(response) <= max_response_len:
             final_text = f"{header}\n\n{response}"
-            if footer:
-                final_text = f"{final_text}\n\n{footer}"
         else:
             truncated = response[:max_response_len]
             final_text = f"{header}\n\n{truncated}..."
-            if footer:
-                final_text = f"{final_text}\n\n{footer}"
 
         final_blocks = [{
             "type": "section",
@@ -161,7 +149,7 @@ class ResultProcessor:
 
     def handle_normal_success(
         self, pctx, result, response: str,
-        is_list_run: bool, usage_bar: Optional[str],
+        is_list_run: bool,
     ):
         """일반 모드(멘션) 성공 처리"""
         reply_thread_ts = pctx.thread_ts
@@ -181,8 +169,6 @@ class ResultProcessor:
                     channel_text += "\n..."
 
                 final_text = channel_text
-                if usage_bar:
-                    final_text = f"{final_text}\n\n{usage_bar}"
                 final_blocks = [{
                     "type": "section",
                     "text": {"type": "mrkdwn", "text": final_text}
@@ -205,8 +191,6 @@ class ResultProcessor:
                 self.send_long_message(pctx.say, response, pctx.thread_ts)
         else:
             display_response = response
-            if usage_bar:
-                display_response = f"{display_response}\n\n{usage_bar}"
 
             try:
                 if len(display_response) <= SLACK_MSG_MAX_LEN:

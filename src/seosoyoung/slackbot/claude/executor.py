@@ -74,7 +74,6 @@ class ClaudeExecutor:
         *,
         execution_mode: str = "local",
         role_tools: Optional[dict] = None,
-        show_context_usage: bool = False,
         soul_url: str = "",
         soul_token: str = "",
         soul_client_id: str = "",
@@ -92,7 +91,6 @@ class ClaudeExecutor:
         self.update_message_fn = update_message_fn
         self.execution_mode = execution_mode
         self.role_tools = role_tools or {}
-        self.show_context_usage = show_context_usage
         self.soul_url = soul_url
         self.soul_token = soul_token
         self.soul_client_id = soul_client_id
@@ -118,7 +116,6 @@ class ClaudeExecutor:
             send_restart_confirmation=send_restart_confirmation,
             update_message_fn=update_message_fn,
             trello_watcher_ref=trello_watcher_ref,
-            show_context_usage=show_context_usage,
             restart_type_update=restart_type_update,
             restart_type_restart=restart_type_restart,
         )

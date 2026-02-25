@@ -56,9 +56,9 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from seosoyoung.rescue.config import RescueConfig
 from seosoyoung.rescue.message_formatter import (
     escape_backticks,
-    build_context_usage_bar,
 )
-from seosoyoung.rescue.runner import get_runner, RescueResult
+from seosoyoung.rescue.engine_adapter import create_runner, interrupt, compact_session_sync
+from seosoyoung.slackbot.claude.engine_types import EngineResult
 from seosoyoung.rescue.session import Session, SessionManager
 from seosoyoung.slackbot.slack.formatting import update_message
 
@@ -212,12 +212,11 @@ class RescueBotApp:
             self._pending_prompts[thread_ts] = pending
 
         # interrupt fire-and-forget (동기)
-        runner = get_runner()
         with self._runners_lock:
             active_runner = self._active_runners.get(thread_ts)
         if active_runner:
             try:
-                runner.interrupt(thread_ts)
+                interrupt(thread_ts)
                 logger.info(f"인터럽트 전송 완료: thread={thread_ts}")
             except Exception as e:
                 logger.warning(f"인터럽트 전송 실패 (무시): thread={thread_ts}, {e}")
@@ -339,8 +338,8 @@ class RescueBotApp:
         slack_ctx = self._build_slack_context(channel, user_id, thread_ts)
         full_prompt = f"{slack_ctx}\n\n사용자의 질문: {prompt}\n\n위 컨텍스트를 참고하여 질문에 답변해주세요."
 
-        # runner 추적 (인터벤션용)
-        runner = get_runner()
+        # runner 생성 및 추적 (인터벤션용)
+        runner = create_runner(thread_ts)
         with self._runners_lock:
             self._active_runners[thread_ts] = runner
 
@@ -348,8 +347,6 @@ class RescueBotApp:
             result = runner.run_sync(runner.run(
                 prompt=full_prompt,
                 session_id=session.session_id,
-                thread_ts=thread_ts,
-                channel=channel,
                 on_progress=on_progress,
                 on_compact=on_compact,
             ))
@@ -398,7 +395,7 @@ class RescueBotApp:
 
     def _handle_success(
         self,
-        result: RescueResult,
+        result: EngineResult,
         channel: str,
         thread_ts: str,
         last_msg_ts: str,
@@ -413,12 +410,7 @@ class RescueBotApp:
             self._handle_interrupted(last_msg_ts, channel, client)
             return
 
-        # 컨텍스트 사용량 바
-        usage_bar = build_context_usage_bar(result.usage)
-
         continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
-        if usage_bar:
-            continuation_hint = f"{usage_bar}\n{continuation_hint}"
 
         if not is_thread_reply:
             # 채널 최초 응답: P(사고 과정)를 미리보기로 교체, 전문은 스레드에
@@ -449,8 +441,6 @@ class RescueBotApp:
         else:
             # 스레드 내 후속 대화
             display_response = response
-            if usage_bar:
-                display_response = f"{display_response}\n\n{usage_bar}"
 
             try:
                 if len(display_response) <= 3900:
@@ -527,8 +517,7 @@ class RescueBotApp:
         say(text="컴팩트 중입니다...", thread_ts=target_ts)
 
         try:
-            runner = get_runner()
-            compact_result = runner.run_sync(runner.compact_session(session.session_id))
+            compact_result = compact_session_sync(session.session_id)
 
             if compact_result.success:
                 if compact_result.session_id:

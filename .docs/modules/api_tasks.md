@@ -69,8 +69,8 @@ running 상태의 태스크에만 메시지를 전송할 수 있습니다.
 - `seosoyoung.soul.models.TaskInterveneRequest`
 - `seosoyoung.soul.models.TaskListResponse`
 - `seosoyoung.soul.models.TaskResponse`
-- `seosoyoung.soul.service.claude_runner`
 - `seosoyoung.soul.service.resource_manager`
+- `seosoyoung.soul.service.soul_engine`
 - `seosoyoung.soul.service.task_manager.Task`
 - `seosoyoung.soul.service.task_manager.TaskConflictError`
 - `seosoyoung.soul.service.task_manager.TaskNotFoundError`

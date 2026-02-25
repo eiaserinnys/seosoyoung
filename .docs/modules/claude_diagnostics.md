@@ -12,7 +12,7 @@ ProcessError 분류, 세션 덤프 생성, stderr 캡처 등을 담당합니다.
 ## 함수
 
 ### `read_stderr_tail(n_lines)`
-- 위치: 줄 18
+- 위치: 줄 24
 - 설명: 세션별 cli_stderr 로그의 마지막 N줄 읽기
 
 세션별 파일(cli_stderr_{thread_ts}.log)을 우선 시도하고,
@@ -23,14 +23,14 @@ Args:
     thread_ts: 스레드 타임스탬프 (None이면 "default" 사용)
 
 ### `build_session_dump()`
-- 위치: 줄 51
+- 위치: 줄 57
 - 설명: 세션 종료 진단 덤프 메시지 생성
 
 Args:
     thread_ts: 스레드 타임스탬프 (세션별 stderr 파일 식별용)
 
 ### `classify_process_error(e)`
-- 위치: 줄 96
+- 위치: 줄 102
 - 설명: ProcessError를 사용자 친화적 메시지로 변환.
 
 Claude Code CLI는 다양한 이유로 exit code 1을 반환하지만,
@@ -38,7 +38,7 @@ SDK가 stderr를 캡처하지 않아 원인 구분이 어렵습니다.
 exit_code와 stderr 패턴을 기반으로 최대한 분류합니다.
 
 ### `format_rate_limit_warning(rate_limit_info)`
-- 위치: 줄 136
+- 위치: 줄 142
 - 설명: allowed_warning용 사람이 읽을 수 있는 안내문 생성.
 
 Args:

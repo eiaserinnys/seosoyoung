@@ -1,198 +1,103 @@
-"""Phase 1 테스트: runner.py (RescueRunner)"""
+"""rescue engine_adapter 테스트
+
+rescue/engine_adapter.py의 create_runner, interrupt, compact_session_sync를 테스트합니다.
+ClaudeRunner 내부 동작(SDK 통신, 에러 분류 등)은 tests/claude/test_agent_runner.py에서 검증하므로,
+여기서는 어댑터가 올바른 설정으로 ClaudeRunner를 생성하고 위임하는지에 집중합니다.
+"""
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock
 
-from claude_agent_sdk._errors import MessageParseError
-
-from seosoyoung.rescue.runner import (
-    RescueRunner,
-    RescueResult,
-    _classify_process_error,
+from seosoyoung.rescue.engine_adapter import (
+    create_runner,
+    interrupt,
+    compact_session_sync,
     ALLOWED_TOOLS,
     DISALLOWED_TOOLS,
 )
 
 
-# MCP 슬랙 도구 목록 (허용 대상)
-SLACK_MCP_TOOLS = [
-    "mcp__seosoyoung-attach__slack_attach_file",
-    "mcp__seosoyoung-attach__slack_post_message",
-    "mcp__seosoyoung-attach__slack_download_thread_files",
-    "mcp__seosoyoung-attach__slack_generate_image",
-]
+class TestCreateRunner:
+    """create_runner 테스트"""
+
+    def test_creates_claude_runner_with_thread_ts(self):
+        """thread_ts가 ClaudeRunner에 전달되는지 확인"""
+        runner = create_runner("1234567890.123456")
+        assert runner.thread_ts == "1234567890.123456"
+
+    def test_creates_claude_runner_without_thread_ts(self):
+        """thread_ts 없이도 생성 가능"""
+        runner = create_runner()
+        assert runner.thread_ts == ""
+
+    def test_runner_has_correct_tools_config(self):
+        """allowed/disallowed tools가 올바르게 설정되는지 확인"""
+        runner = create_runner("ts_123")
+        assert runner.allowed_tools == ALLOWED_TOOLS
+        assert runner.disallowed_tools == DISALLOWED_TOOLS
+
+    def test_no_env_parameter(self):
+        """ClaudeRunner에 env 파라미터를 전달하지 않는지 확인"""
+        runner = create_runner("ts_123")
+        # ClaudeRunner는 env 속성을 갖지 않음 (agent_runner.py에 없음)
+        assert not hasattr(runner, "env")
 
 
-
-class TestBuildOptions:
-    """_build_options 테스트"""
-
-    def test_build_options_basic(self):
-        """기본 옵션 생성 확인 (allowed_tools=None, disallowed_tools, permission_mode)"""
-        runner = RescueRunner()
-        options, stderr_file = runner._build_options()
-
-        assert options.permission_mode == "bypassPermissions"
-        assert options.allowed_tools is None  # admin: 모든 도구 허용
-        assert options.disallowed_tools is not None
-        assert "WebFetch" in options.disallowed_tools
-
-        if stderr_file is not None:
-            stderr_file.close()
-
-    def test_build_options_with_env(self):
-        """channel/thread_ts 전달 시 env에 SLACK_CHANNEL/SLACK_THREAD_TS 주입 확인"""
-        runner = RescueRunner()
-        options, stderr_file = runner._build_options(
-            channel="C12345", thread_ts="1234567890.123456"
-        )
-
-        assert options.env is not None
-        assert options.env.get("SLACK_CHANNEL") == "C12345"
-        assert options.env.get("SLACK_THREAD_TS") == "1234567890.123456"
-
-        if stderr_file is not None:
-            stderr_file.close()
-
-    def test_build_options_with_resume(self):
-        """session_id 전달 시 options.resume 설정 확인"""
-        runner = RescueRunner()
-        options, stderr_file = runner._build_options(session_id="test-session-id-123")
-
-        assert options.resume == "test-session-id-123"
-
-        if stderr_file is not None:
-            stderr_file.close()
-
-    def test_build_options_without_resume(self):
-        """session_id 미전달 시 resume 없음"""
-        runner = RescueRunner()
-        options, stderr_file = runner._build_options()
-
-        assert not options.resume
-
-        if stderr_file is not None:
-            stderr_file.close()
+class TestAllowedTools:
+    """도구 설정 테스트"""
 
     def test_allowed_tools_is_none(self):
-        """admin 역할의 allowed_tools=None (모든 도구 허용, MCP 포함)"""
+        """admin 역할의 allowed_tools=None (모든 도구 허용)"""
         assert ALLOWED_TOOLS is None
 
-
-class TestClassifyProcessError:
-    """_classify_process_error 테스트"""
-
-    def _make_process_error(self, exit_code=1, stderr="", message=""):
-        """ProcessError mock 생성"""
-        err = MagicMock()
-        err.exit_code = exit_code
-        err.stderr = stderr
-        err.__str__ = lambda self: message
-        return err
-
-    def test_classify_process_error_rate_limit(self):
-        """rate limit 패턴 분류"""
-        err = self._make_process_error(stderr="rate limit exceeded")
-        result = _classify_process_error(err)
-        assert "사용량 제한" in result
-
-    def test_classify_process_error_auth(self):
-        """인증 에러 분류"""
-        err = self._make_process_error(stderr="unauthorized access")
-        result = _classify_process_error(err)
-        assert "인증" in result
-
-    def test_classify_process_error_network(self):
-        """네트워크 에러 분류"""
-        err = self._make_process_error(stderr="connection timeout")
-        result = _classify_process_error(err)
-        assert "네트워크" in result
-
-    def test_classify_process_error_exit_1(self):
-        """exit code 1 기본 메시지"""
-        err = self._make_process_error(exit_code=1, stderr="unknown error")
-        result = _classify_process_error(err)
-        assert "비정상 종료" in result
+    def test_disallowed_tools_list(self):
+        """금지 도구 목록이 올바른지 확인"""
+        assert "WebFetch" in DISALLOWED_TOOLS
+        assert "WebSearch" in DISALLOWED_TOOLS
+        assert "Task" in DISALLOWED_TOOLS
 
 
-@pytest.mark.asyncio
-class TestRescueRateLimitEventHandling:
-    """RescueRunner rate_limit_event 스트림 처리 테스트"""
+class TestInterrupt:
+    """interrupt 함수 테스트"""
 
-    async def test_allowed_warning_continues(self):
-        """allowed_warning status는 break하지 않고 continue"""
-        runner = RescueRunner()
+    def test_interrupt_with_no_runner(self):
+        """등록된 러너가 없으면 False 반환"""
+        with patch(
+            "seosoyoung.rescue.engine_adapter._get_runner", return_value=None
+        ):
+            assert interrupt("nonexistent_thread") is False
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.disconnect = AsyncMock()
+    def test_interrupt_with_runner(self):
+        """등록된 러너가 있으면 interrupt() 호출"""
+        mock_runner = MagicMock()
+        mock_runner.interrupt.return_value = True
 
-        call_count = 0
+        with patch(
+            "seosoyoung.rescue.engine_adapter._get_runner",
+            return_value=mock_runner,
+        ):
+            result = interrupt("existing_thread")
 
-        class WarningThenStop:
-            def __aiter__(self):
-                return self
-            async def __anext__(self):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    raise MessageParseError(
-                        "Unknown message type: rate_limit_event",
-                        {
-                            "type": "rate_limit_event",
-                            "rate_limit_info": {
-                                "status": "allowed_warning",
-                                "rateLimitType": "seven_day",
-                                "utilization": 0.51,
-                            },
-                        },
-                    )
-                raise StopAsyncIteration
+        assert result is True
+        mock_runner.interrupt.assert_called_once()
 
-        mock_client.receive_response = MagicMock(return_value=WarningThenStop())
 
-        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            result = await runner.run("테스트")
+class TestCompactSessionSync:
+    """compact_session_sync 테스트"""
+
+    def test_compact_session_calls_runner(self):
+        """compact_session_sync가 ClaudeRunner를 생성하고 compact를 위임하는지 확인"""
+        from seosoyoung.slackbot.claude.engine_types import EngineResult
+
+        mock_result = EngineResult(
+            success=True, output="compacted", session_id="sess_123"
+        )
+
+        with patch(
+            "seosoyoung.rescue.engine_adapter.run_in_new_loop",
+            return_value=mock_result,
+        ):
+            result = compact_session_sync("sess_123")
 
         assert result.success is True
-        assert call_count == 2
-
-    async def test_blocked_status_continues(self):
-        """blocked status도 continue하여 CLI 자체 처리에 위임"""
-        runner = RescueRunner()
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.query = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        call_count = 0
-
-        class BlockedThenStop:
-            def __aiter__(self):
-                return self
-            async def __anext__(self):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    raise MessageParseError(
-                        "Unknown message type: rate_limit_event",
-                        {
-                            "type": "rate_limit_event",
-                            "rate_limit_info": {
-                                "status": "blocked",
-                                "rateLimitType": "seven_day",
-                                "utilization": 1.0,
-                            },
-                        },
-                    )
-                raise StopAsyncIteration
-
-        mock_client.receive_response = MagicMock(return_value=BlockedThenStop())
-
-        with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
-            result = await runner.run("테스트")
-
-        assert result.success is True
-        assert call_count == 2
+        assert result.session_id == "sess_123"

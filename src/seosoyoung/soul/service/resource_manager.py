@@ -6,7 +6,6 @@ Claude Code 동시 실행 수를 제한하고 리소스를 관리합니다.
 
 import os
 import asyncio
-import psutil
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -128,33 +127,12 @@ class ResourceManager:
         except ValueError:
             pass  # 이미 해제됨
 
-    def get_system_memory(self) -> tuple[float, float, float]:
-        """
-        시스템 전체 메모리 사용량 반환
-
-        Returns:
-            (used_gb, total_gb, percent)
-        """
-        try:
-            mem = psutil.virtual_memory()
-            used_gb = mem.used / (1024**3)
-            total_gb = mem.total / (1024**3)
-            return (used_gb, total_gb, mem.percent)
-        except Exception:
-            return (0.0, 0.0, 0.0)
-
     def get_stats(self) -> dict:
         """리소스 통계 반환"""
-        used_gb, total_gb, percent = self.get_system_memory()
         return {
             "active_sessions": self._active_count,
             "max_concurrent": self._max_concurrent,
             "available_slots": self.available_slots,
-            "memory": {
-                "used_gb": round(used_gb, 2),
-                "total_gb": round(total_gb, 2),
-                "percent": round(percent, 1),
-            },
         }
 
 

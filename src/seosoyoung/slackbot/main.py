@@ -119,7 +119,6 @@ executor = ClaudeExecutor(
     update_message_fn=update_message,
     execution_mode=Config.claude.execution_mode,
     role_tools=Config.auth.role_tools,
-    show_context_usage=Config.claude.show_context_usage,
     soul_url=Config.claude.soul_url,
     soul_token=Config.claude.soul_token,
     soul_client_id=Config.claude.soul_client_id,

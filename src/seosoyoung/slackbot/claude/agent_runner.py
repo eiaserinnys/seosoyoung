@@ -60,9 +60,10 @@ from seosoyoung.slackbot.claude.diagnostics import (
     classify_process_error,
     format_rate_limit_warning,
 )
-from seosoyoung.slackbot.claude.engine_types import EngineResult
+from seosoyoung.slackbot.claude.engine_types import EngineResult, InterventionCallback
 from seosoyoung.slackbot.claude.instrumented_client import InstrumentedClaudeClient
 from seosoyoung.slackbot.claude.sdk_compat import ParseAction, classify_parse_error
+from seosoyoung.slackbot.claude.session_validator import validate_session
 from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
@@ -542,6 +543,7 @@ class ClaudeRunner:
         msg_state: MessageState,
         on_progress: Optional[Callable[[str], Awaitable[None]]],
         on_compact: Optional[Callable[[str, str], Awaitable[None]]],
+        on_intervention: Optional[InterventionCallback] = None,
     ) -> None:
         """내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신"""
         thread_ts = self.thread_ts
@@ -657,6 +659,19 @@ class ClaudeRunner:
             # 컴팩션 이벤트 알림
             await self._notify_compact_events(compact_state, on_compact)
 
+            # 인터벤션 확인: 실행 중 새 메시지 주입
+            if on_intervention:
+                try:
+                    intervention_text = await on_intervention()
+                    if intervention_text:
+                        logger.info(
+                            f"인터벤션 주입: thread={thread_ts}, "
+                            f"text={intervention_text[:100]}..."
+                        )
+                        await client.query(intervention_text)
+                except Exception as e:
+                    logger.warning(f"인터벤션 콜백 오류 (무시): {e}")
+
     def _evaluate_compact_retry(
         self,
         compact_state: CompactRetryState,
@@ -723,15 +738,37 @@ class ClaudeRunner:
         session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_intervention: Optional[InterventionCallback] = None,
     ) -> EngineResult:
         """Claude Code 실행
+
+        Args:
+            prompt: 실행할 프롬프트
+            session_id: 기존 세션 ID (resume)
+            on_progress: 진행 상황 콜백
+            on_compact: 컴팩션 이벤트 콜백
+            on_intervention: 인터벤션 폴링 콜백.
+                호출 시 Optional[str]을 반환하며, 문자열이면 실행 중인
+                대화에 새 메시지로 주입됩니다. None이면 대기 중인
+                인터벤션이 없는 것으로 처리합니다.
 
         Returns:
             EngineResult: 엔진 순수 실행 결과.
                 응용 마커(UPDATE/RESTART/LIST_RUN) 파싱과
                 OM 관찰 트리거는 호출부에서 수행합니다.
         """
-        return await self._execute(prompt, session_id, on_progress, on_compact)
+        # 세션 ID 사전 검증 (resume 시)
+        if session_id:
+            validation_error = validate_session(session_id)
+            if validation_error:
+                logger.warning(f"세션 검증 실패: {validation_error}")
+                return EngineResult(
+                    success=False,
+                    output="",
+                    error=validation_error,
+                )
+
+        return await self._execute(prompt, session_id, on_progress, on_compact, on_intervention)
 
     async def _execute(
         self,
@@ -739,6 +776,7 @@ class ClaudeRunner:
         session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_intervention: Optional[InterventionCallback] = None,
     ) -> EngineResult:
         """실제 실행 로직 (ClaudeSDKClient 기반)"""
         thread_ts = self.thread_ts
@@ -779,6 +817,7 @@ class ClaudeRunner:
 
                 await self._receive_messages(
                     client, compact_state, msg_state, on_progress, on_compact,
+                    on_intervention,
                 )
 
                 # PreCompact 훅 콜백 실행을 위한 이벤트 루프 양보

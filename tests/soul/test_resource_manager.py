@@ -79,20 +79,11 @@ class TestTryAcquire:
         assert rm.active_count == 0
 
 
-class TestSystemMemory:
-    def test_get_system_memory(self, rm):
-        used_gb, total_gb, percent = rm.get_system_memory()
-        # 최소한 합리적인 값인지 확인
-        assert total_gb > 0
-        assert used_gb >= 0
-        assert 0 <= percent <= 100
-
+class TestGetStats:
     def test_get_stats(self, rm):
         stats = rm.get_stats()
         assert "active_sessions" in stats
         assert "max_concurrent" in stats
         assert "available_slots" in stats
-        assert "memory" in stats
-        assert "used_gb" in stats["memory"]
-        assert "total_gb" in stats["memory"]
-        assert "percent" in stats["memory"]
+        # memory 키는 제거됨 (메모리 보고 코드 삭제)
+        assert "memory" not in stats
