@@ -42,7 +42,7 @@ asyncio.Queue를 통해 SSE 이벤트 스트림으로 변환합니다.
 - 설명: 개입 메시지를 Claude 프롬프트로 변환
 
 ### `init_soul_engine(pool)`
-- 위치: 줄 282
+- 위치: 줄 291
 - 설명: soul_engine 싱글톤을 (재)초기화한다.
 
 lifespan에서 풀 생성 후 호출하여 싱글톤을 교체한다.

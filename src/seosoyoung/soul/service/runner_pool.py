@@ -313,10 +313,12 @@ class ClaudeRunnerPool:
             )
 
         # --- generic pool 보충 ---
+        # H-1: shortage를 락 안에서 계산하여 TOCTOU 최소화
+        # (pre_warm 자체도 내부에서 max_size를 검사하므로 과잉 예열 방지됨)
         async with self._lock:
             current_generic = len(self._generic_pool)
+            shortage = self._min_generic - current_generic
 
-        shortage = self._min_generic - current_generic
         if shortage > 0:
             logger.info(
                 f"Maintenance: generic pool 보충 필요 ({current_generic} < {self._min_generic})"
