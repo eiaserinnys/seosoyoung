@@ -151,6 +151,76 @@ def intervention_probability(
     return min(base * jitter, 1.0)
 
 
+def burst_intervention_probability(
+    history_entries: list[dict], importance: int, now: float | None = None,
+) -> float:
+    """버스트 인식 개입 확률을 계산합니다.
+
+    Args:
+        history_entries: 개입 이력 [{"at": timestamp, "type": str}, ...]
+        importance: 현재 판단의 중요도 (0-10)
+        now: 현재 시각 (테스트용)
+
+    Returns:
+        0.0~1.0 사이의 확률 값
+    """
+    BURST_GAP = 5          # 분. 이 간격 이내의 연속 개입 = 같은 burst
+    BURST_FLOOR = 3        # 최소 보장 턴 (확률 감소 없이 허용)
+    BURST_CEIL = 7         # 절대 상한 (이 이상은 불가)
+    COOLDOWN_BASE = 20     # burst 종료 후 기본 쿨다운 (분)
+    COOLDOWN_SCALE = 0.5   # burst 크기에 비례한 쿨다운 증가율
+    SIGMOID_STEEPNESS = 1.5  # 연성 벽의 급격함
+
+    if now is None:
+        now = time.time()
+
+    if not history_entries:
+        return 0.9  # 이력 없음
+
+    # 최근순 정렬
+    sorted_entries = sorted(
+        history_entries, key=lambda e: e.get("at", 0), reverse=True,
+    )
+    last_at = sorted_entries[0]["at"]
+    minutes_since = (now - last_at) / 60.0
+
+    # burst 크기 계산 (연속 개입 횟수)
+    burst_count = 1
+    prev_at = last_at
+    for entry in sorted_entries[1:]:
+        gap = (prev_at - entry["at"]) / 60.0
+        if gap <= BURST_GAP:
+            burst_count += 1
+            prev_at = entry["at"]
+        else:
+            break
+
+    if minutes_since <= BURST_GAP:
+        # ── burst 연속 중 ──
+        if burst_count >= BURST_CEIL:
+            return 0.0  # 절대 상한
+
+        if burst_count < BURST_FLOOR:
+            # 보장 구간: 완만한 감소
+            base = 0.88 - burst_count * 0.04
+            jitter = random.uniform(0.9, 1.1)
+            return min(max(base * jitter, 0.0), 1.0)
+
+        # 연성 벽 구간: 중요도 기반 시그모이드
+        soft_limit = BURST_FLOOR + (BURST_CEIL - BURST_FLOOR) * (importance / 10.0)
+        distance = burst_count - soft_limit
+        base = 1.0 / (1.0 + math.exp(distance * SIGMOID_STEEPNESS))
+        jitter = random.uniform(0.9, 1.1)
+        return min(max(base * jitter, 0.0), 1.0)
+
+    else:
+        # ── burst 밖, cooldown 적용 ──
+        cooldown = COOLDOWN_BASE * (1 + (burst_count - 1) * COOLDOWN_SCALE)
+        recovery = 1 - math.exp(-minutes_since / cooldown)
+        jitter = random.uniform(0.8, 1.2)
+        return min(max(recovery * jitter, 0.0), 1.0)
+
+
 class InterventionHistory:
     """개입 이력 관리
 
@@ -232,6 +302,20 @@ class InterventionHistory:
             1 for entry in meta.get("history", [])
             if entry.get("at", 0) >= cutoff
         )
+
+    def burst_probability(self, channel_id: str, importance: int) -> float:
+        """버스트 인식 개입 확률을 반환합니다.
+
+        Args:
+            channel_id: 채널 ID
+            importance: 현재 판단의 중요도 (0-10)
+
+        Returns:
+            0.0~1.0 사이의 확률 값
+        """
+        meta = self._read_meta(channel_id)
+        history = self._prune_history(meta.get("history", []))
+        return burst_intervention_probability(history, importance)
 
     def can_react(self, channel_id: str) -> bool:
         """이모지 리액션은 항상 허용"""

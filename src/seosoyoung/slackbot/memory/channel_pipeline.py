@@ -16,6 +16,7 @@ from typing import Callable, Optional, TYPE_CHECKING
 from seosoyoung.slackbot.memory.channel_intervention import (
     InterventionAction,
     InterventionHistory,
+    burst_intervention_probability,
     execute_interventions,
     intervention_probability,
     send_debug_log,
@@ -476,22 +477,31 @@ async def _handle_multi_judge(
     if react_actions:
         await execute_interventions(slack_client, channel_id, react_actions)
 
-    # 개입 처리 (확률 기반)
+    # 개입 처리 (burst/cooldown 확률 기반)
     executed_messages: list[InterventionAction] = []
     if message_actions:
         # 개입에 사용할 importance는 가장 높은 item의 것
         max_item = _get_max_importance_item(judge_result)
         importance_for_prob = max_item.importance if max_item else 5
 
+        prob = cooldown.burst_probability(channel_id, importance_for_prob)
+
+        # burst 진행 중 여부에 따라 판정 분기
         mins_since = cooldown.minutes_since_last(channel_id)
-        recent = cooldown.recent_count(channel_id)
-        prob = intervention_probability(mins_since, recent)
-
-        time_factor = 1 - math.exp(-mins_since / 40) if mins_since != float("inf") else 1.0
-        freq_factor = 1 / (1 + recent * 0.3)
-
-        final_score = (importance_for_prob / 10.0) * prob
-        passed = final_score >= intervention_threshold
+        BURST_GAP = 5  # burst_intervention_probability와 동일한 상수
+        if mins_since <= BURST_GAP:
+            # burst 내에서는 prob 자체가 판정 기준
+            final_score = prob
+            passed = final_score >= 0.35
+            # 디버그 호환: burst 내에서는 time/freq를 burst 정보로 대체
+            time_factor = prob
+            freq_factor = 1.0
+        else:
+            # cooldown 구간에서는 importance 가중
+            final_score = (importance_for_prob / 10.0) * prob
+            passed = final_score >= intervention_threshold
+            time_factor = prob
+            freq_factor = importance_for_prob / 10.0
 
         send_intervention_probability_debug_log(
             client=slack_client,
@@ -502,7 +512,7 @@ async def _handle_multi_judge(
             freq_factor=freq_factor,
             probability=prob,
             final_score=final_score,
-            threshold=intervention_threshold,
+            threshold=0.35 if mins_since <= BURST_GAP else intervention_threshold,
             passed=passed,
         )
 
@@ -615,15 +625,21 @@ async def _handle_single_judge(
 
         executed_messages: list[InterventionAction] = []
         if message_actions:
+            prob = cooldown.burst_probability(channel_id, judge_result.importance)
+
+            # burst 진행 중 여부에 따라 판정 분기
             mins_since = cooldown.minutes_since_last(channel_id)
-            recent = cooldown.recent_count(channel_id)
-            prob = intervention_probability(mins_since, recent)
-
-            time_factor = 1 - math.exp(-mins_since / 40) if mins_since != float("inf") else 1.0
-            freq_factor = 1 / (1 + recent * 0.3)
-
-            final_score = (judge_result.importance / 10.0) * prob
-            passed = final_score >= intervention_threshold
+            BURST_GAP = 5  # burst_intervention_probability와 동일한 상수
+            if mins_since <= BURST_GAP:
+                final_score = prob
+                passed = final_score >= 0.35
+                time_factor = prob
+                freq_factor = 1.0
+            else:
+                final_score = (judge_result.importance / 10.0) * prob
+                passed = final_score >= intervention_threshold
+                time_factor = prob
+                freq_factor = judge_result.importance / 10.0
 
             send_intervention_probability_debug_log(
                 client=slack_client,
@@ -634,7 +650,7 @@ async def _handle_single_judge(
                 freq_factor=freq_factor,
                 probability=prob,
                 final_score=final_score,
-                threshold=intervention_threshold,
+                threshold=0.35 if mins_since <= BURST_GAP else intervention_threshold,
                 passed=passed,
             )
 

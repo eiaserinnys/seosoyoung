@@ -1590,3 +1590,164 @@ class TestBugD_FilterNonPendingJudgeItems:
 
         # 둘 다 pending에 있으므로 모두 실행
         assert client.reactions_add.call_count == 2
+
+
+# ── burst/cooldown 전환 시나리오 테스트 ─────────────────
+
+class TestPipelineBurstCooldown:
+    """burst/cooldown 모델 파이프라인 통합 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_burst_consecutive_interventions_pass(self, store, channel_id):
+        """burst 연속 3턴 통과 확인 — 이력 없음에서 시작하면 첫 개입 통과"""
+        _fill_pending(store, channel_id)
+
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="개입 메시지",
+            items=[
+                JudgeItem(
+                    ts="1000.000", importance=8, reaction_type="intervene",
+                    reaction_target="channel", reaction_content="개입 메시지",
+                ),
+            ],
+        ))
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True, "ts": "9000.000"})
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        client.reactions_remove = MagicMock(return_value={"ok": True})
+
+        history = InterventionHistory(base_dir=store.base_dir)
+
+        async def mock_llm_call(system_prompt, user_prompt):
+            return "burst 응답입니다."
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.18,
+            llm_call=mock_llm_call,
+        )
+
+        # 이력 없음 → burst_probability = 0.9 → 통과
+        channel_calls = [
+            c for c in client.chat_postMessage.call_args_list
+            if c[1].get("channel") == channel_id
+        ]
+        assert len(channel_calls) >= 1
+        assert history.recent_count(channel_id) == 1
+
+    @pytest.mark.asyncio
+    async def test_burst_ceiling_blocks(self, store, channel_id):
+        """burst 상한(7턴) 도달 시 차단"""
+        import time as _time
+        _fill_pending(store, channel_id)
+
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=10,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="상한 도달 테스트",
+            items=[
+                JudgeItem(
+                    ts="1000.000", importance=10, reaction_type="intervene",
+                    reaction_target="channel", reaction_content="상한 도달 테스트",
+                ),
+            ],
+        ))
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True})
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        client.reactions_remove = MagicMock(return_value={"ok": True})
+
+        history = InterventionHistory(base_dir=store.base_dir)
+        # 7개의 이력을 직접 삽입 (모두 최근 5분 이내)
+        now = _time.time()
+        meta = {"history": [
+            {"at": now - i * 120, "type": "message"}
+            for i in range(7)
+        ]}
+        history._write_meta(channel_id, meta)
+
+        async def mock_llm_call(system_prompt, user_prompt):
+            return "차단되어야 하는 응답"
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.18,
+            llm_call=mock_llm_call,
+        )
+
+        # burst 상한 → probability=0.0 → 차단 (채널에 메시지 미발송)
+        channel_calls = [
+            c for c in client.chat_postMessage.call_args_list
+            if c[1].get("channel") == channel_id
+        ]
+        assert len(channel_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_cooldown_then_recovery(self, store, channel_id):
+        """cooldown 후 충분한 시간이 지나면 다시 개입 가능"""
+        import time as _time
+        _fill_pending(store, channel_id)
+
+        observer = FakeObserver(judge_result=JudgeResult(
+            importance=8,
+            reaction_type="intervene",
+            reaction_target="channel",
+            reaction_content="회복 후 개입",
+            items=[
+                JudgeItem(
+                    ts="1000.000", importance=8, reaction_type="intervene",
+                    reaction_target="channel", reaction_content="회복 후 개입",
+                ),
+            ],
+        ))
+
+        client = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ok": True, "ts": "9000.000"})
+        client.reactions_add = MagicMock(return_value={"ok": True})
+        client.reactions_remove = MagicMock(return_value={"ok": True})
+
+        history = InterventionHistory(base_dir=store.base_dir)
+        # 60분 전 burst 2턴 (cooldown 상태)
+        now = _time.time()
+        meta = {"history": [
+            {"at": now - 60 * 60, "type": "message"},
+            {"at": now - 62 * 60, "type": "message"},
+        ]}
+        history._write_meta(channel_id, meta)
+
+        async def mock_llm_call(system_prompt, user_prompt):
+            return "회복 후 개입입니다."
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            intervention_threshold=0.18,
+            llm_call=mock_llm_call,
+        )
+
+        # 60분 경과 + importance 8 → final_score = (8/10) * recovery ≈ 높음 → 통과
+        channel_calls = [
+            c for c in client.chat_postMessage.call_args_list
+            if c[1].get("channel") == channel_id
+        ]
+        assert len(channel_calls) >= 1

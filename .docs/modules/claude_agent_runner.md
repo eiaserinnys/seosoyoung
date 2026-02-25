@@ -61,12 +61,12 @@ thread_ts 단위 인스턴스: 각 인스턴스가 자신의 client/pid/executio
 - `_observe_unknown_event(self, msg_type, data)` (줄 441): InstrumentedClaudeClient 콜백: unknown event 관찰
 - `_build_compact_hook(self, compact_events)` (줄 445): PreCompact 훅을 생성합니다.
 - `_build_options(self, session_id, compact_events)` (줄 472): ClaudeAgentOptions와 stderr 파일을 반환합니다.
-- `async _notify_compact_events(self, compact_state, on_compact)` (줄 520): 미통지 compact 이벤트를 on_compact 콜백으로 전달
-- `async _receive_messages(self, client, compact_state, msg_state, on_progress, on_compact, on_intervention)` (줄 538): 내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신
-- `_evaluate_compact_retry(self, compact_state, msg_state, before_snapshot)` (줄 674): Compact retry 판정. True이면 외부 루프 continue, False이면 break.
-- `async run(self, prompt, session_id, on_progress, on_compact, on_intervention)` (줄 734): Claude Code 실행
-- `async _execute(self, prompt, session_id, on_progress, on_compact, on_intervention)` (줄 772): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 944): 세션 컴팩트 처리
+- `async _notify_compact_events(self, compact_state, on_compact)` (줄 521): 미통지 compact 이벤트를 on_compact 콜백으로 전달
+- `async _receive_messages(self, client, compact_state, msg_state, on_progress, on_compact, on_intervention)` (줄 539): 내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신
+- `_evaluate_compact_retry(self, compact_state, msg_state, before_snapshot)` (줄 675): Compact retry 판정. True이면 외부 루프 continue, False이면 break.
+- `async run(self, prompt, session_id, on_progress, on_compact, on_intervention)` (줄 735): Claude Code 실행
+- `async _execute(self, prompt, session_id, on_progress, on_compact, on_intervention)` (줄 773): 실제 실행 로직 (ClaudeSDKClient 기반)
+- `async compact_session(self, session_id)` (줄 945): 세션 컴팩트 처리
 
 ## 함수
 
@@ -105,7 +105,7 @@ Returns:
 - 설명: collected_messages에서 마지막 assistant 텍스트를 추출 (tool_use 제외)
 
 ### `async main()`
-- 위치: 줄 966
+- 위치: 줄 967
 
 ## 내부 의존성
 

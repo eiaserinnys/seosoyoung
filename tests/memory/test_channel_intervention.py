@@ -13,6 +13,7 @@ import pytest
 from seosoyoung.slackbot.memory.channel_intervention import (
     InterventionAction,
     InterventionHistory,
+    burst_intervention_probability,
     intervention_probability,
     parse_intervention_markup,
     execute_interventions,
@@ -345,6 +346,127 @@ class TestInterventionHistory:
         assert h.minutes_since_last("C123") == float("inf")
 
 
+# ── burst_intervention_probability ────────────────────────
+
+class TestBurstInterventionProbability:
+    """burst/cooldown 모델 단위 테스트"""
+
+    def test_no_history_returns_high(self):
+        """이력 없으면 0.9 반환"""
+        result = burst_intervention_probability([], importance=5)
+        assert result == 0.9
+
+    def test_guarantee_zone_high_probability(self):
+        """burst 보장 구간(count < 3): 0.8+ 반환"""
+        now = time.time()
+        # burst_count=1 (history에 1개, 2분 전)
+        history = [{"at": now - 120, "type": "message"}]
+        values = [burst_intervention_probability(history, importance=5, now=now) for _ in range(100)]
+        avg = sum(values) / len(values)
+        assert avg >= 0.75, f"보장 구간 평균 {avg:.3f}이 너무 낮음"
+
+    def test_guarantee_zone_two_entries(self):
+        """burst_count=2에서도 보장 구간 유지"""
+        now = time.time()
+        history = [
+            {"at": now - 60, "type": "message"},
+            {"at": now - 180, "type": "message"},
+        ]
+        values = [burst_intervention_probability(history, importance=5, now=now) for _ in range(100)]
+        avg = sum(values) / len(values)
+        assert avg >= 0.70, f"보장 구간(2턴) 평균 {avg:.3f}이 너무 낮음"
+
+    def test_soft_wall_sigmoid_low_importance(self):
+        """연성 벽 구간: importance=3이면 확률이 더 빠르게 감소"""
+        now = time.time()
+        # burst_count=4 (BURST_FLOOR=3 이상)
+        history = [
+            {"at": now - 60, "type": "message"},
+            {"at": now - 180, "type": "message"},
+            {"at": now - 300, "type": "message"},  # 5분 간격
+            {"at": now - 540, "type": "message"},
+        ]
+        values_low = [burst_intervention_probability(history, importance=3, now=now) for _ in range(200)]
+        values_high = [burst_intervention_probability(history, importance=10, now=now) for _ in range(200)]
+        avg_low = sum(values_low) / len(values_low)
+        avg_high = sum(values_high) / len(values_high)
+        assert avg_low < avg_high, f"imp=3 ({avg_low:.3f}) should be < imp=10 ({avg_high:.3f})"
+
+    def test_hard_ceiling_returns_zero(self):
+        """절대 상한(burst_count >= 7): 0.0 반환"""
+        now = time.time()
+        # 7개 이력, 모두 5분 이내 간격
+        history = [{"at": now - i * 120, "type": "message"} for i in range(7)]
+        result = burst_intervention_probability(history, importance=10, now=now)
+        assert result == 0.0, f"절대 상한에서 {result} 반환 (0.0이어야 함)"
+
+    def test_cooldown_recovery(self):
+        """cooldown 구간: 시간 경과에 따른 회복"""
+        now = time.time()
+        # burst 3턴, 30분 전에 끝남
+        history = [
+            {"at": now - 30 * 60, "type": "message"},
+            {"at": now - 32 * 60, "type": "message"},
+            {"at": now - 34 * 60, "type": "message"},
+        ]
+        values_30m = [burst_intervention_probability(history, importance=5, now=now) for _ in range(200)]
+        avg_30m = sum(values_30m) / len(values_30m)
+        assert 0.1 < avg_30m < 0.9, f"30분 후 회복값 {avg_30m:.3f}이 범위 밖"
+
+        # 120분 경과 → 거의 완전 회복
+        now_late = now + 90 * 60  # 추가 90분 = 총 120분
+        values_120m = [burst_intervention_probability(history, importance=5, now=now_late) for _ in range(200)]
+        avg_120m = sum(values_120m) / len(values_120m)
+        assert avg_120m > avg_30m, f"120분 후 ({avg_120m:.3f}) should be > 30분 후 ({avg_30m:.3f})"
+
+    def test_cooldown_proportional_to_burst_size(self):
+        """큰 burst → 더 긴 cooldown (같은 경과 시간에서 더 낮은 회복)"""
+        now = time.time()
+        # 작은 burst (1턴), 20분 전
+        small_history = [{"at": now - 20 * 60, "type": "message"}]
+        # 큰 burst (5턴), 20분 전에 끝남
+        big_history = [{"at": now - (20 + i * 3) * 60, "type": "message"} for i in range(5)]
+
+        values_small = [burst_intervention_probability(small_history, importance=5, now=now) for _ in range(200)]
+        values_big = [burst_intervention_probability(big_history, importance=5, now=now) for _ in range(200)]
+        avg_small = sum(values_small) / len(values_small)
+        avg_big = sum(values_big) / len(values_big)
+        assert avg_big < avg_small, f"큰 burst ({avg_big:.3f}) should recover slower than 작은 burst ({avg_small:.3f})"
+
+    def test_result_always_bounded(self):
+        """결과는 항상 0.0~1.0"""
+        now = time.time()
+        test_cases = [
+            ([], 0),
+            ([], 10),
+            ([{"at": now - 60, "type": "message"}], 5),
+            ([{"at": now - i * 120, "type": "message"} for i in range(7)], 10),
+            ([{"at": now - 120 * 60, "type": "message"}], 5),
+        ]
+        for history, importance in test_cases:
+            for _ in range(50):
+                result = burst_intervention_probability(history, importance, now=now)
+                assert 0.0 <= result <= 1.0, f"범위 밖: {result} (history len={len(history)}, imp={importance})"
+
+
+class TestBurstProbabilityOnHistory:
+    """InterventionHistory.burst_probability() 메서드 테스트"""
+
+    def test_no_history(self, tmp_path):
+        """이력 없으면 0.9"""
+        h = InterventionHistory(base_dir=tmp_path)
+        result = h.burst_probability("C123", importance=5)
+        assert result == 0.9
+
+    def test_after_record(self, tmp_path):
+        """기록 직후 burst 보장 구간"""
+        h = InterventionHistory(base_dir=tmp_path)
+        h.record("C123")
+        values = [h.burst_probability("C123", importance=5) for _ in range(50)]
+        avg = sum(values) / len(values)
+        assert avg > 0.7, f"기록 직후 burst_probability 평균 {avg:.3f}이 너무 낮음"
+
+
 # ── send_debug_log ───────────────────────────────────────
 
 class TestSendDebugLog:
@@ -645,12 +767,18 @@ class TestRunChannelPipeline:
         )
 
     @pytest.mark.asyncio
-    async def test_probability_blocks_low_score(self, tmp_path):
-        """확률 점수가 임계치 미만이면 메시지 개입이 차단됨"""
+    async def test_probability_blocks_at_burst_ceiling(self, tmp_path):
+        """burst 상한(7턴) 도달 시 메시지 개입이 차단됨"""
+        import time as _time
         store = ChannelStore(base_dir=tmp_path)
         history = InterventionHistory(base_dir=tmp_path)
-        # 방금 개입한 이력 추가 → minutes_since_last ≈ 0 → probability ≈ 0
-        history.record("C123")
+        # 7개 이력 (모두 최근 5분 이내) → burst 상한 → probability=0.0
+        now = _time.time()
+        meta = {"history": [
+            {"at": now - i * 120, "type": "message"}
+            for i in range(7)
+        ]}
+        history._write_meta("C123", meta)
         _fill_buffer(store, "C123")
 
         observer = FakeObserver(judge_result=JudgeResult(
@@ -673,11 +801,11 @@ class TestRunChannelPipeline:
             slack_client=client,
             cooldown=history,
             threshold_a=1,
-            intervention_threshold=0.5,  # 높은 임계치
+            intervention_threshold=0.5,
             llm_call=mock_llm_call,
         )
 
-        # 채널에 메시지 발송 없음 (디버그 로그는 제외)
+        # burst 상한 → 채널에 메시지 발송 없음 (디버그 로그는 제외)
         channel_calls = [
             c for c in client.chat_postMessage.call_args_list
             if c[1].get("channel") == "C123"

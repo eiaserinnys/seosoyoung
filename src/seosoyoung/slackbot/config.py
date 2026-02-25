@@ -198,7 +198,7 @@ class ChannelObserverConfig:
         os.getenv("CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS"), 5000
     )
     intervention_threshold: float = _parse_float(
-        os.getenv("CHANNEL_OBSERVER_INTERVENTION_THRESHOLD"), 0.3
+        os.getenv("CHANNEL_OBSERVER_INTERVENTION_THRESHOLD"), 0.18
     )
     periodic_sec: int = _parse_int(
         os.getenv("CHANNEL_OBSERVER_PERIODIC_SEC"), 300

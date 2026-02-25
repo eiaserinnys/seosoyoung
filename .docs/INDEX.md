@@ -157,7 +157,7 @@
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:13): 멘션으로 처리 중인 스레드를 추적
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
 - `InterventionAction` (seosoyoung/slackbot/memory/channel_intervention.py:31): 개입 액션
-- `InterventionHistory` (seosoyoung/slackbot/memory/channel_intervention.py:154): 개입 이력 관리
+- `InterventionHistory` (seosoyoung/slackbot/memory/channel_intervention.py:224): 개입 이력 관리
 - `ChannelObserverResult` (seosoyoung/slackbot/memory/channel_observer.py:30): 채널 관찰 결과 (하위호환 유지)
 - `DigestResult` (seosoyoung/slackbot/memory/channel_observer.py:41): 소화 전용 결과
 - `JudgeItem` (seosoyoung/slackbot/memory/channel_observer.py:49): 개별 메시지에 대한 리액션 판단 결과
@@ -277,7 +277,7 @@
 - `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:137): 레지스트리에서 러너 제거
 - `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:143): 모든 등록된 러너의 클라이언트를 종료
 - `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:178): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:966): 
+- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:967): 
 - `read_stderr_tail()` (seosoyoung/slackbot/claude/diagnostics.py:24): 세션별 cli_stderr 로그의 마지막 N줄 읽기
 - `build_session_dump()` (seosoyoung/slackbot/claude/diagnostics.py:57): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/slackbot/claude/diagnostics.py:102): ProcessError를 사용자 친화적 메시지로 변환.
@@ -330,14 +330,15 @@
 - `parse_intervention_markup()` (seosoyoung/slackbot/memory/channel_intervention.py:39): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
 - `async execute_interventions()` (seosoyoung/slackbot/memory/channel_intervention.py:80): InterventionAction 리스트를 슬랙 API로 발송합니다.
 - `intervention_probability()` (seosoyoung/slackbot/memory/channel_intervention.py:132): 시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.
-- `async send_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:277): 디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식).
-- `send_collect_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:339): 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
-- `send_digest_skip_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:384): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
-- `send_intervention_probability_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:415): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
-- `send_multi_judge_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:460): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
+- `burst_intervention_probability()` (seosoyoung/slackbot/memory/channel_intervention.py:154): 버스트 인식 개입 확률을 계산합니다.
+- `async send_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:361): 디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식).
+- `send_collect_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:423): 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
+- `send_digest_skip_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:468): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
+- `send_intervention_probability_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:499): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
+- `send_multi_judge_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:544): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
 - `parse_channel_observer_output()` (seosoyoung/slackbot/memory/channel_observer.py:104): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_judge_output()` (seosoyoung/slackbot/memory/channel_observer.py:130): Judge 응답에서 XML 태그를 파싱합니다.
-- `async run_channel_pipeline()` (seosoyoung/slackbot/memory/channel_pipeline.py:238): 소화/판단 분리 파이프라인을 실행합니다.
+- `async run_channel_pipeline()` (seosoyoung/slackbot/memory/channel_pipeline.py:239): 소화/판단 분리 파이프라인을 실행합니다.
 - `build_channel_observer_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:65): 채널 관찰 시스템 프롬프트를 반환합니다.
 - `build_channel_observer_user_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:70): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:104): digest 압축 시스템 프롬프트를 반환합니다.
