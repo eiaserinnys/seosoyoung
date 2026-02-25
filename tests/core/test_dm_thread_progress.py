@@ -348,7 +348,7 @@ class TestHandleTrelloSuccessWithDm:
             dm_last_reply_ts="dm_reply_last",
         )
 
-        executor._result_processor.handle_trello_success(pctx, result, "작업 완료 응답", False, None)
+        executor._result_processor.handle_trello_success(pctx, result, "작업 완료 응답", False)
 
         # DM 스레드의 마지막 답글이 평문으로 업데이트되었는지 확인
         # ResultProcessor는 update_message_fn(client, channel, ts, text)을 호출함
@@ -418,7 +418,7 @@ class TestHandleTrelloSuccessWithDm:
         )
 
         # DM 파라미터 없이 호출 → 에러 없이 정상 동작해야 함
-        executor._result_processor.handle_trello_success(pctx, result, "응답", False, None)
+        executor._result_processor.handle_trello_success(pctx, result, "응답", False)
 
         # DM 관련 update_message_fn이 "D_DM_CHANNEL"로 호출되지 않아야 함
         dm_calls = [

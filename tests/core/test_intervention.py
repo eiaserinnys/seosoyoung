@@ -612,7 +612,7 @@ class TestNormalSuccessWithReplace:
         )
 
         with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
-            executor._result_processor.handle_normal_success(pctx, result, "짧은 응답", False, None)
+            executor._result_processor.handle_normal_success(pctx, result, "짧은 응답", False)
 
         mock_replace.assert_called_once()
         call_kwargs = mock_replace.call_args
@@ -634,7 +634,7 @@ class TestNormalSuccessWithReplace:
         )
 
         with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
-            executor._result_processor.handle_normal_success(pctx, result, "짧은 응답", False, None)
+            executor._result_processor.handle_normal_success(pctx, result, "짧은 응답", False)
 
         mock_replace.assert_called_once()
         call_kwargs = mock_replace.call_args
@@ -664,7 +664,7 @@ class TestTrelloSuccessWithReplace:
         )
 
         with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
-            executor._result_processor.handle_trello_success(pctx, result, "트렐로 응답", False, None)
+            executor._result_processor.handle_trello_success(pctx, result, "트렐로 응답", False)
 
         mock_replace.assert_called_once()
         call_kwargs = mock_replace.call_args
@@ -697,7 +697,7 @@ class TestListRunTrelloSuccessNoDelete:
         )
 
         with patch.object(executor._result_processor, "replace_thinking_message") as mock_replace:
-            executor._result_processor.handle_trello_success(pctx, result, "카드 작업 완료", True, None)
+            executor._result_processor.handle_trello_success(pctx, result, "카드 작업 완료", True)
 
         mock_replace.assert_not_called()
         # is_list_run=True이므로 update_message_fn이 호출됨

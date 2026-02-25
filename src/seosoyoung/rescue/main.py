@@ -56,7 +56,6 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from seosoyoung.rescue.config import RescueConfig
 from seosoyoung.rescue.message_formatter import (
     escape_backticks,
-    build_context_usage_bar,
 )
 from seosoyoung.rescue.engine_adapter import create_runner, interrupt, compact_session_sync
 from seosoyoung.slackbot.claude.engine_types import EngineResult
@@ -411,12 +410,7 @@ class RescueBotApp:
             self._handle_interrupted(last_msg_ts, channel, client)
             return
 
-        # 컨텍스트 사용량 바
-        usage_bar = build_context_usage_bar(result.usage)
-
         continuation_hint = "`자세한 내용을 확인하시거나 대화를 이어가려면 스레드를 확인해주세요.`"
-        if usage_bar:
-            continuation_hint = f"{usage_bar}\n{continuation_hint}"
 
         if not is_thread_reply:
             # 채널 최초 응답: P(사고 과정)를 미리보기로 교체, 전문은 스레드에
@@ -447,8 +441,6 @@ class RescueBotApp:
         else:
             # 스레드 내 후속 대화
             display_response = response
-            if usage_bar:
-                display_response = f"{display_response}\n\n{usage_bar}"
 
             try:
                 if len(display_response) <= 3900:
