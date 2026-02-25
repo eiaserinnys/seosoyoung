@@ -609,10 +609,13 @@ class TrelloWatcher:
         """Claude 실행 스레드 스포닝 (공통)
 
         _handle_new_card와 _process_list_run_card의 공통 패턴을 통합합니다.
-        - 세션 락 획득/해제
         - PresentationContext + 콜백 팩토리 구성
-        - claude_runner_factory 호출
+        - claude_runner_factory 호출 (세션 락 관리는 executor에 위임)
         - 성공/에러/최종 콜백 실행
+
+        콜백 호출 순서: on_error(실패 시) → on_finally → on_success(성공 시)
+        락 해제는 executor.run()의 finally 블록에서 처리되므로, on_finally/on_success
+        호출 시점에는 이미 락이 해제되어 있다.
 
         Args:
             session: Claude 세션
@@ -622,21 +625,19 @@ class TrelloWatcher:
             tracked: TrackedCard 정보
             dm_channel_id: DM 채널 ID
             dm_thread_ts: DM 스레드 타임스탬프
-            on_success: 성공 시 호출될 콜백
+            on_success: Claude 실행 성공 + 클린업 후 호출될 콜백 (다음 카드 체인 등)
             on_error: 에러 시 호출될 콜백 (Exception을 인자로 받음)
-            on_finally: 항상 호출될 콜백 (락 해제 전)
+            on_finally: 항상 호출될 콜백 (클린업: 🌀 제거, untrack 등)
         """
         from seosoyoung.slackbot.presentation.types import PresentationContext
         from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
         from seosoyoung.slackbot.slack.formatting import update_message
 
         def run_claude():
-            lock = None
-            if self.get_session_lock:
-                lock = self.get_session_lock(thread_ts)
-                lock.acquire()
-                logger.debug(f"워처 락 획득: thread_ts={thread_ts}")
-
+            # 락 관리는 claude_runner_factory(ClaudeExecutor.run)에 위임한다.
+            # watcher가 직접 락을 acquire/release하면 executor와 이중 관리되어
+            # RLock 참조 카운트 불일치 및 on_success 호출 타이밍 버그가 발생한다.
+            # (remote 모드에서 on_success 내 새 스레드가 락 획득 실패하는 근본 원인)
             claude_succeeded = False
             try:
                 def say(text, thread_ts=None, **kwargs):
@@ -682,7 +683,16 @@ class TrelloWatcher:
                 if on_error:
                     on_error(e)
 
-            # on_success는 Claude 실행과 분리하여 호출
+            # on_finally는 클린업(🌀 제거, untrack 등)을 담당하므로 먼저 호출
+            if on_finally:
+                try:
+                    on_finally()
+                except Exception as e:
+                    logger.exception(f"on_finally 콜백 오류: {e}")
+
+            # on_success는 Claude 실행 완료 및 클린업 후에 호출
+            # executor.run()이 이미 락을 해제했으므로 on_success 내 새 스레드가
+            # 즉시 락을 획득할 수 있다.
             # on_success 내부 예외가 on_error를 트리거하지 않도록 격리
             if claude_succeeded and on_success:
                 try:
@@ -691,15 +701,6 @@ class TrelloWatcher:
                     logger.exception(
                         f"on_success 콜백 오류 (체인 중단 가능): {e}"
                     )
-
-            if on_finally:
-                try:
-                    on_finally()
-                except Exception as e:
-                    logger.exception(f"on_finally 콜백 오류: {e}")
-            if lock:
-                lock.release()
-                logger.debug(f"워처 락 해제: thread_ts={thread_ts}")
 
         claude_thread = threading.Thread(target=run_claude, daemon=True)
         claude_thread.start()
