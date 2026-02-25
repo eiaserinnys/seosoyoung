@@ -242,7 +242,7 @@
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
 - `FileManager` (seosoyoung/soul/service/file_manager.py:28): 첨부 파일 관리자
 - `ResourceManager` (seosoyoung/soul/service/resource_manager.py:17): 동시 실행 제한 관리자
-- `ClaudeRunnerPool` (seosoyoung/soul/service/runner_pool.py:25): ClaudeRunner 인스턴스 LRU 풀
+- `ClaudeRunnerPool` (seosoyoung/soul/service/runner_pool.py:27): ClaudeRunner 인스턴스 LRU 풀
 - `TaskExecutor` (seosoyoung/soul/service/task_executor.py:19): 백그라운드 태스크 실행 관리자
 - `TaskListenerManager` (seosoyoung/soul/service/task_listener.py:16): SSE 리스너 관리자
 - `TaskManager` (seosoyoung/soul/service/task_manager.py:52): 태스크 라이프사이클 관리자
