@@ -99,10 +99,12 @@ class TaskStorage:
             # 디렉토리 생성
             self._storage_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 임시 파일에 먼저 쓰고 rename (atomic write)
+            # 임시 파일에 먼저 쓰고 replace (atomic write)
+            # Path.rename()은 Windows에서 대상 파일이 이미 존재하면 WinError 183을 발생시킴.
+            # Path.replace()는 Windows/Unix 모두에서 원자적으로 덮어쓰기 가능.
             temp_path = self._storage_path.with_suffix(".tmp")
             temp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-            temp_path.rename(self._storage_path)
+            temp_path.replace(self._storage_path)
 
             logger.debug(f"Saved {len(tasks)} tasks to storage")
 

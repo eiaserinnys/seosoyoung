@@ -87,5 +87,5 @@ Task API를 사용하여 Claude Code를 원격 실행합니다.
 - `async reconnect_stream(self, client_id, request_id, on_progress, on_compact, on_debug)` (줄 337): 태스크 SSE 스트림에 재연결
 - `async health_check(self)` (줄 365): 헬스 체크
 - `async _handle_sse_events(self, response, on_progress, on_compact, on_debug, on_session)` (줄 378): SSE 이벤트 스트림 처리
-- `async _parse_sse_stream(self, response)` (줄 449): SSE 스트림 파싱
-- `async _parse_error(self, response)` (줄 500): 에러 응답 파싱
+- `async _parse_sse_stream(self, response)` (줄 451): SSE 스트림 파싱
+- `async _parse_error(self, response)` (줄 511): 에러 응답 파싱
