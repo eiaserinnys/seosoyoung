@@ -509,6 +509,7 @@ class ClaudeRunner:
             hooks=hooks,
             extra_args={"debug-to-stderr": None},
             debug_stderr=_stderr_target,
+            setting_sources=["user", "project", "local"],
         )
 
         if session_id:
