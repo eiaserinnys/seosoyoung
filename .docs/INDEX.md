@@ -115,9 +115,9 @@
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
 - `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:45): Claude Code 실행 결과 (하위호환 레이어)
-- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:171): Compact retry 외부 루프 상태
-- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:193): 메시지 수신 루프 상태
-- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:224): Claude Code SDK 기반 실행기
+- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:167): Compact retry 외부 루프 상태
+- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:189): 메시지 수신 루프 상태
+- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:220): Claude Code SDK 기반 실행기
 - `EngineResult` (seosoyoung/slackbot/claude/engine_types.py:13): Claude Code 엔진의 순수 실행 결과
 - `RoleConfig` (seosoyoung/slackbot/claude/engine_types.py:31): 역할별 도구 접근 설정
 - `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:59): Claude Code 실행기
@@ -271,12 +271,12 @@
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/slackbot/claude/__init__.py:24): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:94): 레지스트리에서 러너 조회
-- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:100): 레지스트리에 러너 등록
-- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:106): 레지스트리에서 러너 제거
-- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:112): 모든 등록된 러너의 클라이언트를 종료
-- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:147): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:884): 
+- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:90): 레지스트리에서 러너 조회
+- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:96): 레지스트리에 러너 등록
+- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:102): 레지스트리에서 러너 제거
+- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:108): 모든 등록된 러너의 클라이언트를 종료
+- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:143): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:880): 
 - `read_stderr_tail()` (seosoyoung/slackbot/claude/diagnostics.py:18): 세션별 cli_stderr 로그의 마지막 N줄 읽기
 - `build_session_dump()` (seosoyoung/slackbot/claude/diagnostics.py:51): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/slackbot/claude/diagnostics.py:96): ProcessError를 사용자 친화적 메시지로 변환.

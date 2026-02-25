@@ -129,11 +129,9 @@ class TestClaudeResultCompat:
             update_requested=True,
             restart_requested=False,
             list_run="📦 Backlog",
-            anchor_ts="1234.5678",
         )
         assert result.update_requested is True
         assert result.list_run == "📦 Backlog"
-        assert result.anchor_ts == "1234.5678"
 
     def test_from_engine_result(self):
         """EngineResult + ParsedMarkers → ClaudeResult 변환"""
@@ -157,17 +155,6 @@ class TestClaudeResultCompat:
         assert claude_result.restart_requested is False
         assert claude_result.collected_messages == engine_result.collected_messages
 
-    def test_from_engine_result_with_anchor_ts(self):
-        """anchor_ts가 올바르게 전달되는지"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
-        from seosoyoung.slackbot.claude.engine_types import EngineResult
-
-        engine_result = EngineResult(success=True, output="test")
-        claude_result = ClaudeResult.from_engine_result(
-            engine_result, anchor_ts="1234.5678"
-        )
-        assert claude_result.anchor_ts == "1234.5678"
-
     def test_from_engine_result_default_markers(self):
         """markers=None일 때 기본값 적용"""
         from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
@@ -178,4 +165,3 @@ class TestClaudeResultCompat:
         assert claude_result.update_requested is False
         assert claude_result.restart_requested is False
         assert claude_result.list_run is None
-        assert claude_result.anchor_ts == ""

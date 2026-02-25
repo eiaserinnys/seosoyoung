@@ -14,7 +14,7 @@ class EngineResult:
     """Claude Code 엔진의 순수 실행 결과
 
     응용 마커(update_requested, restart_requested, list_run)나
-    OM 전용 필드(anchor_ts)는 포함하지 않습니다.
+    OM 전용 필드는 포함하지 않습니다.
     """
 
     success: bool
