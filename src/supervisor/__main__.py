@@ -64,7 +64,12 @@ def _start_dashboard(
 
 
 def _load_env() -> None:
-    """runtime의 .env 파일을 로드하여 환경변수에 반영."""
+    """workspace의 .env 파일을 로드하여 환경변수에 반영.
+
+    모든 환경변수는 workspace/.env에 통합되어 있다.
+    supervisor가 로드한 값은 os.environ에 반영되어
+    non-Python 자식 프로세스(node, Go)에게도 상속된다.
+    """
     try:
         from dotenv import load_dotenv
     except ImportError:
@@ -72,12 +77,12 @@ def _load_env() -> None:
         return
 
     paths = _resolve_paths()
-    env_file = paths["runtime"] / ".env"
+    env_file = paths["workspace"] / ".env"
     if env_file.exists():
         load_dotenv(env_file, override=False)
         logger.info(".env 로드 완료: %s", env_file)
     else:
-        logger.debug(".env 파일을 찾을 수 없습니다: %s", env_file)
+        logger.warning(".env 파일을 찾을 수 없습니다: %s", env_file)
 
 
 def main() -> None:

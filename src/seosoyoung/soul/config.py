@@ -10,6 +10,10 @@ import sys
 from functools import lru_cache
 from dataclasses import dataclass
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 _config_logger = logging.getLogger(__name__)
 
 

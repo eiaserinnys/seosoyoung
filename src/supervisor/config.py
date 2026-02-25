@@ -115,16 +115,12 @@ def build_process_configs() -> list[ProcessConfig]:
     claude_cli_dir = _find_claude_cli_dir()
 
     # --- 필수: bot ---
-    # CLAUDE_EXECUTION_MODE: "local" (기본) 또는 "remote" (soul 위임)
-    # .env 또는 환경변수로 설정. bot_env에 명시하여 전환 스위치 역할.
-    claude_exec_mode = os.environ.get("CLAUDE_EXECUTION_MODE", "local")
+    # CLAUDE_EXECUTION_MODE는 .env에서 프로세스가 직접 읽음 (load_dotenv)
+    # config.env에는 경로/인코딩 설정만 유지
     bot_env: dict[str, str] = {
         "PYTHONUTF8": "1",
         "PYTHONPATH": str(paths["runtime"] / "src"),
-        "CLAUDE_EXECUTION_MODE": claude_exec_mode,
     }
-    if claude_exec_mode == "remote":
-        logger.info("Claude 실행 모드: remote (soul 위임)")
     if claude_cli_dir:
         logger.info("claude CLI 발견: %s (PATH에 추가)", claude_cli_dir)
         bot_env["PATH"] = claude_cli_dir

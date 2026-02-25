@@ -3,6 +3,10 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
 
 WORKSPACE_ROOT = os.getenv(
