@@ -342,11 +342,11 @@ def create_session_and_run_claude(
 
     # OM: 메모리 주입
     effective_prompt = prompt
-    anchor_ts = ""
     if prepare_memory_fn:
         memory_prompt, anchor_ts = prepare_memory_fn(
             session_thread_ts, channel, session.session_id, prompt,
         )
+        pctx.om_anchor_ts = anchor_ts or None
         if memory_prompt:
             effective_prompt = (
                 f"{memory_prompt}\n\n"
@@ -377,7 +377,7 @@ def create_session_and_run_claude(
             observation_input = user_message_arg if user_message_arg is not None else prompt
             trigger_observation_fn(
                 thread_ts_arg, session.user_id, observation_input,
-                result.collected_messages, anchor_ts=getattr(result, "anchor_ts", anchor_ts),
+                result.collected_messages, anchor_ts=pctx.om_anchor_ts or "",
             )
 
     # Claude 실행

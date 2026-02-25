@@ -33,6 +33,8 @@ class PresentationContext:
     # 스레드 상태
     is_existing_thread: bool = False
     is_thread_reply: bool = False
+    # OM (Observation Memory) 디버그 채널
+    om_anchor_ts: Optional[str] = None
     # DM (트렐로 모드용)
     dm_channel_id: Optional[str] = None
     dm_thread_ts: Optional[str] = None

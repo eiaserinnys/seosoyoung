@@ -52,21 +52,18 @@ class ClaudeResult(EngineResult):
     update_requested: bool = False
     restart_requested: bool = False
     list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
-    anchor_ts: str = ""  # OM 디버그 채널 세션 스레드 앵커 ts
 
     @classmethod
     def from_engine_result(
         cls,
         result: EngineResult,
         markers: Any = None,
-        anchor_ts: str = "",
     ) -> "ClaudeResult":
         """EngineResult + markers → ClaudeResult 변환
 
         Args:
             result: 엔진 순수 결과
             markers: 파싱된 응용 마커 (duck-typed, None이면 기본값 사용)
-            anchor_ts: OM 앵커 ts
         """
         return cls(
             success=result.success,
@@ -80,7 +77,6 @@ class ClaudeResult(EngineResult):
             update_requested=getattr(markers, "update_requested", False),
             restart_requested=getattr(markers, "restart_requested", False),
             list_run=getattr(markers, "list_run", None),
-            anchor_ts=anchor_ts,
         )
 
 

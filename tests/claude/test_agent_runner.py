@@ -806,20 +806,6 @@ class TestInjectionDebugLogSkipsWithoutAnchor:
         mock_send.assert_called()
 
 
-class TestClaudeResultAnchorTs:
-    """ClaudeResult에 anchor_ts 필드 테스트"""
-
-    def test_anchor_ts_default_empty(self):
-        """기본값은 빈 문자열"""
-        result = ClaudeResult(success=True, output="test")
-        assert result.anchor_ts == ""
-
-    def test_anchor_ts_set(self):
-        """anchor_ts 설정 가능"""
-        result = ClaudeResult(success=True, output="test", anchor_ts="anc_123")
-        assert result.anchor_ts == "anc_123"
-
-
 class TestTriggerObservationToolFilter:
     """_trigger_observation에서 tool_use/tool 메시지 필터링 테스트"""
 
