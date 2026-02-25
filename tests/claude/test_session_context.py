@@ -343,3 +343,11 @@ class TestFormatHybridContext:
         messages = [self._make_msg("1.0", user="U123", text="hello world")]
         result = format_hybrid_context(messages, "hybrid")
         assert "<U123>: hello world" in result
+
+    def test_custom_format_fn(self):
+        """주입된 format_message_fn이 사용된다"""
+        messages = [self._make_msg("1.0", user="U1", text="hello")]
+        custom_fn = lambda msg, channel="": f"CUSTOM:{msg['text']}"
+        result = format_hybrid_context(messages, "hybrid", format_message_fn=custom_fn)
+        assert "CUSTOM:hello" in result
+        assert "<U1>" not in result  # 기본 포맷터가 사용되지 않음

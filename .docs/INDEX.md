@@ -23,6 +23,7 @@
 - [`slackbot/auth.py`](modules/slackbot_auth.md): 권한 및 역할 관리
 - [`claude/agent_runner.py`](modules/claude_agent_runner.md): Claude Code SDK 기반 실행기
 - [`claude/diagnostics.py`](modules/claude_diagnostics.md): 세션 진단 및 에러 분류 로직
+- [`claude/engine_types.py`](modules/claude_engine_types.md): Claude 엔진 전용 타입 정의
 - [`claude/executor.py`](modules/claude_executor.md): Claude Code 실행 로직
 - [`claude/intervention.py`](modules/claude_intervention.md): 인터벤션(Intervention) 관리
 - [`claude/message_formatter.py`](modules/claude_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티
@@ -42,6 +43,7 @@
 - [`handlers/translate.py`](modules/handlers_translate.md): 번역 핸들러
 - [`slackbot/logging_config.py`](modules/slackbot_logging_config.md): 로깅 설정 모듈
 - [`slackbot/main.py`](modules/slackbot_main.md): SeoSoyoung 슬랙 봇 메인
+- [`slackbot/marker_parser.py`](modules/slackbot_marker_parser.md): 응용 마커 파서
 - [`memory/channel_intervention.py`](modules/memory_channel_intervention.md): 채널 개입(intervention) 모듈
 - [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
 - [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화/판단 파이프라인
@@ -59,12 +61,15 @@
 - [`memory/reflector.py`](modules/memory_reflector.md): Reflector 모듈
 - [`memory/store.py`](modules/memory_store.md): 관찰 로그 저장소
 - [`memory/token_counter.py`](modules/memory_token_counter.md): 토큰 카운터
+- [`presentation/progress.py`](modules/presentation_progress.md): 진행 상태 콜백 팩토리
+- [`presentation/types.py`](modules/presentation_types.md): 프레젠테이션 컨텍스트 타입 정의
 - [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리 (CLAUDE_CONFIG_DIR + Junction 방식)
 - [`slackbot/restart.py`](modules/slackbot_restart.md): 재시작 관리
 - [`slackbot/shutdown.py`](modules/slackbot_shutdown.md): 경량 HTTP Shutdown 서버
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
 - [`slack/formatting.py`](modules/slack_formatting.md): 슬랙 메시지 포맷팅 헬퍼
 - [`slack/helpers.py`](modules/slack_helpers.md): Slack 메시지 유틸리티
+- [`slack/message_formatter.py`](modules/slack_message_formatter.md): 슬랙 메시지 → 프롬프트 주입 포맷터
 - [`translator/__main__.py`](modules/translator___main__.md): 번역 기능 CLI 테스트
 - [`translator/detector.py`](modules/translator_detector.md): 언어 감지 모듈
 - [`translator/glossary.py`](modules/translator_glossary.md): 용어집 로더 모듈
@@ -109,16 +114,17 @@
 - `RescueRunner` (seosoyoung/rescue/runner.py:87): Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
-- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:53): Claude Code 실행 결과
-- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:153): Compact retry 외부 루프 상태
-- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:175): 메시지 수신 루프 상태
-- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:206): Claude Code SDK 기반 실행기
-- `ExecutionContext` (seosoyoung/slackbot/claude/executor.py:54): 실행 컨텍스트 - 메서드 간 전달되는 모든 실행 상태를 묶는 객체
-- `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:92): Claude Code 실행기
-- `PendingPrompt` (seosoyoung/slackbot/claude/intervention.py:19): 인터벤션 대기 중인 프롬프트 정보
-- `InterventionManager` (seosoyoung/slackbot/claude/intervention.py:35): 인터벤션 관리자
+- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:45): Claude Code 실행 결과 (하위호환 레이어)
+- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:171): Compact retry 외부 루프 상태
+- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:193): 메시지 수신 루프 상태
+- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:224): Claude Code SDK 기반 실행기
+- `EngineResult` (seosoyoung/slackbot/claude/engine_types.py:13): Claude Code 엔진의 순수 실행 결과
+- `RoleConfig` (seosoyoung/slackbot/claude/engine_types.py:31): 역할별 도구 접근 설정
+- `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:59): Claude Code 실행기
+- `PendingPrompt` (seosoyoung/slackbot/claude/intervention.py:17): 인터벤션 대기 중인 프롬프트 정보
+- `InterventionManager` (seosoyoung/slackbot/claude/intervention.py:34): 인터벤션 관리자
 - `ResultProcessor` (seosoyoung/slackbot/claude/result_processor.py:20): Claude 실행 결과를 처리하여 슬랙에 응답
-- `ClaudeServiceAdapter` (seosoyoung/slackbot/claude/service_adapter.py:26): 원격 soul 서버 어댑터
+- `ClaudeServiceAdapter` (seosoyoung/slackbot/claude/service_adapter.py:25): 원격 soul 서버 어댑터
 - `SSEEvent` (seosoyoung/slackbot/claude/service_client.py:32): Server-Sent Event 데이터
 - `ExecuteResult` (seosoyoung/slackbot/claude/service_client.py:39): soul 서버 실행 결과
 - `SoulServiceError` (seosoyoung/slackbot/claude/service_client.py:49): Soul Service 클라이언트 오류
@@ -132,22 +138,23 @@
 - `Session` (seosoyoung/slackbot/claude/session.py:19): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/slackbot/claude/session.py:41): 세션 매니저
 - `SessionRuntime` (seosoyoung/slackbot/claude/session.py:263): 세션 실행 상태 관리자
-- `ChannelStoreProtocol` (seosoyoung/slackbot/claude/session_context.py:15): ChannelStore가 구현해야 하는 인터페이스
+- `ChannelStoreProtocol` (seosoyoung/slackbot/claude/session_context.py:14): ChannelStore가 구현해야 하는 인터페이스
 - `CardInfo` (seosoyoung/slackbot/claude/types.py:11): 트렐로 카드 정보 Protocol (TrackedCard 대체)
 - `SlackClient` (seosoyoung/slackbot/claude/types.py:40): Slack WebClient Protocol
 - `ConfigurationError` (seosoyoung/slackbot/config.py:18): 설정 오류 예외
 - `SlackConfig` (seosoyoung/slackbot/config.py:60): Slack 연결 설정
 - `AuthConfig` (seosoyoung/slackbot/config.py:70): 권한 설정
-- `TrelloConfig` (seosoyoung/slackbot/config.py:97): Trello 설정
-- `TranslateConfig` (seosoyoung/slackbot/config.py:118): 번역 설정
-- `GeminiConfig` (seosoyoung/slackbot/config.py:139): Gemini 설정 (이미지 생성)
-- `OMConfig` (seosoyoung/slackbot/config.py:147): Observational Memory 설정
-- `ChannelObserverConfig` (seosoyoung/slackbot/config.py:173): Channel Observer 설정
-- `ClaudeConfig` (seosoyoung/slackbot/config.py:226): Claude 실행 모드 설정
-- `EmojiConfig` (seosoyoung/slackbot/config.py:237): 이모지 설정
-- `Config` (seosoyoung/slackbot/config.py:265): 애플리케이션 설정
+- `TrelloConfig` (seosoyoung/slackbot/config.py:96): Trello 설정
+- `TranslateConfig` (seosoyoung/slackbot/config.py:117): 번역 설정
+- `GeminiConfig` (seosoyoung/slackbot/config.py:138): Gemini 설정 (이미지 생성)
+- `OMConfig` (seosoyoung/slackbot/config.py:146): Observational Memory 설정
+- `ChannelObserverConfig` (seosoyoung/slackbot/config.py:172): Channel Observer 설정
+- `ClaudeConfig` (seosoyoung/slackbot/config.py:225): Claude 실행 모드 설정
+- `EmojiConfig` (seosoyoung/slackbot/config.py:236): 이모지 설정
+- `Config` (seosoyoung/slackbot/config.py:264): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/slackbot/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:13): 멘션으로 처리 중인 스레드를 추적
+- `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
 - `InterventionAction` (seosoyoung/slackbot/memory/channel_intervention.py:31): 개입 액션
 - `InterventionHistory` (seosoyoung/slackbot/memory/channel_intervention.py:154): 개입 이력 관리
 - `ChannelObserverResult` (seosoyoung/slackbot/memory/channel_observer.py:30): 채널 관찰 결과 (하위호환 유지)
@@ -160,8 +167,8 @@
 - `DisplayNameResolver` (seosoyoung/slackbot/memory/channel_prompts.py:18): Slack user ID → 디스플레이네임 캐시 기반 변환기.
 - `ChannelDigestScheduler` (seosoyoung/slackbot/memory/channel_scheduler.py:18): 주기적으로 채널 버퍼를 체크하여 소화를 트리거하는 스케줄러
 - `ChannelStore` (seosoyoung/slackbot/memory/channel_store.py:24): 파일 기반 채널 관찰 데이터 저장소
-- `InjectionResult` (seosoyoung/slackbot/memory/context_builder.py:31): 주입 결과 — 디버그 로그용 정보를 포함
-- `ContextBuilder` (seosoyoung/slackbot/memory/context_builder.py:221): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
+- `InjectionResult` (seosoyoung/slackbot/memory/context_builder.py:32): 주입 결과 — 디버그 로그용 정보를 포함
+- `ContextBuilder` (seosoyoung/slackbot/memory/context_builder.py:222): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
 - `MigrationReport` (seosoyoung/slackbot/memory/migration.py:21): 마이그레이션 결과 보고서
 - `ObserverResult` (seosoyoung/slackbot/memory/observer.py:24): Observer 출력 결과
 - `Observer` (seosoyoung/slackbot/memory/observer.py:145): 대화를 관찰하여 구조화된 관찰 로그를 생성
@@ -176,6 +183,7 @@
 - `MemoryRecord` (seosoyoung/slackbot/memory/store.py:238): 세션별 관찰 로그 레코드
 - `MemoryStore` (seosoyoung/slackbot/memory/store.py:300): 파일 기반 관찰 로그 저장소
 - `TokenCounter` (seosoyoung/slackbot/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
+- `PresentationContext` (seosoyoung/slackbot/presentation/types.py:12): 프레젠테이션 레이어가 관리하는 실행 컨텍스트
 - `ProfileInfo` (seosoyoung/slackbot/profile/manager.py:23): 프로필 정보
 - `ProfileManager` (seosoyoung/slackbot/profile/manager.py:33): Claude Code 인증 프로필 관리자 (CLAUDE_CONFIG_DIR + Junction)
 - `RestartType` (seosoyoung/slackbot/restart.py:15): 재시작 유형
@@ -243,12 +251,11 @@
 ### 주요 함수
 
 - `slack_attach_file()` (seosoyoung/mcp/server.py:20): 슬랙에 파일을 첨부합니다.
-- `slack_get_context()` (seosoyoung/mcp/server.py:36): 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
-- `slack_post_message()` (seosoyoung/mcp/server.py:46): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
-- `async slack_generate_image()` (seosoyoung/mcp/server.py:67): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
-- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:90): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
-- `slack_get_user_profile()` (seosoyoung/mcp/server.py:104): Slack 사용자의 프로필 정보를 조회합니다.
-- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:116): Slack 사용자의 프로필 이미지를 다운로드합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:36): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `async slack_generate_image()` (seosoyoung/mcp/server.py:57): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
+- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:80): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
+- `slack_get_user_profile()` (seosoyoung/mcp/server.py:94): Slack 사용자의 프로필 정보를 조회합니다.
+- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:106): Slack 사용자의 프로필 이미지를 다운로드합니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:24): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:36): 슬랙에 파일을 첨부
 - `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:57): Gemini API로 이미지를 생성하고 임시 파일로 저장
@@ -264,17 +271,16 @@
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/slackbot/claude/__init__.py:24): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:76): 레지스트리에서 러너 조회
-- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:82): 레지스트리에 러너 등록
-- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:88): 레지스트리에서 러너 제거
-- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:94): 모든 등록된 러너의 클라이언트를 종료
-- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:129): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:911): 
+- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:94): 레지스트리에서 러너 조회
+- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:100): 레지스트리에 러너 등록
+- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:106): 레지스트리에서 러너 제거
+- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:112): 모든 등록된 러너의 클라이언트를 종료
+- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:147): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:864): 
 - `read_stderr_tail()` (seosoyoung/slackbot/claude/diagnostics.py:18): 세션별 cli_stderr 로그의 마지막 N줄 읽기
 - `build_session_dump()` (seosoyoung/slackbot/claude/diagnostics.py:51): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/slackbot/claude/diagnostics.py:96): ProcessError를 사용자 친화적 메시지로 변환.
 - `format_rate_limit_warning()` (seosoyoung/slackbot/claude/diagnostics.py:136): allowed_warning용 사람이 읽을 수 있는 안내문 생성.
-- `send_debug_to_slack()` (seosoyoung/slackbot/claude/diagnostics.py:156): 슬랙에 디버그 메시지 전송 (별도 메시지로)
 - `build_context_usage_bar()` (seosoyoung/slackbot/claude/message_formatter.py:21): usage dict에서 컨텍스트 사용량 바를 생성
 - `escape_backticks()` (seosoyoung/slackbot/claude/message_formatter.py:56): 텍스트 내 모든 백틱을 이스케이프
 - `build_trello_header()` (seosoyoung/slackbot/claude/message_formatter.py:75): 트렐로 카드용 슬랙 메시지 헤더 생성
@@ -282,9 +288,9 @@
 - `format_as_blockquote()` (seosoyoung/slackbot/claude/message_formatter.py:107): 텍스트를 슬랙 blockquote 형식으로 변환
 - `format_trello_progress()` (seosoyoung/slackbot/claude/message_formatter.py:114): 트렐로 모드 채널 진행 상황 포맷
 - `format_dm_progress()` (seosoyoung/slackbot/claude/message_formatter.py:121): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
-- `build_initial_context()` (seosoyoung/slackbot/claude/session_context.py:24): 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
-- `build_followup_context()` (seosoyoung/slackbot/claude/session_context.py:76): 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
-- `format_hybrid_context()` (seosoyoung/slackbot/claude/session_context.py:143): hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
+- `build_initial_context()` (seosoyoung/slackbot/claude/session_context.py:23): 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
+- `build_followup_context()` (seosoyoung/slackbot/claude/session_context.py:75): 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
+- `format_hybrid_context()` (seosoyoung/slackbot/claude/session_context.py:142): hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
 - `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:79): 액션 핸들러 등록
@@ -299,24 +305,25 @@
 - `handle_compact()` (seosoyoung/slackbot/handlers/commands.py:494): compact 명령어 핸들러 - 스레드 세션 컴팩트
 - `handle_profile()` (seosoyoung/slackbot/handlers/commands.py:529): profile 명령어 핸들러 - 인증 프로필 관리
 - `handle_resume_list_run()` (seosoyoung/slackbot/handlers/commands.py:585): 정주행 재개 명령어 핸들러
-- `extract_command()` (seosoyoung/slackbot/handlers/mention.py:28): 멘션에서 명령어 추출
-- `build_prompt()` (seosoyoung/slackbot/handlers/mention.py:54): 프롬프트 구성.
-- `get_channel_history()` (seosoyoung/slackbot/handlers/mention.py:112): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-- `try_handle_command()` (seosoyoung/slackbot/handlers/mention.py:142): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
-- `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:205): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
-- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:327): 멘션 핸들러 등록
-- `build_slack_context()` (seosoyoung/slackbot/handlers/message.py:20): 슬랙 컨텍스트 블록 문자열을 생성합니다.
-- `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:46): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
-- `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:216): 메시지 핸들러 등록
+- `extract_command()` (seosoyoung/slackbot/handlers/mention.py:29): 멘션에서 명령어 추출
+- `build_prompt()` (seosoyoung/slackbot/handlers/mention.py:55): 프롬프트 구성.
+- `get_channel_history()` (seosoyoung/slackbot/handlers/mention.py:110): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
+- `try_handle_command()` (seosoyoung/slackbot/handlers/mention.py:140): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
+- `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:203): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
+- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:398): 멘션 핸들러 등록
+- `build_slack_context()` (seosoyoung/slackbot/handlers/message.py:21): 슬랙 컨텍스트 블록 문자열을 생성합니다.
+- `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:47): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
+- `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:289): 메시지 핸들러 등록
 - `process_translate_message()` (seosoyoung/slackbot/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/slackbot/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/slackbot/main.py:231): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/slackbot/main.py:242): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/slackbot/main.py:253): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/slackbot/main.py:273): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/slackbot/main.py:283): 봇 사용자 ID 초기화
-- `main()` (seosoyoung/slackbot/main.py:293): 봇 메인 진입점
+- `notify_startup()` (seosoyoung/slackbot/main.py:235): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/slackbot/main.py:246): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/slackbot/main.py:257): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/slackbot/main.py:277): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/slackbot/main.py:287): 봇 사용자 ID 초기화
+- `main()` (seosoyoung/slackbot/main.py:297): 봇 메인 진입점
+- `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `parse_intervention_markup()` (seosoyoung/slackbot/memory/channel_intervention.py:39): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
 - `async execute_interventions()` (seosoyoung/slackbot/memory/channel_intervention.py:80): InterventionAction 리스트를 슬랙 API로 발송합니다.
 - `intervention_probability()` (seosoyoung/slackbot/memory/channel_intervention.py:132): 시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.
@@ -338,11 +345,11 @@
 - `build_digest_only_user_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:167): 소화 전용 사용자 프롬프트를 구성합니다.
 - `build_judge_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:198): 리액션 판단 전용 시스템 프롬프트를 반환합니다.
 - `build_judge_user_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:203): 리액션 판단 전용 사용자 프롬프트를 구성합니다.
-- `render_observation_items()` (seosoyoung/slackbot/memory/context_builder.py:48): 관찰 항목 리스트를 사람이 읽을 수 있는 텍스트로 렌더링합니다.
-- `render_persistent_items()` (seosoyoung/slackbot/memory/context_builder.py:81): 장기 기억 항목 리스트를 텍스트로 렌더링합니다.
-- `optimize_items_for_context()` (seosoyoung/slackbot/memory/context_builder.py:121): 관찰 항목을 컨텍스트 주입에 최적화합니다.
-- `add_relative_time()` (seosoyoung/slackbot/memory/context_builder.py:161): [하위 호환] 텍스트 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
-- `optimize_for_context()` (seosoyoung/slackbot/memory/context_builder.py:181): [하위 호환] 텍스트 관찰 로그를 컨텍스트 주입에 최적화합니다.
+- `render_observation_items()` (seosoyoung/slackbot/memory/context_builder.py:49): 관찰 항목 리스트를 사람이 읽을 수 있는 텍스트로 렌더링합니다.
+- `render_persistent_items()` (seosoyoung/slackbot/memory/context_builder.py:82): 장기 기억 항목 리스트를 텍스트로 렌더링합니다.
+- `optimize_items_for_context()` (seosoyoung/slackbot/memory/context_builder.py:122): 관찰 항목을 컨텍스트 주입에 최적화합니다.
+- `add_relative_time()` (seosoyoung/slackbot/memory/context_builder.py:162): [하위 호환] 텍스트 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
+- `optimize_for_context()` (seosoyoung/slackbot/memory/context_builder.py:182): [하위 호환] 텍스트 관찰 로그를 컨텍스트 주입에 최적화합니다.
 - `prepare_memory_injection()` (seosoyoung/slackbot/memory/injector.py:15): OM 메모리 주입을 준비합니다.
 - `create_or_load_debug_anchor()` (seosoyoung/slackbot/memory/injector.py:101): 디버그 앵커 메시지를 생성하거나 기존 앵커를 로드합니다.
 - `send_injection_debug_log()` (seosoyoung/slackbot/memory/injector.py:157): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
@@ -366,6 +373,7 @@
 - `generate_ltm_id()` (seosoyoung/slackbot/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
 - `parse_md_observations()` (seosoyoung/slackbot/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.
 - `parse_md_persistent()` (seosoyoung/slackbot/memory/store.py:192): 마크다운 장기 기억을 항목 리스트로 파싱합니다.
+- `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:25): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slackbot/slack/file_handler.py:67): 스레드별 임시 폴더 생성
@@ -379,6 +387,7 @@
 - `update_message()` (seosoyoung/slackbot/slack/formatting.py:17): 슬랙 메시지를 업데이트합니다.
 - `upload_file_to_slack()` (seosoyoung/slackbot/slack/helpers.py:12): 파일을 슬랙에 첨부
 - `send_long_message()` (seosoyoung/slackbot/slack/helpers.py:47): 긴 메시지를 분할해서 전송 (thread_ts가 None이면 채널에 응답)
+- `format_slack_message()` (seosoyoung/slackbot/slack/message_formatter.py:8): 슬랙 메시지를 프롬프트 주입용 텍스트로 포맷합니다.
 - `main()` (seosoyoung/slackbot/translator/__main__.py:18): 
 - `is_korean_char()` (seosoyoung/slackbot/translator/detector.py:14): 한글 문자인지 확인 (한글 자모, 음절 모두 포함)
 - `detect_language()` (seosoyoung/slackbot/translator/detector.py:27): 텍스트의 언어를 감지

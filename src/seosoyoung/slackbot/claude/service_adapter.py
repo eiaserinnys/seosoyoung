@@ -7,7 +7,6 @@ ClaudeExecutor에서 local/remote 분기 시 remote 경로로 사용됩니다.
 """
 
 import logging
-import re
 from typing import Awaitable, Callable, Optional
 
 from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
@@ -30,9 +29,11 @@ class ClaudeServiceAdapter:
     SoulServiceClient로 실행하고 ClaudeResult로 변환합니다.
     """
 
-    def __init__(self, client: SoulServiceClient, client_id: str):
+    def __init__(self, client: SoulServiceClient, client_id: str, *,
+                 parse_markers_fn: Optional[Callable] = None):
         self._client = client
         self._client_id = client_id
+        self._parse_markers_fn = parse_markers_fn
 
     async def execute(
         self,
@@ -69,20 +70,15 @@ class ClaudeServiceAdapter:
                 await self._client.ack(self._client_id, request_id)
 
                 output = result.result or ""
-
-                # 마커 추출 (로컬 실행과 동일)
-                update_requested = "<!-- UPDATE -->" in output
-                restart_requested = "<!-- RESTART -->" in output
-                list_run_match = re.search(r"<!-- LIST_RUN: (.+?) -->", output)
-                list_run = list_run_match.group(1).strip() if list_run_match else None
+                markers = self._parse_markers_fn(output) if self._parse_markers_fn else None
 
                 return ClaudeResult(
                     success=True,
                     output=output,
                     session_id=result.claude_session_id,
-                    update_requested=update_requested,
-                    restart_requested=restart_requested,
-                    list_run=list_run,
+                    update_requested=getattr(markers, "update_requested", False),
+                    restart_requested=getattr(markers, "restart_requested", False),
+                    list_run=getattr(markers, "list_run", None),
                 )
             else:
                 return ClaudeResult(

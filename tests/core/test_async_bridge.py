@@ -26,17 +26,21 @@ class TestRunInNewLoop:
             run_in_new_loop(fail())
 
     def test_runs_in_isolated_loop(self):
-        """각 호출이 격리된 이벤트 루프에서 실행 (기존 루프와 독립)"""
-        # 기존 루프가 있는 상태에서도 격리된 루프에서 실행되는지 확인
-        # (id 비교는 GC 후 메모리 재활용으로 flaky할 수 있으므로
-        #  루프가 정상 생성/실행/종료 되는지만 검증)
-        async def verify_fresh_loop():
+        """각 호출이 격리된 이벤트 루프에서 실행"""
+        # id()는 GC 후 재사용될 수 있으므로, 루프 객체를 직접 보관하여
+        # GC를 방지한 뒤 identity를 비교한다.
+        loops = []
+
+        async def capture_loop():
             loop = asyncio.get_running_loop()
-            assert loop.is_running()
+            loops.append(loop)
             return True
 
-        assert run_in_new_loop(verify_fresh_loop()) is True
-        assert run_in_new_loop(verify_fresh_loop()) is True
+        run_in_new_loop(capture_loop())
+        run_in_new_loop(capture_loop())
+
+        assert len(loops) == 2
+        assert loops[0] is not loops[1], "각 호출이 서로 다른 이벤트 루프를 사용해야 함"
 
     def test_async_sleep(self):
         """asyncio.sleep 등 기본 async 연산 지원"""

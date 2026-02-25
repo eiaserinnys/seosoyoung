@@ -5,8 +5,7 @@
 """
 
 import logging
-from decimal import Decimal
-from typing import Optional, Protocol, runtime_checkable
+from typing import Callable, Optional, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +53,8 @@ def build_initial_context(
         source_type = "thread"
         all_messages = list(slack_messages)
 
-    # 시간순 정렬 (Decimal로 float 정밀도 손실 방지)
-    all_messages.sort(key=lambda m: Decimal(m.get("ts", "0")))
+    # 시간순 정렬
+    all_messages.sort(key=lambda m: float(m.get("ts", "0")))
 
     # 최대 7개로 제한 (가장 최근)
     if len(all_messages) > MAX_INITIAL_MESSAGES:
@@ -106,15 +105,15 @@ def build_followup_context(
     pending = channel_store.load_pending(channel_id)
     all_messages = _merge_messages(judged, pending)
 
-    # last_seen_ts 이후 메시지만 필터링 (Decimal로 float 정밀도 손실 방지)
-    cutoff = Decimal(last_seen_ts)
-    unseen = [m for m in all_messages if Decimal(m.get("ts", "0")) > cutoff]
+    # last_seen_ts 이후 메시지만 필터링
+    cutoff = float(last_seen_ts)
+    unseen = [m for m in all_messages if float(m.get("ts", "0")) > cutoff]
 
     # linked 체인 정보: unseen 메시지가 참조하는 이전 메시지도 포함
     linked_ts_set = set()
     for msg in unseen:
         linked_ts = msg.get("linked_message_ts")
-        if linked_ts and Decimal(linked_ts) <= cutoff:
+        if linked_ts and float(linked_ts) <= cutoff:
             linked_ts_set.add(linked_ts)
 
     # linked 메시지 수집 (already seen이지만 참조 대상으로 포함)
@@ -126,7 +125,7 @@ def build_followup_context(
 
     # 병합 후 시간순 정렬
     combined = _merge_messages(linked_messages, unseen)
-    combined.sort(key=lambda m: Decimal(m.get("ts", "0")))
+    combined.sort(key=lambda m: float(m.get("ts", "0")))
 
     # 최대 제한
     if len(combined) > MAX_FOLLOWUP_MESSAGES:
@@ -140,12 +139,19 @@ def build_followup_context(
     }
 
 
-def format_hybrid_context(messages: list[dict], source_type: str) -> str:
+def format_hybrid_context(
+    messages: list[dict],
+    source_type: str,
+    channel: str = "",
+    format_message_fn: Optional[Callable] = None,
+) -> str:
     """hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
 
     Args:
         messages: 시간순 정렬된 메시지 목록
         source_type: "thread" | "channel" | "hybrid"
+        channel: 슬랙 채널 ID (메타데이터 부착용)
+        format_message_fn: 메시지 포맷 콜백 (DI). None이면 기본 포맷 사용.
 
     Returns:
         포맷된 컨텍스트 문자열
@@ -161,15 +167,17 @@ def format_hybrid_context(messages: list[dict], source_type: str) -> str:
     else:
         header = "아래는 Slack 채널의 최근 대화입니다:"
 
-    lines = []
-    for msg in messages:
-        user = msg.get("user", "unknown")
+    def _default_formatter(msg, channel=""):
+        ts = msg.get("ts", "")
+        user = msg.get("user", "")
         text = msg.get("text", "")
         linked = msg.get("linked_message_ts", "")
-        line = f"<{user}>: {text}"
-        if linked:
-            line += f" [linked:{linked}]"
-        lines.append(line)
+        prefix = f"[{channel}:{ts}] " if channel else f"[{ts}] "
+        suffix = f" [linked:{linked}]" if linked else ""
+        return f"{prefix}<{user}>: {text}{suffix}"
+
+    formatter = format_message_fn or _default_formatter
+    lines = [formatter(msg, channel=channel) for msg in messages]
 
     return f"{header}\n\n" + "\n".join(lines)
 

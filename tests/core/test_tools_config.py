@@ -27,7 +27,7 @@ class TestRoleToolsSingleSource:
         """admin에 MCP 도구가 포함"""
         admin_tools = Config.auth.role_tools["admin"]
         assert any("slack_attach_file" in t for t in admin_tools)
-        assert any("slack_get_context" in t for t in admin_tools)
+        assert any("slack_post_message" in t for t in admin_tools)
 
     def test_admin_has_no_npc_tools(self):
         """admin에 NPC 도구가 없음 (eb-lore MCP로 이동됨)"""
@@ -41,12 +41,14 @@ class TestRoleToolsSingleSource:
         assert "Write" not in viewer_tools
         assert "Bash" not in viewer_tools
 
-    def test_agent_runner_default_allowed_tools_is_none(self):
-        """인자 없이 생성한 ClaudeRunner의 allowed_tools는 None (caller가 주입)"""
+    def test_agent_runner_uses_config(self):
+        """agent_runner에 allowed_tools를 명시적으로 전달할 수 있는지 확인"""
         from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
-        runner = ClaudeRunner()
-        assert runner.allowed_tools is None
+        # executor 레이어에서 Config.auth.role_tools를 읽어 전달하므로
+        # runner 자체는 allowed_tools를 인자로 받는다
+        runner = ClaudeRunner(allowed_tools=Config.auth.role_tools["admin"])
+        assert runner.allowed_tools == Config.auth.role_tools["admin"]
 
     def test_no_duplicate_default_allowed_tools(self):
         """agent_runner에 별도 DEFAULT_ALLOWED_TOOLS가 없어야 함"""

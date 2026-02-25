@@ -592,10 +592,6 @@ class TrelloWatcher:
         """하위 호환: PromptBuilder에 위임"""
         return self.prompt_builder.build_reaction_execute(info)
 
-    def _build_to_go_prompt(self, card: TrelloCard, has_execute: bool = False) -> str:
-        """하위 호환: PromptBuilder에 위임"""
-        return self.prompt_builder.build_to_go(card, has_execute)
-
     def _spawn_claude_thread(
         self,
         *,
@@ -614,7 +610,7 @@ class TrelloWatcher:
 
         _handle_new_card와 _process_list_run_card의 공통 패턴을 통합합니다.
         - 세션 락 획득/해제
-        - say 클로저 생성
+        - PresentationContext + 콜백 팩토리 구성
         - claude_runner_factory 호출
         - 성공/에러/최종 콜백 실행
 
@@ -630,6 +626,10 @@ class TrelloWatcher:
             on_error: 에러 시 호출될 콜백 (Exception을 인자로 받음)
             on_finally: 항상 호출될 콜백 (락 해제 전)
         """
+        from seosoyoung.slackbot.presentation.types import PresentationContext
+        from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
+        from seosoyoung.slackbot.slack.formatting import update_message
+
         def run_claude():
             lock = None
             if self.get_session_lock:
@@ -646,16 +646,35 @@ class TrelloWatcher:
                         text=text
                     )
 
-                self.claude_runner_factory(
-                    session=session,
-                    prompt=prompt,
-                    msg_ts=thread_ts,
+                # PresentationContext 구성 (트렐로 모드)
+                pctx = PresentationContext(
                     channel=channel,
+                    thread_ts=thread_ts,
+                    msg_ts=thread_ts,
                     say=say,
                     client=self.slack_client,
+                    effective_role="admin",
+                    session_id=session.session_id,
+                    user_id="trello_watcher",
+                    last_msg_ts=thread_ts,
+                    main_msg_ts=thread_ts,
                     trello_card=tracked,
+                    is_trello_mode=True,
                     dm_channel_id=dm_channel_id,
                     dm_thread_ts=dm_thread_ts,
+                )
+
+                on_progress, on_compact = build_progress_callbacks(pctx, update_message)
+
+                self.claude_runner_factory(
+                    prompt=prompt,
+                    thread_ts=thread_ts,
+                    msg_ts=thread_ts,
+                    on_progress=on_progress,
+                    on_compact=on_compact,
+                    presentation=pctx,
+                    session_id=session.session_id,
+                    role="admin",
                 )
                 claude_succeeded = True
             except Exception as e:

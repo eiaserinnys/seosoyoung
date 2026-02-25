@@ -31,35 +31,35 @@
 - 설명: 권한 설정
 
 ### `TrelloConfig`
-- 위치: 줄 97
+- 위치: 줄 96
 - 설명: Trello 설정
 
 ### `TranslateConfig`
-- 위치: 줄 118
+- 위치: 줄 117
 - 설명: 번역 설정
 
 ### `GeminiConfig`
-- 위치: 줄 139
+- 위치: 줄 138
 - 설명: Gemini 설정 (이미지 생성)
 
 ### `OMConfig`
-- 위치: 줄 147
+- 위치: 줄 146
 - 설명: Observational Memory 설정
 
 ### `ChannelObserverConfig`
-- 위치: 줄 173
+- 위치: 줄 172
 - 설명: Channel Observer 설정
 
 ### `ClaudeConfig`
-- 위치: 줄 226
+- 위치: 줄 225
 - 설명: Claude 실행 모드 설정
 
 ### `EmojiConfig`
-- 위치: 줄 237
+- 위치: 줄 236
 - 설명: 이모지 설정
 
 ### `Config`
-- 위치: 줄 265
+- 위치: 줄 264
 - 설명: 애플리케이션 설정
 
 설정 접근 방식:
@@ -68,14 +68,14 @@
 
 #### 메서드
 
-- `get_log_path()` (줄 289): 로그 경로
-- `get_session_path()` (줄 294): 세션 경로
-- `get_glossary_path()` (줄 299): 용어집 경로 (번역 시 고유명사 참조)
-- `get_narrative_path()` (줄 304): 대사 데이터 경로
-- `get_search_index_path()` (줄 309): 검색 인덱스 경로
-- `get_web_cache_path()` (줄 314): 웹 콘텐츠 캐시 경로
-- `get_memory_path()` (줄 319): 관찰 로그 저장 경로
-- `validate(cls)` (줄 327): 필수 환경변수 검증
+- `get_log_path()` (줄 288): 로그 경로
+- `get_session_path()` (줄 293): 세션 경로
+- `get_glossary_path()` (줄 298): 용어집 경로 (번역 시 고유명사 참조)
+- `get_narrative_path()` (줄 303): 대사 데이터 경로
+- `get_search_index_path()` (줄 308): 검색 인덱스 경로
+- `get_web_cache_path()` (줄 313): 웹 콘텐츠 캐시 경로
+- `get_memory_path()` (줄 318): 관찰 로그 저장 경로
+- `validate(cls)` (줄 326): 필수 환경변수 검증
 
 ## 함수
 

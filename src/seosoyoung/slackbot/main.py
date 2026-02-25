@@ -20,6 +20,7 @@ from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers
 from seosoyoung.slackbot.handlers.actions import send_restart_confirmation
 from seosoyoung.slackbot.restart import RestartManager, RestartType
+from seosoyoung.slackbot.marker_parser import parse_markers
 from seosoyoung.slackbot.memory.injector import prepare_memory_injection, trigger_observation
 from seosoyoung.slackbot.trello.watcher import TrelloWatcher
 from seosoyoung.slackbot.trello.list_runner import ListRunner
@@ -126,9 +127,7 @@ executor = ClaudeExecutor(
     restart_type_restart=RestartType.RESTART,
     trello_watcher_ref=lambda: trello_watcher,
     list_runner_ref=lambda: list_runner,
-    prepare_memory_fn=prepare_memory_injection,
-    trigger_observation_fn=trigger_observation,
-    on_compact_om_flag=_on_compact_om_flag,
+    parse_markers_fn=parse_markers,
 )
 
 # 멘션 트래커 (채널 관찰자-멘션 핸들러 통합용)
@@ -221,6 +220,11 @@ def _build_dependencies():
         "channel_compressor": _channel_compressor,
         "channel_cooldown": _channel_cooldown,
         "mention_tracker": _mention_tracker,
+        # 프레젠테이션 레이어 콜백 (호출부에서 사용)
+        "update_message_fn": update_message,
+        "prepare_memory_fn": prepare_memory_injection,
+        "trigger_observation_fn": trigger_observation,
+        "on_compact_om_flag": _on_compact_om_flag,
     }
 
 

@@ -47,20 +47,7 @@ class SlackClient(Protocol):
     def chat_update(self, **kwargs) -> dict: ...
 
 
-# Callback 타입 별칭
-ProgressCallback = Callable[[str], Coroutine[Any, Any, None]]
-CompactCallback = Callable[[str, str], Coroutine[Any, Any, None]]
+# Callback 타입 별칭 (engine_types에서 정의, 여기서 re-export)
+from seosoyoung.slackbot.claude.engine_types import ProgressCallback, CompactCallback
 SayFunction = Callable[..., Any]
 UpdateMessageFn = Callable[..., None]  # (client, channel, ts, text, *, blocks=None) -> None
-
-# OM(Observational Memory) 콜백 타입
-PrepareMemoryFn = Callable[
-    [str, Optional[str], Optional[str], Optional[str]],
-    tuple[Optional[str], str],
-]  # (thread_ts, channel, session_id, prompt) -> (memory_prompt, anchor_ts)
-TriggerObservationFn = Callable[
-    [str, str, str, list[dict]],
-    None,
-]  # (thread_ts, user_id, prompt, collected_messages, *, anchor_ts) -> None
-# Note: anchor_ts는 호출부에서 keyword로 전달됨 (Callable로 표현 불가)
-OnCompactOMFlagFn = Callable[[str], None]  # (thread_ts) -> None

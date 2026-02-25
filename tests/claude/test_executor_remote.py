@@ -8,11 +8,9 @@ import threading
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
-from seosoyoung.slackbot.claude.executor import (
-    ClaudeExecutor,
-    ExecutionContext,
-    PendingPrompt,
-)
+from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+from seosoyoung.slackbot.claude.intervention import PendingPrompt
+from seosoyoung.slackbot.presentation.types import PresentationContext
 from seosoyoung.slackbot.claude.session import Session, SessionManager, SessionRuntime
 
 
@@ -58,19 +56,27 @@ def _make_executor(tmp_path=None, **overrides):
     return ClaudeExecutor(**defaults)
 
 
-def _make_ctx(session, **overrides):
-    """테스트용 ExecutionContext 생성 헬퍼"""
+def _make_pctx(**overrides) -> PresentationContext:
+    """테스트용 PresentationContext 생성 헬퍼"""
     defaults = dict(
-        session=session,
         channel="C123",
+        thread_ts="1234.5678",
+        msg_ts="1234.0001",
         say=MagicMock(),
         client=MagicMock(),
-        msg_ts="1234.0001",
         effective_role="admin",
-        thread_ts=session.thread_ts,
+        session_id="sess-001",
     )
     defaults.update(overrides)
-    return ExecutionContext(**defaults)
+    return PresentationContext(**defaults)
+
+
+def _noop_progress(text):
+    pass
+
+
+async def _noop_compact(trigger, message):
+    pass
 
 
 # === ClaudeExecutor remote 분기 테스트 ===
@@ -93,7 +99,7 @@ class TestExecutorRemoteBranch:
 
     def test_local_mode_uses_runner(self, executor, session):
         """local 모드에서 ClaudeRunner가 생성되는지 확인"""
-        ctx = _make_ctx(session, initial_msg_ts="1234.0002")
+        pctx = _make_pctx()
         executor.execution_mode = "local"
 
         with patch("seosoyoung.slackbot.claude.executor.ClaudeRunner") as MockRunnerClass:
@@ -112,17 +118,35 @@ class TestExecutorRemoteBranch:
             mock_runner.run_sync.return_value = mock_result
             MockRunnerClass.return_value = mock_runner
 
-            executor._execute_once(ctx, "hello")
+            executor._execute_once(
+                "1234.5678", "hello", "1234.0001",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                role="admin",
+                user_message=None,
+                on_result=None,
+            )
 
             MockRunnerClass.assert_called_once()
 
     def test_remote_mode_uses_adapter(self, executor, session):
         """remote 모드에서 _execute_remote가 호출되는지 확인"""
-        ctx = _make_ctx(session, initial_msg_ts="1234.0002")
+        pctx = _make_pctx()
         executor.execution_mode = "remote"
 
         with patch.object(executor, "_execute_remote") as mock_execute_remote:
-            executor._execute_once(ctx, "hello")
+            executor._execute_once(
+                "1234.5678", "hello", "1234.0001",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                role="admin",
+                user_message=None,
+                on_result=None,
+            )
             mock_execute_remote.assert_called_once()
 
 
@@ -166,12 +190,22 @@ class TestInterventionDualPath:
     def test_local_intervention_uses_runner(self, executor, session):
         """local 모드 인터벤션: runner.interrupt 호출 (동기, 인자 없음)"""
         mock_runner = MagicMock()
+        mock_runner.interrupt.return_value = True
+
+        pctx = _make_pctx()
         executor.execution_mode = "local"
 
-        ctx = _make_ctx(session)
-
         with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=mock_runner):
-            executor._handle_intervention(ctx, "new prompt")
+            executor._handle_intervention(
+                "1234.5678", "new prompt", "1234.0001",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                role="admin",
+                user_message=None,
+                on_result=None,
+                session_id="sess-001",
+            )
 
         mock_runner.interrupt.assert_called_once()
 
@@ -182,18 +216,36 @@ class TestInterventionDualPath:
         executor._active_remote_requests["1234.5678"] = "1234.5678"
         executor.execution_mode = "remote"
 
-        ctx = _make_ctx(session)
+        pctx = _make_pctx()
 
         with patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
             mock_run.return_value = True
-            executor._handle_intervention(ctx, "new prompt")
+            executor._handle_intervention(
+                "1234.5678", "new prompt", "1234.0001",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                role="admin",
+                user_message=None,
+                on_result=None,
+                session_id="sess-001",
+            )
             mock_run.assert_called_once()
 
     def test_pending_prompt_saved_on_intervention(self, executor, session):
         """인터벤션 시 pending에 프롬프트가 저장되는지 확인"""
-        ctx = _make_ctx(session)
+        pctx = _make_pctx()
         executor.execution_mode = "local"
-        executor._handle_intervention(ctx, "new prompt")
+        executor._handle_intervention(
+            "1234.5678", "new prompt", "1234.0001",
+            on_progress=_noop_progress,
+            on_compact=_noop_compact,
+            presentation=pctx,
+            role="admin",
+            user_message=None,
+            on_result=None,
+            session_id="sess-001",
+        )
 
         assert "1234.5678" in executor._pending_prompts
         assert executor._pending_prompts["1234.5678"].prompt == "new prompt"

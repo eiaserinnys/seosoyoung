@@ -55,79 +55,80 @@ class ResultProcessor:
         self.update_message_fn(client, channel, old_msg_ts, new_text, blocks=new_blocks)
         return old_msg_ts
 
-    def handle_interrupted(self, ctx):
+    def handle_interrupted(self, pctx):
         """인터럽트로 중단된 실행의 사고 과정 메시지 정리"""
         try:
-            if ctx.dm_channel_id and ctx.dm_last_reply_ts:
+            if pctx.dm_channel_id and pctx.dm_last_reply_ts:
                 try:
-                    self.update_message_fn(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
+                    self.update_message_fn(pctx.client, pctx.dm_channel_id, pctx.dm_last_reply_ts,
                                    "> (중단됨)")
                 except Exception as e:
                     logger.warning(f"DM 중단 메시지 업데이트 실패: {e}")
 
-            target_ts = ctx.main_msg_ts if ctx.is_trello_mode else ctx.last_msg_ts
+            target_ts = pctx.main_msg_ts if pctx.is_trello_mode else pctx.last_msg_ts
             if not target_ts:
                 return
 
-            if ctx.is_trello_mode:
-                header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
+            if pctx.is_trello_mode:
+                header = build_trello_header(pctx.trello_card, pctx.session_id or "")
                 interrupted_text = f"{header}\n\n`(중단됨)`"
             else:
                 interrupted_text = "> (중단됨)"
 
-            self.update_message_fn(ctx.client, ctx.channel, target_ts, interrupted_text)
+            self.update_message_fn(pctx.client, pctx.channel, target_ts, interrupted_text)
             logger.info(f"중단된 실행 메시지 업데이트: ts={target_ts}")
         except Exception as e:
             logger.warning(f"중단 메시지 업데이트 실패: {e}")
 
-    def handle_success(self, ctx, result):
+    def handle_success(self, pctx, result):
         """성공 결과 처리"""
         response = result.output or ""
 
         if not response.strip():
-            self.handle_interrupted(ctx)
+            self.handle_interrupted(pctx)
             return
 
         usage_bar = None
         if self.show_context_usage:
             usage_bar = build_context_usage_bar(result.usage)
 
-        is_list_run_from_marker = bool(ctx.effective_role == "admin" and result.list_run)
+        is_list_run_from_marker = bool(pctx.effective_role == "admin" and result.list_run)
         is_list_run_from_card = bool(
-            ctx.trello_card and getattr(ctx.trello_card, "list_key", None) == "list_run"
+            pctx.trello_card and getattr(pctx.trello_card, "list_key", None) == "list_run"
         )
         is_list_run = is_list_run_from_marker or is_list_run_from_card
 
-        if ctx.is_trello_mode:
-            self.handle_trello_success(ctx, result, response, is_list_run, usage_bar)
+        if pctx.is_trello_mode:
+            self.handle_trello_success(pctx, result, response, is_list_run, usage_bar)
         else:
-            self.handle_normal_success(ctx, result, response, is_list_run, usage_bar)
+            self.handle_normal_success(pctx, result, response, is_list_run, usage_bar)
 
-        if ctx.effective_role == "admin":
+        if pctx.effective_role == "admin":
             if result.update_requested or result.restart_requested:
                 self.handle_restart_marker(
-                    result, ctx.session, ctx.channel, ctx.thread_ts, ctx.say
+                    result, pctx.channel, pctx.thread_ts, pctx.say,
+                    user_id=pctx.user_id,
                 )
 
         if is_list_run_from_marker:
             self.handle_list_run_marker(
-                result.list_run, ctx.channel, ctx.thread_ts, ctx.say, ctx.client
+                result.list_run, pctx.channel, pctx.thread_ts, pctx.say, pctx.client
             )
 
     def handle_trello_success(
-        self, ctx, result, response: str,
+        self, pctx, result, response: str,
         is_list_run: bool, usage_bar: Optional[str],
     ):
         """트렐로 모드 성공 처리"""
-        if ctx.dm_channel_id and ctx.dm_last_reply_ts:
+        if pctx.dm_channel_id and pctx.dm_last_reply_ts:
             try:
                 dm_final = response[:PROGRESS_MAX_LEN] if len(response) > PROGRESS_MAX_LEN else response
-                self.update_message_fn(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts, dm_final)
+                self.update_message_fn(pctx.client, pctx.dm_channel_id, pctx.dm_last_reply_ts, dm_final)
             except Exception as e:
                 logger.warning(f"DM 스레드 최종 메시지 업데이트 실패: {e}")
 
-        final_session_id = result.session_id or ctx.session.session_id or ""
-        header = build_trello_header(ctx.trello_card, final_session_id)
+        final_session_id = result.session_id or pctx.session_id or ""
+        header = build_trello_header(pctx.trello_card, final_session_id)
         footer = usage_bar or ""
 
         max_response_len = SLACK_MSG_MAX_LEN - len(header) - len(footer) - 20
@@ -147,25 +148,25 @@ class ResultProcessor:
         }]
 
         if is_list_run:
-            self.update_message_fn(ctx.client, ctx.channel, ctx.main_msg_ts,
+            self.update_message_fn(pctx.client, pctx.channel, pctx.main_msg_ts,
                            final_text, blocks=final_blocks)
         else:
             self.replace_thinking_message(
-                ctx.client, ctx.channel, ctx.main_msg_ts,
+                pctx.client, pctx.channel, pctx.main_msg_ts,
                 final_text, final_blocks, thread_ts=None,
             )
 
         if len(response) > max_response_len:
-            self.send_long_message(ctx.say, response, ctx.thread_ts)
+            self.send_long_message(pctx.say, response, pctx.thread_ts)
 
     def handle_normal_success(
-        self, ctx, result, response: str,
+        self, pctx, result, response: str,
         is_list_run: bool, usage_bar: Optional[str],
     ):
         """일반 모드(멘션) 성공 처리"""
-        reply_thread_ts = ctx.thread_ts
+        reply_thread_ts = pctx.thread_ts
 
-        if not ctx.is_thread_reply:
+        if not pctx.is_thread_reply:
             # 채널 최초 응답: 미리보기를 채널에, 전문은 스레드에
             try:
                 lines = response.strip().split("\n")
@@ -188,20 +189,20 @@ class ResultProcessor:
                 }]
 
                 if is_list_run:
-                    self.update_message_fn(ctx.client, ctx.channel, ctx.last_msg_ts,
+                    self.update_message_fn(pctx.client, pctx.channel, pctx.last_msg_ts,
                                    final_text, blocks=final_blocks)
                 else:
                     self.replace_thinking_message(
-                        ctx.client, ctx.channel, ctx.last_msg_ts,
+                        pctx.client, pctx.channel, pctx.last_msg_ts,
                         final_text, final_blocks, thread_ts=reply_thread_ts,
                     )
 
                 # 미리보기가 잘린 경우에만 전문을 스레드에 전송
                 if is_truncated:
-                    self.send_long_message(ctx.say, response, ctx.thread_ts)
+                    self.send_long_message(pctx.say, response, pctx.thread_ts)
 
             except Exception:
-                self.send_long_message(ctx.say, response, ctx.thread_ts)
+                self.send_long_message(pctx.say, response, pctx.thread_ts)
         else:
             display_response = response
             if usage_bar:
@@ -215,7 +216,7 @@ class ResultProcessor:
                         "text": {"type": "mrkdwn", "text": final_text}
                     }]
                     self.replace_thinking_message(
-                        ctx.client, ctx.channel, ctx.last_msg_ts,
+                        pctx.client, pctx.channel, pctx.last_msg_ts,
                         final_text, final_blocks, thread_ts=reply_thread_ts,
                     )
                 else:
@@ -226,15 +227,15 @@ class ResultProcessor:
                         "text": {"type": "mrkdwn", "text": first_part}
                     }]
                     self.replace_thinking_message(
-                        ctx.client, ctx.channel, ctx.last_msg_ts,
+                        pctx.client, pctx.channel, pctx.last_msg_ts,
                         first_part, first_blocks, thread_ts=reply_thread_ts,
                     )
                     remaining = display_response[SLACK_MSG_MAX_LEN:]
-                    self.send_long_message(ctx.say, remaining, ctx.thread_ts)
+                    self.send_long_message(pctx.say, remaining, pctx.thread_ts)
             except Exception:
-                self.send_long_message(ctx.say, display_response, ctx.thread_ts)
+                self.send_long_message(pctx.say, display_response, pctx.thread_ts)
 
-    def handle_restart_marker(self, result, session, channel, thread_ts, say):
+    def handle_restart_marker(self, result, channel, thread_ts, say, *, user_id=None):
         """재기동 마커 처리"""
         restart_type = self.restart_type_update if result.update_requested else self.restart_type_restart
         type_name = "업데이트" if result.update_requested else "재시작"
@@ -249,7 +250,7 @@ class ResultProcessor:
                 channel=channel,
                 restart_type=restart_type,
                 running_count=running_count,
-                user_id=session.user_id,
+                user_id=user_id,
                 original_thread_ts=thread_ts
             )
         else:
@@ -314,39 +315,39 @@ class ResultProcessor:
                 thread_ts=thread_ts
             )
 
-    def handle_error(self, ctx, error):
+    def handle_error(self, pctx, error):
         """오류 결과 처리
 
         ClaudeResult.error 또는 Exception에서 발생한 오류를 처리합니다.
-        update_message 실패 시 ctx.say 폴백을 사용합니다.
+        update_message 실패 시 pctx.say 폴백을 사용합니다.
         """
         error_msg = f"오류가 발생했습니다: {error}"
 
-        if ctx.dm_channel_id and ctx.dm_last_reply_ts:
+        if pctx.dm_channel_id and pctx.dm_last_reply_ts:
             try:
-                self.update_message_fn(ctx.client, ctx.dm_channel_id, ctx.dm_last_reply_ts,
+                self.update_message_fn(pctx.client, pctx.dm_channel_id, pctx.dm_last_reply_ts,
                                f"❌ {error_msg}")
             except Exception as e:
                 logger.warning(f"DM 에러 메시지 업데이트 실패: {e}")
 
-        if ctx.is_trello_mode:
+        if pctx.is_trello_mode:
             try:
-                header = build_trello_header(ctx.trello_card, ctx.session.session_id or "")
+                header = build_trello_header(pctx.trello_card, pctx.session_id or "")
                 error_text = f"{header}\n\n❌ {error_msg}"
-                self.update_message_fn(ctx.client, ctx.channel, ctx.main_msg_ts, error_text,
+                self.update_message_fn(pctx.client, pctx.channel, pctx.main_msg_ts, error_text,
                                blocks=[{"type": "section",
                                         "text": {"type": "mrkdwn", "text": error_text}}])
             except Exception:
-                ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)
+                pctx.say(text=f"❌ {error_msg}", thread_ts=pctx.thread_ts)
         else:
             try:
                 error_text = f"❌ {error_msg}"
-                self.update_message_fn(ctx.client, ctx.channel, ctx.last_msg_ts, error_text,
+                self.update_message_fn(pctx.client, pctx.channel, pctx.last_msg_ts, error_text,
                                blocks=[{"type": "section",
                                         "text": {"type": "mrkdwn", "text": error_text}}])
             except Exception:
-                ctx.say(text=f"❌ {error_msg}", thread_ts=ctx.thread_ts)
+                pctx.say(text=f"❌ {error_msg}", thread_ts=pctx.thread_ts)
 
-    def handle_exception(self, ctx, e: Exception):
+    def handle_exception(self, pctx, e: Exception):
         """예외 처리 — handle_error에 위임"""
-        self.handle_error(ctx, str(e))
+        self.handle_error(pctx, str(e))

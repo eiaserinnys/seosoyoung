@@ -2,8 +2,6 @@
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
-
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
@@ -11,45 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 from seosoyoung.slackbot.claude.diagnostics import (
     classify_process_error,
     format_rate_limit_warning,
-    send_debug_to_slack,
 )
-
-
-class TestSendDebugToSlack:
-    """send_debug_to_slack 콜백 주입 테스트"""
-
-    def test_calls_send_fn(self):
-        """send_fn이 전달되면 호출된다"""
-        send_fn = MagicMock()
-        send_debug_to_slack("C123", "1234.5678", "hello", send_fn=send_fn)
-        send_fn.assert_called_once_with("C123", "1234.5678", "hello")
-
-    def test_no_send_fn_no_error(self):
-        """send_fn이 None이면 아무 동작 없이 통과"""
-        send_debug_to_slack("C123", "1234.5678", "hello", send_fn=None)
-
-    def test_no_send_fn_default(self):
-        """send_fn 미지정 시 기본값 None — 오류 없이 통과"""
-        send_debug_to_slack("C123", "1234.5678", "hello")
-
-    def test_empty_channel_skips(self):
-        """channel이 빈 문자열이면 send_fn 호출 안 함"""
-        send_fn = MagicMock()
-        send_debug_to_slack("", "1234.5678", "hello", send_fn=send_fn)
-        send_fn.assert_not_called()
-
-    def test_empty_thread_ts_skips(self):
-        """thread_ts가 빈 문자열이면 send_fn 호출 안 함"""
-        send_fn = MagicMock()
-        send_debug_to_slack("C123", "", "hello", send_fn=send_fn)
-        send_fn.assert_not_called()
-
-    def test_send_fn_exception_logged(self):
-        """send_fn에서 예외 발생 시 로그만 남기고 전파하지 않음"""
-        send_fn = MagicMock(side_effect=RuntimeError("network error"))
-        # 예외가 전파되지 않아야 함
-        send_debug_to_slack("C123", "1234.5678", "hello", send_fn=send_fn)
-        send_fn.assert_called_once()
 
 
 class TestClassifyProcessError:

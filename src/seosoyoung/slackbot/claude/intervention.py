@@ -8,28 +8,27 @@
 import logging
 import threading
 from dataclasses import dataclass
-from typing import Optional
-
-from seosoyoung.slackbot.claude.types import CardInfo, SlackClient, SayFunction
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class PendingPrompt:
-    """인터벤션 대기 중인 프롬프트 정보"""
+    """인터벤션 대기 중인 프롬프트 정보
+
+    콜백 + opaque 컨텍스트만 저장합니다.
+    Slack 필드(channel, say, client 등)는 presentation 컨텍스트에 포함됩니다.
+    """
     prompt: str
     msg_ts: str
-    channel: str
-    say: SayFunction
-    client: SlackClient
+    on_progress: Any = None    # ProgressCallback
+    on_compact: Any = None     # CompactCallback
+    presentation: Any = None   # PresentationContext (opaque)
     role: Optional[str] = None
-    trello_card: Optional[CardInfo] = None
-    is_existing_thread: bool = False
-    initial_msg_ts: Optional[str] = None
-    dm_channel_id: Optional[str] = None
-    dm_thread_ts: Optional[str] = None
     user_message: Optional[str] = None
+    on_result: Any = None      # ResultCallback
+    session_id: Optional[str] = None
 
 
 class InterventionManager:

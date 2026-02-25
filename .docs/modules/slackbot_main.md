@@ -11,28 +11,28 @@ SeoSoyoung 슬랙 봇 메인
 ## 함수
 
 ### `_perform_restart(restart_type)`
-- 위치: 줄 50
+- 위치: 줄 51
 - 설명: 실제 재시작 수행
 
 모든 ClaudeSDKClient를 정리한 후 프로세스를 종료합니다.
 이로써 고아 프로세스(Claude Code CLI)가 남지 않습니다.
 
 ### `_check_restart_on_session_stop()`
-- 위치: 줄 74
+- 위치: 줄 75
 - 설명: 세션 종료 시 재시작 확인
 
 ### `_signal_handler(signum, frame)`
-- 위치: 줄 84
+- 위치: 줄 85
 - 설명: 시그널 수신 시 graceful shutdown 수행
 
 SIGTERM, SIGINT 수신 시 모든 클라이언트를 정리하고 프로세스를 종료합니다.
 
 ### `_on_compact_om_flag(thread_ts)`
-- 위치: 줄 101
+- 위치: 줄 102
 - 설명: PreCompact 훅에서 OM inject 플래그 설정
 
 ### `_init_channel_observer(slack_client, mention_tracker)`
-- 위치: 줄 138
+- 위치: 줄 137
 - 설명: 채널 관찰 시스템 초기화
 
 Returns:
@@ -40,31 +40,31 @@ Returns:
            비활성화 시 모두 None.
 
 ### `_build_dependencies()`
-- 위치: 줄 205
+- 위치: 줄 204
 - 설명: 핸들러 의존성 딕셔너리 빌드
 
 ### `notify_startup()`
-- 위치: 줄 231
+- 위치: 줄 235
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 242
+- 위치: 줄 246
 - 설명: 봇 종료 알림
 
 ### `start_trello_watcher()`
-- 위치: 줄 253
+- 위치: 줄 257
 - 설명: Trello 워처 시작
 
 ### `start_list_runner()`
-- 위치: 줄 273
+- 위치: 줄 277
 - 설명: 리스트 러너 초기화
 
 ### `init_bot_user_id()`
-- 위치: 줄 283
+- 위치: 줄 287
 - 설명: 봇 사용자 ID 초기화
 
 ### `main()`
-- 위치: 줄 293
+- 위치: 줄 297
 - 설명: 봇 메인 진입점
 
 ## 내부 의존성
@@ -81,6 +81,7 @@ Returns:
 - `seosoyoung.slackbot.handlers.mention_tracker.MentionTracker`
 - `seosoyoung.slackbot.handlers.register_all_handlers`
 - `seosoyoung.slackbot.logging_config.setup_logging`
+- `seosoyoung.slackbot.marker_parser.parse_markers`
 - `seosoyoung.slackbot.memory.channel_intervention.InterventionHistory`
 - `seosoyoung.slackbot.memory.channel_observer.ChannelObserver`
 - `seosoyoung.slackbot.memory.channel_observer.DigestCompressor`

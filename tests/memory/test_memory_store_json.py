@@ -152,7 +152,8 @@ class TestParseMdPersistent:
         assert len(items) == 2
         assert items[0]["priority"] == "🔴"
         assert items[0]["content"] == "장기 기억 1"
-        assert items[0]["id"] == "ltm_20260223_000"  # 오늘 날짜 기반
+        expected_date = datetime.now(timezone.utc).strftime("%Y%m%d")
+        assert items[0]["id"] == f"ltm_{expected_date}_000"
         assert "promoted_at" in items[0]
 
     def test_plain_text_becomes_medium(self):
