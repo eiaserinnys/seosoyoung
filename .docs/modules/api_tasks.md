@@ -12,11 +12,11 @@ Tasks API - 태스크 기반 API 엔드포인트
 ## 함수
 
 ### `task_to_response(task)`
-- 위치: 줄 38
+- 위치: 줄 39
 - 설명: Task를 TaskResponse로 변환
 
 ### `async execute_task(request, _)`
-- 위치: 줄 61
+- 위치: 줄 62
 - 데코레이터: router.post
 - 설명: Claude Code 실행 (SSE 스트리밍)
 
@@ -25,19 +25,19 @@ Tasks API - 태스크 기반 API 엔드포인트
 백그라운드 실행은 계속되고 결과는 보관되어 나중에 조회할 수 있습니다.
 
 ### `async get_tasks(client_id, _)`
-- 위치: 줄 152
+- 위치: 줄 153
 - 데코레이터: router.get
 - 설명: 클라이언트의 태스크 목록 조회
 
 클라이언트가 재시작 후 미전달 결과를 확인하는 데 사용합니다.
 
 ### `async get_task(client_id, request_id, _)`
-- 위치: 줄 174
+- 위치: 줄 175
 - 데코레이터: router.get
 - 설명: 특정 태스크 조회
 
 ### `async reconnect_stream(client_id, request_id, _)`
-- 위치: 줄 204
+- 위치: 줄 205
 - 데코레이터: router.get
 - 설명: 태스크 SSE 스트림에 재연결
 
@@ -46,7 +46,7 @@ completed 태스크: 저장된 결과를 즉시 반환
 error 태스크: 저장된 에러를 즉시 반환
 
 ### `async ack_task(client_id, request_id, _)`
-- 위치: 줄 291
+- 위치: 줄 292
 - 데코레이터: router.post
 - 설명: 결과 수신 확인
 
@@ -54,17 +54,27 @@ error 태스크: 저장된 에러를 즉시 반환
 확인된 태스크는 서버에서 삭제됩니다.
 
 ### `async intervene_task(client_id, request_id, request, _)`
-- 위치: 줄 329
+- 위치: 줄 330
 - 데코레이터: router.post
 - 설명: 실행 중인 태스크에 개입 메시지 전송
 
 running 상태의 태스크에만 메시지를 전송할 수 있습니다.
+
+### `async intervene_by_session(session_id, request, _)`
+- 위치: 줄 391
+- 데코레이터: router.post
+- 설명: session_id 기반 개입 메시지 전송
+
+Claude Code session_id로 실행 중인 태스크를 찾아 개입 메시지를 전송합니다.
+기존 client_id/request_id 기반 API의 대안으로, 봇이 session_id만 알면
+인터벤션을 보낼 수 있습니다.
 
 ## 내부 의존성
 
 - `seosoyoung.soul.api.auth.verify_token`
 - `seosoyoung.soul.models.ErrorResponse`
 - `seosoyoung.soul.models.ExecuteRequest`
+- `seosoyoung.soul.models.InterveneRequest`
 - `seosoyoung.soul.models.InterveneResponse`
 - `seosoyoung.soul.models.TaskInterveneRequest`
 - `seosoyoung.soul.models.TaskListResponse`

@@ -222,7 +222,8 @@ class TestSoulEngineAdapterCallbacks:
         adapter = SoulEngineAdapter(workspace_dir="/test")
 
         async def fake_run(prompt, session_id=None, on_progress=None,
-                           on_compact=None, on_intervention=None):
+                           on_compact=None, on_intervention=None,
+                           on_session=None):
             if on_progress:
                 await on_progress("진행 중...")
                 await on_progress("거의 완료...")
@@ -246,7 +247,8 @@ class TestSoulEngineAdapterCallbacks:
         adapter = SoulEngineAdapter(workspace_dir="/test")
 
         async def fake_run(prompt, session_id=None, on_progress=None,
-                           on_compact=None, on_intervention=None):
+                           on_compact=None, on_intervention=None,
+                           on_session=None):
             if on_compact:
                 await on_compact("auto", "컨텍스트 컴팩트 실행됨")
             return EngineResult(success=True, output="done")
@@ -269,7 +271,8 @@ class TestSoulEngineAdapterCallbacks:
         intervention_prompts = []
 
         async def fake_run(prompt, session_id=None, on_progress=None,
-                           on_compact=None, on_intervention=None):
+                           on_compact=None, on_intervention=None,
+                           on_session=None):
             if on_intervention:
                 result = await on_intervention()
                 if result:
@@ -325,7 +328,8 @@ class TestSoulEngineAdapterCallbacks:
         intervention_prompts = []
 
         async def fake_run(prompt, session_id=None, on_progress=None,
-                           on_compact=None, on_intervention=None):
+                           on_compact=None, on_intervention=None,
+                           on_session=None):
             if on_intervention:
                 result = await on_intervention()
                 if result:
@@ -534,7 +538,8 @@ class TestSoulEngineAdapterDebugEvent:
         captured_debug_fn = None
 
         async def fake_run(prompt, session_id=None, on_progress=None,
-                           on_compact=None, on_intervention=None):
+                           on_compact=None, on_intervention=None,
+                           on_session=None):
             # debug_send_fn을 동기적으로 호출 (ClaudeRunner._debug()와 동일한 패턴)
             if captured_debug_fn:
                 captured_debug_fn("rate limit warning: 80% used")
@@ -568,7 +573,8 @@ class TestSoulEngineAdapterDebugEvent:
         captured_debug_fn = None
 
         async def fake_run(prompt, session_id=None, on_progress=None,
-                           on_compact=None, on_intervention=None):
+                           on_compact=None, on_intervention=None,
+                           on_session=None):
             if captured_debug_fn:
                 captured_debug_fn("warning 1")
                 captured_debug_fn("warning 2")

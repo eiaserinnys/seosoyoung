@@ -22,6 +22,7 @@ from seosoyoung.soul.models import (
     ErrorEvent,
     InterventionSentEvent,
     ProgressEvent,
+    SessionEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -196,6 +197,12 @@ class SoulEngineAdapter:
 
             return _build_intervention_prompt(msg)
 
+        # --- 세션 ID 조기 통지 ---
+
+        async def on_session_callback(session_id: str) -> None:
+            """ClaudeRunner가 SystemMessage에서 session_id를 받으면 즉시 SSE 이벤트 발행"""
+            await queue.put(SessionEvent(session_id=session_id))
+
         # --- 백그라운드 실행 ---
 
         async def run_claude() -> None:
@@ -206,6 +213,7 @@ class SoulEngineAdapter:
                     on_progress=on_progress,
                     on_compact=on_compact,
                     on_intervention=on_intervention_callback,
+                    on_session=on_session_callback,
                 )
 
                 # 컨텍스트 사용량 이벤트

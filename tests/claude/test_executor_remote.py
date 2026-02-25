@@ -358,11 +358,13 @@ class TestInterventionDualPath:
         mock_runner.interrupt.assert_called_once()
 
     def test_remote_intervention_uses_adapter(self, executor, session):
-        """remote 모드 인터벤션: run_in_new_loop으로 adapter.intervene 호출"""
+        """remote 모드 인터벤션: session_id 확보 시 run_in_new_loop으로 adapter.intervene_by_session 호출"""
         mock_adapter = MagicMock()
         executor._service_adapter = mock_adapter
         executor._active_remote_requests["1234.5678"] = "1234.5678"
         executor.execution_mode = "remote"
+        # session_id를 등록하여 session 기반 경로로 진입
+        executor._register_session_id("1234.5678", "sess-abc")
 
         pctx = _make_pctx()
 

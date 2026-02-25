@@ -43,6 +43,7 @@ class ClaudeServiceAdapter:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_session: Optional[Callable[[str], Awaitable[None]]] = None,
         *,
         allowed_tools: Optional[list[str]] = None,
         disallowed_tools: Optional[list[str]] = None,
@@ -57,6 +58,7 @@ class ClaudeServiceAdapter:
             on_progress: 진행 상황 콜백
             on_compact: 컴팩션 콜백
             on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
+            on_session: 세션 ID 조기 통지 콜백 (session_id: str)
             allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
             disallowed_tools: 금지 도구 목록
             use_mcp: MCP 서버 연결 여부
@@ -73,6 +75,7 @@ class ClaudeServiceAdapter:
                 on_progress=on_progress,
                 on_compact=on_compact,
                 on_debug=on_debug,
+                on_session=on_session,
                 allowed_tools=allowed_tools,
                 disallowed_tools=disallowed_tools,
                 use_mcp=use_mcp,
@@ -136,7 +139,7 @@ class ClaudeServiceAdapter:
         text: str,
         user: str,
     ) -> bool:
-        """실행 중인 태스크에 인터벤션 전송
+        """실행 중인 태스크에 인터벤션 전송 (client_id/request_id 기반, 폴백용)
 
         Returns:
             True: 성공, False: 실패
@@ -155,6 +158,32 @@ class ClaudeServiceAdapter:
             return False
         except Exception as e:
             logger.error(f"[Remote] 인터벤션 전송 오류: {e}")
+            return False
+
+    async def intervene_by_session(
+        self,
+        session_id: str,
+        text: str,
+        user: str,
+    ) -> bool:
+        """session_id 기반 인터벤션 전송
+
+        Returns:
+            True: 성공, False: 실패
+        """
+        try:
+            await self._client.intervene_by_session(
+                session_id=session_id,
+                text=text,
+                user=user,
+            )
+            logger.info(f"[Remote] 세션 인터벤션 전송 완료: session={session_id}")
+            return True
+        except (TaskNotFoundError, TaskNotRunningError) as e:
+            logger.warning(f"[Remote] 세션 인터벤션 전송 실패: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"[Remote] 세션 인터벤션 전송 오류: {e}")
             return False
 
     async def close(self) -> None:

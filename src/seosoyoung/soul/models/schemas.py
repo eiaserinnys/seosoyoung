@@ -14,6 +14,7 @@ class SSEEventType(str, Enum):
     """SSE 이벤트 타입"""
     PROGRESS = "progress"
     MEMORY = "memory"
+    SESSION = "session"
     INTERVENTION_SENT = "intervention_sent"
     DEBUG = "debug"
     COMPLETE = "complete"
@@ -74,6 +75,16 @@ class ErrorResponse(BaseModel):
 
 
 # === SSE Event Models ===
+
+class SessionEvent(BaseModel):
+    """세션 ID 조기 통지 이벤트
+
+    Claude Code 세션이 시작되면 session_id를 클라이언트에 즉시 알립니다.
+    클라이언트는 이 session_id로 인터벤션 API를 호출할 수 있습니다.
+    """
+    type: str = "session"
+    session_id: str
+
 
 class ProgressEvent(BaseModel):
     """진행 상황 이벤트"""

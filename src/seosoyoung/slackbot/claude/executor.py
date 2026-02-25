@@ -122,8 +122,14 @@ class ClaudeExecutor:
         # Remote 모드: ClaudeServiceAdapter (lazy 초기화)
         self._service_adapter: Optional[object] = None
         self._adapter_lock = threading.Lock()
-        # Remote 모드: 실행 중인 request_id 추적 (인터벤션용)
+        # Remote 모드: 실행 중인 request_id 추적 (인터벤션 폴백용)
         self._active_remote_requests: dict[str, str] = {}  # thread_ts -> request_id
+        # Remote 모드: thread_ts ↔ session_id 매핑 (session_id 기반 인터벤션용)
+        self._thread_session_map: dict[str, str] = {}  # thread_ts -> session_id
+        self._thread_session_lock = threading.Lock()
+        # Remote 모드: session_id 확보 전 도착한 인터벤션 버퍼
+        self._pending_session_interventions: dict[str, list] = {}  # thread_ts -> [(prompt, ...)]
+        self._pending_session_lock = threading.Lock()
 
     def run(
         self,
@@ -221,6 +227,9 @@ class ClaudeExecutor:
             self._intervention.fire_interrupt_remote(
                 thread_ts, prompt,
                 self._active_remote_requests, self._service_adapter,
+                session_id=self._get_session_id(thread_ts),
+                pending_session_interventions=self._pending_session_interventions,
+                pending_session_lock=self._pending_session_lock,
             )
         else:
             self._intervention.fire_interrupt_local(thread_ts)
@@ -372,6 +381,44 @@ class ClaudeExecutor:
                     )
         return self._service_adapter
 
+    def _register_session_id(self, thread_ts: str, session_id: str) -> None:
+        """thread_ts ↔ session_id 매핑 등록 및 버퍼된 인터벤션 flush"""
+        with self._thread_session_lock:
+            self._thread_session_map[thread_ts] = session_id
+        logger.info(f"[Remote] session_id 매핑 등록: thread={thread_ts} -> session={session_id}")
+
+        # 버퍼된 인터벤션이 있으면 flush
+        with self._pending_session_lock:
+            pending = self._pending_session_interventions.pop(thread_ts, [])
+
+        if pending:
+            adapter = self._get_service_adapter()
+            for (pending_prompt, pending_user) in pending:
+                try:
+                    from seosoyoung.utils.async_bridge import run_in_new_loop as _run
+                    _run(adapter.intervene_by_session(
+                        session_id=session_id,
+                        text=pending_prompt,
+                        user=pending_user,
+                    ))
+                    logger.info(f"[Remote] 버퍼된 인터벤션 flush: thread={thread_ts}, session={session_id}")
+                except Exception as e:
+                    logger.warning(f"[Remote] 버퍼된 인터벤션 flush 실패: {e}")
+
+    def _unregister_session_id(self, thread_ts: str) -> None:
+        """thread_ts ↔ session_id 매핑 해제"""
+        with self._thread_session_lock:
+            session_id = self._thread_session_map.pop(thread_ts, None)
+        with self._pending_session_lock:
+            self._pending_session_interventions.pop(thread_ts, None)
+        if session_id:
+            logger.info(f"[Remote] session_id 매핑 해제: thread={thread_ts}, session={session_id}")
+
+    def _get_session_id(self, thread_ts: str) -> Optional[str]:
+        """thread_ts에 대응하는 session_id 조회"""
+        with self._thread_session_lock:
+            return self._thread_session_map.get(thread_ts)
+
     def _execute_remote(
         self,
         thread_ts: str,
@@ -399,7 +446,11 @@ class ClaudeExecutor:
             except Exception as e:
                 logger.warning(f"[Remote] 디버그 메시지 전송 실패: {e}")
 
-        # 실행 중인 request_id 추적 (인터벤션용)
+        # session_id 조기 통지 콜백
+        async def on_session_callback(new_session_id: str) -> None:
+            self._register_session_id(thread_ts, new_session_id)
+
+        # 실행 중인 request_id 추적 (인터벤션 폴백용)
         self._active_remote_requests[thread_ts] = request_id
 
         try:
@@ -411,6 +462,7 @@ class ClaudeExecutor:
                     on_progress=on_progress,
                     on_compact=on_compact,
                     on_debug=on_debug,
+                    on_session=on_session_callback,
                     allowed_tools=allowed_tools,
                     disallowed_tools=disallowed_tools,
                     use_mcp=use_mcp,
@@ -428,6 +480,7 @@ class ClaudeExecutor:
             self._result_processor.handle_exception(presentation, e)
         finally:
             self._active_remote_requests.pop(thread_ts, None)
+            self._unregister_session_id(thread_ts)
 
     def _process_result(self, presentation: Any, result, thread_ts: str):
         """실행 결과 처리

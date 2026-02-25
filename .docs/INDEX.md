@@ -214,28 +214,29 @@
 - `HtmlFetcher` (seosoyoung/slackbot/web/fetcher.py:14): Selenium을 사용한 동적 웹 페이지 HTML 페처
 - `Settings` (seosoyoung/soul/config.py:35): 애플리케이션 설정
 - `SSEEventType` (seosoyoung/soul/models/schemas.py:13): SSE 이벤트 타입
-- `InterveneRequest` (seosoyoung/soul/models/schemas.py:25): 개입 메시지 요청 (Task API 호환)
-- `InterveneResponse` (seosoyoung/soul/models/schemas.py:34): 개입 메시지 응답
-- `AttachmentUploadResponse` (seosoyoung/soul/models/schemas.py:40): 첨부 파일 업로드 응답
-- `AttachmentCleanupResponse` (seosoyoung/soul/models/schemas.py:48): 첨부 파일 정리 응답
-- `HealthResponse` (seosoyoung/soul/models/schemas.py:54): 헬스 체크 응답
-- `ErrorDetail` (seosoyoung/soul/models/schemas.py:64): 에러 상세 정보
-- `ErrorResponse` (seosoyoung/soul/models/schemas.py:71): 에러 응답
-- `ProgressEvent` (seosoyoung/soul/models/schemas.py:78): 진행 상황 이벤트
-- `MemoryEvent` (seosoyoung/soul/models/schemas.py:84): 메모리 사용량 이벤트
-- `InterventionSentEvent` (seosoyoung/soul/models/schemas.py:92): 개입 메시지 전송 확인 이벤트
-- `CompleteEvent` (seosoyoung/soul/models/schemas.py:99): 실행 완료 이벤트
-- `ErrorEvent` (seosoyoung/soul/models/schemas.py:107): 오류 이벤트
-- `ContextUsageEvent` (seosoyoung/soul/models/schemas.py:114): 컨텍스트 사용량 이벤트
-- `CompactEvent` (seosoyoung/soul/models/schemas.py:122): 컴팩트 실행 이벤트
-- `DebugEvent` (seosoyoung/soul/models/schemas.py:129): 디버그 정보 이벤트 (rate_limit 경고 등)
-- `TaskStatus` (seosoyoung/soul/models/schemas.py:137): 태스크 상태
-- `ExecuteRequest` (seosoyoung/soul/models/schemas.py:144): 실행 요청
-- `TaskResponse` (seosoyoung/soul/models/schemas.py:156): 태스크 정보 응답
-- `TaskListResponse` (seosoyoung/soul/models/schemas.py:169): 태스크 목록 응답
-- `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:174): 개입 메시지 요청
-- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:44): 개입 메시지 데이터
-- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:91): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
+- `InterveneRequest` (seosoyoung/soul/models/schemas.py:26): 개입 메시지 요청 (Task API 호환)
+- `InterveneResponse` (seosoyoung/soul/models/schemas.py:35): 개입 메시지 응답
+- `AttachmentUploadResponse` (seosoyoung/soul/models/schemas.py:41): 첨부 파일 업로드 응답
+- `AttachmentCleanupResponse` (seosoyoung/soul/models/schemas.py:49): 첨부 파일 정리 응답
+- `HealthResponse` (seosoyoung/soul/models/schemas.py:55): 헬스 체크 응답
+- `ErrorDetail` (seosoyoung/soul/models/schemas.py:65): 에러 상세 정보
+- `ErrorResponse` (seosoyoung/soul/models/schemas.py:72): 에러 응답
+- `SessionEvent` (seosoyoung/soul/models/schemas.py:79): 세션 ID 조기 통지 이벤트
+- `ProgressEvent` (seosoyoung/soul/models/schemas.py:89): 진행 상황 이벤트
+- `MemoryEvent` (seosoyoung/soul/models/schemas.py:95): 메모리 사용량 이벤트
+- `InterventionSentEvent` (seosoyoung/soul/models/schemas.py:103): 개입 메시지 전송 확인 이벤트
+- `CompleteEvent` (seosoyoung/soul/models/schemas.py:110): 실행 완료 이벤트
+- `ErrorEvent` (seosoyoung/soul/models/schemas.py:118): 오류 이벤트
+- `ContextUsageEvent` (seosoyoung/soul/models/schemas.py:125): 컨텍스트 사용량 이벤트
+- `CompactEvent` (seosoyoung/soul/models/schemas.py:133): 컴팩트 실행 이벤트
+- `DebugEvent` (seosoyoung/soul/models/schemas.py:140): 디버그 정보 이벤트 (rate_limit 경고 등)
+- `TaskStatus` (seosoyoung/soul/models/schemas.py:148): 태스크 상태
+- `ExecuteRequest` (seosoyoung/soul/models/schemas.py:155): 실행 요청
+- `TaskResponse` (seosoyoung/soul/models/schemas.py:167): 태스크 정보 응답
+- `TaskListResponse` (seosoyoung/soul/models/schemas.py:180): 태스크 목록 응답
+- `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:185): 개입 메시지 요청
+- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:45): 개입 메시지 데이터
+- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:92): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
 - `FileManager` (seosoyoung/soul/service/file_manager.py:28): 첨부 파일 관리자
 - `ResourceManager` (seosoyoung/soul/service/resource_manager.py:17): 동시 실행 제한 관리자
@@ -278,7 +279,7 @@
 - `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:137): 레지스트리에서 러너 제거
 - `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:143): 모든 등록된 러너의 클라이언트를 종료
 - `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:178): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:967): 
+- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:979): 
 - `read_stderr_tail()` (seosoyoung/slackbot/claude/diagnostics.py:24): 세션별 cli_stderr 로그의 마지막 N줄 읽기
 - `build_session_dump()` (seosoyoung/slackbot/claude/diagnostics.py:57): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/slackbot/claude/diagnostics.py:102): ProcessError를 사용자 친화적 메시지로 변환.
@@ -409,13 +410,14 @@
 - `async upload_attachment()` (seosoyoung/soul/api/attachments.py:27): 첨부 파일 업로드
 - `async cleanup_attachments()` (seosoyoung/soul/api/attachments.py:83): 스레드의 첨부 파일 정리
 - `async verify_token()` (seosoyoung/soul/api/auth.py:20): Bearer 토큰 검증
-- `task_to_response()` (seosoyoung/soul/api/tasks.py:38): Task를 TaskResponse로 변환
-- `async execute_task()` (seosoyoung/soul/api/tasks.py:61): Claude Code 실행 (SSE 스트리밍)
-- `async get_tasks()` (seosoyoung/soul/api/tasks.py:152): 클라이언트의 태스크 목록 조회
-- `async get_task()` (seosoyoung/soul/api/tasks.py:174): 특정 태스크 조회
-- `async reconnect_stream()` (seosoyoung/soul/api/tasks.py:204): 태스크 SSE 스트림에 재연결
-- `async ack_task()` (seosoyoung/soul/api/tasks.py:291): 결과 수신 확인
-- `async intervene_task()` (seosoyoung/soul/api/tasks.py:329): 실행 중인 태스크에 개입 메시지 전송
+- `task_to_response()` (seosoyoung/soul/api/tasks.py:39): Task를 TaskResponse로 변환
+- `async execute_task()` (seosoyoung/soul/api/tasks.py:62): Claude Code 실행 (SSE 스트리밍)
+- `async get_tasks()` (seosoyoung/soul/api/tasks.py:153): 클라이언트의 태스크 목록 조회
+- `async get_task()` (seosoyoung/soul/api/tasks.py:175): 특정 태스크 조회
+- `async reconnect_stream()` (seosoyoung/soul/api/tasks.py:205): 태스크 SSE 스트림에 재연결
+- `async ack_task()` (seosoyoung/soul/api/tasks.py:292): 결과 수신 확인
+- `async intervene_task()` (seosoyoung/soul/api/tasks.py:330): 실행 중인 태스크에 개입 메시지 전송
+- `async intervene_by_session()` (seosoyoung/soul/api/tasks.py:391): session_id 기반 개입 메시지 전송
 - `get_settings()` (seosoyoung/soul/config.py:106): 설정 싱글톤 반환
 - `setup_logging()` (seosoyoung/soul/config.py:111): 로깅 설정
 - `async periodic_cleanup()` (seosoyoung/soul/main.py:37): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
@@ -424,9 +426,9 @@
 - `async health_check()` (seosoyoung/soul/main.py:162): 헬스 체크 엔드포인트
 - `async get_status()` (seosoyoung/soul/main.py:173): 서비스 상태 조회
 - `async global_exception_handler()` (seosoyoung/soul/main.py:205): 전역 예외 핸들러
-- `get_task_manager()` (seosoyoung/soul/service/task_manager.py:495): TaskManager 싱글톤 반환
-- `init_task_manager()` (seosoyoung/soul/service/task_manager.py:503): TaskManager 초기화
-- `set_task_manager()` (seosoyoung/soul/service/task_manager.py:510): TaskManager 인스턴스 설정 (테스트용)
+- `get_task_manager()` (seosoyoung/soul/service/task_manager.py:570): TaskManager 싱글톤 반환
+- `init_task_manager()` (seosoyoung/soul/service/task_manager.py:578): TaskManager 초기화
+- `set_task_manager()` (seosoyoung/soul/service/task_manager.py:585): TaskManager 인스턴스 설정 (테스트용)
 - `utc_now()` (seosoyoung/soul/service/task_models.py:36): 현재 UTC 시간 반환
 - `datetime_to_str()` (seosoyoung/soul/service/task_models.py:41): datetime을 ISO 문자열로 변환
 - `str_to_datetime()` (seosoyoung/soul/service/task_models.py:46): ISO 문자열을 datetime으로 변환

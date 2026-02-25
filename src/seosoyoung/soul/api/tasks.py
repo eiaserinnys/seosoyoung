@@ -16,6 +16,7 @@ from seosoyoung.soul.models import (
     TaskResponse,
     TaskListResponse,
     TaskInterveneRequest,
+    InterveneRequest,
     InterveneResponse,
     ErrorResponse,
 )
@@ -372,6 +373,67 @@ async def intervene_task(
                 "error": {
                     "code": "TASK_NOT_RUNNING",
                     "message": f"태스크가 실행 중이 아닙니다: {client_id}:{request_id}",
+                    "details": {},
+                }
+            },
+        )
+
+
+@router.post(
+    "/sessions/{session_id}/intervene",
+    response_model=InterveneResponse,
+    status_code=202,
+    responses={
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+async def intervene_by_session(
+    session_id: str,
+    request: InterveneRequest,
+    _: str = Depends(verify_token),
+):
+    """
+    session_id 기반 개입 메시지 전송
+
+    Claude Code session_id로 실행 중인 태스크를 찾아 개입 메시지를 전송합니다.
+    기존 client_id/request_id 기반 API의 대안으로, 봇이 session_id만 알면
+    인터벤션을 보낼 수 있습니다.
+    """
+    task_manager = get_task_manager()
+
+    try:
+        queue_position = await task_manager.add_intervention_by_session(
+            session_id=session_id,
+            text=request.text,
+            user=request.user,
+            attachment_paths=request.attachment_paths,
+        )
+
+        return InterveneResponse(
+            queued=True,
+            queue_position=queue_position,
+        )
+
+    except TaskNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": {
+                    "code": "SESSION_NOT_FOUND",
+                    "message": f"세션에 대응하는 태스크를 찾을 수 없습니다: {session_id}",
+                    "details": {},
+                }
+            },
+        )
+
+    except TaskNotRunningError:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": {
+                    "code": "TASK_NOT_RUNNING",
+                    "message": f"세션의 태스크가 실행 중이 아닙니다: {session_id}",
                     "details": {},
                 }
             },
