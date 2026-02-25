@@ -57,6 +57,7 @@ class ClaudeExecutor:
         restart_type_restart=None,
         trello_watcher_ref: Optional[Callable] = None,
         list_runner_ref: Optional[Callable] = None,
+        parse_markers_fn: Optional[Callable] = None,
     ):
         self.session_manager = session_manager
         self.session_runtime = session_runtime
@@ -72,6 +73,7 @@ class ClaudeExecutor:
         self.soul_client_id = soul_client_id
         self.trello_watcher_ref = trello_watcher_ref
         self.list_runner_ref = list_runner_ref
+        self._parse_markers_fn = parse_markers_fn
 
         # 하위 호환 프로퍼티 (기존 코드에서 직접 접근하는 경우 대비)
         self.get_session_lock = session_runtime.get_session_lock
@@ -300,8 +302,6 @@ class ClaudeExecutor:
             logger.info(f"Claude 실행 (local): thread={thread_ts}, role={effective_role}")
 
             try:
-                from seosoyoung.slackbot.marker_parser import parse_markers as _parse_markers
-
                 engine_result = runner.run_sync(runner.run(
                     prompt=prompt,
                     session_id=session_id,
@@ -310,7 +310,7 @@ class ClaudeExecutor:
                 ))
 
                 # 응용 마커 파싱 + ClaudeResult 변환
-                markers = _parse_markers(engine_result.output)
+                markers = self._parse_markers_fn(engine_result.output) if self._parse_markers_fn else None
                 result = ClaudeResult.from_engine_result(engine_result, markers=markers)
 
                 # 결과 콜백 호출 (OM 등)
@@ -357,6 +357,7 @@ class ClaudeExecutor:
                     self._service_adapter = ClaudeServiceAdapter(
                         client=client,
                         client_id=self.soul_client_id,
+                        parse_markers_fn=self._parse_markers_fn,
                     )
         return self._service_adapter
 

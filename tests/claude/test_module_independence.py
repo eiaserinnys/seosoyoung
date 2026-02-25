@@ -4,9 +4,11 @@ claude/ 모듈이 외부 의존성(Config, slack_sdk, restart, memory 등) 없�
 독립적으로 임포트·인스턴스화·동작할 수 있는지 검증합니다.
 """
 
+import ast
 import importlib
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -85,6 +87,31 @@ class TestModuleImports:
             assert not hasattr(types_mod, name), (
                 f"types.py에 {name}이 여전히 존재함"
             )
+
+    def test_no_external_slackbot_imports(self):
+        """claude/ 패키지가 slackbot의 다른 모듈을 직접 import하지 않는지 AST 검증"""
+        claude_dir = Path(__file__).parent.parent.parent / "src" / "seosoyoung" / "slackbot" / "claude"
+        assert claude_dir.is_dir(), f"claude directory not found: {claude_dir}"
+        py_files = list(claude_dir.glob("*.py"))
+        assert len(py_files) > 5, f"Too few .py files ({len(py_files)}), path may be wrong"
+        violations = []
+        for py_file in claude_dir.glob("*.py"):
+            tree = ast.parse(py_file.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    module = node.module
+                    if (module.startswith("seosoyoung.slackbot.")
+                            and not module.startswith("seosoyoung.slackbot.claude")
+                            and not module.startswith("seosoyoung.utils")):
+                        violations.append(f"{py_file.name}:{node.lineno} -> {module}")
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        module = alias.name
+                        if (module.startswith("seosoyoung.slackbot.")
+                                and not module.startswith("seosoyoung.slackbot.claude")
+                                and not module.startswith("seosoyoung.utils")):
+                            violations.append(f"{py_file.name}:{node.lineno} -> {module}")
+        assert violations == [], f"claude/ 패키지에서 외부 import 발견: {violations}"
 
 
 # === Protocol 호환성 테스트 ===

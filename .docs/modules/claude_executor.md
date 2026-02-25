@@ -26,14 +26,14 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 #### 메서드
 
 - `__init__(self, session_manager, session_runtime, restart_manager, send_long_message, send_restart_confirmation, update_message_fn)` (줄 41): 
-- `run(self, prompt, thread_ts, msg_ts)` (줄 104): 세션 내에서 Claude Code 실행 (공통 로직)
-- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 166): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
-- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 204): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
-- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 257): 단일 Claude 실행
+- `run(self, prompt, thread_ts, msg_ts)` (줄 106): 세션 내에서 Claude Code 실행 (공통 로직)
+- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 168): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
+- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 206): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
+- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 259): 단일 Claude 실행
 - `_get_role_config(self, role)` (줄 326): 역할에 맞는 runner 설정을 반환
 - `_get_service_adapter(self)` (줄 346): Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환
-- `_execute_remote(self, thread_ts, prompt)` (줄 363): Remote 모드: soul 서버에 실행을 위임
-- `_process_result(self, presentation, result, thread_ts)` (줄 405): 실행 결과 처리
+- `_execute_remote(self, thread_ts, prompt)` (줄 364): Remote 모드: soul 서버에 실행을 위임
+- `_process_result(self, presentation, result, thread_ts)` (줄 406): 실행 결과 처리
 
 ## 함수
 

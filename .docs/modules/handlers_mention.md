@@ -88,7 +88,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 397
+- 위치: 줄 398
 - 설명: 멘션 핸들러 등록
 
 Args:

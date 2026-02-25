@@ -26,7 +26,9 @@ def mock_client():
 
 @pytest.fixture
 def adapter(mock_client):
-    return ClaudeServiceAdapter(client=mock_client, client_id="test_bot")
+    from seosoyoung.slackbot.marker_parser import parse_markers
+    return ClaudeServiceAdapter(client=mock_client, client_id="test_bot",
+                                parse_markers_fn=parse_markers)
 
 
 class TestExecute:

@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import IO, Optional, Callable, Awaitable
+from typing import IO, Any, Optional, Callable, Awaitable
 
 import psutil
 from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient, HookMatcher, HookContext
@@ -58,21 +58,16 @@ class ClaudeResult(EngineResult):
     def from_engine_result(
         cls,
         result: EngineResult,
-        markers: "ParsedMarkers | None" = None,
+        markers: Any = None,
         anchor_ts: str = "",
     ) -> "ClaudeResult":
-        """EngineResult + ParsedMarkers → ClaudeResult 변환
+        """EngineResult + markers → ClaudeResult 변환
 
         Args:
             result: 엔진 순수 결과
-            markers: 파싱된 응용 마커 (None이면 기본값 사용)
+            markers: 파싱된 응용 마커 (duck-typed, None이면 기본값 사용)
             anchor_ts: OM 앵커 ts
         """
-        from seosoyoung.slackbot.marker_parser import ParsedMarkers
-
-        if markers is None:
-            markers = ParsedMarkers()
-
         return cls(
             success=result.success,
             output=result.output,
@@ -82,9 +77,9 @@ class ClaudeResult(EngineResult):
             interrupted=result.interrupted,
             usage=result.usage,
             collected_messages=result.collected_messages,
-            update_requested=markers.update_requested,
-            restart_requested=markers.restart_requested,
-            list_run=markers.list_run,
+            update_requested=getattr(markers, "update_requested", False),
+            restart_requested=getattr(markers, "restart_requested", False),
+            list_run=getattr(markers, "list_run", None),
             anchor_ts=anchor_ts,
         )
 

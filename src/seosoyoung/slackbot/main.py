@@ -20,6 +20,7 @@ from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers
 from seosoyoung.slackbot.handlers.actions import send_restart_confirmation
 from seosoyoung.slackbot.restart import RestartManager, RestartType
+from seosoyoung.slackbot.marker_parser import parse_markers
 from seosoyoung.slackbot.memory.injector import prepare_memory_injection, trigger_observation
 from seosoyoung.slackbot.trello.watcher import TrelloWatcher
 from seosoyoung.slackbot.trello.list_runner import ListRunner
@@ -126,6 +127,7 @@ executor = ClaudeExecutor(
     restart_type_restart=RestartType.RESTART,
     trello_watcher_ref=lambda: trello_watcher,
     list_runner_ref=lambda: list_runner,
+    parse_markers_fn=parse_markers,
 )
 
 # 멘션 트래커 (채널 관찰자-멘션 핸들러 통합용)

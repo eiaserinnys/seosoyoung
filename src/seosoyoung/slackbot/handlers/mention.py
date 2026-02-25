@@ -321,6 +321,7 @@ def create_session_and_run_claude(
     # 채널 컨텍스트 포맷팅
     context = format_hybrid_context(
         initial_ctx["messages"], initial_ctx["source_type"], channel=channel,
+        format_message_fn=format_slack_message,
     )
 
     # 슬랙 컨텍스트 생성
