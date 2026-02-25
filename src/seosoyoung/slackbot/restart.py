@@ -23,9 +23,10 @@ class RestartType(Enum):
 class RestartRequest:
     """재시작 요청 정보"""
     restart_type: RestartType
-    requester_user_id: str
-    channel_id: str
-    thread_ts: str
+    requester_user_id: str = ""
+    channel_id: str = ""
+    thread_ts: str = ""
+    is_system: bool = False  # True이면 시스템 내부 shutdown (SIGTERM, HTTP /shutdown 등)
 
 
 class RestartManager:
@@ -81,6 +82,37 @@ class RestartManager:
             self._pending_restart = request
             logger.info(f"재시작 대기 시작: type={request.restart_type.name}")
             return True
+
+    def request_system_shutdown(self, restart_type: RestartType) -> bool:
+        """시스템 수준의 종료 요청 (SIGTERM, HTTP /shutdown 등)
+
+        사용자 정보 없이 pending 등록합니다.
+        활성 세션이 없으면 즉시 종료, 있으면 세션 종료 후 자동 종료됩니다.
+
+        Args:
+            restart_type: 재시작 유형
+
+        Returns:
+            True if 즉시 종료 실행, False if 세션 대기 모드 진입
+        """
+        count = self._get_running_count()
+        if count == 0:
+            logger.info(f"활성 세션 없음 — 즉시 종료: {restart_type.name}")
+            self._on_restart(restart_type)
+            return True
+
+        logger.info(
+            f"활성 세션 {count}개 감지 — 종료 대기 모드 진입: {restart_type.name}"
+        )
+        with self._lock:
+            if self._pending_restart is not None:
+                logger.warning("이미 재시작 대기 중 — 기존 요청 유지")
+                return False
+            self._pending_restart = RestartRequest(
+                restart_type=restart_type,
+                is_system=True,
+            )
+        return False
 
     def cancel_restart(self) -> bool:
         """재시작 대기 취소
