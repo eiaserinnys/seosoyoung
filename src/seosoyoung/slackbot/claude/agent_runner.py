@@ -544,6 +544,7 @@ class ClaudeRunner:
         on_progress: Optional[Callable[[str], Awaitable[None]]],
         on_compact: Optional[Callable[[str, str], Awaitable[None]]],
         on_intervention: Optional[InterventionCallback] = None,
+        on_session: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> None:
         """내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신"""
         thread_ts = self.thread_ts
@@ -592,6 +593,12 @@ class ClaudeRunner:
                 if hasattr(message, 'session_id'):
                     msg_state.session_id = message.session_id
                     logger.info(f"세션 ID: {msg_state.session_id}")
+                    # 세션 ID 조기 통지 콜백
+                    if on_session and msg_state.session_id:
+                        try:
+                            await on_session(msg_state.session_id)
+                        except Exception as e:
+                            logger.warning(f"세션 ID 콜백 오류: {e}")
 
             # AssistantMessage에서 텍스트/도구 사용 추출
             elif isinstance(message, AssistantMessage):
@@ -739,6 +746,7 @@ class ClaudeRunner:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_intervention: Optional[InterventionCallback] = None,
+        on_session: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> EngineResult:
         """Claude Code 실행
 
@@ -751,6 +759,9 @@ class ClaudeRunner:
                 호출 시 Optional[str]을 반환하며, 문자열이면 실행 중인
                 대화에 새 메시지로 주입됩니다. None이면 대기 중인
                 인터벤션이 없는 것으로 처리합니다.
+            on_session: 세션 ID 확보 콜백.
+                SystemMessage에서 session_id를 추출한 시점에 호출됩니다.
+                클라이언트에게 session_id를 조기 통지하는 데 사용합니다.
 
         Returns:
             EngineResult: 엔진 순수 실행 결과.
@@ -768,7 +779,7 @@ class ClaudeRunner:
                     error=validation_error,
                 )
 
-        return await self._execute(prompt, session_id, on_progress, on_compact, on_intervention)
+        return await self._execute(prompt, session_id, on_progress, on_compact, on_intervention, on_session)
 
     async def _execute(
         self,
@@ -777,6 +788,7 @@ class ClaudeRunner:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_intervention: Optional[InterventionCallback] = None,
+        on_session: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> EngineResult:
         """실제 실행 로직 (ClaudeSDKClient 기반)"""
         thread_ts = self.thread_ts
@@ -817,7 +829,7 @@ class ClaudeRunner:
 
                 await self._receive_messages(
                     client, compact_state, msg_state, on_progress, on_compact,
-                    on_intervention,
+                    on_intervention, on_session,
                 )
 
                 # PreCompact 훅 콜백 실행을 위한 이벤트 루프 양보

@@ -14,7 +14,9 @@ class SSEEventType(str, Enum):
     """SSE 이벤트 타입"""
     PROGRESS = "progress"
     MEMORY = "memory"
+    SESSION = "session"
     INTERVENTION_SENT = "intervention_sent"
+    DEBUG = "debug"
     COMPLETE = "complete"
     ERROR = "error"
 
@@ -74,6 +76,16 @@ class ErrorResponse(BaseModel):
 
 # === SSE Event Models ===
 
+class SessionEvent(BaseModel):
+    """세션 ID 조기 통지 이벤트
+
+    Claude Code 세션이 시작되면 session_id를 클라이언트에 즉시 알립니다.
+    클라이언트는 이 session_id로 인터벤션 API를 호출할 수 있습니다.
+    """
+    type: str = "session"
+    session_id: str
+
+
 class ProgressEvent(BaseModel):
     """진행 상황 이벤트"""
     type: str = "progress"
@@ -125,6 +137,12 @@ class CompactEvent(BaseModel):
     message: str = Field(..., description="컴팩트 상태 메시지")
 
 
+class DebugEvent(BaseModel):
+    """디버그 정보 이벤트 (rate_limit 경고 등)"""
+    type: str = "debug"
+    message: str = Field(..., description="디버그 메시지")
+
+
 # === Task API Models ===
 
 class TaskStatus(str, Enum):
@@ -141,6 +159,9 @@ class ExecuteRequest(BaseModel):
     prompt: str = Field(..., description="실행할 프롬프트")
     resume_session_id: Optional[str] = Field(None, description="이전 Claude 세션 ID (대화 연속성용)")
     attachment_paths: Optional[List[str]] = Field(None, description="첨부 파일 경로 목록")
+    allowed_tools: Optional[List[str]] = Field(None, description="허용 도구 목록 (None이면 제한 없음)")
+    disallowed_tools: Optional[List[str]] = Field(None, description="금지 도구 목록")
+    use_mcp: bool = Field(True, description="MCP 서버 연결 여부")
 
 
 class TaskResponse(BaseModel):

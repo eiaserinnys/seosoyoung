@@ -187,7 +187,7 @@ class TestRunnerSessionValidation:
         assert result.output == "테스트 응답"
         assert result.session_id == fake_uuid
         mock_execute.assert_called_once_with(
-            "test prompt", fake_uuid, None, None, None
+            "test prompt", fake_uuid, None, None, None, None
         )
 
     @pytest.mark.asyncio

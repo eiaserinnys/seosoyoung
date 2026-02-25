@@ -31,6 +31,7 @@ class TaskExecutor:
         get_intervention_func: Callable[[str, str], Awaitable[Optional[dict]]],
         complete_task_func: Callable[[str, str, str, Optional[str]], Awaitable[Optional[Task]]],
         error_task_func: Callable[[str, str, str], Awaitable[Optional[Task]]],
+        register_session_func: Optional[Callable[[str, str, str], None]] = None,
     ):
         """
         Args:
@@ -39,12 +40,14 @@ class TaskExecutor:
             get_intervention_func: 개입 메시지 가져오기 함수
             complete_task_func: 태스크 완료 처리 함수
             error_task_func: 태스크 에러 처리 함수
+            register_session_func: session_id 등록 함수 (session_id, client_id, request_id)
         """
         self._tasks = tasks
         self._listener_manager = listener_manager
         self._get_intervention = get_intervention_func
         self._complete_task = complete_task_func
         self._error_task = error_task_func
+        self._register_session = register_session_func
 
     async def start_execution(
         self,
@@ -110,14 +113,25 @@ class TaskExecutor:
                     event = {"type": "intervention_sent", "user": user, "text": text}
                     await self._listener_manager.broadcast(task.client_id, task.request_id, event)
 
-                # Claude Code 실행
+                # Claude Code 실행 (요청별 도구 설정 전달)
                 async for event in claude_runner.execute(
                     prompt=task.prompt,
                     resume_session_id=task.resume_session_id,
                     get_intervention=get_intervention,
                     on_intervention_sent=on_intervention_sent,
+                    allowed_tools=task.allowed_tools,
+                    disallowed_tools=task.disallowed_tools,
+                    use_mcp=task.use_mcp,
                 ):
                     event_dict = event.model_dump()
+
+                    # session_id 등록 (인터벤션 역인덱스)
+                    if event.type == "session" and self._register_session:
+                        self._register_session(
+                            event_dict.get("session_id", ""),
+                            task.client_id,
+                            task.request_id,
+                        )
 
                     # 진행 상황 저장 (재연결용)
                     if event.type == "progress":

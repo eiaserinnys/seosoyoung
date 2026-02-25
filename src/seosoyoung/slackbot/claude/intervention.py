@@ -8,7 +8,7 @@
 import logging
 import threading
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
@@ -78,16 +78,50 @@ class InterventionManager:
         prompt: str,
         active_remote_requests: dict[str, str],
         service_adapter,
+        *,
+        session_id: Optional[str] = None,
+        pending_session_interventions: Optional[dict] = None,
+        pending_session_lock: Optional[Any] = None,
     ):
         """Remote 모드: soul 서버에 HTTP intervene 요청
+
+        session_id가 확보되어 있으면 session_id 기반 인터벤션을 사용합니다.
+        session_id가 없으면 (아직 미확보) 버퍼에 보관하거나,
+        기존 client_id/request_id 기반으로 폴백합니다.
 
         sync 스레드 컨텍스트(executor._run_with_lock 내부)에서 호출되므로
         run_in_new_loop로 격리된 이벤트 루프를 생성해 async 호출을 수행합니다.
         """
+        from seosoyoung.utils.async_bridge import run_in_new_loop
+
+        # 1. session_id가 있으면 session_id 기반 인터벤션
+        if session_id and service_adapter:
+            try:
+                run_in_new_loop(
+                    service_adapter.intervene_by_session(
+                        session_id=session_id,
+                        text=prompt,
+                        user="intervention",
+                    )
+                )
+                logger.info(f"[Remote] 세션 인터벤션 전송 완료: thread={thread_ts}, session={session_id}")
+                return
+            except Exception as e:
+                logger.warning(f"[Remote] 세션 인터벤션 전송 실패, 폴백 시도: thread={thread_ts}, {e}")
+
+        # 2. session_id 미확보 + 실행은 시작된 상태 → 버퍼에 보관
         request_id = active_remote_requests.get(thread_ts)
+        if request_id and not session_id and pending_session_interventions is not None and pending_session_lock is not None:
+            with pending_session_lock:
+                if thread_ts not in pending_session_interventions:
+                    pending_session_interventions[thread_ts] = []
+                pending_session_interventions[thread_ts].append((prompt, "intervention"))
+            logger.info(f"[Remote] 인터벤션 버퍼에 보관 (session_id 미확보): thread={thread_ts}")
+            return
+
+        # 3. 폴백: client_id/request_id 기반 인터벤션
         if request_id and service_adapter:
             try:
-                from seosoyoung.utils.async_bridge import run_in_new_loop
                 run_in_new_loop(
                     service_adapter.intervene(
                         request_id=request_id,
@@ -95,7 +129,7 @@ class InterventionManager:
                         user="intervention",
                     )
                 )
-                logger.info(f"[Remote] 인터벤션 전송 완료: thread={thread_ts}")
+                logger.info(f"[Remote] 인터벤션 전송 완료 (폴백): thread={thread_ts}")
             except Exception as e:
                 logger.warning(f"[Remote] 인터벤션 전송 실패 (무시): thread={thread_ts}, {e}")
         else:

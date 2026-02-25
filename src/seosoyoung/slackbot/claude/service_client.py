@@ -174,8 +174,28 @@ class SoulServiceClient:
         resume_session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_session: Optional[Callable[[str], Awaitable[None]]] = None,
+        *,
+        allowed_tools: Optional[List[str]] = None,
+        disallowed_tools: Optional[List[str]] = None,
+        use_mcp: bool = True,
     ) -> ExecuteResult:
-        """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)"""
+        """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
+
+        Args:
+            client_id: 클라이언트 ID
+            request_id: 요청 ID
+            prompt: 실행할 프롬프트
+            resume_session_id: 이전 세션 ID
+            on_progress: 진행 상황 콜백
+            on_compact: 컴팩션 콜백
+            on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
+            on_session: 세션 ID 조기 통지 콜백 (session_id: str)
+            allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
+            disallowed_tools: 금지 도구 목록
+            use_mcp: MCP 서버 연결 여부
+        """
         session = await self._get_session()
         url = f"{self.base_url}/execute"
 
@@ -183,9 +203,14 @@ class SoulServiceClient:
             "client_id": client_id,
             "request_id": request_id,
             "prompt": prompt,
+            "use_mcp": use_mcp,
         }
         if resume_session_id:
             data["resume_session_id"] = resume_session_id
+        if allowed_tools is not None:
+            data["allowed_tools"] = allowed_tools
+        if disallowed_tools is not None:
+            data["disallowed_tools"] = disallowed_tools
 
         backoff = ExponentialBackoff()
 
@@ -205,6 +230,8 @@ class SoulServiceClient:
                     response=response,
                     on_progress=on_progress,
                     on_compact=on_compact,
+                    on_debug=on_debug,
+                    on_session=on_session,
                 )
             except ConnectionLostError:
                 pass  # 재연결 루프로 진입
@@ -221,7 +248,7 @@ class SoulServiceClient:
 
             try:
                 return await self.reconnect_stream(
-                    client_id, request_id, on_progress, on_compact,
+                    client_id, request_id, on_progress, on_compact, on_debug,
                 )
             except ConnectionLostError:
                 continue
@@ -266,6 +293,33 @@ class SoulServiceClient:
                 error = await self._parse_error(response)
                 raise SoulServiceError(f"개입 메시지 전송 실패: {error}")
 
+    async def intervene_by_session(
+        self,
+        session_id: str,
+        text: str,
+        user: str,
+    ) -> dict:
+        """session_id 기반 개입 메시지 전송"""
+        session = await self._get_session()
+        url = f"{self.base_url}/sessions/{session_id}/intervene"
+
+        data = {"text": text, "user": user}
+
+        async with session.post(url, json=data) as response:
+            if response.status == 202:
+                return await response.json()
+            elif response.status == 404:
+                raise TaskNotFoundError(
+                    f"세션에 대응하는 태스크를 찾을 수 없습니다: {session_id}"
+                )
+            elif response.status == 409:
+                raise TaskNotRunningError(
+                    f"세션의 태스크가 실행 중이 아닙니다: {session_id}"
+                )
+            else:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"세션 기반 개입 메시지 전송 실패: {error}")
+
     async def ack(self, client_id: str, request_id: str) -> bool:
         """결과 수신 확인"""
         session = await self._get_session()
@@ -286,6 +340,7 @@ class SoulServiceClient:
         request_id: str,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> ExecuteResult:
         """태스크 SSE 스트림에 재연결"""
         session = await self._get_session()
@@ -304,6 +359,7 @@ class SoulServiceClient:
                 response=response,
                 on_progress=on_progress,
                 on_compact=on_compact,
+                on_debug=on_debug,
             )
 
     async def health_check(self) -> dict:
@@ -324,6 +380,8 @@ class SoulServiceClient:
         response: aiohttp.ClientResponse,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_session: Optional[Callable[[str], Awaitable[None]]] = None,
     ) -> ExecuteResult:
         """SSE 이벤트 스트림 처리
 
@@ -336,7 +394,12 @@ class SoulServiceClient:
 
         try:
             async for event in self._parse_sse_stream(response):
-                if event.event == "progress":
+                if event.event == "session":
+                    session_id = event.data.get("session_id", "")
+                    if on_session and session_id:
+                        await on_session(session_id)
+
+                elif event.event == "progress":
                     text = event.data.get("text", "")
                     if on_progress and text:
                         await on_progress(text)
@@ -347,6 +410,11 @@ class SoulServiceClient:
                             event.data.get("trigger", "auto"),
                             event.data.get("message", "컴팩트 실행됨"),
                         )
+
+                elif event.event == "debug":
+                    message = event.data.get("message", "")
+                    if on_debug and message:
+                        await on_debug(message)
 
                 elif event.event == "complete":
                     result_text = event.data.get("result", "")

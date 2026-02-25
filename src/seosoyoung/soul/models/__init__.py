@@ -8,6 +8,7 @@ from .schemas import (
     HealthResponse,
     ErrorDetail,
     ErrorResponse,
+    SessionEvent,
     ProgressEvent,
     MemoryEvent,
     InterventionSentEvent,
@@ -15,6 +16,7 @@ from .schemas import (
     ErrorEvent,
     ContextUsageEvent,
     CompactEvent,
+    DebugEvent,
     # Task API
     TaskStatus,
     ExecuteRequest,
@@ -32,6 +34,7 @@ __all__ = [
     "HealthResponse",
     "ErrorDetail",
     "ErrorResponse",
+    "SessionEvent",
     "ProgressEvent",
     "MemoryEvent",
     "InterventionSentEvent",
@@ -39,6 +42,7 @@ __all__ = [
     "ErrorEvent",
     "ContextUsageEvent",
     "CompactEvent",
+    "DebugEvent",
     # Task API
     "TaskStatus",
     "ExecuteRequest",

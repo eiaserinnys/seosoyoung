@@ -149,6 +149,154 @@ class TestExecutorRemoteBranch:
             )
             mock_execute_remote.assert_called_once()
 
+    def test_remote_mode_passes_tool_settings(self, executor, session):
+        """remote 모드에서 role → 도구 해석 후 _execute_remote에 전달"""
+        pctx = _make_pctx()
+        executor.execution_mode = "remote"
+        executor.role_tools = {
+            "admin": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
+            "viewer": ["Read", "Glob", "Grep"],
+        }
+
+        with patch.object(executor, "_execute_remote") as mock_remote:
+            executor._execute_once(
+                "1234.5678", "hello", "1234.0001",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                role="admin",
+                user_message=None,
+                on_result=None,
+            )
+
+            call_kwargs = mock_remote.call_args
+            # allowed_tools, disallowed_tools, use_mcp가 전달되어야 함
+            assert "allowed_tools" in call_kwargs.kwargs
+            assert "disallowed_tools" in call_kwargs.kwargs
+            assert "use_mcp" in call_kwargs.kwargs
+
+    def test_remote_viewer_role_has_disallowed_tools(self, executor, session):
+        """viewer role에서 disallowed_tools가 설정됨"""
+        pctx = _make_pctx()
+        executor.execution_mode = "remote"
+        executor.role_tools = {
+            "viewer": ["Read", "Glob", "Grep"],
+        }
+
+        with patch.object(executor, "_execute_remote") as mock_remote:
+            executor._execute_once(
+                "1234.5678", "hello", "1234.0001",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                role="viewer",
+                user_message=None,
+                on_result=None,
+            )
+
+            call_kwargs = mock_remote.call_args.kwargs
+            assert call_kwargs["disallowed_tools"] is not None
+            assert "Write" in call_kwargs["disallowed_tools"]
+            assert "Bash" in call_kwargs["disallowed_tools"]
+            assert call_kwargs["use_mcp"] is False  # viewer → mcp_config_path=None → use_mcp=False
+
+
+class TestExecutorRemoteDebug:
+    """_execute_remote에서 on_debug 콜백 전달 테스트"""
+
+    @pytest.fixture
+    def executor(self, tmp_path):
+        return _make_executor(
+            tmp_path,
+            execution_mode="remote",
+            soul_url="http://localhost:3105",
+            soul_token="test-token",
+            soul_client_id="test_bot",
+        )
+
+    @pytest.fixture
+    def session(self, executor):
+        return executor.session_manager.create(
+            thread_ts="1234.5678",
+            channel_id="C123",
+            user_id="U123",
+            role="admin",
+        )
+
+    def test_on_debug_passed_to_adapter(self, executor, session):
+        """_execute_remote가 on_debug 콜백을 adapter.execute에 전달"""
+        from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+        pctx = _make_pctx()
+
+        mock_adapter = MagicMock()
+        mock_result = ClaudeResult(success=True, output="done", session_id="sess-1")
+
+        with patch("seosoyoung.slackbot.claude.executor.run_in_new_loop", return_value=mock_result):
+            executor._service_adapter = mock_adapter
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                user_message=None,
+                on_result=None,
+            )
+
+        # run_in_new_loop에 전달된 코루틴에서 on_debug를 확인하기는 어려우므로
+        # adapter.execute가 호출되었는지 확인
+        mock_adapter.execute.assert_called_once()
+
+    def test_on_debug_sends_to_slack(self, executor, session):
+        """on_debug 콜백이 presentation.client.chat_postMessage를 호출"""
+        import asyncio
+        pctx = _make_pctx()
+
+        # executor._execute_remote 내부에서 정의되는 on_debug 함수를 간접 검증:
+        # adapter.execute에 전달된 on_debug를 캡처하여 실행
+        captured_on_debug = None
+
+        async def mock_execute(**kwargs):
+            nonlocal captured_on_debug
+            captured_on_debug = kwargs.get("on_debug")
+            from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+            return ClaudeResult(success=True, output="done", session_id="sess-1")
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = mock_execute
+
+        from seosoyoung.utils.async_bridge import run_in_new_loop
+        executor._service_adapter = mock_adapter
+
+        executor._execute_remote(
+            "1234.5678", "hello",
+            on_progress=_noop_progress,
+            on_compact=_noop_compact,
+            presentation=pctx,
+            session_id="sess-001",
+            user_message=None,
+            on_result=None,
+        )
+
+        # on_debug가 캡처되었는지 확인
+        assert captured_on_debug is not None
+
+        # on_debug 호출 시 chat_postMessage가 호출되는지 확인
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(
+                captured_on_debug("rate limit warning: 80% used")
+            )
+        finally:
+            loop.close()
+        pctx.client.chat_postMessage.assert_called_once_with(
+            channel="C123",
+            thread_ts="1234.5678",
+            text="rate limit warning: 80% used",
+        )
+
 
 class TestGetServiceAdapter:
     """_get_service_adapter lazy 초기화 테스트"""
@@ -210,11 +358,13 @@ class TestInterventionDualPath:
         mock_runner.interrupt.assert_called_once()
 
     def test_remote_intervention_uses_adapter(self, executor, session):
-        """remote 모드 인터벤션: run_in_new_loop으로 adapter.intervene 호출"""
+        """remote 모드 인터벤션: session_id 확보 시 run_in_new_loop으로 adapter.intervene_by_session 호출"""
         mock_adapter = MagicMock()
         executor._service_adapter = mock_adapter
         executor._active_remote_requests["1234.5678"] = "1234.5678"
         executor.execution_mode = "remote"
+        # session_id를 등록하여 session 기반 경로로 진입
+        executor._register_session_id("1234.5678", "sess-abc")
 
         pctx = _make_pctx()
 

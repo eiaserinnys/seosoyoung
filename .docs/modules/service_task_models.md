@@ -32,9 +32,9 @@ Task Models - 태스크 관련 데이터 모델 및 예외
 
 #### 메서드
 
-- `key(self)` (줄 79): 태스크 키
-- `to_dict(self)` (줄 83): 영속화용 dict 변환
-- `from_dict(cls, data)` (줄 100): dict에서 복원
+- `key(self)` (줄 84): 태스크 키
+- `to_dict(self)` (줄 88): 영속화용 dict 변환
+- `from_dict(cls, data)` (줄 105): dict에서 복원
 
 ## 함수
 

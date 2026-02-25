@@ -71,6 +71,8 @@ class TaskManager:
         # 핵심 데이터
         self._tasks: Dict[str, Task] = {}
         self._lock = asyncio.Lock()
+        # session_id → task_key 역방향 인덱스
+        self._session_index: Dict[str, str] = {}
 
         # 서브 컴포넌트들
         self._storage = TaskStorage(storage_path)
@@ -81,7 +83,33 @@ class TaskManager:
             get_intervention_func=self.get_intervention,
             complete_task_func=self._complete_task_internal,
             error_task_func=self._error_task_internal,
+            register_session_func=self.register_session,
         )
+
+    # === session_id 인덱스 ===
+
+    def register_session(self, session_id: str, client_id: str, request_id: str) -> None:
+        """session_id → task_key 매핑 등록
+
+        SoulEngineAdapter가 session 이벤트를 발행할 때 호출합니다.
+        """
+        key = f"{client_id}:{request_id}"
+        self._session_index[session_id] = key
+        logger.info(f"Session index registered: {session_id} -> {key}")
+
+    def get_task_by_session(self, session_id: str) -> Optional[Task]:
+        """session_id로 태스크 조회"""
+        key = self._session_index.get(session_id)
+        if not key:
+            return None
+        return self._tasks.get(key)
+
+    def _unregister_session_for_task(self, key: str) -> None:
+        """task_key에 해당하는 session_id 인덱스 제거"""
+        to_remove = [sid for sid, tk in self._session_index.items() if tk == key]
+        for sid in to_remove:
+            del self._session_index[sid]
+            logger.debug(f"Session index removed: {sid}")
 
     # === 로드/저장 ===
 
@@ -109,6 +137,9 @@ class TaskManager:
         request_id: str,
         prompt: str,
         resume_session_id: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None,
+        disallowed_tools: Optional[List[str]] = None,
+        use_mcp: bool = True,
     ) -> Task:
         """
         새 태스크 생성
@@ -118,6 +149,9 @@ class TaskManager:
             request_id: 요청 ID (e.g., Slack thread ID)
             prompt: 실행할 프롬프트
             resume_session_id: 이전 세션 ID (대화 연속성용)
+            allowed_tools: 허용 도구 목록 (None이면 제한 없음)
+            disallowed_tools: 금지 도구 목록
+            use_mcp: MCP 서버 연결 여부
 
         Returns:
             Task: 생성된 태스크
@@ -139,6 +173,9 @@ class TaskManager:
                 request_id=request_id,
                 prompt=prompt,
                 resume_session_id=resume_session_id,
+                allowed_tools=allowed_tools,
+                disallowed_tools=disallowed_tools,
+                use_mcp=use_mcp,
             )
 
             self._tasks[key] = task
@@ -201,6 +238,9 @@ class TaskManager:
             task.claude_session_id = claude_session_id
             task.completed_at = utc_now()
 
+            # session_id 인덱스 정리
+            self._unregister_session_for_task(key)
+
             logger.info(f"Completed task: {key}")
 
         await self._schedule_save()
@@ -244,6 +284,9 @@ class TaskManager:
             task.error = error
             task.completed_at = utc_now()
 
+            # session_id 인덱스 정리
+            self._unregister_session_for_task(key)
+
             logger.info(f"Error task: {key} - {error}")
 
         await self._schedule_save()
@@ -268,6 +311,8 @@ class TaskManager:
                 logger.warning(f"Task not found for ack: {key}")
                 return False
 
+            # session_id 인덱스 정리
+            self._unregister_session_for_task(key)
             # intervention_queue 정리 (메모리 릭 방지)
             self._clear_queue(task.intervention_queue)
             # listeners 정리
@@ -317,6 +362,44 @@ class TaskManager:
         return await self._listener_manager.broadcast(client_id, request_id, event)
 
     # === 개입 메시지 관리 ===
+
+    async def add_intervention_by_session(
+        self,
+        session_id: str,
+        text: str,
+        user: str,
+        attachment_paths: Optional[List[str]] = None,
+    ) -> int:
+        """session_id 기반 개입 메시지 추가
+
+        Args:
+            session_id: Claude 세션 ID
+            text: 메시지 텍스트
+            user: 사용자
+            attachment_paths: 첨부 파일 경로
+
+        Returns:
+            큐 내 위치 (queue position)
+
+        Raises:
+            TaskNotFoundError: 세션에 대응하는 태스크 없음
+            TaskNotRunningError: 태스크가 running 상태가 아님
+        """
+        task = self.get_task_by_session(session_id)
+        if not task:
+            raise TaskNotFoundError(f"No task found for session: {session_id}")
+
+        if task.status != TaskStatus.RUNNING:
+            raise TaskNotRunningError(f"Task is not running for session: {session_id}")
+
+        message = {
+            "text": text,
+            "user": user,
+            "attachment_paths": attachment_paths or [],
+        }
+        await task.intervention_queue.put(message)
+
+        return task.intervention_queue.qsize()
 
     async def add_intervention(
         self,
@@ -446,6 +529,7 @@ class TaskManager:
 
             for key in keys_to_remove:
                 task = self._tasks[key]
+                self._unregister_session_for_task(key)
                 self._clear_queue(task.intervention_queue)
                 task.listeners.clear()
                 del self._tasks[key]
