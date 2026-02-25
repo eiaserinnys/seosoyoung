@@ -231,7 +231,6 @@ class MessageState:
     collected_messages: list[dict] = field(default_factory=list)
     msg_count: int = 0
     last_tool: str = ""
-    last_progress_time: float = 0.0
 
     @property
     def has_result(self) -> bool:
@@ -576,7 +575,6 @@ class ClaudeRunner:
     ) -> None:
         """내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신"""
         thread_ts = self.thread_ts
-        progress_interval = 2.0
         aiter = client.receive_response().__aiter__()
 
         while True:
@@ -642,16 +640,13 @@ class ClaudeRunner:
                             })
 
                             if on_progress:
-                                current_time = asyncio.get_running_loop().time()
-                                if current_time - msg_state.last_progress_time >= progress_interval:
-                                    try:
-                                        display_text = msg_state.current_text
-                                        if len(display_text) > 1000:
-                                            display_text = "...\n" + display_text[-1000:]
-                                        await on_progress(display_text)
-                                        msg_state.last_progress_time = current_time
-                                    except Exception as e:
-                                        logger.warning(f"진행 상황 콜백 오류: {e}")
+                                try:
+                                    display_text = msg_state.current_text
+                                    if len(display_text) > 1000:
+                                        display_text = "...\n" + display_text[-1000:]
+                                    await on_progress(display_text)
+                                except Exception as e:
+                                    logger.warning(f"진행 상황 콜백 오류: {e}")
 
                         elif isinstance(block, ToolUseBlock):
                             tool_input = ""
@@ -838,7 +833,7 @@ class ClaudeRunner:
         if thread_ts:
             register_runner(self)
 
-        msg_state = MessageState(last_progress_time=asyncio.get_running_loop().time())
+        msg_state = MessageState()
         _session_start = datetime.now(timezone.utc)
 
         try:

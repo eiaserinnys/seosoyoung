@@ -18,7 +18,7 @@ max_size는 idle pool (session + generic) 합산 크기를 제한합니다.
 ## 클래스
 
 ### `ClaudeRunnerPool`
-- 위치: 줄 27
+- 위치: 줄 25
 - 설명: ClaudeRunner 인스턴스 LRU 풀
 
 LRU 기반 세션 풀과 제네릭 풀을 함께 관리합니다.
@@ -27,20 +27,20 @@ session_id가 있으면 같은 Claude 세션을 재사용하고,
 
 #### 메서드
 
-- `__init__(self, max_size, idle_ttl, workspace_dir, allowed_tools, disallowed_tools, mcp_config_path, min_generic, maintenance_interval)` (줄 35): 
-- `_total_size(self)` (줄 76): 현재 idle pool 총 크기
-- `_make_runner(self)` (줄 80): 새 ClaudeRunner 인스턴스 생성 (pooled=True)
-- `async _discard(self, runner, reason)` (줄 91): runner를 안전하게 폐기
-- `async _evict_lru_unlocked(self)` (줄 98): LRU runner를 퇴거 (락 없이 — 이미 락을 보유한 상태에서 호출)
-- `async acquire(self, session_id)` (줄 125): 풀에서 runner 획득
-- `async release(self, runner, session_id)` (줄 186): 실행 완료 후 runner 반환
-- `async evict_lru(self)` (줄 222): 가장 오래 사용되지 않은 runner를 disconnect & 제거 (공개 API)
-- `async pre_warm(self, count)` (줄 227): N개의 generic runner를 미리 생성하여 generic pool에 추가
-- `async _run_maintenance(self)` (줄 262): 유지보수 작업 1회 실행
-- `async _maintenance_loop(self)` (줄 332): 백그라운드 유지보수 루프
-- `async start_maintenance(self)` (줄 349): 유지보수 루프 백그라운드 태스크 시작
-- `async shutdown(self)` (줄 360): 모든 runner disconnect 및 유지보수 루프 취소
-- `stats(self)` (줄 397): 현재 풀 상태 반환
+- `__init__(self, max_size, idle_ttl, workspace_dir, allowed_tools, disallowed_tools, mcp_config_path, min_generic, maintenance_interval)` (줄 33): 
+- `_total_size(self)` (줄 74): 현재 idle pool 총 크기
+- `_make_runner(self)` (줄 78): 새 ClaudeRunner 인스턴스 생성 (pooled=True)
+- `async _discard(self, runner, reason)` (줄 89): runner를 안전하게 폐기
+- `async _evict_lru_unlocked(self)` (줄 96): LRU runner를 퇴거 (락 없이 — 이미 락을 보유한 상태에서 호출)
+- `async acquire(self, session_id)` (줄 123): 풀에서 runner 획득
+- `async release(self, runner, session_id)` (줄 184): 실행 완료 후 runner 반환
+- `async evict_lru(self)` (줄 220): 가장 오래 사용되지 않은 runner를 disconnect & 제거 (공개 API)
+- `async pre_warm(self, count)` (줄 225): N개의 generic runner를 미리 생성하여 generic pool에 추가
+- `async _run_maintenance(self)` (줄 260): 유지보수 작업 1회 실행
+- `async _maintenance_loop(self)` (줄 330): 백그라운드 유지보수 루프
+- `async start_maintenance(self)` (줄 352): 유지보수 루프 백그라운드 태스크 시작
+- `async shutdown(self)` (줄 363): 모든 runner disconnect 및 유지보수 루프 취소
+- `stats(self)` (줄 400): 현재 풀 상태 반환
 
 ## 내부 의존성
 
