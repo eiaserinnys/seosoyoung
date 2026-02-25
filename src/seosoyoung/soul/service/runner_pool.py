@@ -17,6 +17,8 @@ from collections import OrderedDict, deque
 from pathlib import Path
 from typing import Optional
 
+import anyio
+
 from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 
 logger = logging.getLogger(__name__)
@@ -336,7 +338,7 @@ class ClaudeRunnerPool:
         logger.info(f"Maintenance loop 시작 (interval={self._maintenance_interval}s)")
         try:
             while True:
-                await asyncio.sleep(self._maintenance_interval)
+                await anyio.sleep(self._maintenance_interval)
                 try:
                     await self._run_maintenance()
                 except Exception as e:
