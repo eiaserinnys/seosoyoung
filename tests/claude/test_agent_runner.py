@@ -28,6 +28,7 @@ from seosoyoung.slackbot.claude.agent_runner import (
     shutdown_all,
     shutdown_all_sync,
 )
+from seosoyoung.slackbot.claude.engine_types import EngineResult
 from seosoyoung.slackbot.claude.diagnostics import classify_process_error
 from seosoyoung.slackbot.memory.injector import (
     create_or_load_debug_anchor,
@@ -89,19 +90,17 @@ class TestClaudeRunnerUnit:
     def test_build_options_basic(self):
         """기본 옵션 생성 테스트"""
         runner = ClaudeRunner(allowed_tools=["Read", "Glob"])
-        options, memory_prompt, anchor_ts, _ = runner._build_options()
+        options, _ = runner._build_options()
 
         assert options.allowed_tools == ["Read", "Glob"]
         assert options.disallowed_tools == DEFAULT_DISALLOWED_TOOLS
         assert options.permission_mode == "bypassPermissions"
         assert options.resume is None
-        assert memory_prompt is None
-        assert anchor_ts == ""
 
     def test_build_options_with_session(self):
         """세션 ID가 있을 때 resume 옵션 추가"""
         runner = ClaudeRunner()
-        options, _, _, _ = runner._build_options(session_id="abc-123")
+        options, _ = runner._build_options(session_id="abc-123")
 
         assert options.resume == "abc-123"
 
@@ -111,7 +110,7 @@ class TestClaudeRunnerUnit:
             allowed_tools=["Read", "Glob"],
             disallowed_tools=["Bash"]
         )
-        options, _, _, _ = runner._build_options()
+        options, _ = runner._build_options()
 
         assert options.allowed_tools == ["Read", "Glob"]
         assert options.disallowed_tools == ["Bash"]
@@ -124,8 +123,66 @@ class TestClaudeRunnerUnit:
         assert runner.mcp_config_path == mcp_path
 
         # _build_options는 mcp_servers를 직접 설정하지 않음 (pm2 외부 관리)
-        options, _, _, _ = runner._build_options()
+        options, _ = runner._build_options()
         assert isinstance(options.mcp_servers, dict)
+
+
+class TestClaudeRunnerPurity:
+    """Phase 2: ClaudeRunner에서 슬랙/OM/마커 의존이 제거되었는지 검증"""
+
+    def test_init_has_no_channel_param(self):
+        """channel 파라미터가 __init__에 없어야 함"""
+        import inspect
+        sig = inspect.signature(ClaudeRunner.__init__)
+        assert "channel" not in sig.parameters
+
+    def test_init_has_no_om_callbacks(self):
+        """OM 콜백 파라미터가 __init__에 없어야 함"""
+        import inspect
+        sig = inspect.signature(ClaudeRunner.__init__)
+        assert "prepare_memory_fn" not in sig.parameters
+        assert "trigger_observation_fn" not in sig.parameters
+        assert "on_compact_om_flag" not in sig.parameters
+
+    def test_build_options_returns_two_tuple(self):
+        """_build_options가 (options, stderr_file) 2-tuple을 반환"""
+        runner = ClaudeRunner()
+        result = runner._build_options()
+        assert len(result) == 2
+
+    def test_build_options_no_env(self):
+        """_build_options가 SLACK env를 설정하지 않아야 함"""
+        runner = ClaudeRunner(thread_ts="ts_1")
+        options, _ = runner._build_options()
+        env = getattr(options, 'env', {}) or {}
+        assert "SLACK_CHANNEL" not in env
+        assert "SLACK_THREAD_TS" not in env
+
+    def test_run_has_no_user_id_param(self):
+        """run()에 user_id 파라미터가 없어야 함"""
+        import inspect
+        sig = inspect.signature(ClaudeRunner.run)
+        assert "user_id" not in sig.parameters
+        assert "user_message" not in sig.parameters
+
+    @pytest.mark.asyncio
+    async def test_run_returns_engine_result(self):
+        """run()이 EngineResult를 반환해야 함 (ClaudeResult가 아님)"""
+        runner = ClaudeRunner()
+
+        mock_client = _make_mock_client(
+            MockResultMessage(result="완료", session_id="purity-test"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                result = await runner.run("테스트")
+
+        assert isinstance(result, EngineResult)
+        assert not hasattr(result, 'update_requested')
+        assert not hasattr(result, 'restart_requested')
+        assert not hasattr(result, 'list_run')
+        assert not hasattr(result, 'anchor_ts')
 
 
 class TestClaudeResultMarkers:
@@ -168,7 +225,7 @@ class TestClaudeRunnerAsync:
         assert "완료되었습니다" in result.output
 
     async def test_run_with_markers(self):
-        """마커 포함 응답 테스트"""
+        """마커 포함 응답 테스트 (Phase 2: runner는 마커를 파싱하지 않음, output에 마커 텍스트가 남아있어야 함)"""
         runner = ClaudeRunner()
 
         mock_client = _make_mock_client(
@@ -183,8 +240,7 @@ class TestClaudeRunnerAsync:
                 result = await runner.run("테스트")
 
         assert result.success is True
-        assert result.update_requested is True
-        assert result.restart_requested is False
+        assert "<!-- UPDATE -->" in result.output
 
     async def test_run_file_not_found(self):
         """Claude CLI 없음 테스트"""
@@ -284,7 +340,7 @@ class TestClaudeRunnerCompact:
         """compact_events 전달 시 PreCompact 훅이 등록되는지 확인"""
         runner = ClaudeRunner()
         compact_events = []
-        options, _, _, _ = runner._build_options(compact_events=compact_events)
+        options, _ = runner._build_options(compact_events=compact_events)
 
         assert options.hooks is not None
         assert "PreCompact" in options.hooks
@@ -294,7 +350,7 @@ class TestClaudeRunnerCompact:
     async def test_build_options_without_compact_events(self):
         """compact_events 미전달 시 hooks가 None인지 확인"""
         runner = ClaudeRunner()
-        options, _, _, _ = runner._build_options()
+        options, _ = runner._build_options()
 
         assert options.hooks is None
 
@@ -314,14 +370,14 @@ class TestClaudeRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_f = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+        def patched_build(session_id=None, compact_events=None):
+            options, stderr_f = original_build(session_id=session_id, compact_events=compact_events)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: auto)",
                 })
-            return options, memory_prompt, anchor, stderr_f
+            return options, stderr_f
 
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
@@ -352,8 +408,8 @@ class TestClaudeRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_f = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+        def patched_build(session_id=None, compact_events=None):
+            options, stderr_f = original_build(session_id=session_id, compact_events=compact_events)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
@@ -363,7 +419,7 @@ class TestClaudeRunnerCompact:
                     "trigger": "manual",
                     "message": "컨텍스트 컴팩트 실행됨 (트리거: manual)",
                 })
-            return options, memory_prompt, anchor, stderr_f
+            return options, stderr_f
 
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -388,14 +444,14 @@ class TestClaudeRunnerCompact:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_f = original_build(session_id=session_id, compact_events=compact_events, user_id=user_id, prompt=prompt)
+        def patched_build(session_id=None, compact_events=None):
+            options, stderr_f = original_build(session_id=session_id, compact_events=compact_events)
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컴팩트 실행됨",
                 })
-            return options, memory_prompt, anchor, stderr_f
+            return options, stderr_f
 
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -665,281 +721,6 @@ class TestFormatRateLimitWarning:
         assert "75%" in msg
 
 
-class TestBuildOptionsChannelObservation:
-    """_build_options에서 채널 관찰 컨텍스트 주입 테스트"""
-
-    def test_channel_observation_injected_for_observed_channel(self, tmp_path):
-        """관찰 대상 채널에서 새 세션일 때 채널 관찰 컨텍스트가 주입되는지 확인"""
-        from seosoyoung.slackbot.memory.channel_store import ChannelStore
-
-        # 채널 데이터 준비
-        ch_store = ChannelStore(base_dir=tmp_path)
-        ch_store.save_digest("C_OBS", content="채널에서 재미있는 일이 있었다", meta={})
-
-        config_patches = {
-            "om.enabled": True,
-            "channel_observer.enabled": True,
-            "channel_observer.channels": ["C_OBS"],
-            "om.max_observation_tokens": 30000,
-            "om.debug_channel": "",
-        }
-
-        runner = ClaudeRunner("ts_1", channel="C_OBS", prepare_memory_fn=prepare_memory_injection)
-
-        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
-            _apply_mock_config(MockConfig, config_patches)
-            MockConfig.get_memory_path.return_value = str(tmp_path)
-
-            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
-                mock_build.return_value = MagicMock(
-                    prompt="<channel-observation>test</channel-observation>",
-                    persistent_tokens=0,
-                    session_tokens=0,
-                    channel_digest_tokens=50,
-                    channel_buffer_tokens=0,
-                )
-                _, memory_prompt, _, _ = runner._build_options()
-
-                # build_memory_prompt에 include_channel_observation=True가 전달되었는지 확인
-                call_kwargs = mock_build.call_args.kwargs
-                assert call_kwargs.get("include_channel_observation") is True
-                assert call_kwargs.get("channel_id") == "C_OBS"
-
-        assert memory_prompt is not None
-
-    def test_channel_observation_not_injected_for_non_observed_channel(self, tmp_path):
-        """관찰 대상이 아닌 채널에서는 채널 관찰 컨텍스트가 주입되지 않음"""
-        config_patches = {
-            "om.enabled": True,
-            "channel_observer.enabled": True,
-            "channel_observer.channels": ["C_OBS"],
-            "om.max_observation_tokens": 30000,
-            "om.debug_channel": "",
-        }
-
-        runner = ClaudeRunner("ts_1", channel="C_OTHER", prepare_memory_fn=prepare_memory_injection)
-
-        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
-            _apply_mock_config(MockConfig, config_patches)
-            MockConfig.get_memory_path.return_value = str(tmp_path)
-
-            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
-                mock_build.return_value = MagicMock(
-                    prompt=None,
-                    persistent_tokens=0,
-                    session_tokens=0,
-                    channel_digest_tokens=0,
-                    channel_buffer_tokens=0,
-                )
-                runner._build_options()
-
-                call_kwargs = mock_build.call_args.kwargs
-                assert call_kwargs.get("include_channel_observation") is False
-
-    def test_channel_observation_not_injected_when_disabled(self, tmp_path):
-        """CHANNEL_OBSERVER_ENABLED=False면 채널 관찰 미주입"""
-        config_patches = {
-            "om.enabled": True,
-            "channel_observer.enabled": False,
-            "channel_observer.channels": ["C_OBS"],
-            "om.max_observation_tokens": 30000,
-            "om.debug_channel": "",
-        }
-
-        runner = ClaudeRunner("ts_1", channel="C_OBS", prepare_memory_fn=prepare_memory_injection)
-
-        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
-            _apply_mock_config(MockConfig, config_patches)
-            MockConfig.get_memory_path.return_value = str(tmp_path)
-
-            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
-                mock_build.return_value = MagicMock(
-                    prompt=None,
-                    persistent_tokens=0,
-                    session_tokens=0,
-                    channel_digest_tokens=0,
-                    channel_buffer_tokens=0,
-                )
-                runner._build_options()
-
-                call_kwargs = mock_build.call_args.kwargs
-                assert call_kwargs.get("include_channel_observation") is False
-
-
-class TestBuildOptionsAnchorTs:
-    """_build_options에서 앵커 메시지 생성 테스트"""
-
-    def test_anchor_ts_empty_without_om(self):
-        """OM 미활성 시 anchor_ts가 빈 문자열"""
-        runner = ClaudeRunner()
-        _, _, anchor_ts, _ = runner._build_options()
-        assert anchor_ts == ""
-
-    def test_anchor_ts_created_for_new_session(self, tmp_path):
-        """새 세션 + OM 활성 시 앵커 메시지가 생성되어 anchor_ts 반환"""
-        config_patches = {
-            "om.enabled": True,
-            "channel_observer.enabled": False,
-            "channel_observer.channels": [],
-            "om.max_observation_tokens": 30000,
-            "om.debug_channel": "C_DEBUG",
-        }
-
-        runner = ClaudeRunner("ts_1", prepare_memory_fn=prepare_memory_injection)
-
-        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
-            _apply_mock_config(MockConfig, config_patches)
-            MockConfig.get_memory_path.return_value = str(tmp_path)
-
-            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
-                mock_build.return_value = MagicMock(
-                    prompt=None,
-                    persistent_tokens=0,
-                    session_tokens=0,
-                    new_observation_tokens=0,
-                    new_observation_content="",
-                    persistent_content="",
-                    session_content="",
-                    channel_digest_tokens=0,
-                    channel_buffer_tokens=0,
-                )
-                with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log", return_value="anchor_ts_123") as mock_send:
-                    _, _, anchor_ts, _ = runner._build_options(
-                        prompt="테스트 프롬프트입니다",
-                    )
-
-        assert anchor_ts == "anchor_ts_123"
-        # 앵커 메시지 발송 호출 확인
-        mock_send.assert_called_once()
-        call_args = mock_send.call_args
-        assert "세션 시작 감지" in call_args[0][1]
-        assert "테스트 프롬프트입니다" in call_args[0][1]
-
-    def test_anchor_ts_not_created_for_resumed_session(self, tmp_path):
-        """기존 세션 재개 시 새 앵커 미생성, MemoryRecord에서 기존 anchor_ts 로드"""
-        from seosoyoung.slackbot.memory.store import MemoryRecord, MemoryStore
-
-        # 사전 조건: MemoryRecord에 이전 세션의 anchor_ts가 저장되어 있음
-        pre_store = MemoryStore(base_dir=tmp_path)
-        pre_record = MemoryRecord(thread_ts="ts_1", anchor_ts="saved_anchor_123")
-        pre_store.save_record(pre_record)
-
-        config_patches = {
-            "om.enabled": True,
-            "channel_observer.enabled": False,
-            "channel_observer.channels": [],
-            "om.max_observation_tokens": 30000,
-            "om.debug_channel": "C_DEBUG",
-        }
-
-        runner = ClaudeRunner("ts_1", prepare_memory_fn=prepare_memory_injection)
-
-        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
-            _apply_mock_config(MockConfig, config_patches)
-            MockConfig.get_memory_path.return_value = str(tmp_path)
-
-            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
-                mock_build.return_value = MagicMock(
-                    prompt=None,
-                    persistent_tokens=0,
-                    session_tokens=0,
-                    new_observation_tokens=0,
-                    new_observation_content="",
-                    persistent_content="",
-                    session_content="",
-                    channel_digest_tokens=0,
-                    channel_buffer_tokens=0,
-                )
-                with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log") as mock_send:
-                    _, _, anchor_ts, _ = runner._build_options(
-                        session_id="existing-session",
-                        prompt="테스트",
-                    )
-
-        # 기존 세션이므로 새 앵커 메시지 미생성, 하지만 저장된 anchor_ts 로드
-        assert anchor_ts == "saved_anchor_123"
-        mock_send.assert_not_called()
-
-    def test_anchor_ts_empty_when_no_saved_record(self, tmp_path):
-        """기존 세션 재개 시 MemoryRecord가 없으면 anchor_ts 빈 문자열"""
-        config_patches = {
-            "om.enabled": True,
-            "channel_observer.enabled": False,
-            "channel_observer.channels": [],
-            "om.max_observation_tokens": 30000,
-            "om.debug_channel": "C_DEBUG",
-        }
-
-        runner = ClaudeRunner("ts_no_record", prepare_memory_fn=prepare_memory_injection)
-
-        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
-            _apply_mock_config(MockConfig, config_patches)
-            MockConfig.get_memory_path.return_value = str(tmp_path)
-
-            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
-                mock_build.return_value = MagicMock(
-                    prompt=None,
-                    persistent_tokens=0,
-                    session_tokens=0,
-                    new_observation_tokens=0,
-                    new_observation_content="",
-                    persistent_content="",
-                    session_content="",
-                    channel_digest_tokens=0,
-                    channel_buffer_tokens=0,
-                )
-                _, _, anchor_ts, _ = runner._build_options(
-                    session_id="existing-session",
-                    prompt="테스트",
-                )
-
-        # MemoryRecord가 없으므로 anchor_ts 빈 문자열
-        assert anchor_ts == ""
-
-    def test_new_session_saves_anchor_ts_to_record(self, tmp_path):
-        """새 세션 시 생성된 anchor_ts가 MemoryRecord에 저장되는지 확인"""
-        from seosoyoung.slackbot.memory.store import MemoryStore
-
-        config_patches = {
-            "om.enabled": True,
-            "channel_observer.enabled": False,
-            "channel_observer.channels": [],
-            "om.max_observation_tokens": 30000,
-            "om.debug_channel": "C_DEBUG",
-        }
-
-        runner = ClaudeRunner("ts_new", prepare_memory_fn=prepare_memory_injection)
-
-        with patch("seosoyoung.slackbot.config.Config") as MockConfig:
-            _apply_mock_config(MockConfig, config_patches)
-            MockConfig.get_memory_path.return_value = str(tmp_path)
-
-            with patch("seosoyoung.slackbot.memory.context_builder.ContextBuilder.build_memory_prompt") as mock_build:
-                mock_build.return_value = MagicMock(
-                    prompt=None,
-                    persistent_tokens=0,
-                    session_tokens=0,
-                    new_observation_tokens=0,
-                    new_observation_content="",
-                    persistent_content="",
-                    session_content="",
-                    channel_digest_tokens=0,
-                    channel_buffer_tokens=0,
-                )
-                with patch("seosoyoung.slackbot.memory.observation_pipeline._send_debug_log", return_value="new_anchor_456"):
-                    _, _, anchor_ts, _ = runner._build_options(
-                        prompt="새 세션 테스트",
-                    )
-
-        assert anchor_ts == "new_anchor_456"
-
-        # MemoryRecord에 anchor_ts가 저장되었는지 확인
-        verify_store = MemoryStore(base_dir=tmp_path)
-        record = verify_store.get_record("ts_new")
-        assert record is not None
-        assert record.anchor_ts == "new_anchor_456"
-
-
 class TestInjectionDebugLogSkipsWithoutAnchor:
     """anchor_ts가 빈 문자열일 때 send_injection_debug_log가 디버그 로그를 스킵하는지 테스트"""
 
@@ -1004,61 +785,6 @@ class TestClaudeResultAnchorTs:
         """anchor_ts 설정 가능"""
         result = ClaudeResult(success=True, output="test", anchor_ts="anc_123")
         assert result.anchor_ts == "anc_123"
-
-
-@pytest.mark.asyncio
-class TestObserverUserMessage:
-    """Observer에 user_message가 올바르게 전달되는지 테스트"""
-
-    async def test_trigger_observation_uses_user_message(self):
-        """user_message가 지정되면 prompt 대신 user_message가 Observer에 전달"""
-        mock_trigger = MagicMock()
-        runner = ClaudeRunner("ts_1", trigger_observation_fn=mock_trigger)
-
-        mock_client = _make_mock_client(
-            MockSystemMessage(session_id="obs-test"),
-            MockResultMessage(result="완료", session_id="obs-test"),
-        )
-
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
-                    result = await runner.run(
-                        prompt="채널 히스토리 20개 + 사용자 질문",
-                        user_id="U123",
-                        user_message="사용자 원본 질문만",
-                    )
-
-        if mock_trigger.called:
-            call_args = mock_trigger.call_args
-            # positional: (thread_ts, user_id, prompt/user_message, collected_messages)
-            observation_input = call_args[0][2]
-            assert observation_input == "사용자 원본 질문만"
-            assert observation_input != "채널 히스토리 20개 + 사용자 질문"
-
-    async def test_trigger_observation_falls_back_to_prompt(self):
-        """user_message가 None이면 prompt가 Observer에 전달 (하위 호환)"""
-        mock_trigger = MagicMock()
-        runner = ClaudeRunner("ts_2", trigger_observation_fn=mock_trigger)
-
-        mock_client = _make_mock_client(
-            MockSystemMessage(session_id="obs-test-2"),
-            MockResultMessage(result="완료", session_id="obs-test-2"),
-        )
-
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
-            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
-                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
-                    result = await runner.run(
-                        prompt="전체 프롬프트",
-                        user_id="U123",
-                        # user_message 미지정
-                    )
-
-        if mock_trigger.called:
-            call_args = mock_trigger.call_args
-            observation_input = call_args[0][2]
-            assert observation_input == "전체 프롬프트"
 
 
 class TestTriggerObservationToolFilter:
@@ -1805,17 +1531,16 @@ class TestCompactRetryHangFix:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_f = original_build(
+        def patched_build(session_id=None, compact_events=None):
+            options, stderr_f = original_build(
                 session_id=session_id, compact_events=compact_events,
-                user_id=user_id, prompt=prompt,
             )
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컴팩트 실행됨",
                 })
-            return options, memory_prompt, anchor, stderr_f
+            return options, stderr_f
 
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
@@ -1855,17 +1580,16 @@ class TestCompactRetryHangFix:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_f = original_build(
+        def patched_build(session_id=None, compact_events=None):
+            options, stderr_f = original_build(
                 session_id=session_id, compact_events=compact_events,
-                user_id=user_id, prompt=prompt,
             )
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컴팩트 실행됨",
                 })
-            return options, memory_prompt, anchor, stderr_f
+            return options, stderr_f
 
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch.object(runner, "_build_options", patched_build):
@@ -1909,17 +1633,16 @@ class TestCompactRetryHangFix:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_f = original_build(
+        def patched_build(session_id=None, compact_events=None):
+            options, stderr_f = original_build(
                 session_id=session_id, compact_events=compact_events,
-                user_id=user_id, prompt=prompt,
             )
             if compact_events is not None:
                 compact_events.append({
                     "trigger": "auto",
                     "message": "컴팩트 실행됨",
                 })
-            return options, memory_prompt, anchor, stderr_f
+            return options, stderr_f
 
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
@@ -1976,14 +1699,13 @@ class TestCompactRetryHangFix:
 
         original_build = runner._build_options
 
-        def patched_build(session_id=None, compact_events=None, user_id=None, prompt=None):
-            options, memory_prompt, anchor, stderr_f = original_build(
+        def patched_build(session_id=None, compact_events=None):
+            options, stderr_f = original_build(
                 session_id=session_id, compact_events=compact_events,
-                user_id=user_id, prompt=prompt,
             )
             # compact_events 리스트 참조를 캡처 (내부 루프에서 이벤트 주입용)
             captured_compact_events[0] = compact_events
-            return options, memory_prompt, anchor, stderr_f
+            return options, stderr_f
 
         # timeout을 짧게 설정하여 테스트 빠르게 완료
         with patch("seosoyoung.slackbot.claude.agent_runner.COMPACT_RETRY_READ_TIMEOUT", 0.1):

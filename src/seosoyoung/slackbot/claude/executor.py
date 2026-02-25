@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
+from seosoyoung.slackbot.claude.agent_runner import ClaudeResult, ClaudeRunner
 from seosoyoung.slackbot.claude.intervention import InterventionManager, PendingPrompt
 from seosoyoung.slackbot.claude.result_processor import ResultProcessor
 from seosoyoung.slackbot.claude.session import Session, SessionManager, SessionRuntime
@@ -373,31 +373,73 @@ class ClaudeExecutor:
             # === Local 모드: thread_ts 단위 runner 생성 ===
             role_config = self._get_role_config(ctx.effective_role)
 
-            def _debug_send(ch: str, ts: str, msg: str) -> None:
-                ctx.client.chat_postMessage(channel=ch, thread_ts=ts, text=msg)
+            def _debug_send(msg: str) -> None:
+                ctx.client.chat_postMessage(channel=ctx.channel, thread_ts=thread_ts, text=msg)
+
+            # OM: 메모리를 호출부에서 준비하여 프롬프트에 주입
+            effective_prompt = prompt
+            anchor_ts = ""
+            if self.prepare_memory_fn:
+                memory_prompt, anchor_ts = self.prepare_memory_fn(
+                    thread_ts, ctx.channel, session.session_id, prompt,
+                )
+                if memory_prompt:
+                    effective_prompt = (
+                        f"{memory_prompt}\n\n"
+                        f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
+                        f"사용자의 질문: {prompt}"
+                    )
+                    logger.info(f"OM 메모리 프리픽스 주입 완료 (prompt 길이: {len(effective_prompt)})")
+
+            # OM: on_compact 콜백에 OM 플래그 설정 로직 포함
+            original_on_compact = on_compact
+
+            async def on_compact_with_om(trigger: str, message: str):
+                # OM: 컴팩션 시 다음 요청에 관찰 로그 재주입하도록 플래그 설정
+                if thread_ts and self.on_compact_om_flag:
+                    try:
+                        self.on_compact_om_flag(thread_ts)
+                    except Exception as e:
+                        logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
+                if original_on_compact:
+                    await original_on_compact(trigger, message)
 
             runner = ClaudeRunner(
                 thread_ts,
-                channel=ctx.channel,
                 allowed_tools=role_config["allowed_tools"],
                 disallowed_tools=role_config["disallowed_tools"],
                 mcp_config_path=role_config["mcp_config_path"],
                 debug_send_fn=_debug_send,
-                prepare_memory_fn=self.prepare_memory_fn,
-                trigger_observation_fn=self.trigger_observation_fn,
-                on_compact_om_flag=self.on_compact_om_flag,
             )
             logger.info(f"Claude 실행 (local): thread={thread_ts}, role={ctx.effective_role}")
 
             try:
-                result = runner.run_sync(runner.run(
-                    prompt=prompt,
+                from seosoyoung.slackbot.marker_parser import parse_markers as _parse_markers
+
+                engine_result = runner.run_sync(runner.run(
+                    prompt=effective_prompt,
                     session_id=session.session_id,
                     on_progress=on_progress,
-                    on_compact=on_compact,
-                    user_id=session.user_id,
-                    user_message=ctx.user_message,
+                    on_compact=on_compact_with_om,
                 ))
+
+                # 응용 마커 파싱 + ClaudeResult 변환 (호출부에서 수행)
+                markers = _parse_markers(engine_result.output)
+                result = ClaudeResult.from_engine_result(
+                    engine_result, markers=markers, anchor_ts=anchor_ts,
+                )
+
+                # OM: 세션 종료 후 관찰 파이프라인 트리거
+                if (self.trigger_observation_fn
+                        and result.success
+                        and session.user_id
+                        and thread_ts
+                        and result.collected_messages):
+                    observation_input = ctx.user_message if ctx.user_message is not None else prompt
+                    self.trigger_observation_fn(
+                        thread_ts, session.user_id, observation_input,
+                        result.collected_messages, anchor_ts=result.anchor_ts,
+                    )
 
                 self._process_result(ctx, result)
 

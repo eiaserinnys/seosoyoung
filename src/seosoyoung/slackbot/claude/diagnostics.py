@@ -148,28 +148,8 @@ def format_rate_limit_warning(rate_limit_info: dict) -> str:
     return f"⚠️ {type_ko} 사용량 중 {pct}%를 넘었습니다"
 
 
-# 디버그 메시지 전송 콜백 타입: (channel, thread_ts, message) -> None
-DebugSendFn = Callable[[str, str, str], None]
+# 디버그 메시지 전송 콜백 타입: (message) -> None
+# 호출부가 channel/thread_ts를 클로저로 캡처하여 제공합니다.
+DebugSendFn = Callable[[str], None]
 
 
-def send_debug_to_slack(
-    channel: str,
-    thread_ts: str,
-    message: str,
-    *,
-    send_fn: Optional[DebugSendFn] = None,
-) -> None:
-    """슬랙에 디버그 메시지 전송 (별도 메시지로)
-
-    Args:
-        channel: 슬랙 채널 ID
-        thread_ts: 스레드 타임스탬프
-        message: 전송할 메시지
-        send_fn: 외부에서 주입된 전송 콜백. None이면 전송하지 않음.
-    """
-    if not send_fn or not channel or not thread_ts:
-        return
-    try:
-        send_fn(channel, thread_ts, message)
-    except Exception as e:
-        logger.warning(f"디버그 메시지 슬랙 전송 실패: {e}")

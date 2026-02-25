@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastmcp import FastMCP
 
-from seosoyoung.mcp.tools.attach import attach_file, get_slack_context
+from seosoyoung.mcp.tools.attach import attach_file
 from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 from seosoyoung.mcp.tools.slack_messaging import post_message
 from seosoyoung.mcp.tools.thread_files import download_thread_files
@@ -39,20 +39,6 @@ def slack_attach_file(file_path: str, channel: str, thread_ts: str) -> dict:
         thread_ts: 스레드 타임스탬프
     """
     return attach_file(file_path, channel, thread_ts)
-
-
-@mcp.tool()
-def slack_get_context() -> dict:
-    """[DEPRECATED] 현재 슬랙 대화의 채널/스레드 정보를 반환합니다.
-
-    환경변수 SLACK_CHANNEL, SLACK_THREAD_TS에서 읽어 반환합니다.
-    attach_file 호출 전에 컨텍스트를 조회할 때 사용합니다.
-
-    Deprecated: 프롬프트에 채널/ts 메타데이터가 직접 포함되므로
-    이 도구 대신 프롬프트의 [channel:ts] 프리픽스를 참조하세요.
-    향후 env 주입 제거 시 함께 제거될 예정입니다.
-    """
-    return get_slack_context()
 
 
 @mcp.tool()

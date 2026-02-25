@@ -40,10 +40,10 @@ executor 내부 메서드들이 공유하는 상태를 하나의 객체로 캡�
 - `_handle_intervention(self, ctx, prompt)` (줄 228): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
 - `_run_with_lock(self, ctx, prompt)` (줄 260): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
 - `_execute_once(self, ctx, prompt)` (줄 299): 단일 Claude 실행
-- `_get_role_config(self, role)` (줄 408): 역할에 맞는 runner 설정을 반환
-- `_get_service_adapter(self)` (줄 428): Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환
-- `_execute_remote(self, ctx, prompt)` (줄 445): Remote 모드: soul 서버에 실행을 위임
-- `_process_result(self, ctx, result)` (줄 473): 실행 결과 처리
+- `_get_role_config(self, role)` (줄 450): 역할에 맞는 runner 설정을 반환
+- `_get_service_adapter(self)` (줄 470): Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환
+- `_execute_remote(self, ctx, prompt)` (줄 487): Remote 모드: soul 서버에 실행을 위임
+- `_process_result(self, ctx, result)` (줄 515): 실행 결과 처리
 
 ## 함수
 
@@ -53,6 +53,7 @@ executor 내부 메서드들이 공유하는 상태를 하나의 객체로 캡�
 
 ## 내부 의존성
 
+- `seosoyoung.slackbot.claude.agent_runner.ClaudeResult`
 - `seosoyoung.slackbot.claude.agent_runner.ClaudeRunner`
 - `seosoyoung.slackbot.claude.intervention.InterventionManager`
 - `seosoyoung.slackbot.claude.intervention.PendingPrompt`
