@@ -8,12 +8,12 @@ asyncio.Queue를 통해 SSE 이벤트 스트림으로 변환하여
 
 import asyncio
 import logging
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Awaitable, Callable, List, Optional
 
 from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
+from seosoyoung.soul.config import get_settings
 from seosoyoung.soul.models import (
     CompactEvent,
     CompleteEvent,
@@ -96,9 +96,7 @@ class SoulEngineAdapter:
     """
 
     def __init__(self, workspace_dir: Optional[str] = None):
-        self._workspace_dir = workspace_dir or os.getenv(
-            "WORKSPACE_DIR", "D:/soyoung_root/slackbot_workspace"
-        )
+        self._workspace_dir = workspace_dir or get_settings().workspace_dir
 
     async def execute(
         self,

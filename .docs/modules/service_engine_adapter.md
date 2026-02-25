@@ -28,7 +28,7 @@ asyncio.Queue를 통해 SSE 이벤트 스트림으로 변환합니다.
 #### 메서드
 
 - `__init__(self, workspace_dir)` (줄 98): 
-- `async execute(self, prompt, resume_session_id, get_intervention, on_intervention_sent)` (줄 103): Claude Code 실행 (SSE 이벤트 스트림)
+- `async execute(self, prompt, resume_session_id, get_intervention, on_intervention_sent)` (줄 101): Claude Code 실행 (SSE 이벤트 스트림)
 
 ## 함수
 
@@ -43,6 +43,7 @@ asyncio.Queue를 통해 SSE 이벤트 스트림으로 변환합니다.
 ## 내부 의존성
 
 - `seosoyoung.slackbot.claude.agent_runner.ClaudeRunner`
+- `seosoyoung.soul.config.get_settings`
 - `seosoyoung.soul.models.CompactEvent`
 - `seosoyoung.soul.models.CompleteEvent`
 - `seosoyoung.soul.models.ContextUsageEvent`

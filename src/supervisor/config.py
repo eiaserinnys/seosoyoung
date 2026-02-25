@@ -193,6 +193,7 @@ def build_process_configs() -> list[ProcessConfig]:
     soul_env: dict[str, str] = {
         "PYTHONUTF8": "1",
         "PYTHONPATH": str(paths["runtime"] / "src"),
+        "WORKSPACE_DIR": str(paths["workspace"].resolve()),
     }
     if claude_cli_dir:
         soul_env["PATH"] = claude_cli_dir
