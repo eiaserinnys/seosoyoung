@@ -1439,5 +1439,316 @@ class TestMultiCardChainingIntegration:
             )
 
 
+class TestSpawnClaudeThreadLockHandling:
+    """_spawn_claude_thread 락 처리 버그 테스트
+
+    버그 1·2: watcher가 직접 락을 acquire한 뒤 claude_runner_factory(executor.run)도
+    같은 락을 acquire하여 이중 관리가 발생하는 문제.
+
+    버그 3: on_success()가 락 해제 전에 호출되어 다음 스레드가 락 획득에 실패하는 문제.
+    """
+
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_lock_released_before_on_success_next_thread_can_acquire(
+        self, mock_config, mock_trello_client
+    ):
+        """on_success에서 시작한 새 스레드가 같은 thread_ts 락을 즉시 획득할 수 있어야 함
+
+        버그 3 검증:
+        - on_success()가 락 해제 전에 호출되면, on_success 내부의 새 스레드가
+          락 획득을 시도할 때 여전히 watcher 스레드가 잡고 있어 blocking됨.
+        - 수정 후: 락 해제 후에 on_success()가 호출되어야 함.
+        - RLock은 스레드 소유권 기반이므로 다른 스레드에서 획득 시도해야 버그가 드러남.
+        """
+        import threading
+
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.trello.notify_channel = "C12345"
+        mock_config.trello.watch_lists = {}
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher, TrackedCard
+
+        # 실제 RLock 사용 (SessionRuntime과 동일)
+        lock = threading.RLock()
+        # 다른 스레드에서 락 획득 시도 결과를 기록
+        other_thread_lock_try_result = []
+
+        def get_session_lock(ts):
+            return lock
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+            get_session_lock=get_session_lock,
+        )
+
+        tracked = TrackedCard(
+            card_id="card_test",
+            card_name="Test Card",
+            card_url="",
+            list_id="list_test",
+            list_key="test",
+            thread_ts="thread_lock_test",
+            channel_id="C12345",
+            detected_at="2026-01-01T00:00:00",
+        )
+
+        event = threading.Event()
+
+        def on_success():
+            # 이 시점에서 lock은 이미 해제되어 있어야 함 (수정 후)
+            # 다른 스레드에서 non-blocking 획득 시도 → lock이 free해야 True
+            result_holder = []
+            def try_from_other_thread():
+                acquired = lock.acquire(blocking=False)
+                result_holder.append(acquired)
+                if acquired:
+                    lock.release()
+            t = threading.Thread(target=try_from_other_thread)
+            t.start()
+            t.join(timeout=1.0)
+            if result_holder:
+                other_thread_lock_try_result.append(result_holder[0])
+            event.set()
+
+        watcher._spawn_claude_thread(
+            session=MagicMock(),
+            prompt="test",
+            thread_ts="thread_lock_test",
+            channel="C12345",
+            tracked=tracked,
+            on_success=on_success,
+        )
+
+        # 스레드 완료 대기
+        event.wait(timeout=5.0)
+
+        # on_success 호출 확인
+        assert other_thread_lock_try_result, "on_success가 호출되지 않았습니다"
+        # 수정 후: on_success 호출 시점에 다른 스레드가 락을 획득할 수 있어야 함
+        assert other_thread_lock_try_result[0] is True, (
+            "on_success 호출 시점에 다른 스레드가 lock을 획득할 수 없습니다 (버그 3)\n"
+            "락 해제 후에 on_success()를 호출해야 합니다."
+        )
+
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_watcher_does_not_double_manage_lock(
+        self, mock_config, mock_trello_client
+    ):
+        """watcher가 락을 직접 관리하지 않아도 executor가 올바르게 처리함을 검증
+
+        버그 1·2 검증:
+        - watcher가 lock.acquire()를 하고 executor.run()도 acquire()를 하면
+          같은 스레드에서 RLock count가 2가 됨.
+          watcher finally + executor finally 두 번 release → count=0이지만,
+          on_success 호출 시점(693~702행 사이)에는 count=1이 남아 있어
+          다른 스레드가 lock을 획득할 수 없음.
+        - 수정 후: watcher는 락을 직접 acquire/release하지 않음.
+          executor.run()이 락의 단독 owner → on_finally 전에 executor가 release.
+        """
+        import threading
+
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.trello.notify_channel = "C12345"
+        mock_config.trello.watch_lists = {}
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher, TrackedCard
+
+        lock = threading.RLock()
+
+        def get_session_lock(ts):
+            return lock
+
+        lock_free_in_on_finally = []
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+            get_session_lock=get_session_lock,
+        )
+
+        tracked = TrackedCard(
+            card_id="card_double_lock",
+            card_name="Double Lock Card",
+            card_url="",
+            list_id="list_test",
+            list_key="test",
+            thread_ts="thread_double_lock",
+            channel_id="C12345",
+            detected_at="2026-01-01T00:00:00",
+        )
+
+        done = threading.Event()
+
+        def on_finally():
+            # on_finally 호출 시점에 다른 스레드에서 락 획득 가능한지 확인
+            # 수정 후에는 watcher가 락을 직접 잡지 않으므로
+            # on_finally 이전에 이미 executor가 release했어야 함
+            result_holder = []
+            def try_acquire():
+                acquired = lock.acquire(blocking=False)
+                result_holder.append(acquired)
+                if acquired:
+                    lock.release()
+            t = threading.Thread(target=try_acquire)
+            t.start()
+            t.join(timeout=1.0)
+            if result_holder:
+                lock_free_in_on_finally.append(result_holder[0])
+            done.set()
+
+        watcher._spawn_claude_thread(
+            session=MagicMock(),
+            prompt="test",
+            thread_ts="thread_double_lock",
+            channel="C12345",
+            tracked=tracked,
+            on_finally=on_finally,
+        )
+
+        done.wait(timeout=5.0)
+
+        assert lock_free_in_on_finally, "on_finally가 호출되지 않았습니다"
+        # 수정 후: on_finally 호출 전(혹은 시점)에 watcher가 락을 잡지 않아야 함
+        # → 다른 스레드에서 락을 획득할 수 있어야 함
+        assert lock_free_in_on_finally[0] is True, (
+            "on_finally 호출 시점에 다른 스레드가 락을 획득할 수 없습니다 (버그 1·2)\n"
+            "watcher가 락을 직접 acquire/release하면 executor와 이중 관리됩니다."
+        )
+
+
+class TestListRunOnSuccessLockOrder:
+    """리스트 정주행에서 on_success 콜백과 락 해제 순서 테스트
+
+    버그 3의 실제 발현 시나리오:
+    - remote 모드에서 executor.run()이 락을 보유한 채로 완료
+    - watcher도 락을 보유한 상태에서 on_success() 호출
+    - on_success 내부의 새 스레드가 같은 락 획득 시도 → 블로킹
+    """
+
+    @patch("seosoyoung.slackbot.trello.watcher.threading.Thread", _SyncThread)
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_lock_state_after_on_success_with_real_lock(
+        self, mock_config, mock_trello_client
+    ):
+        """실제 락과 _spawn_claude_thread를 사용할 때 on_success 시 락이 해제되어 있어야 함
+
+        버그 3의 전체 시나리오:
+        - _process_list_run_card → _spawn_claude_thread(on_success=...) 호출
+        - _spawn_claude_thread 내부의 run_claude()가 lock.acquire()
+        - on_success()가 lock.release() 전에 호출 → 버그
+        - on_success 내부에서 새 스레드가 같은 thread_ts lock 획득 시도 → 실패
+        """
+        import threading
+
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.trello.notify_channel = "C12345"
+        mock_config.trello.watch_lists = {}
+        mock_config.trello.in_progress_list_id = None
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+            mock_slack = MagicMock()
+            mock_slack.chat_postMessage.return_value = {"ts": "thread_123"}
+
+            # 실제 RLock 생성
+            real_lock = threading.RLock()
+            # on_success 내부에서 다른 스레드의 lock 획득 시도 결과
+            other_thread_result_in_on_success = []
+
+            def get_session_lock(ts):
+                return real_lock
+
+            watcher = TrelloWatcher(
+                slack_client=mock_slack,
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+                get_session_lock=get_session_lock,
+            )
+            watcher._preemptive_compact = MagicMock()
+
+            card = TrelloCard(
+                id="card_a", name="Card A", desc="",
+                url="https://trello.com/c/a", list_id="list_plan", labels=[],
+            )
+            mock_trello.get_card.return_value = card
+            mock_trello.move_card.return_value = True
+            mock_trello.update_card_name.return_value = True
+
+            session = list_runner.create_session(
+                list_id="list_plan",
+                list_name="Plan List",
+                card_ids=["card_a"],
+            )
+
+            # _spawn_claude_thread를 intercept하여 on_success 호출 시 락 상태 기록
+            # _SyncThread 패치로 인해 모든 Thread.start()는 동기 실행됨
+            original_spawn = watcher._spawn_claude_thread
+
+            def intercepting_spawn(*, session, prompt, thread_ts, channel,
+                                   tracked, dm_channel_id=None, dm_thread_ts=None,
+                                   on_success=None, on_error=None, on_finally=None):
+                def wrapped_on_success():
+                    # 이 시점에서 run_claude()가 lock을 잡고 있는 상태 (버그)
+                    # 또는 이미 해제 (수정 후)
+                    # → 별도 스레드에서 non-blocking 획득 시도
+                    result_holder = []
+                    real_thread = threading.__dict__["Thread"]  # _SyncThread 패치 우회
+                    # 실제 threading.Thread 사용 (동기 패치 우회)
+                    import _thread
+                    acquired_flag = [None]
+                    lock_checked = threading.Event()
+                    def check_from_real_thread():
+                        acquired_flag[0] = real_lock.acquire(blocking=False)
+                        if acquired_flag[0]:
+                            real_lock.release()
+                        lock_checked.set()
+                    t = threading.Thread(target=check_from_real_thread)
+                    t.start()
+                    lock_checked.wait(timeout=1.0)
+                    other_thread_result_in_on_success.append(acquired_flag[0])
+                    if on_success:
+                        on_success()
+                original_spawn(
+                    session=session,
+                    prompt=prompt,
+                    thread_ts=thread_ts,
+                    channel=channel,
+                    tracked=tracked,
+                    dm_channel_id=dm_channel_id,
+                    dm_thread_ts=dm_thread_ts,
+                    on_success=wrapped_on_success,
+                    on_error=on_error,
+                    on_finally=on_finally,
+                )
+
+            watcher._spawn_claude_thread = intercepting_spawn
+
+            watcher._process_list_run_card(session.session_id, "thread_123")
+
+            # 검증: on_success 호출 시 다른 스레드가 락을 획득할 수 있어야 함
+            assert other_thread_result_in_on_success, \
+                "_spawn_claude_thread에 on_success가 전달되지 않았습니다"
+            assert other_thread_result_in_on_success[0] is True, (
+                "on_success 호출 시점에 다른 스레드가 lock을 획득할 수 없습니다 (버그 3)\n"
+                "락 해제 후에 on_success()를 호출해야 합니다."
+            )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
