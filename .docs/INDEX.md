@@ -429,7 +429,7 @@
 - `async health_check()` (seosoyoung/soul/main.py:198): 헬스 체크 엔드포인트
 - `async get_status()` (seosoyoung/soul/main.py:209): 서비스 상태 조회
 - `async global_exception_handler()` (seosoyoung/soul/main.py:247): 전역 예외 핸들러
-- `init_soul_engine()` (seosoyoung/soul/service/engine_adapter.py:282): soul_engine 싱글톤을 (재)초기화한다.
+- `init_soul_engine()` (seosoyoung/soul/service/engine_adapter.py:291): soul_engine 싱글톤을 (재)초기화한다.
 - `get_task_manager()` (seosoyoung/soul/service/task_manager.py:570): TaskManager 싱글톤 반환
 - `init_task_manager()` (seosoyoung/soul/service/task_manager.py:578): TaskManager 초기화
 - `set_task_manager()` (seosoyoung/soul/service/task_manager.py:585): TaskManager 인스턴스 설정 (테스트용)

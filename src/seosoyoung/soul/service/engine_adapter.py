@@ -206,6 +206,11 @@ class SoulEngineAdapter:
             # 풀이 있으면 acquire, 없으면 직접 생성
             if self._pool is not None:
                 runner = await self._pool.acquire(session_id=resume_session_id)
+                # W-3: 풀에서 꺼낸 runner에 요청별 debug_send_fn 주입
+                runner.debug_send_fn = debug_send_fn
+                # W-4: 풀에서 꺼낸 runner에 요청별 도구 설정 주입
+                runner.allowed_tools = effective_allowed
+                runner.disallowed_tools = effective_disallowed
             else:
                 runner = ClaudeRunner(
                     thread_ts="",
@@ -247,12 +252,16 @@ class SoulEngineAdapter:
                 else:
                     error_msg = result.error or result.output or "실행 오류"
                     await queue.put(ErrorEvent(message=error_msg))
-                    # 에러 시 runner 폐기 (오염 방지) — release 호출 안 함
+                    # C-1: 에러 시 runner 폐기 (오염 방지)
+                    if self._pool is not None:
+                        await self._pool._discard(runner, reason="run_error")
 
             except Exception as e:
                 logger.exception(f"SoulEngineAdapter execution error: {e}")
                 await queue.put(ErrorEvent(message=f"실행 오류: {str(e)}"))
-                # 예외 시 runner 폐기 — release 호출 안 함
+                # C-1: 예외 시 runner 폐기 (고아 프로세스 방지)
+                if self._pool is not None:
+                    await self._pool._discard(runner, reason="exception")
 
             finally:
                 await queue.put(_DONE)
