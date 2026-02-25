@@ -234,16 +234,16 @@ class TestExecutorRemoteDebug:
         mock_result = ClaudeResult(success=True, output="done", session_id="sess-1")
 
         with patch("seosoyoung.slackbot.claude.executor.run_in_new_loop", return_value=mock_result):
-            executor._service_adapter = mock_adapter
-            executor._execute_remote(
-                "1234.5678", "hello",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                session_id="sess-001",
-                user_message=None,
-                on_result=None,
-            )
+            with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+                executor._execute_remote(
+                    "1234.5678", "hello",
+                    on_progress=_noop_progress,
+                    on_compact=_noop_compact,
+                    presentation=pctx,
+                    session_id="sess-001",
+                    user_message=None,
+                    on_result=None,
+                )
 
         # run_in_new_loop에 전달된 코루틴에서 on_debug를 확인하기는 어려우므로
         # adapter.execute가 호출되었는지 확인
@@ -268,17 +268,16 @@ class TestExecutorRemoteDebug:
         mock_adapter.execute = mock_execute
 
         from seosoyoung.utils.async_bridge import run_in_new_loop
-        executor._service_adapter = mock_adapter
-
-        executor._execute_remote(
-            "1234.5678", "hello",
-            on_progress=_noop_progress,
-            on_compact=_noop_compact,
-            presentation=pctx,
-            session_id="sess-001",
-            user_message=None,
-            on_result=None,
-        )
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                user_message=None,
+                on_result=None,
+            )
 
         # on_debug가 캡처되었는지 확인
         assert captured_on_debug is not None
@@ -299,7 +298,7 @@ class TestExecutorRemoteDebug:
 
 
 class TestGetServiceAdapter:
-    """_get_service_adapter lazy 초기화 테스트"""
+    """_get_service_adapter 매번 새 인스턴스 생성 테스트"""
 
     @pytest.fixture
     def executor(self, tmp_path):
@@ -310,13 +309,14 @@ class TestGetServiceAdapter:
             soul_client_id="test_bot",
         )
 
-    def test_lazy_init(self, executor):
-        """첫 호출 시 adapter가 생성되고 이후 재사용"""
+    def test_each_call_returns_new_instance(self, executor):
+        """호출마다 새 adapter 인스턴스를 반환 (Event loop 격리를 위해 캐싱하지 않음)"""
         adapter1 = executor._get_service_adapter()
         adapter2 = executor._get_service_adapter()
 
-        assert adapter1 is adapter2
+        assert adapter1 is not adapter2
         assert adapter1 is not None
+        assert adapter2 is not None
 
 
 class TestInterventionDualPath:
@@ -360,7 +360,6 @@ class TestInterventionDualPath:
     def test_remote_intervention_uses_adapter(self, executor, session):
         """remote 모드 인터벤션: session_id 확보 시 run_in_new_loop으로 adapter.intervene_by_session 호출"""
         mock_adapter = MagicMock()
-        executor._service_adapter = mock_adapter
         executor._active_remote_requests["1234.5678"] = "1234.5678"
         executor.execution_mode = "remote"
         # session_id를 등록하여 session 기반 경로로 진입
@@ -368,19 +367,20 @@ class TestInterventionDualPath:
 
         pctx = _make_pctx()
 
-        with patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
-            mock_run.return_value = True
-            executor._handle_intervention(
-                "1234.5678", "new prompt", "1234.0001",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                role="admin",
-                user_message=None,
-                on_result=None,
-                session_id="sess-001",
-            )
-            mock_run.assert_called_once()
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            with patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
+                mock_run.return_value = True
+                executor._handle_intervention(
+                    "1234.5678", "new prompt", "1234.0001",
+                    on_progress=_noop_progress,
+                    on_compact=_noop_compact,
+                    presentation=pctx,
+                    role="admin",
+                    user_message=None,
+                    on_result=None,
+                    session_id="sess-001",
+                )
+                mock_run.assert_called_once()
 
     def test_pending_prompt_saved_on_intervention(self, executor, session):
         """인터벤션 시 pending에 프롬프트가 저장되는지 확인"""

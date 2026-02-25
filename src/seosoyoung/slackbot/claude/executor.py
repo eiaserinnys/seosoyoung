@@ -214,9 +214,6 @@ class ClaudeExecutor:
             restart_type_update=restart_type_update,
             restart_type_restart=restart_type_restart,
         )
-        # Remote 모드: ClaudeServiceAdapter (lazy 초기화)
-        self._service_adapter: Optional[object] = None
-        self._adapter_lock = threading.Lock()
         # Remote 모드: 실행 중인 request_id 추적 (인터벤션 폴백용)
         self._active_remote_requests: dict[str, str] = {}  # thread_ts -> request_id
         # Remote 모드: thread_ts ↔ session_id 매핑 (session_id 기반 인터벤션용)
@@ -325,7 +322,7 @@ class ClaudeExecutor:
         if self.execution_mode == "remote":
             self._intervention.fire_interrupt_remote(
                 thread_ts, prompt,
-                self._active_remote_requests, self._service_adapter,
+                self._active_remote_requests, self._get_service_adapter(),
                 session_id=self._get_session_id(thread_ts),
                 pending_session_interventions=self._pending_session_interventions,
                 pending_session_lock=self._pending_session_lock,
@@ -487,22 +484,24 @@ class ClaudeExecutor:
         return _get_role_config(role, self.role_tools)
 
     def _get_service_adapter(self):
-        """Remote 모드용 ClaudeServiceAdapter를 lazy 초기화하여 반환"""
-        if self._service_adapter is None:
-            with self._adapter_lock:
-                if self._service_adapter is None:
-                    from seosoyoung.slackbot.claude.service_client import SoulServiceClient
-                    from seosoyoung.slackbot.claude.service_adapter import ClaudeServiceAdapter
-                    client = SoulServiceClient(
-                        base_url=self.soul_url,
-                        token=self.soul_token,
-                    )
-                    self._service_adapter = ClaudeServiceAdapter(
-                        client=client,
-                        client_id=self.soul_client_id,
-                        parse_markers_fn=self._parse_markers_fn,
-                    )
-        return self._service_adapter
+        """Remote 모드용 ClaudeServiceAdapter를 생성하여 반환 (호출마다 새 인스턴스)
+
+        aiohttp.ClientSession은 생성된 이벤트 루프에 바인딩됩니다.
+        run_in_new_loop로 실행할 때마다 새 루프가 생성되므로,
+        이전 루프에서 만든 ClientSession을 재사용하면 "Event loop is closed" 오류가 발생합니다.
+        따라서 매 요청마다 새 SoulServiceClient를 생성합니다.
+        """
+        from seosoyoung.slackbot.claude.service_client import SoulServiceClient
+        from seosoyoung.slackbot.claude.service_adapter import ClaudeServiceAdapter
+        client = SoulServiceClient(
+            base_url=self.soul_url,
+            token=self.soul_token,
+        )
+        return ClaudeServiceAdapter(
+            client=client,
+            client_id=self.soul_client_id,
+            parse_markers_fn=self._parse_markers_fn,
+        )
 
     def _register_session_id(self, thread_ts: str, session_id: str) -> None:
         """thread_ts ↔ session_id 매핑 등록 및 버퍼된 인터벤션 flush"""

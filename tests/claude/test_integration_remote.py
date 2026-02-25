@@ -171,17 +171,17 @@ class TestIntegrationBasicFlow:
 
         mock_adapter = MagicMock()
         mock_adapter.execute = mock_execute
-        executor._service_adapter = mock_adapter
 
-        executor._execute_remote(
-            "1234.5678", "hello",
-            on_progress=_noop_progress,
-            on_compact=_noop_compact,
-            presentation=pctx,
-            session_id=None,
-            user_message=None,
-            on_result=None,
-        )
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id=None,
+                user_message=None,
+                on_result=None,
+            )
 
         assert "on_progress" in captured_kwargs
         assert captured_kwargs["on_progress"] is _noop_progress
@@ -476,17 +476,17 @@ class TestIntegrationDebugEvents:
 
         mock_adapter = MagicMock()
         mock_adapter.execute = mock_execute
-        executor._service_adapter = mock_adapter
 
-        executor._execute_remote(
-            "1234.5678", "hello",
-            on_progress=_noop_progress,
-            on_compact=_noop_compact,
-            presentation=pctx,
-            session_id=None,
-            user_message=None,
-            on_result=None,
-        )
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id=None,
+                user_message=None,
+                on_result=None,
+            )
 
         # chat_postMessage로 디버그 메시지가 전달되었는지 확인
         pctx.client.chat_postMessage.assert_called_once_with(
@@ -563,22 +563,22 @@ class TestIntegrationCompaction:
 
         mock_adapter = MagicMock()
         mock_adapter.execute = mock_execute
-        executor._service_adapter = mock_adapter
 
         compact_events = []
 
         async def on_compact(trigger, message):
             compact_events.append((trigger, message))
 
-        executor._execute_remote(
-            "1234.5678", "hello",
-            on_progress=_noop_progress,
-            on_compact=on_compact,
-            presentation=pctx,
-            session_id=None,
-            user_message=None,
-            on_result=None,
-        )
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_progress=_noop_progress,
+                on_compact=on_compact,
+                presentation=pctx,
+                session_id=None,
+                user_message=None,
+                on_result=None,
+            )
 
         assert len(compact_events) == 1
         assert compact_events[0] == ("auto", "컨텍스트 정리됨")
