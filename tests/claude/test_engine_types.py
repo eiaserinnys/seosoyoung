@@ -118,3 +118,8 @@ class TestCallbackTypes:
         """CompactCallback 타입이 engine_types에 존재"""
         from seosoyoung.slackbot.claude.engine_types import CompactCallback
         assert CompactCallback is not None
+
+    def test_intervention_callback_type_exists(self):
+        """InterventionCallback 타입이 engine_types에 존재"""
+        from seosoyoung.slackbot.claude.engine_types import InterventionCallback
+        assert InterventionCallback is not None

@@ -43,3 +43,4 @@ class RoleConfig:
 # 엔진 전용 콜백 타입
 ProgressCallback = Callable[[str], Coroutine[Any, Any, None]]
 CompactCallback = Callable[[str, str], Coroutine[Any, Any, None]]
+InterventionCallback = Callable[[], Coroutine[Any, Any, Optional[str]]]

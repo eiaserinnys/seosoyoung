@@ -1811,5 +1811,171 @@ class TestClaudeRunnerIsErrorFromResultMessage:
         assert result.interrupted is False
 
 
+@pytest.mark.asyncio
+class TestInlineIntervention:
+    """엔진 레벨 인라인 인터벤션 테스트"""
+
+    async def test_run_without_intervention_unchanged(self):
+        """on_intervention 미전달 시 기존 동작과 동일"""
+        runner = ClaudeRunner()
+
+        mock_client = _make_mock_client(
+            MockSystemMessage(session_id="no-intervention"),
+            MockAssistantMessage(content=[MockTextBlock(text="작업 중...")]),
+            MockResultMessage(result="완료", session_id="no-intervention"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                            result = await runner.run("테스트")
+
+        assert result.success is True
+        assert result.output == "완료"
+        assert result.session_id == "no-intervention"
+        # query는 처음 프롬프트 한 번만 호출
+        mock_client.query.assert_called_once_with("테스트")
+
+    async def test_run_with_intervention_none_no_injection(self):
+        """on_intervention이 None을 반환하면 메시지 주입 없음"""
+        runner = ClaudeRunner()
+
+        call_count = 0
+
+        async def no_intervention():
+            nonlocal call_count
+            call_count += 1
+            return None
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[MockTextBlock(text="작업 중...")]),
+            MockResultMessage(result="완료", session_id="none-intervention"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                        result = await runner.run("테스트", on_intervention=no_intervention)
+
+        assert result.success is True
+        assert result.output == "완료"
+        # on_intervention은 매 메시지마다 호출됨
+        assert call_count >= 1
+        # query는 처음 프롬프트 한 번만
+        mock_client.query.assert_called_once_with("테스트")
+
+    async def test_run_with_intervention_injects_message(self):
+        """on_intervention이 문자열을 반환하면 client.query로 주입"""
+        runner = ClaudeRunner()
+
+        intervention_fired = False
+
+        async def one_time_intervention():
+            nonlocal intervention_fired
+            if not intervention_fired:
+                intervention_fired = True
+                return "[사용자 개입] 추가 지시사항입니다."
+            return None
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[MockTextBlock(text="작업 중...")]),
+            MockResultMessage(result="최종 결과", session_id="with-intervention"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                        result = await runner.run("테스트", on_intervention=one_time_intervention)
+
+        assert result.success is True
+        # query가 2번 호출: 원래 프롬프트 + 인터벤션 주입
+        assert mock_client.query.call_count == 2
+        calls = mock_client.query.call_args_list
+        assert calls[0].args[0] == "테스트"
+        assert calls[1].args[0] == "[사용자 개입] 추가 지시사항입니다."
+
+    async def test_intervention_callback_error_does_not_break_execution(self):
+        """on_intervention 콜백 오류 시 실행이 중단되지 않음"""
+        runner = ClaudeRunner()
+
+        async def failing_intervention():
+            raise RuntimeError("콜백 폭발!")
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[MockTextBlock(text="작업 중...")]),
+            MockResultMessage(result="완료", session_id="error-intervention"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                        result = await runner.run("테스트", on_intervention=failing_intervention)
+
+        # 콜백 오류에도 실행은 성공
+        assert result.success is True
+        assert result.output == "완료"
+
+    async def test_intervention_type_in_engine_types(self):
+        """InterventionCallback 타입이 engine_types에 존재"""
+        from seosoyoung.slackbot.claude.engine_types import InterventionCallback
+        assert InterventionCallback is not None
+
+    async def test_run_signature_has_on_intervention(self):
+        """run() 시그니처에 on_intervention 파라미터가 있어야 함"""
+        import inspect
+        sig = inspect.signature(ClaudeRunner.run)
+        assert "on_intervention" in sig.parameters
+
+    async def test_intervention_preserves_existing_callbacks(self):
+        """on_intervention이 있어도 on_progress, on_compact이 정상 동작"""
+        runner = ClaudeRunner()
+
+        progress_calls = []
+        compact_calls = []
+
+        async def on_progress(text):
+            progress_calls.append(text)
+
+        async def on_compact(trigger, message):
+            compact_calls.append(trigger)
+
+        async def no_intervention():
+            return None
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[MockTextBlock(text="진행 중...")]),
+            MockResultMessage(result="완료", session_id="combined-test"),
+        )
+
+        time_value = [0]
+
+        def mock_time():
+            val = time_value[0]
+            time_value[0] += 3
+            return val
+
+        mock_loop = MagicMock()
+        mock_loop.time = mock_time
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                        with patch("asyncio.get_event_loop", return_value=mock_loop):
+                            result = await runner.run(
+                                "테스트",
+                                on_progress=on_progress,
+                                on_compact=on_compact,
+                                on_intervention=no_intervention,
+                            )
+
+        assert result.success is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
