@@ -96,6 +96,7 @@
 - [`service/engine_adapter.py`](modules/service_engine_adapter.md): soul 엔진 어댑터
 - [`service/file_manager.py`](modules/service_file_manager.md): FileManager - 첨부 파일 관리
 - [`service/resource_manager.py`](modules/service_resource_manager.md): ResourceManager - 동시 실행 제한 관리
+- [`service/runner_pool.py`](modules/service_runner_pool.md): ClaudeRunner 풀링 시스템
 - [`service/task_executor.py`](modules/service_task_executor.md): Task Executor - 백그라운드 태스크 실행 관리
 - [`service/task_listener.py`](modules/service_task_listener.md): Task Listener - SSE 리스너 관리
 - [`service/task_manager.py`](modules/service_task_manager.md): TaskManager - 태스크 라이프사이클 관리
@@ -213,7 +214,7 @@
 - `WebCache` (seosoyoung/slackbot/web/cache.py:10): URL 기반 웹 콘텐츠 캐시 관리자
 - `ContentExtractor` (seosoyoung/slackbot/web/extractor.py:30): HTML에서 본문과 메타데이터를 추출하는 클래스
 - `HtmlFetcher` (seosoyoung/slackbot/web/fetcher.py:14): Selenium을 사용한 동적 웹 페이지 HTML 페처
-- `Settings` (seosoyoung/soul/config.py:39): 애플리케이션 설정
+- `Settings` (seosoyoung/soul/config.py:57): 애플리케이션 설정
 - `SSEEventType` (seosoyoung/soul/models/schemas.py:13): SSE 이벤트 타입
 - `InterveneRequest` (seosoyoung/soul/models/schemas.py:26): 개입 메시지 요청 (Task API 호환)
 - `InterveneResponse` (seosoyoung/soul/models/schemas.py:35): 개입 메시지 응답
@@ -241,6 +242,7 @@
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
 - `FileManager` (seosoyoung/soul/service/file_manager.py:28): 첨부 파일 관리자
 - `ResourceManager` (seosoyoung/soul/service/resource_manager.py:17): 동시 실행 제한 관리자
+- `ClaudeRunnerPool` (seosoyoung/soul/service/runner_pool.py:25): ClaudeRunner 인스턴스 LRU 풀
 - `TaskExecutor` (seosoyoung/soul/service/task_executor.py:19): 백그라운드 태스크 실행 관리자
 - `TaskListenerManager` (seosoyoung/soul/service/task_listener.py:16): SSE 리스너 관리자
 - `TaskManager` (seosoyoung/soul/service/task_manager.py:52): 태스크 라이프사이클 관리자
@@ -419,8 +421,8 @@
 - `async ack_task()` (seosoyoung/soul/api/tasks.py:292): 결과 수신 확인
 - `async intervene_task()` (seosoyoung/soul/api/tasks.py:330): 실행 중인 태스크에 개입 메시지 전송
 - `async intervene_by_session()` (seosoyoung/soul/api/tasks.py:391): session_id 기반 개입 메시지 전송
-- `get_settings()` (seosoyoung/soul/config.py:110): 설정 싱글톤 반환
-- `setup_logging()` (seosoyoung/soul/config.py:115): 로깅 설정
+- `get_settings()` (seosoyoung/soul/config.py:142): 설정 싱글톤 반환
+- `setup_logging()` (seosoyoung/soul/config.py:147): 로깅 설정
 - `async periodic_cleanup()` (seosoyoung/soul/main.py:37): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
 - `async lifespan()` (seosoyoung/soul/main.py:53): 애플리케이션 라이프사이클 관리
 - `async shutdown()` (seosoyoung/soul/main.py:137): Graceful shutdown 엔드포인트 (supervisor 전용)

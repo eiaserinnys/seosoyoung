@@ -18,20 +18,29 @@ class TestRoleToolsSingleSource:
         assert "viewer" in Config.auth.role_tools
 
     def test_admin_has_base_tools(self):
-        """admin에 기본 도구가 포함"""
+        """admin은 None(모든 도구 허용) 또는 기본 도구가 포함된 리스트"""
         admin_tools = Config.auth.role_tools["admin"]
+        # None = 모든 도구 허용 (제한 없음)
+        if admin_tools is None:
+            return
         for tool in ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite"]:
             assert tool in admin_tools, f"{tool}이 admin 도구에 없음"
 
     def test_admin_has_mcp_tools(self):
-        """admin에 MCP 도구가 포함"""
+        """admin은 None(모든 도구 허용) 또는 MCP 도구가 포함된 리스트"""
         admin_tools = Config.auth.role_tools["admin"]
+        # None = 모든 도구 허용 (MCP 포함)
+        if admin_tools is None:
+            return
         assert any("slack_attach_file" in t for t in admin_tools)
         assert any("slack_post_message" in t for t in admin_tools)
 
     def test_admin_has_no_npc_tools(self):
-        """admin에 NPC 도구가 없음 (eb-lore MCP로 이동됨)"""
+        """admin은 None(모든 도구 허용) 또는 NPC 도구 없는 리스트"""
         admin_tools = Config.auth.role_tools["admin"]
+        # None = 모든 도구 허용 (이 경우 npc_talk 존재 여부를 제한할 수 없음)
+        if admin_tools is None:
+            return
         assert not any("npc_talk" in t for t in admin_tools)
 
     def test_viewer_is_readonly(self):

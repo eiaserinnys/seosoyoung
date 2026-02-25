@@ -11,14 +11,14 @@ Seosoyoung Soul - Configuration
 ## 클래스
 
 ### `Settings`
-- 위치: 줄 39
+- 위치: 줄 57
 - 설명: 애플리케이션 설정
 
 #### 메서드
 
-- `from_env(cls)` (줄 70): 환경변수에서 설정 로드
-- `is_production(self)` (줄 101): 
-- `is_development(self)` (줄 105): 
+- `from_env(cls)` (줄 92): 환경변수에서 설정 로드
+- `is_production(self)` (줄 133): 
+- `is_development(self)` (줄 137): 
 
 ## 함수
 
@@ -34,13 +34,25 @@ Args:
 Returns:
     변환된 int 값 또는 기본값
 
+### `_safe_float(value, default, name)`
+- 위치: 줄 38
+- 설명: 환경변수를 안전하게 float로 변환
+
+Args:
+    value: 변환할 문자열
+    default: 변환 실패 시 기본값
+    name: 환경변수 이름 (로깅용)
+
+Returns:
+    변환된 float 값 또는 기본값
+
 ### `get_settings()`
-- 위치: 줄 110
+- 위치: 줄 142
 - 데코레이터: lru_cache
 - 설명: 설정 싱글톤 반환
 
 ### `setup_logging(settings)`
-- 위치: 줄 115
+- 위치: 줄 147
 - 설명: 로깅 설정
 
 프로덕션: JSON 포맷 (구조화된 로그)

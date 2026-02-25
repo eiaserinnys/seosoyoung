@@ -1,0 +1,43 @@
+# service/runner_pool.py
+
+> 경로: `seosoyoung/soul/service/runner_pool.py`
+
+## 개요
+
+ClaudeRunner 풀링 시스템
+
+매 요청마다 발생하는 콜드 스타트를 제거하기 위해 ClaudeRunner 인스턴스를 풀링합니다.
+
+## 풀 구조
+- session pool: OrderedDict[session_id, (ClaudeRunner, last_used)] — LRU 캐시
+- generic pool: deque[(ClaudeRunner, idle_since)] — pre-warm 클라이언트 큐
+
+## 크기 제한
+max_size는 idle pool (session + generic) 합산 크기를 제한합니다.
+
+## 클래스
+
+### `ClaudeRunnerPool`
+- 위치: 줄 25
+- 설명: ClaudeRunner 인스턴스 LRU 풀
+
+LRU 기반 세션 풀과 제네릭 풀을 함께 관리합니다.
+session_id가 있으면 같은 Claude 세션을 재사용하고,
+없으면 pre-warm된 generic runner를 재사용합니다.
+
+#### 메서드
+
+- `__init__(self, max_size, idle_ttl, workspace_dir, allowed_tools, disallowed_tools, mcp_config_path)` (줄 33): 
+- `_total_size(self)` (줄 67): 현재 idle pool 총 크기
+- `_make_runner(self)` (줄 71): 새 ClaudeRunner 인스턴스 생성
+- `async _discard(self, runner, reason)` (줄 81): runner를 안전하게 폐기
+- `async _evict_lru_unlocked(self)` (줄 88): LRU runner를 퇴거 (락 없이 — 이미 락을 보유한 상태에서 호출)
+- `async acquire(self, session_id)` (줄 107): 풀에서 runner 획득
+- `async release(self, runner, session_id)` (줄 149): 실행 완료 후 runner 반환
+- `async evict_lru(self)` (줄 179): 가장 오래 사용되지 않은 runner를 disconnect & 제거 (공개 API)
+- `async shutdown(self)` (줄 184): 모든 runner disconnect
+- `stats(self)` (줄 212): 현재 풀 상태 반환
+
+## 내부 의존성
+
+- `seosoyoung.slackbot.claude.agent_runner.ClaudeRunner`

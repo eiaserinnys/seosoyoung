@@ -35,6 +35,24 @@ def _safe_int(value: str, default: int, name: str) -> int:
         return default
 
 
+def _safe_float(value: str, default: float, name: str) -> float:
+    """환경변수를 안전하게 float로 변환
+
+    Args:
+        value: 변환할 문자열
+        default: 변환 실패 시 기본값
+        name: 환경변수 이름 (로깅용)
+
+    Returns:
+        변환된 float 값 또는 기본값
+    """
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        _config_logger.warning(f"Invalid {name} value '{value}', using default: {default}")
+        return default
+
+
 @dataclass
 class Settings:
     """애플리케이션 설정"""
@@ -58,6 +76,10 @@ class Settings:
     # 리소스 제한
     max_concurrent_sessions: int = 3
     session_timeout_seconds: int = 1800  # 30분
+
+    # Runner Pool 설정
+    runner_pool_max_size: int = 5       # idle pool 최대 크기 (session + generic 합산)
+    runner_pool_idle_ttl: float = 300.0  # 유휴 runner TTL (초)
 
     # 로깅
     log_level: str = "INFO"
@@ -87,6 +109,16 @@ class Settings:
                 os.getenv("SESSION_TIMEOUT_SECONDS", str(cls.session_timeout_seconds)),
                 cls.session_timeout_seconds,
                 "SESSION_TIMEOUT_SECONDS"
+            ),
+            runner_pool_max_size=_safe_int(
+                os.getenv("RUNNER_POOL_MAX_SIZE", str(cls.runner_pool_max_size)),
+                cls.runner_pool_max_size,
+                "RUNNER_POOL_MAX_SIZE"
+            ),
+            runner_pool_idle_ttl=_safe_float(
+                os.getenv("RUNNER_POOL_IDLE_TTL", str(cls.runner_pool_idle_ttl)),
+                cls.runner_pool_idle_ttl,
+                "RUNNER_POOL_IDLE_TTL"
             ),
             log_level=os.getenv("LOG_LEVEL", cls.log_level),
             log_format=os.getenv("LOG_FORMAT", cls.log_format),
