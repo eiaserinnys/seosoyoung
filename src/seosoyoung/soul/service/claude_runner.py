@@ -11,9 +11,9 @@ from typing import Optional, AsyncIterator, Callable, Awaitable, List
 from dataclasses import dataclass
 
 try:
-    from claude_code_sdk import (
-        ClaudeCodeSDKClient,
-        ClaudeCodeOptions,
+    from claude_agent_sdk import (
+        ClaudeSDKClient,
+        ClaudeAgentOptions,
         AssistantMessage,
         TextBlock,
         ToolUseBlock,
@@ -25,9 +25,9 @@ try:
 except ImportError:
     SDK_AVAILABLE = False
     # 테스트용 더미 클래스
-    class ClaudeCodeSDKClient:
+    class ClaudeSDKClient:
         pass
-    class ClaudeCodeOptions:
+    class ClaudeAgentOptions:
         pass
 
 from seosoyoung.soul.models import (
@@ -95,9 +95,9 @@ class ClaudeCodeRunner:
     def _create_options(
         self,
         resume_session_id: Optional[str] = None,
-    ) -> "ClaudeCodeOptions":
+    ) -> "ClaudeAgentOptions":
         """
-        ClaudeCodeOptions 생성
+        ClaudeAgentOptions 생성
 
         Args:
             resume_session_id: 이전 세션 ID
@@ -105,7 +105,7 @@ class ClaudeCodeRunner:
         if not SDK_AVAILABLE:
             raise RuntimeError("Claude Code SDK not available")
 
-        options = ClaudeCodeOptions(
+        options = ClaudeAgentOptions(
             allowed_tools=ALLOWED_TOOLS,
             disallowed_tools=DISALLOWED_TOOLS,
             permission_mode='bypassPermissions',
@@ -212,7 +212,7 @@ class ClaudeCodeRunner:
         options = self._create_options(resume_session_id)
 
         try:
-            async with ClaudeCodeSDKClient(options=options) as client:
+            async with ClaudeSDKClient(options=options) as client:
                 # 쿼리 시작
                 await client.query(prompt)
 

@@ -10,7 +10,7 @@ from collections import deque
 from pathlib import Path
 from typing import Callable, Optional
 
-from claude_code_sdk._errors import ProcessError
+from claude_agent_sdk._errors import ProcessError
 
 logger = logging.getLogger(__name__)
 

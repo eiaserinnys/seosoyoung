@@ -2,7 +2,7 @@
 
 메인 봇의 ClaudeAgentRunner에서 핵심 로직을 복제한 버전:
 - _classify_process_error: ProcessError를 사용자 친화적 메시지로 변환
-- _build_options: ClaudeCodeOptions 생성 (env 주입, PreCompact 훅, stderr 캡처)
+- _build_options: ClaudeAgentOptions 생성 (env 주입, PreCompact 훅, stderr 캡처)
 - _get_or_create_client / _remove_client: 클라이언트 생명주기 관리
 - _execute: on_progress 콜백, on_compact, rate_limit 처리
 - interrupt / compact_session: 세션 제어
@@ -20,9 +20,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
-from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient, HookMatcher, HookContext
-from claude_code_sdk._errors import MessageParseError, ProcessError
-from claude_code_sdk.types import (
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher, HookContext
+from claude_agent_sdk._errors import MessageParseError, ProcessError
+from claude_agent_sdk.types import (
     AssistantMessage,
     HookJSONOutput,
     ResultMessage,
@@ -31,6 +31,7 @@ from claude_code_sdk.types import (
 )
 
 from seosoyoung.rescue.config import RescueConfig
+from seosoyoung.slackbot.claude.sdk_compat import ParseAction, classify_parse_error
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +114,8 @@ class RescueRunner:
         channel: Optional[str] = None,
         thread_ts: Optional[str] = None,
         compact_events: Optional[list] = None,
-    ) -> tuple[ClaudeCodeOptions, Optional[object]]:
-        """ClaudeCodeOptions를 생성합니다.
+    ) -> tuple[ClaudeAgentOptions, Optional[object]]:
+        """ClaudeAgentOptions를 생성합니다.
 
         Args:
             session_id: 세션 재개용 ID
@@ -171,7 +172,7 @@ class RescueRunner:
                 _stderr_file.close()
             _stderr_file = None
 
-        options = ClaudeCodeOptions(
+        options = ClaudeAgentOptions(
             allowed_tools=ALLOWED_TOOLS,
             disallowed_tools=DISALLOWED_TOOLS,
             permission_mode="bypassPermissions",
@@ -190,7 +191,7 @@ class RescueRunner:
     async def _get_or_create_client(
         self,
         client_key: str,
-        options: Optional[ClaudeCodeOptions] = None,
+        options: Optional[ClaudeAgentOptions] = None,
     ) -> ClaudeSDKClient:
         """클라이언트를 가져오거나 새로 생성"""
         with self._clients_lock:
@@ -341,19 +342,9 @@ class RescueRunner:
                 except StopAsyncIteration:
                     break
                 except MessageParseError as e:
-                    if e.data and e.data.get("type") == "rate_limit_event":
-                        rate_limit_info = e.data.get("rate_limit_info", {})
-                        status = rate_limit_info.get("status", "")
-                        if status in ("allowed", "allowed_warning"):
-                            if status == "allowed_warning":
-                                logger.info(
-                                    f"rate_limit allowed_warning: "
-                                    f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
-                                    f"utilization={rate_limit_info.get('utilization')}"
-                                )
-                            continue
-                        logger.warning(f"rate_limit_event 수신 (status={status}), graceful 종료")
-                        break
+                    action, _ = classify_parse_error(e.data, log_fn=logger)
+                    if action is ParseAction.CONTINUE:
+                        continue
                     raise
 
                 if isinstance(message, SystemMessage):
@@ -426,14 +417,26 @@ class RescueRunner:
                 error=friendly_msg,
             )
         except MessageParseError as e:
-            if e.data and e.data.get("type") == "rate_limit_event":
-                logger.warning(f"rate_limit_event로 실행 실패: {e}")
+            action, msg_type = classify_parse_error(e.data, log_fn=logger)
+
+            if msg_type == "rate_limit_event":
+                logger.warning(f"rate_limit_event (외부 catch): {e}")
                 return RescueResult(
                     success=False,
                     output=current_text,
                     session_id=result_session_id,
                     error="사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요.",
                 )
+
+            if action is ParseAction.CONTINUE:
+                logger.warning(f"Unknown message type escaped loop: {msg_type}")
+                return RescueResult(
+                    success=False,
+                    output=current_text,
+                    session_id=result_session_id,
+                    error=f"알 수 없는 메시지 타입: {msg_type}",
+                )
+
             logger.exception(f"SDK 메시지 파싱 오류: {e}")
             return RescueResult(
                 success=False,

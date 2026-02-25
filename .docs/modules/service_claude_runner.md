@@ -27,7 +27,7 @@ Claude Code SDK를 사용하여 Claude Code를 실행하고 결과를 스트리�
 #### 메서드
 
 - `__init__(self, workspace_dir)` (줄 84): Args:
-- `_create_options(self, resume_session_id)` (줄 95): ClaudeCodeOptions 생성
+- `_create_options(self, resume_session_id)` (줄 95): ClaudeAgentOptions 생성
 - `_build_intervention_prompt(self, msg)` (줄 120): 개입 메시지를 Claude 프롬프트로 변환
 - `_extract_context_usage(self, usage)` (줄 133): ResultMessage.usage에서 컨텍스트 사용량 추출
 - `async execute(self, prompt, resume_session_id, get_intervention, on_intervention_sent)` (줄 172): Claude Code 실행 (SSE 이벤트 스트림)
