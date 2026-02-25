@@ -295,7 +295,9 @@ class ClaudeExecutor:
         """단일 Claude 실행"""
         if self.execution_mode == "remote":
             # === Remote 모드: soul 서버에 위임 ===
-            logger.info(f"Claude 실행 (remote): thread={thread_ts}, role={role}")
+            effective_role = role or "admin"
+            role_config = self._get_role_config(effective_role)
+            logger.info(f"Claude 실행 (remote): thread={thread_ts}, role={effective_role}")
             self._execute_remote(
                 thread_ts, prompt,
                 on_progress=on_progress,
@@ -304,6 +306,9 @@ class ClaudeExecutor:
                 session_id=session_id,
                 user_message=user_message,
                 on_result=on_result,
+                allowed_tools=role_config["allowed_tools"],
+                disallowed_tools=role_config["disallowed_tools"],
+                use_mcp=role_config["mcp_config_path"] is not None,
             )
         else:
             # === Local 모드: thread_ts 단위 runner 생성 ===
@@ -378,6 +383,9 @@ class ClaudeExecutor:
         session_id,
         user_message,
         on_result,
+        allowed_tools: Optional[list] = None,
+        disallowed_tools: Optional[list] = None,
+        use_mcp: bool = True,
     ):
         """Remote 모드: soul 서버에 실행을 위임"""
         adapter = self._get_service_adapter()
@@ -394,6 +402,9 @@ class ClaudeExecutor:
                     resume_session_id=session_id,
                     on_progress=on_progress,
                     on_compact=on_compact,
+                    allowed_tools=allowed_tools,
+                    disallowed_tools=disallowed_tools,
+                    use_mcp=use_mcp,
                 )
             )
 

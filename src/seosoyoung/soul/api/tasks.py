@@ -84,13 +84,16 @@ async def execute_task(
             },
         )
 
-    # 태스크 생성
+    # 태스크 생성 (요청별 도구 설정 포함)
     try:
         task = await task_manager.create_task(
             client_id=request.client_id,
             request_id=request.request_id,
             prompt=request.prompt,
             resume_session_id=request.resume_session_id,
+            allowed_tools=request.allowed_tools,
+            disallowed_tools=request.disallowed_tools,
+            use_mcp=request.use_mcp,
         )
     except TaskConflictError:
         raise HTTPException(

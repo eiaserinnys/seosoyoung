@@ -187,6 +187,38 @@ class TestExecute:
         call_kwargs = mock_client.execute.call_args.kwargs
         assert call_kwargs["resume_session_id"] == "prev-sess"
 
+    @pytest.mark.asyncio
+    async def test_tool_settings_forwarded(self, adapter, mock_client):
+        """allowed_tools/disallowed_tools/use_mcp가 SoulServiceClient에 전달되는지 확인"""
+        mock_client.execute.return_value = ExecuteResult(success=True, result="done")
+        mock_client.ack.return_value = True
+
+        await adapter.execute(
+            prompt="hello",
+            request_id="thread-12",
+            allowed_tools=["Read", "Glob"],
+            disallowed_tools=["Bash"],
+            use_mcp=False,
+        )
+
+        call_kwargs = mock_client.execute.call_args.kwargs
+        assert call_kwargs["allowed_tools"] == ["Read", "Glob"]
+        assert call_kwargs["disallowed_tools"] == ["Bash"]
+        assert call_kwargs["use_mcp"] is False
+
+    @pytest.mark.asyncio
+    async def test_tool_settings_defaults(self, adapter, mock_client):
+        """도구 설정 미지정 시 기본값이 전달되는지 확인"""
+        mock_client.execute.return_value = ExecuteResult(success=True, result="done")
+        mock_client.ack.return_value = True
+
+        await adapter.execute(prompt="hello", request_id="thread-13")
+
+        call_kwargs = mock_client.execute.call_args.kwargs
+        assert call_kwargs.get("allowed_tools") is None
+        assert call_kwargs.get("disallowed_tools") is None
+        assert call_kwargs.get("use_mcp") is True
+
 
 class TestIntervene:
     """ClaudeServiceAdapter.intervene() 테스트"""

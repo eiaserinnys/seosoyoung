@@ -230,9 +230,9 @@
 - `CompactEvent` (seosoyoung/soul/models/schemas.py:121): 컴팩트 실행 이벤트
 - `TaskStatus` (seosoyoung/soul/models/schemas.py:130): 태스크 상태
 - `ExecuteRequest` (seosoyoung/soul/models/schemas.py:137): 실행 요청
-- `TaskResponse` (seosoyoung/soul/models/schemas.py:146): 태스크 정보 응답
-- `TaskListResponse` (seosoyoung/soul/models/schemas.py:159): 태스크 목록 응답
-- `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:164): 개입 메시지 요청
+- `TaskResponse` (seosoyoung/soul/models/schemas.py:149): 태스크 정보 응답
+- `TaskListResponse` (seosoyoung/soul/models/schemas.py:162): 태스크 목록 응답
+- `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:167): 개입 메시지 요청
 - `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:43): 개입 메시지 데이터
 - `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:90): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
@@ -410,11 +410,11 @@
 - `async verify_token()` (seosoyoung/soul/api/auth.py:20): Bearer 토큰 검증
 - `task_to_response()` (seosoyoung/soul/api/tasks.py:38): Task를 TaskResponse로 변환
 - `async execute_task()` (seosoyoung/soul/api/tasks.py:61): Claude Code 실행 (SSE 스트리밍)
-- `async get_tasks()` (seosoyoung/soul/api/tasks.py:149): 클라이언트의 태스크 목록 조회
-- `async get_task()` (seosoyoung/soul/api/tasks.py:171): 특정 태스크 조회
-- `async reconnect_stream()` (seosoyoung/soul/api/tasks.py:201): 태스크 SSE 스트림에 재연결
-- `async ack_task()` (seosoyoung/soul/api/tasks.py:288): 결과 수신 확인
-- `async intervene_task()` (seosoyoung/soul/api/tasks.py:326): 실행 중인 태스크에 개입 메시지 전송
+- `async get_tasks()` (seosoyoung/soul/api/tasks.py:152): 클라이언트의 태스크 목록 조회
+- `async get_task()` (seosoyoung/soul/api/tasks.py:174): 특정 태스크 조회
+- `async reconnect_stream()` (seosoyoung/soul/api/tasks.py:204): 태스크 SSE 스트림에 재연결
+- `async ack_task()` (seosoyoung/soul/api/tasks.py:291): 결과 수신 확인
+- `async intervene_task()` (seosoyoung/soul/api/tasks.py:329): 실행 중인 태스크에 개입 메시지 전송
 - `get_settings()` (seosoyoung/soul/config.py:106): 설정 싱글톤 반환
 - `setup_logging()` (seosoyoung/soul/config.py:111): 로깅 설정
 - `async periodic_cleanup()` (seosoyoung/soul/main.py:37): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
@@ -423,9 +423,9 @@
 - `async health_check()` (seosoyoung/soul/main.py:162): 헬스 체크 엔드포인트
 - `async get_status()` (seosoyoung/soul/main.py:173): 서비스 상태 조회
 - `async global_exception_handler()` (seosoyoung/soul/main.py:205): 전역 예외 핸들러
-- `get_task_manager()` (seosoyoung/soul/service/task_manager.py:486): TaskManager 싱글톤 반환
-- `init_task_manager()` (seosoyoung/soul/service/task_manager.py:494): TaskManager 초기화
-- `set_task_manager()` (seosoyoung/soul/service/task_manager.py:501): TaskManager 인스턴스 설정 (테스트용)
+- `get_task_manager()` (seosoyoung/soul/service/task_manager.py:495): TaskManager 싱글톤 반환
+- `init_task_manager()` (seosoyoung/soul/service/task_manager.py:503): TaskManager 초기화
+- `set_task_manager()` (seosoyoung/soul/service/task_manager.py:510): TaskManager 인스턴스 설정 (테스트용)
 - `utc_now()` (seosoyoung/soul/service/task_models.py:36): 현재 UTC 시간 반환
 - `datetime_to_str()` (seosoyoung/soul/service/task_models.py:41): datetime을 ISO 문자열로 변환
 - `str_to_datetime()` (seosoyoung/soul/service/task_models.py:46): ISO 문자열을 datetime으로 변환

@@ -28,7 +28,8 @@ asyncio.Queue를 통해 SSE 이벤트 스트림으로 변환합니다.
 #### 메서드
 
 - `__init__(self, workspace_dir)` (줄 98): 
-- `async execute(self, prompt, resume_session_id, get_intervention, on_intervention_sent)` (줄 103): Claude Code 실행 (SSE 이벤트 스트림)
+- `_resolve_mcp_config_path(self)` (줄 103): WORKSPACE_DIR 기준으로 mcp_config.json 경로를 해석
+- `async execute(self, prompt, resume_session_id, get_intervention, on_intervention_sent)` (줄 110): Claude Code 실행 (SSE 이벤트 스트림)
 
 ## 함수
 

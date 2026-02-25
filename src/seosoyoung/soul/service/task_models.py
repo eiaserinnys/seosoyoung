@@ -60,6 +60,11 @@ class Task:
     resume_session_id: Optional[str] = None
     claude_session_id: Optional[str] = None
 
+    # 도구 설정 (런타임 전용, 영속화 안 됨)
+    allowed_tools: Optional[List[str]] = field(default=None, repr=False)
+    disallowed_tools: Optional[List[str]] = field(default=None, repr=False)
+    use_mcp: bool = field(default=True, repr=False)
+
     # 결과
     result: Optional[str] = None
     error: Optional[str] = None

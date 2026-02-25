@@ -109,6 +109,9 @@ class TaskManager:
         request_id: str,
         prompt: str,
         resume_session_id: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None,
+        disallowed_tools: Optional[List[str]] = None,
+        use_mcp: bool = True,
     ) -> Task:
         """
         새 태스크 생성
@@ -118,6 +121,9 @@ class TaskManager:
             request_id: 요청 ID (e.g., Slack thread ID)
             prompt: 실행할 프롬프트
             resume_session_id: 이전 세션 ID (대화 연속성용)
+            allowed_tools: 허용 도구 목록 (None이면 제한 없음)
+            disallowed_tools: 금지 도구 목록
+            use_mcp: MCP 서버 연결 여부
 
         Returns:
             Task: 생성된 태스크
@@ -139,6 +145,9 @@ class TaskManager:
                 request_id=request_id,
                 prompt=prompt,
                 resume_session_id=resume_session_id,
+                allowed_tools=allowed_tools,
+                disallowed_tools=disallowed_tools,
+                use_mcp=use_mcp,
             )
 
             self._tasks[key] = task

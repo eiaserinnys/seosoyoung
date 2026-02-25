@@ -174,8 +174,24 @@ class SoulServiceClient:
         resume_session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        *,
+        allowed_tools: Optional[List[str]] = None,
+        disallowed_tools: Optional[List[str]] = None,
+        use_mcp: bool = True,
     ) -> ExecuteResult:
-        """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)"""
+        """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
+
+        Args:
+            client_id: 클라이언트 ID
+            request_id: 요청 ID
+            prompt: 실행할 프롬프트
+            resume_session_id: 이전 세션 ID
+            on_progress: 진행 상황 콜백
+            on_compact: 컴팩션 콜백
+            allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
+            disallowed_tools: 금지 도구 목록
+            use_mcp: MCP 서버 연결 여부
+        """
         session = await self._get_session()
         url = f"{self.base_url}/execute"
 
@@ -183,9 +199,14 @@ class SoulServiceClient:
             "client_id": client_id,
             "request_id": request_id,
             "prompt": prompt,
+            "use_mcp": use_mcp,
         }
         if resume_session_id:
             data["resume_session_id"] = resume_session_id
+        if allowed_tools is not None:
+            data["allowed_tools"] = allowed_tools
+        if disallowed_tools is not None:
+            data["disallowed_tools"] = disallowed_tools
 
         backoff = ExponentialBackoff()
 

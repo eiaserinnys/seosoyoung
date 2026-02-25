@@ -25,12 +25,12 @@ from seosoyoung.soul.models import (
 
 logger = logging.getLogger(__name__)
 
-# soul API용 도구 설정
-ALLOWED_TOOLS = [
+# soul API용 도구 설정 (기본값: 요청에서 도구 목록이 지정되지 않은 경우 사용)
+DEFAULT_ALLOWED_TOOLS = [
     "Read", "Glob", "Grep", "Task",
     "WebFetch", "WebSearch", "Edit", "Write", "Bash",
 ]
-DISALLOWED_TOOLS = ["NotebookEdit", "TodoWrite"]
+DEFAULT_DISALLOWED_TOOLS = ["NotebookEdit", "TodoWrite"]
 
 # 컨텍스트 관련 상수
 DEFAULT_MAX_CONTEXT_TOKENS = 200_000
@@ -100,12 +100,23 @@ class SoulEngineAdapter:
             "WORKSPACE_DIR", "D:/soyoung_root/slackbot_workspace"
         )
 
+    def _resolve_mcp_config_path(self) -> Optional[Path]:
+        """WORKSPACE_DIR 기준으로 mcp_config.json 경로를 해석"""
+        config_path = Path(self._workspace_dir) / "mcp_config.json"
+        if config_path.exists():
+            return config_path
+        return None
+
     async def execute(
         self,
         prompt: str,
         resume_session_id: Optional[str] = None,
         get_intervention: Optional[Callable[[], Awaitable[Optional[dict]]]] = None,
         on_intervention_sent: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        *,
+        allowed_tools: Optional[List[str]] = None,
+        disallowed_tools: Optional[List[str]] = None,
+        use_mcp: bool = True,
     ) -> AsyncIterator:
         """Claude Code 실행 (SSE 이벤트 스트림)
 
@@ -116,6 +127,9 @@ class SoulEngineAdapter:
             resume_session_id: 이전 세션 ID
             get_intervention: 개입 메시지 가져오기 함수
             on_intervention_sent: 개입 전송 후 콜백
+            allowed_tools: 허용 도구 목록 (None이면 기본값 사용)
+            disallowed_tools: 금지 도구 목록 (None이면 기본값 사용)
+            use_mcp: MCP 서버 연결 여부
 
         Yields:
             ProgressEvent | InterventionSentEvent | ContextUsageEvent
@@ -123,11 +137,19 @@ class SoulEngineAdapter:
         """
         queue: asyncio.Queue = asyncio.Queue()
 
+        # 요청별 도구 설정 적용 (None이면 기본값 사용)
+        effective_allowed = allowed_tools if allowed_tools is not None else DEFAULT_ALLOWED_TOOLS
+        effective_disallowed = disallowed_tools if disallowed_tools is not None else DEFAULT_DISALLOWED_TOOLS
+
+        # MCP 설정
+        mcp_config_path = self._resolve_mcp_config_path() if use_mcp else None
+
         runner = ClaudeRunner(
             thread_ts="",
             working_dir=Path(self._workspace_dir),
-            allowed_tools=ALLOWED_TOOLS,
-            disallowed_tools=DISALLOWED_TOOLS,
+            allowed_tools=effective_allowed,
+            disallowed_tools=effective_disallowed,
+            mcp_config_path=mcp_config_path,
         )
 
         # --- 콜백 → 큐 어댑터 ---

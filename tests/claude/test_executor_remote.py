@@ -149,6 +149,59 @@ class TestExecutorRemoteBranch:
             )
             mock_execute_remote.assert_called_once()
 
+    def test_remote_mode_passes_tool_settings(self, executor, session):
+        """remote 모드에서 role → 도구 해석 후 _execute_remote에 전달"""
+        pctx = _make_pctx()
+        executor.execution_mode = "remote"
+        executor.role_tools = {
+            "admin": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
+            "viewer": ["Read", "Glob", "Grep"],
+        }
+
+        with patch.object(executor, "_execute_remote") as mock_remote:
+            executor._execute_once(
+                "1234.5678", "hello", "1234.0001",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                role="admin",
+                user_message=None,
+                on_result=None,
+            )
+
+            call_kwargs = mock_remote.call_args
+            # allowed_tools, disallowed_tools, use_mcp가 전달되어야 함
+            assert "allowed_tools" in call_kwargs.kwargs
+            assert "disallowed_tools" in call_kwargs.kwargs
+            assert "use_mcp" in call_kwargs.kwargs
+
+    def test_remote_viewer_role_has_disallowed_tools(self, executor, session):
+        """viewer role에서 disallowed_tools가 설정됨"""
+        pctx = _make_pctx()
+        executor.execution_mode = "remote"
+        executor.role_tools = {
+            "viewer": ["Read", "Glob", "Grep"],
+        }
+
+        with patch.object(executor, "_execute_remote") as mock_remote:
+            executor._execute_once(
+                "1234.5678", "hello", "1234.0001",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                role="viewer",
+                user_message=None,
+                on_result=None,
+            )
+
+            call_kwargs = mock_remote.call_args.kwargs
+            assert call_kwargs["disallowed_tools"] is not None
+            assert "Write" in call_kwargs["disallowed_tools"]
+            assert "Bash" in call_kwargs["disallowed_tools"]
+            assert call_kwargs["use_mcp"] is False  # viewer → mcp_config_path=None → use_mcp=False
+
 
 class TestGetServiceAdapter:
     """_get_service_adapter lazy 초기화 테스트"""

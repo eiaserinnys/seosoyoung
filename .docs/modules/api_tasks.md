@@ -25,19 +25,19 @@ Tasks API - 태스크 기반 API 엔드포인트
 백그라운드 실행은 계속되고 결과는 보관되어 나중에 조회할 수 있습니다.
 
 ### `async get_tasks(client_id, _)`
-- 위치: 줄 149
+- 위치: 줄 152
 - 데코레이터: router.get
 - 설명: 클라이언트의 태스크 목록 조회
 
 클라이언트가 재시작 후 미전달 결과를 확인하는 데 사용합니다.
 
 ### `async get_task(client_id, request_id, _)`
-- 위치: 줄 171
+- 위치: 줄 174
 - 데코레이터: router.get
 - 설명: 특정 태스크 조회
 
 ### `async reconnect_stream(client_id, request_id, _)`
-- 위치: 줄 201
+- 위치: 줄 204
 - 데코레이터: router.get
 - 설명: 태스크 SSE 스트림에 재연결
 
@@ -46,7 +46,7 @@ completed 태스크: 저장된 결과를 즉시 반환
 error 태스크: 저장된 에러를 즉시 반환
 
 ### `async ack_task(client_id, request_id, _)`
-- 위치: 줄 288
+- 위치: 줄 291
 - 데코레이터: router.post
 - 설명: 결과 수신 확인
 
@@ -54,7 +54,7 @@ error 태스크: 저장된 에러를 즉시 반환
 확인된 태스크는 서버에서 삭제됩니다.
 
 ### `async intervene_task(client_id, request_id, request, _)`
-- 위치: 줄 326
+- 위치: 줄 329
 - 데코레이터: router.post
 - 설명: 실행 중인 태스크에 개입 메시지 전송
 

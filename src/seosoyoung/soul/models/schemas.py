@@ -141,6 +141,9 @@ class ExecuteRequest(BaseModel):
     prompt: str = Field(..., description="실행할 프롬프트")
     resume_session_id: Optional[str] = Field(None, description="이전 Claude 세션 ID (대화 연속성용)")
     attachment_paths: Optional[List[str]] = Field(None, description="첨부 파일 경로 목록")
+    allowed_tools: Optional[List[str]] = Field(None, description="허용 도구 목록 (None이면 제한 없음)")
+    disallowed_tools: Optional[List[str]] = Field(None, description="금지 도구 목록")
+    use_mcp: bool = Field(True, description="MCP 서버 연결 여부")
 
 
 class TaskResponse(BaseModel):

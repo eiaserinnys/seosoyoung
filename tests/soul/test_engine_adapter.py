@@ -376,3 +376,130 @@ class TestSoulEngineAdapterResumeSession:
         instance.run.assert_awaited_once()
         call_kwargs = instance.run.call_args
         assert call_kwargs.kwargs.get("session_id") == "prev-session-123"
+
+
+class TestSoulEngineAdapterToolSettings:
+    """요청별 도구 설정 전달 테스트"""
+
+    async def test_default_tools_when_none(self):
+        """allowed_tools/disallowed_tools가 None이면 기본값 사용"""
+        from seosoyoung.soul.service.engine_adapter import (
+            DEFAULT_ALLOWED_TOOLS,
+            DEFAULT_DISALLOWED_TOOLS,
+        )
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+        mock_result = EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = AsyncMock(return_value=mock_result)
+
+            events = await collect_events(adapter, "test")
+
+        # ClaudeRunner가 기본 도구 설정으로 생성되었는지 확인
+        call_kwargs = MockRunner.call_args.kwargs
+        assert call_kwargs["allowed_tools"] == DEFAULT_ALLOWED_TOOLS
+        assert call_kwargs["disallowed_tools"] == DEFAULT_DISALLOWED_TOOLS
+
+    async def test_custom_allowed_tools_passed(self):
+        """allowed_tools가 지정되면 ClaudeRunner에 전달됨"""
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+        mock_result = EngineResult(success=True, output="done")
+        custom_tools = ["Read", "Glob"]
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = AsyncMock(return_value=mock_result)
+
+            events = await collect_events(
+                adapter, "test",
+                allowed_tools=custom_tools,
+            )
+
+        call_kwargs = MockRunner.call_args.kwargs
+        assert call_kwargs["allowed_tools"] == custom_tools
+
+    async def test_custom_disallowed_tools_passed(self):
+        """disallowed_tools가 지정되면 ClaudeRunner에 전달됨"""
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+        mock_result = EngineResult(success=True, output="done")
+        custom_disallowed = ["Bash", "Write", "Edit"]
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = AsyncMock(return_value=mock_result)
+
+            events = await collect_events(
+                adapter, "test",
+                disallowed_tools=custom_disallowed,
+            )
+
+        call_kwargs = MockRunner.call_args.kwargs
+        assert call_kwargs["disallowed_tools"] == custom_disallowed
+
+    async def test_use_mcp_false_no_mcp_config(self):
+        """use_mcp=False이면 mcp_config_path=None"""
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+        mock_result = EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = AsyncMock(return_value=mock_result)
+
+            events = await collect_events(
+                adapter, "test",
+                use_mcp=False,
+            )
+
+        call_kwargs = MockRunner.call_args.kwargs
+        assert call_kwargs["mcp_config_path"] is None
+
+    async def test_use_mcp_true_resolves_config(self, tmp_path):
+        """use_mcp=True이면 workspace_dir/mcp_config.json을 해석"""
+        # mcp_config.json 생성
+        config_path = tmp_path / "mcp_config.json"
+        config_path.write_text('{"mcpServers": {}}')
+
+        adapter = SoulEngineAdapter(workspace_dir=str(tmp_path))
+        mock_result = EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = AsyncMock(return_value=mock_result)
+
+            events = await collect_events(
+                adapter, "test",
+                use_mcp=True,
+            )
+
+        call_kwargs = MockRunner.call_args.kwargs
+        assert call_kwargs["mcp_config_path"] == config_path
+
+    async def test_use_mcp_true_no_config_file(self):
+        """use_mcp=True이지만 파일이 없으면 mcp_config_path=None"""
+        adapter = SoulEngineAdapter(workspace_dir="/nonexistent/path")
+        mock_result = EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = AsyncMock(return_value=mock_result)
+
+            events = await collect_events(
+                adapter, "test",
+                use_mcp=True,
+            )
+
+        call_kwargs = MockRunner.call_args.kwargs
+        assert call_kwargs["mcp_config_path"] is None

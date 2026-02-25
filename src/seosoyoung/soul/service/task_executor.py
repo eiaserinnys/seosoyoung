@@ -110,12 +110,15 @@ class TaskExecutor:
                     event = {"type": "intervention_sent", "user": user, "text": text}
                     await self._listener_manager.broadcast(task.client_id, task.request_id, event)
 
-                # Claude Code 실행
+                # Claude Code 실행 (요청별 도구 설정 전달)
                 async for event in claude_runner.execute(
                     prompt=task.prompt,
                     resume_session_id=task.resume_session_id,
                     get_intervention=get_intervention,
                     on_intervention_sent=on_intervention_sent,
+                    allowed_tools=task.allowed_tools,
+                    disallowed_tools=task.disallowed_tools,
+                    use_mcp=task.use_mcp,
                 ):
                     event_dict = event.model_dump()
 

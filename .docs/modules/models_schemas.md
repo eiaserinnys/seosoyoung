@@ -77,13 +77,13 @@ Pydantic 모델 - Request/Response 스키마
 - 설명: 실행 요청
 
 ### `TaskResponse` (BaseModel)
-- 위치: 줄 146
+- 위치: 줄 149
 - 설명: 태스크 정보 응답
 
 ### `TaskListResponse` (BaseModel)
-- 위치: 줄 159
+- 위치: 줄 162
 - 설명: 태스크 목록 응답
 
 ### `TaskInterveneRequest` (BaseModel)
-- 위치: 줄 164
+- 위치: 줄 167
 - 설명: 개입 메시지 요청

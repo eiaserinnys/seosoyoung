@@ -163,6 +163,58 @@ class TestSoulServiceClientExecute:
         with pytest.raises(SoulServiceError, match="internal error"):
             await client.execute("client1", "req1", "hello")
 
+    @pytest.mark.asyncio
+    async def test_execute_includes_tool_settings_in_body(self, client):
+        """allowed_tools/disallowed_tools/use_mcp가 HTTP body에 포함되는지 확인"""
+        sse_data = (
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done","claude_session_id":"sess-1"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.execute(
+            "client1", "req1", "hello",
+            allowed_tools=["Read", "Glob"],
+            disallowed_tools=["Bash"],
+            use_mcp=False,
+        )
+
+        # session.post가 호출된 json 데이터 확인
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert body["allowed_tools"] == ["Read", "Glob"]
+        assert body["disallowed_tools"] == ["Bash"]
+        assert body["use_mcp"] is False
+
+    @pytest.mark.asyncio
+    async def test_execute_omits_none_tools_from_body(self, client):
+        """allowed_tools/disallowed_tools가 None이면 body에서 생략"""
+        sse_data = (
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.execute("client1", "req1", "hello")
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert "allowed_tools" not in body
+        assert "disallowed_tools" not in body
+        assert body["use_mcp"] is True  # 기본값
+
 
 class TestSoulServiceClientIntervene:
     """SoulServiceClient.intervene() 테스트"""
