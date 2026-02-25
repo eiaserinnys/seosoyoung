@@ -263,7 +263,8 @@ class ClaudeRunnerPool:
             await self._discard(runner, reason=reason)
 
         if to_discard:
-            logger.info(f"Maintenance: {len(to_discard)}개 runner 정리 ({[r for _, r in to_discard]})")
+            reasons = [reason for _, reason in to_discard]
+            logger.info(f"Maintenance: {len(to_discard)}개 runner 정리 ({reasons})")
 
         # --- generic pool 보충 ---
         async with self._lock:
@@ -272,20 +273,9 @@ class ClaudeRunnerPool:
         shortage = self._min_generic - current_generic
         if shortage > 0:
             logger.info(f"Maintenance: generic pool 보충 필요 ({current_generic} < {self._min_generic})")
-            replenished = 0
-            for _ in range(shortage):
-                try:
-                    runner = self._make_runner()
-                    await runner._get_or_create_client()
-                    async with self._lock:
-                        now = time.monotonic()
-                        if self._total_size() >= self._max_size:
-                            await self._evict_lru_unlocked()
-                        self._generic_pool.append((runner, now))
-                    replenished += 1
-                except Exception as e:
-                    logger.warning(f"Maintenance: generic runner 보충 실패: {e}")
-            logger.info(f"Maintenance: {replenished}개 generic runner 보충")
+            replenished = await self.pre_warm(shortage)
+            if replenished > 0:
+                logger.info(f"Maintenance: {replenished}개 generic runner 보충")
 
     async def _maintenance_loop(self) -> None:
         """백그라운드 유지보수 루프

@@ -37,10 +37,10 @@ session_id가 있으면 같은 Claude 세션을 재사용하고,
 - `async evict_lru(self)` (줄 187): 가장 오래 사용되지 않은 runner를 disconnect & 제거 (공개 API)
 - `async pre_warm(self, count)` (줄 192): N개의 generic runner를 미리 생성하여 generic pool에 추가
 - `async _run_maintenance(self)` (줄 222): 유지보수 작업 1회 실행
-- `async _maintenance_loop(self)` (줄 290): 백그라운드 유지보수 루프
-- `async start_maintenance(self)` (줄 307): 유지보수 루프 백그라운드 태스크 시작
-- `async shutdown(self)` (줄 318): 모든 runner disconnect 및 유지보수 루프 취소
-- `stats(self)` (줄 355): 현재 풀 상태 반환
+- `async _maintenance_loop(self)` (줄 280): 백그라운드 유지보수 루프
+- `async start_maintenance(self)` (줄 297): 유지보수 루프 백그라운드 태스크 시작
+- `async shutdown(self)` (줄 308): 모든 runner disconnect 및 유지보수 루프 취소
+- `stats(self)` (줄 345): 현재 풀 상태 반환
 
 ## 내부 의존성
 
