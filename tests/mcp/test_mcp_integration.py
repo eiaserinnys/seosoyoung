@@ -37,13 +37,11 @@ class TestGetRoleConfigMCP:
 class TestMCPToolsInAllowedTools:
     """allowed_tools에 MCP 도구 패턴이 포함되는지 검증"""
 
-    def test_admin_tools_include_mcp_pattern(self):
-        """admin 역할에 MCP 도구가 허용됨"""
+    def test_admin_tools_allow_all(self):
+        """admin 역할은 allowed_tools=None (모든 도구 허용, MCP 포함)"""
         from seosoyoung.slackbot.config import Config
 
-        admin_tools = Config.auth.role_tools["admin"]
-        mcp_tools = [t for t in admin_tools if t.startswith("mcp__seosoyoung-attach")]
-        assert len(mcp_tools) > 0, "admin에 mcp__seosoyoung-attach 도구가 없음"
+        assert Config.auth.role_tools["admin"] is None, "admin은 None이어야 함 (무제한)"
 
     def test_viewer_tools_exclude_mcp(self):
         """viewer 역할에는 MCP 도구가 없음"""

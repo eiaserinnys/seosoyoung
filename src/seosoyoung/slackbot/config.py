@@ -80,13 +80,7 @@ class AuthConfig:
     )
     role_tools: dict = field(
         default_factory=lambda: {
-            "admin": [
-                "Read", "Write", "Edit", "Glob", "Grep", "Bash", "TodoWrite",
-                "mcp__seosoyoung-attach__slack_attach_file",
-                "mcp__seosoyoung-attach__slack_post_message",
-                "mcp__seosoyoung-attach__slack_download_thread_files",
-                "mcp__seosoyoung-attach__slack_generate_image",
-            ],
+            "admin": None,  # None = 모든 도구 허용 (MCP 포함)
             "viewer": ["Read", "Glob", "Grep"],
         }
     )

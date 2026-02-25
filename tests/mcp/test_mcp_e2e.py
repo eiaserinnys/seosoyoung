@@ -183,14 +183,14 @@ class TestMCPE2ETrelloFlow:
         finally:
             os.unlink(tmp_path)
 
-    def test_admin_config_has_mcp_for_trello(self):
-        """admin 역할 config에 MCP 설정이 있어 트렐로 모드에서도 첨부 가능"""
+    def test_admin_config_has_mcp_and_allows_all(self):
+        """admin 역할은 MCP 설정 있고 allowed_tools=None (모든 도구 허용)"""
         from seosoyoung.slackbot.claude.executor import _get_role_config
         from seosoyoung.slackbot.config import Config
 
         config = _get_role_config("admin", Config.auth.role_tools)
         assert config["mcp_config_path"] is not None
-        assert "mcp__seosoyoung-attach__slack_attach_file" in config["allowed_tools"]
+        assert config["allowed_tools"] is None  # 모든 도구 허용
 
 
 class TestMCPE2EErrorCases:
@@ -323,29 +323,11 @@ class TestMCPConfigIntegrity:
         assert "seosoyoung-attach" in config
         assert mcp.name == "seosoyoung-attach"
 
-    def test_allowed_tools_match_mcp_tool_names(self):
-        """ROLE_TOOLS의 MCP 도구 패턴이 실제 도구 이름과 일치"""
-        from seosoyoung.slackbot.config import Config
-        from seosoyoung.mcp.server import mcp
-
-        admin_mcp_tools = [
-            t for t in Config.auth.role_tools["admin"]
-            if t.startswith("mcp__seosoyoung-attach__")
-        ]
-
-        actual_tools = list(mcp._tool_manager._tools.keys())
-
-        for tool_pattern in admin_mcp_tools:
-            # mcp__seosoyoung-attach__slack_attach_file → slack_attach_file
-            tool_name = tool_pattern.split("__")[-1]
-            assert tool_name in actual_tools, f"{tool_name} not in MCP server tools"
-
-    def test_admin_tools_include_all_mcp_tools(self):
-        """Config.auth.role_tools["admin"]에 슬랙 MCP 도구 포함 (NPC는 eb-lore로 이동)"""
+    def test_admin_tools_allow_all(self):
+        """admin 역할은 allowed_tools=None (모든 도구 허용, MCP 포함)"""
         from seosoyoung.slackbot.config import Config
 
-        mcp_tools = [t for t in Config.auth.role_tools["admin"] if "seosoyoung-attach" in t]
-        assert len(mcp_tools) == 4
+        assert Config.auth.role_tools["admin"] is None
 
     def test_viewer_has_no_mcp_tools(self):
         """viewer 역할에는 MCP 도구 없음"""

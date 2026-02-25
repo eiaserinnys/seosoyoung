@@ -243,10 +243,9 @@ class TestMCPToolRegistration:
 class TestRoleToolsConsistency:
     """ROLE_TOOLS 일관성 테스트"""
 
-    def test_admin_role_includes_thread_files_tool(self):
-        """admin 역할에 thread_files 도구가 포함됨"""
+    def test_admin_role_allows_all_tools(self):
+        """admin 역할은 allowed_tools=None (thread_files 포함 모든 도구 허용)"""
         from seosoyoung.slackbot.config import Config
 
-        tool_name = "mcp__seosoyoung-attach__slack_download_thread_files"
-        assert tool_name in Config.auth.role_tools["admin"]
+        assert Config.auth.role_tools["admin"] is None
 

@@ -28,14 +28,13 @@ class TestBuildOptions:
     """_build_options 테스트"""
 
     def test_build_options_basic(self):
-        """기본 옵션 생성 확인 (allowed_tools, disallowed_tools, permission_mode)"""
+        """기본 옵션 생성 확인 (allowed_tools=None, disallowed_tools, permission_mode)"""
         runner = RescueRunner()
         options, stderr_file = runner._build_options()
 
         assert options.permission_mode == "bypassPermissions"
-        assert options.allowed_tools is not None
+        assert options.allowed_tools is None  # admin: 모든 도구 허용
         assert options.disallowed_tools is not None
-        assert "Read" in options.allowed_tools
         assert "WebFetch" in options.disallowed_tools
 
         if stderr_file is not None:
@@ -75,14 +74,9 @@ class TestBuildOptions:
         if stderr_file is not None:
             stderr_file.close()
 
-    def test_build_options_allowed_tools_includes_slack_mcp(self):
-        """슬랙 MCP 도구가 allowed_tools에 포함되는지 확인"""
-        for tool in SLACK_MCP_TOOLS:
-            assert tool in ALLOWED_TOOLS, f"{tool} should be in ALLOWED_TOOLS"
-
-    def test_build_options_excludes_npc_tools(self):
-        """NPC 도구가 allowed_tools에 없는지 확인 (eb-lore MCP로 이동됨)"""
-        assert not any("npc_" in t for t in ALLOWED_TOOLS)
+    def test_allowed_tools_is_none(self):
+        """admin 역할의 allowed_tools=None (모든 도구 허용, MCP 포함)"""
+        assert ALLOWED_TOOLS is None
 
 
 class TestClassifyProcessError:

@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 from seosoyoung.slackbot.config import Config
 
-ALLOWED_TOOLS = list(Config.auth.role_tools["admin"])
+ALLOWED_TOOLS = Config.auth.role_tools["admin"]  # None = 모든 도구 허용
 
 DISALLOWED_TOOLS = [
     "WebFetch",

@@ -149,14 +149,14 @@
 - `ConfigurationError` (seosoyoung/slackbot/config.py:18): 설정 오류 예외
 - `SlackConfig` (seosoyoung/slackbot/config.py:60): Slack 연결 설정
 - `AuthConfig` (seosoyoung/slackbot/config.py:70): 권한 설정
-- `TrelloConfig` (seosoyoung/slackbot/config.py:96): Trello 설정
-- `TranslateConfig` (seosoyoung/slackbot/config.py:117): 번역 설정
-- `GeminiConfig` (seosoyoung/slackbot/config.py:138): Gemini 설정 (이미지 생성)
-- `OMConfig` (seosoyoung/slackbot/config.py:146): Observational Memory 설정
-- `ChannelObserverConfig` (seosoyoung/slackbot/config.py:172): Channel Observer 설정
-- `ClaudeConfig` (seosoyoung/slackbot/config.py:225): Claude 실행 모드 설정
-- `EmojiConfig` (seosoyoung/slackbot/config.py:236): 이모지 설정
-- `Config` (seosoyoung/slackbot/config.py:264): 애플리케이션 설정
+- `TrelloConfig` (seosoyoung/slackbot/config.py:90): Trello 설정
+- `TranslateConfig` (seosoyoung/slackbot/config.py:111): 번역 설정
+- `GeminiConfig` (seosoyoung/slackbot/config.py:132): Gemini 설정 (이미지 생성)
+- `OMConfig` (seosoyoung/slackbot/config.py:140): Observational Memory 설정
+- `ChannelObserverConfig` (seosoyoung/slackbot/config.py:166): Channel Observer 설정
+- `ClaudeConfig` (seosoyoung/slackbot/config.py:219): Claude 실행 모드 설정
+- `EmojiConfig` (seosoyoung/slackbot/config.py:230): 이모지 설정
+- `Config` (seosoyoung/slackbot/config.py:258): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/slackbot/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:13): 멘션으로 처리 중인 스레드를 추적
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
