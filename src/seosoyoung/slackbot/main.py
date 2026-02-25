@@ -5,6 +5,7 @@
 
 import os
 import signal
+import threading
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
@@ -82,14 +83,51 @@ def _check_restart_on_session_stop():
 session_runtime.set_on_session_stopped(_check_restart_on_session_stop)
 
 
+_GRACEFUL_SHUTDOWN_TIMEOUT = 60  # 최대 대기 시간(초)
+
+
+def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
+    """활성 세션을 확인하고, 있으면 대기 후 종료.
+
+    세션이 없으면 즉시 종료.
+    세션이 있으면 RestartManager의 pending 메커니즘으로 세션 종료 후 자동 종료.
+    최대 _GRACEFUL_SHUTDOWN_TIMEOUT 초 초과 시 강제 종료 (타임아웃 안전망).
+
+    Args:
+        restart_type: 재시작 유형
+        source: 로그용 호출 출처 (예: "SIGTERM", "HTTP /shutdown")
+    """
+    logger.info(f"[{source}] graceful shutdown 시작")
+    result = restart_manager.request_system_shutdown(restart_type)
+    if result:
+        # 즉시 종료됨 (활성 세션 없음) — request_system_shutdown 내부에서 _perform_restart 호출
+        return
+
+    # 세션 대기 모드: 타임아웃 안전망 등록
+    logger.info(
+        f"[{source}] 세션 종료 대기 중 (최대 {_GRACEFUL_SHUTDOWN_TIMEOUT}초)"
+    )
+
+    def _force_shutdown():
+        logger.warning(
+            f"[{source}] 타임아웃 {_GRACEFUL_SHUTDOWN_TIMEOUT}초 초과 — 강제 종료"
+        )
+        _perform_restart(restart_type)
+
+    timer = threading.Timer(_GRACEFUL_SHUTDOWN_TIMEOUT, _force_shutdown)
+    timer.daemon = True
+    timer.start()
+
+
 def _signal_handler(signum, frame):
     """시그널 수신 시 graceful shutdown 수행
 
-    SIGTERM, SIGINT 수신 시 모든 클라이언트를 정리하고 프로세스를 종료합니다.
+    SIGTERM, SIGINT 수신 시 활성 세션이 있으면 완료를 기다린 후 종료합니다.
+    최대 _GRACEFUL_SHUTDOWN_TIMEOUT 초 대기 후 강제 종료합니다.
     """
     sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
     logger.info(f"시그널 수신: {sig_name}")
-    _perform_restart(RestartType.RESTART)
+    _shutdown_with_session_wait(RestartType.RESTART, sig_name)
 
 
 # 시그널 핸들러 등록
@@ -307,15 +345,12 @@ def main():
     _SHUTDOWN_PORT = int(os.environ.get("SHUTDOWN_PORT", "3106"))
 
     def _on_shutdown_request():
-        """supervisor에서 graceful shutdown 요청을 받았을 때"""
-        logger.info("Graceful shutdown 요청 수신")
-        try:
-            count = shutdown_all_sync()
-            logger.info(f"셧다운: {count}개 클라이언트 종료")
-        except Exception as e:
-            logger.warning(f"클라이언트 종료 중 오류: {e}")
-        notify_shutdown()
-        os._exit(0)
+        """supervisor에서 graceful shutdown 요청을 받았을 때
+
+        활성 세션이 있으면 완료를 기다린 후 종료합니다.
+        최대 _GRACEFUL_SHUTDOWN_TIMEOUT 초 대기 후 강제 종료합니다.
+        """
+        _shutdown_with_session_wait(RestartType.RESTART, "HTTP /shutdown")
 
     start_shutdown_server(_SHUTDOWN_PORT, _on_shutdown_request)
     logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")

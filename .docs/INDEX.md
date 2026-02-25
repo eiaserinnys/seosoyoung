@@ -191,7 +191,7 @@
 - `ProfileManager` (seosoyoung/slackbot/profile/manager.py:33): Claude Code 인증 프로필 관리자 (CLAUDE_CONFIG_DIR + Junction)
 - `RestartType` (seosoyoung/slackbot/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/slackbot/restart.py:23): 재시작 요청 정보
-- `RestartManager` (seosoyoung/slackbot/restart.py:31): 재시작 관리자
+- `RestartManager` (seosoyoung/slackbot/restart.py:32): 재시작 관리자
 - `SlackFile` (seosoyoung/slackbot/slack/file_handler.py:35): 슬랙 파일 정보
 - `DownloadedFile` (seosoyoung/slackbot/slack/file_handler.py:45): 다운로드된 파일 정보
 - `Language` (seosoyoung/slackbot/translator/detector.py:9): 
@@ -325,12 +325,12 @@
 - `process_translate_message()` (seosoyoung/slackbot/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/slackbot/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/slackbot/main.py:234): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/slackbot/main.py:245): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/slackbot/main.py:256): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/slackbot/main.py:276): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/slackbot/main.py:286): 봇 사용자 ID 초기화
-- `main()` (seosoyoung/slackbot/main.py:296): 봇 메인 진입점
+- `notify_startup()` (seosoyoung/slackbot/main.py:272): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/slackbot/main.py:283): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/slackbot/main.py:294): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/slackbot/main.py:314): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/slackbot/main.py:324): 봇 사용자 ID 초기화
+- `main()` (seosoyoung/slackbot/main.py:334): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `parse_intervention_markup()` (seosoyoung/slackbot/memory/channel_intervention.py:39): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
 - `async execute_interventions()` (seosoyoung/slackbot/memory/channel_intervention.py:80): InterventionAction 리스트를 슬랙 API로 발송합니다.
