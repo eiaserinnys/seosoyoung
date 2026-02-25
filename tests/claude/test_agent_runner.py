@@ -522,8 +522,8 @@ class TestProcessErrorHandling:
 class TestRateLimitEventHandling:
     """rate_limit_event (MessageParseError) 처리 테스트"""
 
-    async def test_rate_limit_event_graceful_break(self):
-        """rate_limit_event 발생 시 재시도 없이 graceful 종료"""
+    async def test_rate_limit_event_continue_then_complete(self):
+        """rate_limit_event 발생 시 continue하고 이후 정상 완료"""
         runner = ClaudeRunner()
 
         mock_client = AsyncMock()
@@ -531,23 +531,36 @@ class TestRateLimitEventHandling:
         mock_client.query = AsyncMock()
         mock_client.disconnect = AsyncMock()
 
+        call_count = 0
+
         class RateLimitThenStop:
             def __aiter__(self):
                 return self
             async def __anext__(self):
-                raise MessageParseError(
-                    "Unknown message type: rate_limit_event",
-                    {"type": "rate_limit_event"}
-                )
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise MessageParseError(
+                        "Unknown message type: rate_limit_event",
+                        {
+                            "type": "rate_limit_event",
+                            "rate_limit_info": {
+                                "status": "rejected",
+                                "rateLimitType": "seven_day",
+                            },
+                        },
+                    )
+                # CLI가 자체 대기 후 정상 종료
+                raise StopAsyncIteration
 
         mock_client.receive_response = MagicMock(return_value=RateLimitThenStop())
 
         with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
-        # rate_limit_event로 while loop가 break되어 정상 종료 (output 없음)
+        # rate_limit_event는 continue하므로 정상 종료
         assert result.success is True
-        assert result.output == ""
+        assert call_count == 2
 
     async def test_rate_limit_event_returns_friendly_error(self):
         """rate_limit_event가 외부 except에서 잡힐 때 친화적 메시지 반환"""
@@ -573,7 +586,7 @@ class TestRateLimitEventHandling:
         assert "Unknown message type" not in result.error
 
     async def test_non_rate_limit_parse_error_returns_friendly_error(self):
-        """rate_limit이 아닌 MessageParseError도 친화적 메시지 반환"""
+        """rate_limit이 아닌 MessageParseError(unknown type)도 친화적 메시지 반환"""
         runner = ClaudeRunner()
 
         mock_client = AsyncMock()
@@ -590,8 +603,27 @@ class TestRateLimitEventHandling:
             result = await runner.run("테스트")
 
         assert result.success is False
+        assert "알 수 없는 메시지 타입" in result.error
+
+    async def test_real_parse_error_returns_generic_message(self):
+        """type 필드가 없는 진짜 파싱 에러는 일반 에러 메시지 반환"""
+        runner = ClaudeRunner()
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        mock_client.connect.side_effect = MessageParseError(
+            "Malformed JSON",
+            None
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            result = await runner.run("테스트")
+
+        assert result.success is False
         assert "오류가 발생했습니다" in result.error
-        assert "Unknown message type" not in result.error
 
     async def test_allowed_warning_continues_processing(self):
         """allowed_warning status는 break하지 않고 continue"""

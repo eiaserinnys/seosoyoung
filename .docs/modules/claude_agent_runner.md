@@ -49,14 +49,15 @@ thread_ts 단위 인스턴스: 각 인스턴스가 자신의 client/pid/executio
 - `_force_kill_process(pid, thread_ts)` (줄 320): psutil을 사용하여 프로세스를 강제 종료
 - `_is_cli_alive(self)` (줄 337): CLI 서브프로세스가 아직 살아있는지 확인
 - `interrupt(self)` (줄 347): 이 러너에 인터럽트 전송 (동기)
-- `_build_compact_hook(self, compact_events)` (줄 362): PreCompact 훅을 생성합니다.
-- `_build_options(self, session_id, compact_events, user_id, prompt)` (줄 399): ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts, stderr 파일을 반환합니다.
-- `async _notify_compact_events(self, compact_state, on_compact)` (줄 466): 미통지 compact 이벤트를 on_compact 콜백으로 전달
-- `async _receive_messages(self, client, compact_state, msg_state, on_progress, on_compact)` (줄 484): 내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신
-- `_evaluate_compact_retry(self, compact_state, msg_state, before_snapshot)` (줄 622): Compact retry 판정. True이면 외부 루프 continue, False이면 break.
-- `async run(self, prompt, session_id, on_progress, on_compact, user_id, user_message)` (줄 682): Claude Code 실행
-- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id)` (줄 702): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 889): 세션 컴팩트 처리
+- `_debug(self, message)` (줄 362): 디버그 메시지 전송 (debug_send_fn이 있을 때만)
+- `_build_compact_hook(self, compact_events)` (줄 371): PreCompact 훅을 생성합니다.
+- `_build_options(self, session_id, compact_events, user_id, prompt)` (줄 408): ClaudeCodeOptions, OM 메모리 프롬프트, 디버그 앵커 ts, stderr 파일을 반환합니다.
+- `async _notify_compact_events(self, compact_state, on_compact)` (줄 475): 미통지 compact 이벤트를 on_compact 콜백으로 전달
+- `async _receive_messages(self, client, compact_state, msg_state, on_progress, on_compact)` (줄 493): 내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신
+- `_evaluate_compact_retry(self, compact_state, msg_state, before_snapshot)` (줄 636): Compact retry 판정. True이면 외부 루프 continue, False이면 break.
+- `async run(self, prompt, session_id, on_progress, on_compact, user_id, user_message)` (줄 696): Claude Code 실행
+- `async _execute(self, prompt, session_id, on_progress, on_compact, user_id)` (줄 716): 실제 실행 로직 (ClaudeSDKClient 기반)
+- `async compact_session(self, session_id)` (줄 916): 세션 컴팩트 처리
 
 ## 함수
 
@@ -95,7 +96,7 @@ Returns:
 - 설명: collected_messages에서 마지막 assistant 텍스트를 추출 (tool_use 제외)
 
 ### `async main()`
-- 위치: 줄 911
+- 위치: 줄 938
 
 ## 내부 의존성
 
