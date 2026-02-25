@@ -102,6 +102,7 @@ class TestModuleImports:
                     module = node.module
                     if (module.startswith("seosoyoung.slackbot.")
                             and not module.startswith("seosoyoung.slackbot.claude")
+                            and not module.startswith("seosoyoung.slackbot.formatting")
                             and not module.startswith("seosoyoung.utils")):
                         violations.append(f"{py_file.name}:{node.lineno} -> {module}")
                 elif isinstance(node, ast.Import):
@@ -109,6 +110,7 @@ class TestModuleImports:
                         module = alias.name
                         if (module.startswith("seosoyoung.slackbot.")
                                 and not module.startswith("seosoyoung.slackbot.claude")
+                                and not module.startswith("seosoyoung.slackbot.formatting")
                                 and not module.startswith("seosoyoung.utils")):
                             violations.append(f"{py_file.name}:{node.lineno} -> {module}")
         assert violations == [], f"claude/ 패키지에서 외부 import 발견: {violations}"

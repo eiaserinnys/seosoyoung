@@ -34,6 +34,7 @@
 - [`claude/session_context.py`](modules/claude_session_context.md): 세션 컨텍스트 주입
 - [`claude/types.py`](modules/claude_types.md): claude/ 모듈 내부 Protocol 정의
 - [`slackbot/config.py`](modules/slackbot_config.md): 설정 관리
+- [`slackbot/formatting.py`](modules/slackbot_formatting.md): 슬랙 메시지 포맷팅 — 공유 리프 모듈
 - [`handlers/actions.py`](modules/handlers_actions.md): 재시작 버튼 액션 핸들러
 - [`handlers/channel_collector.py`](modules/handlers_channel_collector.md): 채널 메시지 수집기
 - [`handlers/commands.py`](modules/handlers_commands.md): 명령어 핸들러 모듈
@@ -281,16 +282,16 @@
 - `build_session_dump()` (seosoyoung/slackbot/claude/diagnostics.py:51): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/slackbot/claude/diagnostics.py:96): ProcessError를 사용자 친화적 메시지로 변환.
 - `format_rate_limit_warning()` (seosoyoung/slackbot/claude/diagnostics.py:136): allowed_warning용 사람이 읽을 수 있는 안내문 생성.
-- `build_context_usage_bar()` (seosoyoung/slackbot/claude/message_formatter.py:21): usage dict에서 컨텍스트 사용량 바를 생성
-- `escape_backticks()` (seosoyoung/slackbot/claude/message_formatter.py:56): 텍스트 내 모든 백틱을 이스케이프
-- `build_trello_header()` (seosoyoung/slackbot/claude/message_formatter.py:75): 트렐로 카드용 슬랙 메시지 헤더 생성
-- `truncate_progress_text()` (seosoyoung/slackbot/claude/message_formatter.py:97): 진행 상황 텍스트를 표시용으로 정리
-- `format_as_blockquote()` (seosoyoung/slackbot/claude/message_formatter.py:107): 텍스트를 슬랙 blockquote 형식으로 변환
-- `format_trello_progress()` (seosoyoung/slackbot/claude/message_formatter.py:114): 트렐로 모드 채널 진행 상황 포맷
-- `format_dm_progress()` (seosoyoung/slackbot/claude/message_formatter.py:121): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
+- `build_context_usage_bar()` (seosoyoung/slackbot/claude/message_formatter.py:34): usage dict에서 컨텍스트 사용량 바를 생성
 - `build_initial_context()` (seosoyoung/slackbot/claude/session_context.py:23): 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
 - `build_followup_context()` (seosoyoung/slackbot/claude/session_context.py:75): 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
 - `format_hybrid_context()` (seosoyoung/slackbot/claude/session_context.py:142): hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
+- `escape_backticks()` (seosoyoung/slackbot/formatting.py:33): 텍스트 내 모든 백틱을 이스케이프
+- `truncate_progress_text()` (seosoyoung/slackbot/formatting.py:43): 진행 상황 텍스트를 표시용으로 정리
+- `format_as_blockquote()` (seosoyoung/slackbot/formatting.py:53): 텍스트를 슬랙 blockquote 형식으로 변환
+- `build_trello_header()` (seosoyoung/slackbot/formatting.py:60): 트렐로 카드용 슬랙 메시지 헤더 생성
+- `format_trello_progress()` (seosoyoung/slackbot/formatting.py:69): 트렐로 모드 채널 진행 상황 포맷
+- `format_dm_progress()` (seosoyoung/slackbot/formatting.py:76): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
 - `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `register_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:79): 액션 핸들러 등록

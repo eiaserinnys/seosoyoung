@@ -7,7 +7,7 @@ PresentationContext를 캡처하는 클로저 쌍을 반환합니다.
 import logging
 from typing import Callable, Tuple
 
-from seosoyoung.slackbot.claude.message_formatter import (
+from seosoyoung.slackbot.formatting import (
     truncate_progress_text,
     format_as_blockquote,
     format_trello_progress,

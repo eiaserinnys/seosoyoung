@@ -24,8 +24,8 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.slackbot.claude.message_formatter.format_as_blockquote`
-- `seosoyoung.slackbot.claude.message_formatter.format_dm_progress`
-- `seosoyoung.slackbot.claude.message_formatter.format_trello_progress`
-- `seosoyoung.slackbot.claude.message_formatter.truncate_progress_text`
+- `seosoyoung.slackbot.formatting.format_as_blockquote`
+- `seosoyoung.slackbot.formatting.format_dm_progress`
+- `seosoyoung.slackbot.formatting.format_trello_progress`
+- `seosoyoung.slackbot.formatting.truncate_progress_text`
 - `seosoyoung.slackbot.presentation.types.PresentationContext`
