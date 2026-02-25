@@ -37,7 +37,7 @@ from seosoyoung.slackbot.memory.injector import (
     send_injection_debug_log,
 )
 from seosoyoung.slackbot.config import Config
-from claude_code_sdk._errors import MessageParseError, ProcessError
+from claude_agent_sdk._errors import MessageParseError, ProcessError
 
 
 # SDK 메시지 타입 Mock
@@ -175,7 +175,7 @@ class TestClaudeRunnerPurity:
             MockResultMessage(result="완료", session_id="purity-test"),
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.run("테스트")
 
@@ -214,7 +214,7 @@ class TestClaudeRunnerAsync:
             MockResultMessage(result="완료되었습니다.", session_id="test-sdk-123"),
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
                     with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -236,7 +236,7 @@ class TestClaudeRunnerAsync:
             ),
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.run("테스트")
 
@@ -250,7 +250,7 @@ class TestClaudeRunnerAsync:
         mock_client = AsyncMock()
         mock_client.connect.side_effect = FileNotFoundError("claude not found")
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -263,7 +263,7 @@ class TestClaudeRunnerAsync:
         mock_client = AsyncMock()
         mock_client.connect.side_effect = RuntimeError("SDK error")
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -277,7 +277,7 @@ class TestClaudeRunnerAsync:
             MockResultMessage(result="Compacted.", session_id="compact-123"),
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.compact_session("test-session-id")
 
@@ -322,7 +322,7 @@ class TestClaudeRunnerProgress:
         mock_loop = MagicMock()
         mock_loop.time = mock_time
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
                     with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -380,7 +380,7 @@ class TestClaudeRunnerCompact:
                 })
             return options, stderr_f
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
                     with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -422,7 +422,7 @@ class TestClaudeRunnerCompact:
                 })
             return options, stderr_f
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 with patch.object(runner, "_build_options", patched_build):
                     result = await runner.run("테스트", on_compact=on_compact)
@@ -454,7 +454,7 @@ class TestClaudeRunnerCompact:
                 })
             return options, stderr_f
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 with patch.object(runner, "_build_options", patched_build):
                     result = await runner.run("테스트", on_compact=failing_compact)
@@ -470,7 +470,7 @@ class TestClaudeRunnerCompact:
             MockResultMessage(result="완료", session_id="test"),
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.run("테스트")
 
@@ -549,7 +549,7 @@ class TestProcessErrorHandling:
             "Command failed with exit code 1", exit_code=1, stderr="Check stderr output for details"
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -567,7 +567,7 @@ class TestProcessErrorHandling:
             "usage limit reached", exit_code=1, stderr="usage limit"
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -611,7 +611,7 @@ class TestRateLimitEventHandling:
 
         mock_client.receive_response = MagicMock(return_value=RateLimitThenStop())
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         # rate_limit_event는 continue하므로 정상 종료
@@ -633,7 +633,7 @@ class TestRateLimitEventHandling:
             {"type": "rate_limit_event"}
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -655,7 +655,7 @@ class TestRateLimitEventHandling:
             {"type": "some_unknown_type"}
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -675,7 +675,7 @@ class TestRateLimitEventHandling:
             None
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is False
@@ -714,7 +714,7 @@ class TestRateLimitEventHandling:
 
         mock_client.receive_response = MagicMock(return_value=WarningThenText())
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         # allowed_warning은 break하지 않으므로 정상 종료
@@ -1020,7 +1020,7 @@ class TestPidTrackingAndForceKill:
         mock_client = AsyncMock()
         mock_client._transport = mock_transport
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             client = await runner._get_or_create_client()
 
         assert runner.pid == 54321
@@ -1033,7 +1033,7 @@ class TestPidTrackingAndForceKill:
         mock_client = AsyncMock()
         mock_client._transport = None
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             client = await runner._get_or_create_client()
 
         assert runner.pid is None
@@ -1561,7 +1561,7 @@ class TestCompactRetryHangFix:
                 })
             return options, stderr_f
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
                     with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
@@ -1610,7 +1610,7 @@ class TestCompactRetryHangFix:
                 })
             return options, stderr_f
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch.object(runner, "_build_options", patched_build):
                 with patch.object(runner, "_is_cli_alive", return_value=False):
                     result = await runner.run("테스트")
@@ -1663,7 +1663,7 @@ class TestCompactRetryHangFix:
                 })
             return options, stderr_f
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
                 with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
                     with patch.object(runner, "_build_options", patched_build):
@@ -1728,7 +1728,7 @@ class TestCompactRetryHangFix:
 
         # timeout을 짧게 설정하여 테스트 빠르게 완료
         with patch("seosoyoung.slackbot.claude.agent_runner.COMPACT_RETRY_READ_TIMEOUT", 0.1):
-            with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
                 with patch.object(runner, "_build_options", patched_build):
                     with patch.object(runner, "_is_cli_alive", return_value=True):
                         result = await runner.run("테스트")
@@ -1780,7 +1780,7 @@ class TestClaudeRunnerIsErrorFromResultMessage:
             error_result,
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.SystemMessage", MockSystemMessage):
                 with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                     result = await runner.run("테스트")
@@ -1802,7 +1802,7 @@ class TestClaudeRunnerIsErrorFromResultMessage:
             ),
         )
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.ClaudeSDKClient", return_value=mock_client):
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
             with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
                 result = await runner.run("테스트")
 

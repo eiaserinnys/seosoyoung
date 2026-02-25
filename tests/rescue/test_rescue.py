@@ -107,7 +107,7 @@ class TestClassifyProcessError:
 
     def test_usage_limit_keyword(self):
         """usage limit 키워드 감지"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import _classify_process_error
 
@@ -117,7 +117,7 @@ class TestClassifyProcessError:
 
     def test_rate_limit_keyword(self):
         """rate limit 키워드 감지"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import _classify_process_error
 
@@ -127,7 +127,7 @@ class TestClassifyProcessError:
 
     def test_429_status(self):
         """429 상태 코드 감지"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import _classify_process_error
 
@@ -137,7 +137,7 @@ class TestClassifyProcessError:
 
     def test_unauthorized_401(self):
         """401 인증 오류 감지"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import _classify_process_error
 
@@ -147,7 +147,7 @@ class TestClassifyProcessError:
 
     def test_forbidden_403(self):
         """403 권한 오류 감지"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import _classify_process_error
 
@@ -157,7 +157,7 @@ class TestClassifyProcessError:
 
     def test_network_error(self):
         """네트워크 오류 감지"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import _classify_process_error
 
@@ -167,7 +167,7 @@ class TestClassifyProcessError:
 
     def test_generic_exit_code_1(self):
         """exit code 1 일반 폴백"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import _classify_process_error
 
@@ -178,7 +178,7 @@ class TestClassifyProcessError:
 
     def test_other_exit_code(self):
         """기타 exit code"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import _classify_process_error
 
@@ -188,7 +188,7 @@ class TestClassifyProcessError:
 
     def test_none_stderr(self):
         """stderr가 None인 경우"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import _classify_process_error
 
@@ -395,7 +395,7 @@ class TestProcessErrorHandling:
 
     async def test_process_error_returns_friendly_message(self):
         """ProcessError 발생 시 친절한 메시지 반환"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import RescueRunner
 
@@ -417,7 +417,7 @@ class TestProcessErrorHandling:
 
     async def test_process_error_with_usage_limit(self):
         """usage limit ProcessError 발생 시 친절한 메시지"""
-        from claude_code_sdk._errors import ProcessError
+        from claude_agent_sdk._errors import ProcessError
 
         from seosoyoung.rescue.runner import RescueRunner
 
@@ -440,9 +440,9 @@ class TestProcessErrorHandling:
 class TestRateLimitEventHandling:
     """rate_limit_event (MessageParseError) 처리 테스트"""
 
-    async def test_rate_limit_event_graceful_break(self):
-        """rate_limit_event 발생 시 재시도 없이 graceful 종료"""
-        from claude_code_sdk._errors import MessageParseError
+    async def test_rate_limit_event_continues(self):
+        """rate_limit_event 발생 시 continue하여 CLI 자체 처리에 위임"""
+        from claude_agent_sdk._errors import MessageParseError
 
         from seosoyoung.rescue.runner import RescueRunner
 
@@ -450,15 +450,21 @@ class TestRateLimitEventHandling:
 
         mock_client = AsyncMock()
 
+        call_count = 0
+
         class RateLimitThenStop:
             def __aiter__(self):
                 return self
 
             async def __anext__(self):
-                raise MessageParseError(
-                    "Unknown message type: rate_limit_event",
-                    {"type": "rate_limit_event"},
-                )
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise MessageParseError(
+                        "Unknown message type: rate_limit_event",
+                        {"type": "rate_limit_event"},
+                    )
+                raise StopAsyncIteration
 
         mock_client.connect = AsyncMock()
         mock_client.query = AsyncMock()
@@ -468,13 +474,13 @@ class TestRateLimitEventHandling:
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
-        # rate_limit_event로 while loop가 break되어 정상 종료 (output 없음)
+        # rate_limit_event는 continue하여 StopAsyncIteration까지 진행
         assert result.success is True
-        assert result.output == ""
+        assert call_count == 2
 
     async def test_rate_limit_event_returns_friendly_error(self):
         """rate_limit_event가 외부 except에서 잡힐 때 친화적 메시지 반환"""
-        from claude_code_sdk._errors import MessageParseError
+        from claude_agent_sdk._errors import MessageParseError
 
         from seosoyoung.rescue.runner import RescueRunner
 
@@ -499,7 +505,7 @@ class TestRateLimitEventHandling:
 
     async def test_non_rate_limit_parse_error_returns_friendly_error(self):
         """rate_limit이 아닌 MessageParseError도 친화적 메시지 반환"""
-        from claude_code_sdk._errors import MessageParseError
+        from claude_agent_sdk._errors import MessageParseError
 
         from seosoyoung.rescue.runner import RescueRunner
 
@@ -519,7 +525,7 @@ class TestRateLimitEventHandling:
             result = await runner.run("테스트")
 
         assert result.success is False
-        assert "오류가 발생했습니다" in result.error
+        assert "알 수 없는 메시지 타입" in result.error
         assert "Unknown message type" not in result.error
 
 
@@ -569,7 +575,7 @@ class TestRescueRunnerClient:
 
     def test_execute_disconnect_on_success(self):
         """성공 후 disconnect가 호출되는지 확인"""
-        from claude_code_sdk.types import ResultMessage
+        from claude_agent_sdk.types import ResultMessage
 
         from seosoyoung.rescue.runner import RescueRunner
 

@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import IO, Any, Optional, Callable, Awaitable
 
 import psutil
-from claude_code_sdk import ClaudeCodeOptions, ClaudeSDKClient, HookMatcher, HookContext
-from claude_code_sdk._errors import MessageParseError, ProcessError
-from claude_code_sdk.types import (
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher, HookContext
+from claude_agent_sdk._errors import MessageParseError, ProcessError
+from claude_agent_sdk.types import (
     AssistantMessage,
     HookJSONOutput,
     ResultMessage,
@@ -29,6 +29,8 @@ from seosoyoung.slackbot.claude.diagnostics import (
     format_rate_limit_warning,
 )
 from seosoyoung.slackbot.claude.engine_types import EngineResult
+from seosoyoung.slackbot.claude.instrumented_client import InstrumentedClaudeClient
+from seosoyoung.slackbot.claude.sdk_compat import ParseAction, classify_parse_error
 from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
@@ -261,7 +263,7 @@ class ClaudeRunner:
 
     async def _get_or_create_client(
         self,
-        options: Optional[ClaudeCodeOptions] = None,
+        options: Optional[ClaudeAgentOptions] = None,
     ) -> ClaudeSDKClient:
         """ClaudeSDKClient를 가져오거나 새로 생성"""
         if self.client is not None:
@@ -269,9 +271,13 @@ class ClaudeRunner:
             return self.client
 
         import time as _time
-        logger.info(f"[DEBUG-CLIENT] 새 ClaudeSDKClient 생성 시작: thread={self.thread_ts}")
-        client = ClaudeSDKClient(options=options)
-        logger.info(f"[DEBUG-CLIENT] ClaudeSDKClient 인스턴스 생성 완료, connect() 호출...")
+        logger.info(f"[DEBUG-CLIENT] 새 InstrumentedClaudeClient 생성 시작: thread={self.thread_ts}")
+        client = InstrumentedClaudeClient(
+            options=options,
+            on_rate_limit=self._observe_rate_limit,
+            on_unknown_event=self._observe_unknown_event,
+        )
+        logger.info(f"[DEBUG-CLIENT] InstrumentedClaudeClient 인스턴스 생성 완료, connect() 호출...")
         t0 = _time.monotonic()
         try:
             await client.connect()
@@ -374,6 +380,35 @@ class ClaudeRunner:
         except Exception as e:
             logger.warning(f"디버그 메시지 전송 실패: {e}")
 
+    def _observe_rate_limit(self, data: dict) -> None:
+        """InstrumentedClaudeClient 콜백: rate_limit_event 관찰"""
+        info = data.get("rate_limit_info", {})
+        status = info.get("status", "")
+
+        if status == "allowed":
+            return
+
+        if status == "allowed_warning":
+            warning_msg = format_rate_limit_warning(info)
+            logger.info(f"rate_limit allowed_warning: {warning_msg}")
+            self._debug(warning_msg)
+            return
+
+        # rejected, rate_limited 등
+        logger.warning(
+            f"rate_limit_event (status={status}): "
+            f"rateLimitType={info.get('rateLimitType')}, "
+            f"resetsAt={info.get('resetsAt')}"
+        )
+        self._debug(
+            f"⚠️ rate_limit `{status}` "
+            f"(CLI 자체 처리 중, type={info.get('rateLimitType')})"
+        )
+
+    def _observe_unknown_event(self, msg_type: str, data: dict) -> None:
+        """InstrumentedClaudeClient 콜백: unknown event 관찰"""
+        logger.debug(f"Unknown event observed: {msg_type}")
+
     def _build_compact_hook(
         self,
         compact_events: Optional[list],
@@ -405,8 +440,8 @@ class ClaudeRunner:
         self,
         session_id: Optional[str] = None,
         compact_events: Optional[list] = None,
-    ) -> tuple[ClaudeCodeOptions, Optional[IO[str]]]:
-        """ClaudeCodeOptions와 stderr 파일을 반환합니다.
+    ) -> tuple[ClaudeAgentOptions, Optional[IO[str]]]:
+        """ClaudeAgentOptions와 stderr 파일을 반환합니다.
 
         Returns:
             (options, stderr_file)
@@ -434,7 +469,7 @@ class ClaudeRunner:
                 _stderr_file.close()
             _stderr_file = None
 
-        options = ClaudeCodeOptions(
+        options = ClaudeAgentOptions(
             allowed_tools=self.allowed_tools,
             disallowed_tools=self.disallowed_tools,
             permission_mode="bypassPermissions",
@@ -499,40 +534,20 @@ class ClaudeRunner:
             except StopAsyncIteration:
                 return
             except MessageParseError as e:
-                msg_type = e.data.get("type") if isinstance(e.data, dict) else None
-
-                if msg_type == "rate_limit_event":
-                    # Agent SDK 방식: 모든 status에서 continue (CLI가 자체 처리)
-                    rate_limit_info = e.data.get("rate_limit_info", {})
-                    status = rate_limit_info.get("status", "")
-
-                    if status == "allowed":
-                        continue
-
-                    if status == "allowed_warning":
-                        warning_msg = format_rate_limit_warning(rate_limit_info)
-                        logger.info(f"rate_limit allowed_warning: {warning_msg}")
-                        self._debug(warning_msg)
-                        continue
-
-                    # rejected, rate_limited 등 — CLI가 자체 대기/재시도하므로 skip
-                    logger.warning(
-                        f"rate_limit_event skip (status={status}): "
-                        f"rateLimitType={rate_limit_info.get('rateLimitType')}, "
-                        f"resetsAt={rate_limit_info.get('resetsAt')}"
-                    )
-                    self._debug(
-                        f"⚠️ rate_limit `{status}` "
-                        f"(CLI 자체 처리 중, type={rate_limit_info.get('rateLimitType')})"
-                    )
-                    continue  # 핵심 변경: return → continue
-
-                if msg_type is not None:
-                    # 미래의 unknown type → forward-compatible skip
-                    logger.debug(f"Unknown message type skipped: {msg_type}")
+                action, msg_type = classify_parse_error(e.data, log_fn=logger)
+                if action is ParseAction.CONTINUE:
+                    # rate_limit의 경우 추가 디버그 알림
+                    if msg_type == "rate_limit_event":
+                        info = e.data.get("rate_limit_info", {})
+                        status = info.get("status", "")
+                        if status == "allowed_warning":
+                            self._debug(format_rate_limit_warning(info))
+                        elif status not in ("allowed",):
+                            self._debug(
+                                f"⚠️ rate_limit `{status}` "
+                                f"(CLI 자체 처리 중, type={info.get('rateLimitType')})"
+                            )
                     continue
-
-                # type 필드조차 없는 진짜 파싱 에러
                 raise
 
             msg_state.msg_count += 1
@@ -808,7 +823,7 @@ class ClaudeRunner:
                 error=friendly_msg,
             )
         except MessageParseError as e:
-            msg_type = e.data.get("type") if isinstance(e.data, dict) else None
+            action, msg_type = classify_parse_error(e.data, log_fn=logger)
 
             if msg_type == "rate_limit_event":
                 logger.warning(f"rate_limit_event (외부 catch): {e}")
@@ -819,7 +834,7 @@ class ClaudeRunner:
                     error="사용량 제한에 도달했습니다. 잠시 후 다시 시도해주세요.",
                 )
 
-            if msg_type is not None:
+            if action is ParseAction.CONTINUE:
                 # unknown type이 외부까지 전파된 경우
                 logger.warning(f"Unknown message type escaped loop: {msg_type}")
                 return EngineResult(

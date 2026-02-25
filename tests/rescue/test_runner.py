@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from claude_code_sdk._errors import MessageParseError
+from claude_agent_sdk._errors import MessageParseError
 
 from seosoyoung.rescue.runner import (
     RescueRunner,
@@ -164,8 +164,8 @@ class TestRescueRateLimitEventHandling:
         assert result.success is True
         assert call_count == 2
 
-    async def test_blocked_status_breaks(self):
-        """blocked status는 break하여 종료"""
+    async def test_blocked_status_continues(self):
+        """blocked status도 continue하여 CLI 자체 처리에 위임"""
         runner = RescueRunner()
 
         mock_client = AsyncMock()
@@ -173,26 +173,32 @@ class TestRescueRateLimitEventHandling:
         mock_client.query = AsyncMock()
         mock_client.disconnect = AsyncMock()
 
-        class BlockedEvent:
+        call_count = 0
+
+        class BlockedThenStop:
             def __aiter__(self):
                 return self
             async def __anext__(self):
-                raise MessageParseError(
-                    "Unknown message type: rate_limit_event",
-                    {
-                        "type": "rate_limit_event",
-                        "rate_limit_info": {
-                            "status": "blocked",
-                            "rateLimitType": "seven_day",
-                            "utilization": 1.0,
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise MessageParseError(
+                        "Unknown message type: rate_limit_event",
+                        {
+                            "type": "rate_limit_event",
+                            "rate_limit_info": {
+                                "status": "blocked",
+                                "rateLimitType": "seven_day",
+                                "utilization": 1.0,
+                            },
                         },
-                    },
-                )
+                    )
+                raise StopAsyncIteration
 
-        mock_client.receive_response = MagicMock(return_value=BlockedEvent())
+        mock_client.receive_response = MagicMock(return_value=BlockedThenStop())
 
         with patch("seosoyoung.rescue.runner.ClaudeSDKClient", return_value=mock_client):
             result = await runner.run("테스트")
 
         assert result.success is True
-        assert result.output == ""
+        assert call_count == 2

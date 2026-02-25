@@ -8,7 +8,7 @@ Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
 
 메인 봇의 ClaudeAgentRunner에서 핵심 로직을 복제한 버전:
 - _classify_process_error: ProcessError를 사용자 친화적 메시지로 변환
-- _build_options: ClaudeCodeOptions 생성 (env 주입, PreCompact 훅, stderr 캡처)
+- _build_options: ClaudeAgentOptions 생성 (env 주입, PreCompact 훅, stderr 캡처)
 - _get_or_create_client / _remove_client: 클라이언트 생명주기 관리
 - _execute: on_progress 콜백, on_compact, rate_limit 처리
 - interrupt / compact_session: 세션 제어
@@ -19,11 +19,11 @@ Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
 ## 클래스
 
 ### `RescueResult`
-- 위치: 줄 76
+- 위치: 줄 77
 - 설명: 실행 결과
 
 ### `RescueRunner`
-- 위치: 줄 87
+- 위치: 줄 88
 - 설명: Claude Code SDK 실행기 (메인 봇 기본 대화 기능 복제)
 
 메인 봇의 ClaudeAgentRunner와 동일한 패턴:
@@ -34,28 +34,30 @@ Claude Code SDK 실행기 (메인 봇 기본 대화 기능 완전 복제)
 
 #### 메서드
 
-- `__init__(self)` (줄 97): 
-- `run_sync(self, coro)` (줄 103): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
-- `_build_options(self, session_id, channel, thread_ts, compact_events)` (줄 110): ClaudeCodeOptions를 생성합니다.
-- `async _get_or_create_client(self, client_key, options)` (줄 190): 클라이언트를 가져오거나 새로 생성
-- `async _remove_client(self, client_key)` (줄 217): 클라이언트를 정리 (disconnect 후 딕셔너리에서 제거)
-- `interrupt(self, thread_ts)` (줄 229): 실행 중인 스레드에 인터럽트 전송 (동기)
-- `async compact_session(self, session_id)` (줄 252): 세션 컴팩트 처리
-- `async run(self, prompt, session_id, thread_ts, channel, on_progress, on_compact)` (줄 278): Claude Code 실행 (async, lock 포함)
-- `async _execute(self, prompt, session_id, thread_ts, channel, on_progress, on_compact)` (줄 298): 실제 실행 로직 (메인 봇 _execute와 동일한 구조)
+- `__init__(self)` (줄 98): 
+- `run_sync(self, coro)` (줄 104): 동기 컨텍스트에서 코루틴을 실행하는 브릿지
+- `_build_options(self, session_id, channel, thread_ts, compact_events)` (줄 111): ClaudeAgentOptions를 생성합니다.
+- `async _get_or_create_client(self, client_key, options)` (줄 191): 클라이언트를 가져오거나 새로 생성
+- `async _remove_client(self, client_key)` (줄 218): 클라이언트를 정리 (disconnect 후 딕셔너리에서 제거)
+- `interrupt(self, thread_ts)` (줄 230): 실행 중인 스레드에 인터럽트 전송 (동기)
+- `async compact_session(self, session_id)` (줄 253): 세션 컴팩트 처리
+- `async run(self, prompt, session_id, thread_ts, channel, on_progress, on_compact)` (줄 279): Claude Code 실행 (async, lock 포함)
+- `async _execute(self, prompt, session_id, thread_ts, channel, on_progress, on_compact)` (줄 299): 실제 실행 로직 (메인 봇 _execute와 동일한 구조)
 
 ## 함수
 
 ### `_classify_process_error(e)`
-- 위치: 줄 48
+- 위치: 줄 49
 - 설명: ProcessError를 사용자 친화적 메시지로 변환.
 
 ### `get_runner()`
-- 위치: 줄 467
+- 위치: 줄 470
 - 설명: 모듈 레벨 RescueRunner 인스턴스를 반환
 
 ## 내부 의존성
 
 - `seosoyoung.rescue.config.RescueConfig`
+- `seosoyoung.slackbot.claude.sdk_compat.ParseAction`
+- `seosoyoung.slackbot.claude.sdk_compat.classify_parse_error`
 - `seosoyoung.slackbot.config.Config`
 - `seosoyoung.utils.async_bridge.run_in_new_loop`
