@@ -316,13 +316,14 @@ class TestStaleThinkingRecovery:
     async def test_stale_detected_posts_new_message(self):
         """stale 감지 시 새 메시지를 전송하고 last_msg_ts를 교체한다"""
         client = MagicMock()
-        # conversations_replies: 새 메시지 있음 → stale
-        client.conversations_replies.return_value = {"messages": [{"ts": "newer_msg"}]}
-        client.chat_postMessage.return_value = {"ts": "new_thinking_ts"}
+        # conversations_replies: last_msg_ts보다 newer한 메시지가 있음 → stale
+        # 주의: Slack ts는 float 변환 가능한 형식이어야 함
+        client.conversations_replies.return_value = {"messages": [{"ts": "1700000000.200000"}]}
+        client.chat_postMessage.return_value = {"ts": "1700000000.300000"}
 
         pctx = _make_pctx(
             client=client,
-            last_msg_ts="old_thinking_ts",
+            last_msg_ts="1700000000.100000",
             _last_stale_check=0.0,  # 즉시 체크 가능
         )
         update_fn = MagicMock()
@@ -336,15 +337,49 @@ class TestStaleThinkingRecovery:
         call_kwargs = client.conversations_replies.call_args[1]
         assert call_kwargs["channel"] == "C123"
         assert call_kwargs["ts"] == "1234.5678"
-        assert call_kwargs["oldest"] == "old_thinking_ts"
+        assert call_kwargs["oldest"] == "1700000000.100000"
         assert call_kwargs["inclusive"] is False
 
         # 새 메시지 전송
         client.chat_postMessage.assert_called_once()
-        assert pctx.last_msg_ts == "new_thinking_ts"
+        assert pctx.last_msg_ts == "1700000000.300000"
 
         # update_message_fn은 호출되지 않음 (새 메시지를 보냈으므로)
         update_fn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_root_message_always_returned_not_stale(self):
+        """Slack API가 루트 메시지를 항상 반환해도 stale로 오탐하지 않는다
+
+        conversations_replies는 oldest 파라미터와 무관하게 스레드 루트
+        메시지(thread_ts)를 항상 반환한다. 루트 메시지의 ts가 last_msg_ts보다
+        오래됐으면 stale로 판정하면 안 된다.
+        """
+        client = MagicMock()
+        # Slack이 루트 메시지만 반환 (oldest 파라미터 무시)
+        client.conversations_replies.return_value = {
+            "messages": [{"ts": "1234.5678"}]  # thread_ts = 루트 메시지
+        }
+
+        pctx = _make_pctx(
+            client=client,
+            last_msg_ts="1234.6000",  # 루트보다 newer
+            _last_stale_check=0.0,
+        )
+        update_fn = MagicMock()
+
+        on_progress, _ = build_progress_callbacks(pctx, update_fn)
+
+        await on_progress("사고 중...")
+
+        # conversations_replies는 호출됨
+        client.conversations_replies.assert_called_once()
+        # 루트 메시지는 필터링 → stale 아님 → update_message_fn 호출
+        update_fn.assert_called_once()
+        # 새 메시지는 전송되지 않음
+        client.chat_postMessage.assert_not_called()
+        # last_msg_ts 변경 없음
+        assert pctx.last_msg_ts == "1234.6000"
 
     @pytest.mark.asyncio
     async def test_stale_check_rate_limited(self):

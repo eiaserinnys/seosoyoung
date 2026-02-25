@@ -85,7 +85,14 @@ def build_progress_callbacks(
                             inclusive=False,
                             limit=1,
                         )
-                        messages = result.get("messages", [])
+                        # Slack conversations_replies는 oldest 파라미터와 무관하게
+                        # 스레드 루트(parent) 메시지를 항상 반환하므로, 클라이언트 측에서
+                        # last_msg_ts보다 실제로 newer한 메시지만 필터링한다
+                        all_messages = result.get("messages", [])
+                        messages = [
+                            m for m in all_messages
+                            if float(m.get("ts", "0")) > float(pctx.last_msg_ts)
+                        ]
                         if messages:
                             # 스레드에 새 메시지가 있음 → 사고 과정 메시지가 stale
                             quote_text = format_as_blockquote(display_text)
