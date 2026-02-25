@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 # HTTP 타임아웃 (초)
 HTTP_CONNECT_TIMEOUT = 10
-HTTP_SOCK_READ_TIMEOUT = 180
 
 # SSE 재연결 설정
 SSE_RECONNECT_MAX_RETRIES = 5
@@ -135,8 +134,8 @@ class SoulServiceClient:
         if self._session is None or self._session.closed:
             timeout = aiohttp.ClientTimeout(
                 connect=HTTP_CONNECT_TIMEOUT,
-                sock_read=None,   # 개별 SSE 라인 읽기에 타임아웃 없음 (Claude 실행이 180초 이상 걸릴 수 있음)
-                total=600,        # 전체 스트림 최대 10분 제한
+                sock_read=None,   # 개별 SSE 라인 읽기에 타임아웃 없음 (Claude 실행이 오래 걸릴 수 있음)
+                total=None,       # 전체 스트림 타임아웃 없음 (테스트 실행 등 장시간 작업 지원)
             )
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
@@ -463,9 +462,9 @@ class SoulServiceClient:
 
         while True:
             try:
-                # asyncio.wait_for 타임아웃 제거: Claude 실행이 180초 이상 걸릴 수 있음.
+                # asyncio.wait_for 타임아웃 제거: Claude 실행이 오래 걸릴 수 있음 (테스트 등).
                 # soul 서버가 주기적으로 keepalive 이벤트(:)를 보내므로 readline()은 블로킹되지 않음.
-                # 전체 스트림 타임아웃은 aiohttp.ClientTimeout(total=600)으로 제한.
+                # 전체 스트림 타임아웃도 제거: aiohttp.ClientTimeout(total=None).
                 line_bytes = await response.content.readline()
 
                 if not line_bytes:

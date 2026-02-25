@@ -128,16 +128,16 @@
 - `ResultProcessor` (seosoyoung/slackbot/claude/result_processor.py:19): Claude 실행 결과를 처리하여 슬랙에 응답
 - `ParseAction` (seosoyoung/slackbot/claude/sdk_compat.py:16): MessageParseError 처리 결과
 - `ClaudeServiceAdapter` (seosoyoung/slackbot/claude/service_adapter.py:25): 원격 soul 서버 어댑터
-- `SSEEvent` (seosoyoung/slackbot/claude/service_client.py:32): Server-Sent Event 데이터
-- `ExecuteResult` (seosoyoung/slackbot/claude/service_client.py:39): soul 서버 실행 결과
-- `SoulServiceError` (seosoyoung/slackbot/claude/service_client.py:49): Soul Service 클라이언트 오류
-- `TaskConflictError` (seosoyoung/slackbot/claude/service_client.py:54): 태스크 충돌 오류 (이미 실행 중인 태스크 존재)
-- `TaskNotFoundError` (seosoyoung/slackbot/claude/service_client.py:59): 태스크를 찾을 수 없음
-- `TaskNotRunningError` (seosoyoung/slackbot/claude/service_client.py:64): 태스크가 실행 중이 아님
-- `RateLimitError` (seosoyoung/slackbot/claude/service_client.py:69): 동시 실행 제한 초과
-- `ConnectionLostError` (seosoyoung/slackbot/claude/service_client.py:74): SSE 연결 끊김 (재시도 실패)
-- `ExponentialBackoff` (seosoyoung/slackbot/claude/service_client.py:81): 지수 백오프 유틸리티
-- `SoulServiceClient` (seosoyoung/slackbot/claude/service_client.py:111): seosoyoung-soul 서버 HTTP + SSE 클라이언트
+- `SSEEvent` (seosoyoung/slackbot/claude/service_client.py:31): Server-Sent Event 데이터
+- `ExecuteResult` (seosoyoung/slackbot/claude/service_client.py:38): soul 서버 실행 결과
+- `SoulServiceError` (seosoyoung/slackbot/claude/service_client.py:48): Soul Service 클라이언트 오류
+- `TaskConflictError` (seosoyoung/slackbot/claude/service_client.py:53): 태스크 충돌 오류 (이미 실행 중인 태스크 존재)
+- `TaskNotFoundError` (seosoyoung/slackbot/claude/service_client.py:58): 태스크를 찾을 수 없음
+- `TaskNotRunningError` (seosoyoung/slackbot/claude/service_client.py:63): 태스크가 실행 중이 아님
+- `RateLimitError` (seosoyoung/slackbot/claude/service_client.py:68): 동시 실행 제한 초과
+- `ConnectionLostError` (seosoyoung/slackbot/claude/service_client.py:73): SSE 연결 끊김 (재시도 실패)
+- `ExponentialBackoff` (seosoyoung/slackbot/claude/service_client.py:80): 지수 백오프 유틸리티
+- `SoulServiceClient` (seosoyoung/slackbot/claude/service_client.py:110): seosoyoung-soul 서버 HTTP + SSE 클라이언트
 - `Session` (seosoyoung/slackbot/claude/session.py:19): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/slackbot/claude/session.py:41): 세션 매니저
 - `SessionRuntime` (seosoyoung/slackbot/claude/session.py:263): 세션 실행 상태 관리자
