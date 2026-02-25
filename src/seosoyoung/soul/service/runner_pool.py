@@ -333,7 +333,11 @@ class ClaudeRunnerPool:
         """백그라운드 유지보수 루프
 
         _maintenance_interval 초마다 _run_maintenance()를 호출합니다.
-        asyncio.CancelledError가 발생하면 정상 종료합니다.
+        태스크가 취소되면 정상 종료합니다.
+
+        NOTE: asyncio.CancelledError 대신 취소가 자연스럽게 전파되도록 합니다.
+        anyio cancel scope 안에서 asyncio.CancelledError만 잡으면 취소 신호가
+        uvicorn lifespan까지 전파되는 문제가 있습니다.
         """
         logger.info(f"Maintenance loop 시작 (interval={self._maintenance_interval}s)")
         try:
@@ -343,7 +347,7 @@ class ClaudeRunnerPool:
                     await self._run_maintenance()
                 except Exception as e:
                     logger.error(f"Maintenance loop 오류 (계속 진행): {e}")
-        except asyncio.CancelledError:
+        finally:
             logger.info("Maintenance loop 종료")
 
     async def start_maintenance(self) -> None:
