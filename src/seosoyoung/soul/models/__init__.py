@@ -23,6 +23,14 @@ from .schemas import (
     TaskResponse,
     TaskListResponse,
     TaskInterveneRequest,
+    # 세분화 SSE 이벤트 (dashboard용)
+    ThinkingStartSSEEvent,
+    ThinkingDeltaSSEEvent,
+    ThinkingEndSSEEvent,
+    ToolStartSSEEvent,
+    ToolResultSSEEvent,
+    ResultSSEEvent,
+    StateChangeSSEEvent,
 )
 
 __all__ = [
@@ -49,4 +57,12 @@ __all__ = [
     "TaskResponse",
     "TaskListResponse",
     "TaskInterveneRequest",
+    # 세분화 SSE 이벤트 (dashboard용)
+    "ThinkingStartSSEEvent",
+    "ThinkingDeltaSSEEvent",
+    "ThinkingEndSSEEvent",
+    "ToolStartSSEEvent",
+    "ToolResultSSEEvent",
+    "ResultSSEEvent",
+    "StateChangeSSEEvent",
 ]

@@ -224,7 +224,7 @@ class TestSoulEngineAdapterCallbacks:
 
         async def fake_run(prompt, session_id=None, on_progress=None,
                            on_compact=None, on_intervention=None,
-                           on_session=None):
+                           on_session=None, on_event=None):
             if on_progress:
                 await on_progress("진행 중...")
                 await on_progress("거의 완료...")
@@ -249,7 +249,7 @@ class TestSoulEngineAdapterCallbacks:
 
         async def fake_run(prompt, session_id=None, on_progress=None,
                            on_compact=None, on_intervention=None,
-                           on_session=None):
+                           on_session=None, on_event=None):
             if on_compact:
                 await on_compact("auto", "컨텍스트 컴팩트 실행됨")
             return EngineResult(success=True, output="done")
@@ -273,7 +273,7 @@ class TestSoulEngineAdapterCallbacks:
 
         async def fake_run(prompt, session_id=None, on_progress=None,
                            on_compact=None, on_intervention=None,
-                           on_session=None):
+                           on_session=None, on_event=None):
             if on_intervention:
                 result = await on_intervention()
                 if result:
@@ -330,7 +330,7 @@ class TestSoulEngineAdapterCallbacks:
 
         async def fake_run(prompt, session_id=None, on_progress=None,
                            on_compact=None, on_intervention=None,
-                           on_session=None):
+                           on_session=None, on_event=None):
             if on_intervention:
                 result = await on_intervention()
                 if result:
@@ -540,7 +540,7 @@ class TestSoulEngineAdapterDebugEvent:
 
         async def fake_run(prompt, session_id=None, on_progress=None,
                            on_compact=None, on_intervention=None,
-                           on_session=None):
+                           on_session=None, on_event=None):
             # debug_send_fn을 동기적으로 호출 (ClaudeRunner._debug()와 동일한 패턴)
             if captured_debug_fn:
                 captured_debug_fn("rate limit warning: 80% used")
@@ -575,7 +575,7 @@ class TestSoulEngineAdapterDebugEvent:
 
         async def fake_run(prompt, session_id=None, on_progress=None,
                            on_compact=None, on_intervention=None,
-                           on_session=None):
+                           on_session=None, on_event=None):
             if captured_debug_fn:
                 captured_debug_fn("warning 1")
                 captured_debug_fn("warning 2")
@@ -757,3 +757,344 @@ class TestSoulEngineAdapterWithPool:
 
         complete = next(e for e in events if isinstance(e, CompleteEvent))
         assert complete.claude_session_id == "final-sess"
+
+
+# === _CardTracker 유닛 테스트 ===
+
+class TestCardTracker:
+    """_CardTracker 유닛 테스트"""
+
+    def test_initial_state(self):
+        """초기 상태: card_id와 last_tool 모두 None"""
+        from seosoyoung.soul.service.engine_adapter import _CardTracker
+        tracker = _CardTracker()
+        assert tracker.current_card_id is None
+        assert tracker.last_tool is None
+
+    def test_new_card_returns_string(self):
+        """new_card()는 문자열 반환"""
+        from seosoyoung.soul.service.engine_adapter import _CardTracker
+        tracker = _CardTracker()
+        card_id = tracker.new_card()
+        assert isinstance(card_id, str)
+        assert len(card_id) > 0
+
+    def test_new_card_updates_current(self):
+        """new_card() 후 current_card_id가 갱신됨"""
+        from seosoyoung.soul.service.engine_adapter import _CardTracker
+        tracker = _CardTracker()
+        new_id = tracker.new_card()
+        assert tracker.current_card_id == new_id
+
+    def test_new_card_generates_unique_ids(self):
+        """new_card() 연속 호출 → 서로 다른 ID 반환"""
+        from seosoyoung.soul.service.engine_adapter import _CardTracker
+        tracker = _CardTracker()
+        ids = {tracker.new_card() for _ in range(10)}
+        assert len(ids) == 10
+
+    def test_set_last_tool(self):
+        """set_last_tool 후 last_tool 반환"""
+        from seosoyoung.soul.service.engine_adapter import _CardTracker
+        tracker = _CardTracker()
+        tracker.set_last_tool("Read")
+        assert tracker.last_tool == "Read"
+        tracker.set_last_tool("Grep")
+        assert tracker.last_tool == "Grep"
+
+    def test_current_card_id_overwritten_by_new_card(self):
+        """new_card()를 두 번 호출하면 이전 card_id는 덮어써짐"""
+        from seosoyoung.soul.service.engine_adapter import _CardTracker
+        tracker = _CardTracker()
+        id1 = tracker.new_card()
+        id2 = tracker.new_card()
+        assert id1 != id2
+        assert tracker.current_card_id == id2
+
+
+# === EngineEvent → SSE 이벤트 변환 테스트 ===
+
+class TestEngineEventConversion:
+    """on_engine_event 콜백 → SSE 이벤트 변환 테스트"""
+
+    async def test_thinking_delta_produces_three_events(self):
+        """THINKING_DELTA → ThinkingStart + ThinkingDelta + ThinkingEnd"""
+        from seosoyoung.soul.models import (
+            ThinkingDeltaSSEEvent,
+            ThinkingEndSSEEvent,
+            ThinkingStartSSEEvent,
+        )
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None,
+                           on_session=None, on_event=None):
+            if on_event:
+                await on_event(EngineEvent(
+                    type=EngineEventType.THINKING_DELTA,
+                    data={"text": "모델이 생각 중..."},
+                ))
+            return EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = fake_run
+            events = await collect_events(adapter, "test")
+
+        thinking_events = [
+            e for e in events
+            if isinstance(e, (ThinkingStartSSEEvent, ThinkingDeltaSSEEvent, ThinkingEndSSEEvent))
+        ]
+        assert len(thinking_events) == 3
+        start, delta, end = thinking_events
+        assert isinstance(start, ThinkingStartSSEEvent)
+        assert isinstance(delta, ThinkingDeltaSSEEvent)
+        assert isinstance(end, ThinkingEndSSEEvent)
+        # 세 이벤트 모두 동일한 card_id
+        assert start.card_id == delta.card_id == end.card_id
+        assert delta.text == "모델이 생각 중..."
+
+    async def test_tool_start_event(self):
+        """TOOL_START → ToolStartSSEEvent"""
+        from seosoyoung.soul.models import ToolStartSSEEvent
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None,
+                           on_session=None, on_event=None):
+            if on_event:
+                await on_event(EngineEvent(
+                    type=EngineEventType.TOOL_START,
+                    data={"tool_name": "Read", "tool_input": {"file_path": "/test.txt"}},
+                ))
+            return EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = fake_run
+            events = await collect_events(adapter, "test")
+
+        tool_events = [e for e in events if isinstance(e, ToolStartSSEEvent)]
+        assert len(tool_events) == 1
+        assert tool_events[0].tool_name == "Read"
+        assert tool_events[0].tool_input == {"file_path": "/test.txt"}
+
+    async def test_tool_result_event(self):
+        """TOOL_RESULT → ToolResultSSEEvent"""
+        from seosoyoung.soul.models import ToolResultSSEEvent
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None,
+                           on_session=None, on_event=None):
+            if on_event:
+                await on_event(EngineEvent(
+                    type=EngineEventType.TOOL_RESULT,
+                    data={"tool_name": "Bash", "result": "file content", "is_error": False},
+                ))
+            return EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = fake_run
+            events = await collect_events(adapter, "test")
+
+        result_events = [e for e in events if isinstance(e, ToolResultSSEEvent)]
+        assert len(result_events) == 1
+        assert result_events[0].tool_name == "Bash"
+        assert result_events[0].result == "file content"
+        assert result_events[0].is_error is False
+
+    async def test_engine_result_event(self):
+        """RESULT → ResultSSEEvent"""
+        from seosoyoung.soul.models import ResultSSEEvent
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None,
+                           on_session=None, on_event=None):
+            if on_event:
+                await on_event(EngineEvent(
+                    type=EngineEventType.RESULT,
+                    data={"success": True, "output": "최종 결과", "error": None},
+                ))
+            return EngineResult(success=True, output="최종 결과")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = fake_run
+            events = await collect_events(adapter, "test")
+
+        result_events = [e for e in events if isinstance(e, ResultSSEEvent)]
+        assert len(result_events) == 1
+        assert result_events[0].success is True
+        assert result_events[0].output == "최종 결과"
+
+    async def test_multiple_thinking_blocks_get_distinct_card_ids(self):
+        """두 THINKING_DELTA → 서로 다른 card_id"""
+        from seosoyoung.soul.models import ThinkingStartSSEEvent
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None,
+                           on_session=None, on_event=None):
+            if on_event:
+                await on_event(EngineEvent(
+                    type=EngineEventType.THINKING_DELTA,
+                    data={"text": "첫 번째 사고"},
+                ))
+                await on_event(EngineEvent(
+                    type=EngineEventType.THINKING_DELTA,
+                    data={"text": "두 번째 사고"},
+                ))
+            return EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = fake_run
+            events = await collect_events(adapter, "test")
+
+        start_events = [e for e in events if isinstance(e, ThinkingStartSSEEvent)]
+        assert len(start_events) == 2
+        assert start_events[0].card_id != start_events[1].card_id
+
+    async def test_tool_linked_to_thinking_card(self):
+        """TOOL_START.card_id = 직전 THINKING_DELTA의 card_id"""
+        from seosoyoung.soul.models import ThinkingStartSSEEvent, ToolStartSSEEvent
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None,
+                           on_session=None, on_event=None):
+            if on_event:
+                await on_event(EngineEvent(
+                    type=EngineEventType.THINKING_DELTA,
+                    data={"text": "Read 파일을 먼저"},
+                ))
+                await on_event(EngineEvent(
+                    type=EngineEventType.TOOL_START,
+                    data={"tool_name": "Read", "tool_input": {}},
+                ))
+            return EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = fake_run
+            events = await collect_events(adapter, "test")
+
+        thinking_starts = [e for e in events if isinstance(e, ThinkingStartSSEEvent)]
+        tool_starts = [e for e in events if isinstance(e, ToolStartSSEEvent)]
+        assert len(thinking_starts) == 1
+        assert len(tool_starts) == 1
+        assert thinking_starts[0].card_id == tool_starts[0].card_id
+
+    async def test_existing_progress_still_emitted_alongside_new_events(self):
+        """기존 ProgressEvent도 그대로 발행 (슬랙봇 하위호환)"""
+        from seosoyoung.soul.models import ThinkingStartSSEEvent
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None,
+                           on_session=None, on_event=None):
+            # 기존 on_progress (슬랙봇용)
+            if on_progress:
+                await on_progress("작업 중...")
+            # 신규 on_event (dashboard용)
+            if on_event:
+                await on_event(EngineEvent(
+                    type=EngineEventType.THINKING_DELTA,
+                    data={"text": "사고 중..."},
+                ))
+            return EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = fake_run
+            events = await collect_events(adapter, "test")
+
+        # 기존 ProgressEvent 유지
+        progress_events = [e for e in events if isinstance(e, ProgressEvent)]
+        assert len(progress_events) == 1
+        # 신규 ThinkingStartSSEEvent 추가
+        thinking_events = [e for e in events if isinstance(e, ThinkingStartSSEEvent)]
+        assert len(thinking_events) == 1
+
+    async def test_on_event_passed_to_runner(self):
+        """runner.run()에 on_event 키워드 인자가 전달됨"""
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+        mock_result = EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = AsyncMock(return_value=mock_result)
+            events = await collect_events(adapter, "test")
+
+        call_kwargs = instance.run.call_args.kwargs
+        assert "on_event" in call_kwargs
+        assert call_kwargs["on_event"] is not None
+        assert callable(call_kwargs["on_event"])
+
+    async def test_tool_result_fallback_tool_name(self):
+        """TOOL_RESULT에 tool_name 없으면 tracker.last_tool로 폴백"""
+        from seosoyoung.soul.models import ToolResultSSEEvent
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        adapter = SoulEngineAdapter(workspace_dir="/test")
+
+        async def fake_run(prompt, session_id=None, on_progress=None,
+                           on_compact=None, on_intervention=None,
+                           on_session=None, on_event=None):
+            if on_event:
+                # 먼저 TOOL_START (tool_name 기록)
+                await on_event(EngineEvent(
+                    type=EngineEventType.TOOL_START,
+                    data={"tool_name": "Glob", "tool_input": {}},
+                ))
+                # TOOL_RESULT에는 tool_name 없음
+                await on_event(EngineEvent(
+                    type=EngineEventType.TOOL_RESULT,
+                    data={"tool_name": "", "result": "result", "is_error": False},
+                ))
+            return EngineResult(success=True, output="done")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = fake_run
+            events = await collect_events(adapter, "test")
+
+        result_events = [e for e in events if isinstance(e, ToolResultSSEEvent)]
+        assert len(result_events) == 1
+        # tool_name=""이면 tracker.last_tool="Glob"으로 폴백
+        assert result_events[0].tool_name == "Glob"
