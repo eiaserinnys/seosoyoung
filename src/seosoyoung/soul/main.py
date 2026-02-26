@@ -17,6 +17,8 @@ from fastapi.responses import JSONResponse
 from seosoyoung.soul.api import attachments_router
 from seosoyoung.soul.api.tasks import router as tasks_router
 from seosoyoung.soul.service import resource_manager, file_manager
+from seosoyoung.soul.service.engine_adapter import init_soul_engine
+from seosoyoung.soul.service.runner_pool import ClaudeRunnerPool
 from seosoyoung.soul.service.task_manager import init_task_manager, get_task_manager
 from seosoyoung.soul.models import HealthResponse
 from seosoyoung.soul.config import get_settings, setup_logging
@@ -32,6 +34,9 @@ _start_time = time.time()
 
 # 백그라운드 태스크 참조
 _cleanup_task = None
+
+# 전역 풀 참조 (/status 엔드포인트에서 접근)
+_runner_pool: ClaudeRunnerPool | None = None
 
 
 async def periodic_cleanup():
@@ -60,6 +65,32 @@ async def lifespan(app: FastAPI):
     logger.info(f"  Environment: {settings.environment}")
     logger.info(f"  Max concurrent sessions: {resource_manager.max_concurrent}")
     logger.info(f"  Workspace: {settings.workspace_dir}")
+
+    # ClaudeRunnerPool 초기화
+    global _runner_pool
+    pool = ClaudeRunnerPool(
+        max_size=settings.runner_pool_max_size,
+        idle_ttl=settings.runner_pool_idle_ttl,
+        workspace_dir=settings.workspace_dir,
+        min_generic=settings.runner_pool_min_generic,
+        maintenance_interval=settings.runner_pool_maintenance_interval,
+    )
+    _runner_pool = pool
+    init_soul_engine(pool=pool)
+    logger.info(
+        f"  Runner pool initialized: max_size={settings.runner_pool_max_size}, "
+        f"idle_ttl={settings.runner_pool_idle_ttl}s, "
+        f"min_generic={settings.runner_pool_min_generic}"
+    )
+
+    # Pre-warm: generic runner 예열
+    if settings.runner_pool_pre_warm > 0:
+        warmed = await pool.pre_warm(settings.runner_pool_pre_warm)
+        logger.info(f"  Runner pool pre-warmed: {warmed}/{settings.runner_pool_pre_warm}개")
+
+    # 유지보수 루프 시작
+    await pool.start_maintenance()
+    logger.info(f"  Runner pool maintenance loop started (interval={settings.runner_pool_maintenance_interval}s)")
 
     # TaskManager 초기화 및 로드
     storage_path = Path(settings.workspace_dir) / "data" / "tasks.json"
@@ -94,6 +125,11 @@ async def lifespan(app: FastAPI):
         logger.info("  Saved tasks to storage")
     except RuntimeError:
         pass  # TaskManager가 초기화되지 않은 경우
+
+    # Runner pool 종료
+    shutdown_count = await pool.shutdown()
+    if shutdown_count > 0:
+        logger.info(f"  Shut down {shutdown_count} pooled runners")
 
     # 오래된 첨부 파일 정리
     cleaned = file_manager.cleanup_old_files(max_age_hours=1)
@@ -175,7 +211,7 @@ async def get_status():
     task_manager = get_task_manager()
     running_tasks = task_manager.get_running_tasks()
 
-    return {
+    response: dict = {
         "active_tasks": len(running_tasks),
         "max_concurrent": resource_manager.max_concurrent,
         "tasks": [
@@ -188,6 +224,12 @@ async def get_status():
             for t in running_tasks
         ],
     }
+
+    # 풀 통계 추가
+    if _runner_pool is not None:
+        response["runner_pool"] = _runner_pool.stats()
+
+    return response
 
 
 # === API Routers ===

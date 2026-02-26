@@ -231,7 +231,6 @@ class MessageState:
     collected_messages: list[dict] = field(default_factory=list)
     msg_count: int = 0
     last_tool: str = ""
-    last_progress_time: float = 0.0
 
     @property
     def has_result(self) -> bool:
@@ -267,6 +266,7 @@ class ClaudeRunner:
         disallowed_tools: Optional[list[str]] = None,
         mcp_config_path: Optional[Path] = None,
         debug_send_fn: Optional[DebugSendFn] = None,
+        pooled: bool = False,
     ):
         self.thread_ts = thread_ts
         self.working_dir = working_dir or Path.cwd()
@@ -274,6 +274,7 @@ class ClaudeRunner:
         self.disallowed_tools = disallowed_tools or DEFAULT_DISALLOWED_TOOLS
         self.mcp_config_path = mcp_config_path
         self.debug_send_fn = debug_send_fn
+        self._pooled = pooled
 
         # Instance-level client state
         self.client: Optional[ClaudeSDKClient] = None
@@ -360,6 +361,32 @@ class ClaudeRunner:
             logger.warning(f"ClaudeSDKClient disconnect 실패: thread={self.thread_ts}, {e}")
             if pid:
                 self._force_kill_process(pid, self.thread_ts)
+
+    def detach_client(self) -> Optional[ClaudeSDKClient]:
+        """풀이 runner를 회수할 때 client/pid를 안전하게 분리
+
+        _remove_client()와 달리 disconnect를 호출하지 않습니다.
+        반환된 client는 풀이 보유하여 재사용합니다.
+
+        Returns:
+            분리된 ClaudeSDKClient (없으면 None)
+        """
+        client = self.client
+        self.client = None
+        self.pid = None
+        return client
+
+    def is_idle(self) -> bool:
+        """client가 연결되어 있고 현재 실행 중이 아닌지 확인
+
+        Returns:
+            True이면 풀에서 재사용 가능한 상태
+        """
+        if self.client is None:
+            return False
+        if self.execution_loop is not None and self.execution_loop.is_running():
+            return False
+        return True
 
     @staticmethod
     def _force_kill_process(pid: int, thread_ts: str) -> None:
@@ -548,7 +575,6 @@ class ClaudeRunner:
     ) -> None:
         """내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신"""
         thread_ts = self.thread_ts
-        progress_interval = 2.0
         aiter = client.receive_response().__aiter__()
 
         while True:
@@ -614,16 +640,13 @@ class ClaudeRunner:
                             })
 
                             if on_progress:
-                                current_time = asyncio.get_running_loop().time()
-                                if current_time - msg_state.last_progress_time >= progress_interval:
-                                    try:
-                                        display_text = msg_state.current_text
-                                        if len(display_text) > 1000:
-                                            display_text = "...\n" + display_text[-1000:]
-                                        await on_progress(display_text)
-                                        msg_state.last_progress_time = current_time
-                                    except Exception as e:
-                                        logger.warning(f"진행 상황 콜백 오류: {e}")
+                                try:
+                                    display_text = msg_state.current_text
+                                    if len(display_text) > 1000:
+                                        display_text = "...\n" + display_text[-1000:]
+                                    await on_progress(display_text)
+                                except Exception as e:
+                                    logger.warning(f"진행 상황 콜백 오류: {e}")
 
                         elif isinstance(block, ToolUseBlock):
                             tool_input = ""
@@ -810,7 +833,7 @@ class ClaudeRunner:
         if thread_ts:
             register_runner(self)
 
-        msg_state = MessageState(last_progress_time=asyncio.get_running_loop().time())
+        msg_state = MessageState()
         _session_start = datetime.now(timezone.utc)
 
         try:
@@ -944,7 +967,9 @@ class ClaudeRunner:
                 error=str(e)
             )
         finally:
-            await self._remove_client()
+            if not self._pooled:
+                await self._remove_client()
+            # pooled 모드: client 유지, registry와 execution_loop만 정리
             self.execution_loop = None
             if thread_ts:
                 remove_runner(thread_ts)

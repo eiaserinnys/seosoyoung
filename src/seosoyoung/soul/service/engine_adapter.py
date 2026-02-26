@@ -10,10 +10,13 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator, Awaitable, Callable, List, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, List, Optional
 
 from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
 from seosoyoung.soul.config import get_settings
+
+if TYPE_CHECKING:
+    from seosoyoung.soul.service.runner_pool import ClaudeRunnerPool
 from seosoyoung.soul.models import (
     CompactEvent,
     CompleteEvent,
@@ -97,8 +100,13 @@ class SoulEngineAdapter:
     기존 soul의 ClaudeCodeRunner.execute()와 동일한 인터페이스를 제공합니다.
     """
 
-    def __init__(self, workspace_dir: Optional[str] = None):
+    def __init__(
+        self,
+        workspace_dir: Optional[str] = None,
+        pool: Optional["ClaudeRunnerPool"] = None,
+    ):
         self._workspace_dir = workspace_dir or get_settings().workspace_dir
+        self._pool = pool
 
     def _resolve_mcp_config_path(self) -> Optional[Path]:
         """WORKSPACE_DIR 기준으로 mcp_config.json 경로를 해석"""
@@ -156,15 +164,6 @@ class SoulEngineAdapter:
             except Exception:
                 pass  # 큐 닫힘 등 무시
 
-        runner = ClaudeRunner(
-            thread_ts="",
-            working_dir=Path(self._workspace_dir),
-            allowed_tools=effective_allowed,
-            disallowed_tools=effective_disallowed,
-            mcp_config_path=mcp_config_path,
-            debug_send_fn=debug_send_fn,
-        )
-
         # --- 콜백 → 큐 어댑터 ---
 
         async def on_progress(text: str) -> None:
@@ -204,6 +203,25 @@ class SoulEngineAdapter:
         # --- 백그라운드 실행 ---
 
         async def run_claude() -> None:
+            # 풀이 있으면 acquire, 없으면 직접 생성
+            if self._pool is not None:
+                runner = await self._pool.acquire(session_id=resume_session_id)
+                # W-3: 풀에서 꺼낸 runner에 요청별 debug_send_fn 주입
+                runner.debug_send_fn = debug_send_fn
+                # W-4: 풀에서 꺼낸 runner에 요청별 도구 설정 주입
+                runner.allowed_tools = effective_allowed
+                runner.disallowed_tools = effective_disallowed
+            else:
+                runner = ClaudeRunner(
+                    thread_ts="",
+                    working_dir=Path(self._workspace_dir),
+                    allowed_tools=effective_allowed,
+                    disallowed_tools=effective_disallowed,
+                    mcp_config_path=mcp_config_path,
+                    debug_send_fn=debug_send_fn,
+                )
+
+            success = False
             try:
                 result = await runner.run(
                     prompt=prompt,
@@ -227,13 +245,23 @@ class SoulEngineAdapter:
                         attachments=[],
                         claude_session_id=result.session_id,
                     ))
+                    success = True
+                    # 성공 시 풀에 반환
+                    if self._pool is not None:
+                        await self._pool.release(runner, session_id=result.session_id)
                 else:
                     error_msg = result.error or result.output or "실행 오류"
                     await queue.put(ErrorEvent(message=error_msg))
+                    # C-1: 에러 시 runner 폐기 (오염 방지)
+                    if self._pool is not None:
+                        await self._pool._discard(runner, reason="run_error")
 
             except Exception as e:
                 logger.exception(f"SoulEngineAdapter execution error: {e}")
                 await queue.put(ErrorEvent(message=f"실행 오류: {str(e)}"))
+                # C-1: 예외 시 runner 폐기 (고아 프로세스 방지)
+                if self._pool is not None:
+                    await self._pool._discard(runner, reason="exception")
 
             finally:
                 await queue.put(_DONE)
@@ -256,5 +284,21 @@ class SoulEngineAdapter:
                     pass
 
 
-# 싱글톤 인스턴스
+# 싱글톤 인스턴스 (lifespan에서 init_soul_engine()으로 재초기화 가능)
 soul_engine = SoulEngineAdapter()
+
+
+def init_soul_engine(pool: Optional["ClaudeRunnerPool"] = None) -> SoulEngineAdapter:
+    """soul_engine 싱글톤을 (재)초기화한다.
+
+    lifespan에서 풀 생성 후 호출하여 싱글톤을 교체한다.
+
+    Args:
+        pool: 주입할 ClaudeRunnerPool. None이면 풀 없이 초기화.
+
+    Returns:
+        새로 생성된 SoulEngineAdapter 인스턴스
+    """
+    global soul_engine
+    soul_engine = SoulEngineAdapter(pool=pool)
+    return soul_engine

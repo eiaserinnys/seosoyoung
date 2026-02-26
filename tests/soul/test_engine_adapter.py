@@ -24,6 +24,7 @@ from seosoyoung.soul.service.engine_adapter import (
     _extract_context_usage,
     InterventionMessage,
 )
+from seosoyoung.soul.service.runner_pool import ClaudeRunnerPool
 from seosoyoung.slackbot.claude.engine_types import EngineResult
 
 
@@ -599,3 +600,160 @@ class TestSoulEngineAdapterDebugEvent:
         assert len(debug_events) == 2
         assert debug_events[0].message == "warning 1"
         assert debug_events[1].message == "warning 2"
+
+
+# === ClaudeRunnerPool 통합 테스트 ===
+
+class TestSoulEngineAdapterWithPool:
+    """풀 주입 시나리오"""
+
+    async def test_pool_none_creates_runner_directly(self):
+        """pool=None이면 기존처럼 ClaudeRunner를 직접 생성"""
+        adapter = SoulEngineAdapter(workspace_dir="/test")  # pool 없음
+        mock_result = EngineResult(success=True, output="done", session_id="s1")
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            instance = MockRunner.return_value
+            instance.run = AsyncMock(return_value=mock_result)
+
+            events = await collect_events(adapter, "test")
+
+        # ClaudeRunner 직접 생성됨
+        assert MockRunner.called
+        assert isinstance(events[-1], CompleteEvent)
+
+    async def test_pool_acquire_called_on_execute(self):
+        """풀이 있으면 acquire()가 호출됨"""
+        mock_pool = MagicMock(spec=ClaudeRunnerPool)
+        mock_runner = MagicMock()
+        mock_result = EngineResult(success=True, output="done", session_id="sess-abc")
+        mock_runner.run = AsyncMock(return_value=mock_result)
+        mock_pool.acquire = AsyncMock(return_value=mock_runner)
+        mock_pool.release = AsyncMock()
+
+        adapter = SoulEngineAdapter(workspace_dir="/test", pool=mock_pool)
+        events = await collect_events(adapter, "test prompt")
+
+        mock_pool.acquire.assert_awaited_once()
+
+    async def test_pool_acquire_passes_resume_session_id(self):
+        """resume_session_id가 pool.acquire()에 전달됨"""
+        mock_pool = MagicMock(spec=ClaudeRunnerPool)
+        mock_runner = MagicMock()
+        mock_result = EngineResult(success=True, output="done", session_id="sess-xyz")
+        mock_runner.run = AsyncMock(return_value=mock_result)
+        mock_pool.acquire = AsyncMock(return_value=mock_runner)
+        mock_pool.release = AsyncMock()
+
+        adapter = SoulEngineAdapter(workspace_dir="/test", pool=mock_pool)
+        events = await collect_events(adapter, "continue", resume_session_id="sess-xyz")
+
+        call_kwargs = mock_pool.acquire.call_args.kwargs
+        assert call_kwargs["session_id"] == "sess-xyz"
+
+    async def test_pool_release_called_on_success(self):
+        """성공 시 result.session_id로 release() 호출"""
+        mock_pool = MagicMock(spec=ClaudeRunnerPool)
+        mock_runner = MagicMock()
+        mock_result = EngineResult(success=True, output="done", session_id="sess-new")
+        mock_runner.run = AsyncMock(return_value=mock_result)
+        mock_pool.acquire = AsyncMock(return_value=mock_runner)
+        mock_pool.release = AsyncMock()
+
+        adapter = SoulEngineAdapter(workspace_dir="/test", pool=mock_pool)
+        events = await collect_events(adapter, "test")
+
+        mock_pool.release.assert_awaited_once()
+        call_kwargs = mock_pool.release.call_args.kwargs
+        assert call_kwargs["session_id"] == "sess-new"
+        assert mock_pool.release.call_args.args[0] is mock_runner
+
+    async def test_pool_not_released_on_error_result(self):
+        """에러 결과(success=False) 시 release 호출 안 함 (runner 폐기)"""
+        mock_pool = MagicMock(spec=ClaudeRunnerPool)
+        mock_runner = MagicMock()
+        mock_result = EngineResult(
+            success=False,
+            output="",
+            error="something failed",
+        )
+        mock_runner.run = AsyncMock(return_value=mock_result)
+        mock_pool.acquire = AsyncMock(return_value=mock_runner)
+        mock_pool.release = AsyncMock()
+
+        adapter = SoulEngineAdapter(workspace_dir="/test", pool=mock_pool)
+        events = await collect_events(adapter, "test")
+
+        # release 호출 안 됨
+        mock_pool.release.assert_not_awaited()
+        # ErrorEvent 발행됨
+        assert any(isinstance(e, ErrorEvent) for e in events)
+
+    async def test_pool_not_released_on_is_error(self):
+        """is_error=True 시 release 호출 안 함"""
+        mock_pool = MagicMock(spec=ClaudeRunnerPool)
+        mock_runner = MagicMock()
+        mock_result = EngineResult(
+            success=True,
+            output="error output",
+            is_error=True,
+            error="engine error",
+        )
+        mock_runner.run = AsyncMock(return_value=mock_result)
+        mock_pool.acquire = AsyncMock(return_value=mock_runner)
+        mock_pool.release = AsyncMock()
+
+        adapter = SoulEngineAdapter(workspace_dir="/test", pool=mock_pool)
+        events = await collect_events(adapter, "test")
+
+        mock_pool.release.assert_not_awaited()
+
+    async def test_pool_not_released_on_exception(self):
+        """예외 발생 시 release 호출 안 함"""
+        mock_pool = MagicMock(spec=ClaudeRunnerPool)
+        mock_runner = MagicMock()
+        mock_runner.run = AsyncMock(side_effect=RuntimeError("runner crashed"))
+        mock_pool.acquire = AsyncMock(return_value=mock_runner)
+        mock_pool.release = AsyncMock()
+
+        adapter = SoulEngineAdapter(workspace_dir="/test", pool=mock_pool)
+        events = await collect_events(adapter, "test")
+
+        mock_pool.release.assert_not_awaited()
+        assert any(isinstance(e, ErrorEvent) for e in events)
+
+    async def test_pool_runner_not_created_via_clauderunner_constructor(self):
+        """풀이 있으면 ClaudeRunner 생성자 직접 호출 안 함"""
+        mock_pool = MagicMock(spec=ClaudeRunnerPool)
+        mock_runner = MagicMock()
+        mock_result = EngineResult(success=True, output="done", session_id="s1")
+        mock_runner.run = AsyncMock(return_value=mock_result)
+        mock_pool.acquire = AsyncMock(return_value=mock_runner)
+        mock_pool.release = AsyncMock()
+
+        adapter = SoulEngineAdapter(workspace_dir="/test", pool=mock_pool)
+
+        with patch(
+            "seosoyoung.soul.service.engine_adapter.ClaudeRunner"
+        ) as MockRunner:
+            events = await collect_events(adapter, "test")
+
+        # 직접 생성자 호출 없음
+        assert not MockRunner.called
+
+    async def test_complete_event_contains_session_id_from_result(self):
+        """CompleteEvent.claude_session_id = result.session_id"""
+        mock_pool = MagicMock(spec=ClaudeRunnerPool)
+        mock_runner = MagicMock()
+        mock_result = EngineResult(success=True, output="result text", session_id="final-sess")
+        mock_runner.run = AsyncMock(return_value=mock_result)
+        mock_pool.acquire = AsyncMock(return_value=mock_runner)
+        mock_pool.release = AsyncMock()
+
+        adapter = SoulEngineAdapter(workspace_dir="/test", pool=mock_pool)
+        events = await collect_events(adapter, "test")
+
+        complete = next(e for e in events if isinstance(e, CompleteEvent))
+        assert complete.claude_session_id == "final-sess"
