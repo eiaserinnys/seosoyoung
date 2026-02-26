@@ -60,7 +60,7 @@ from seosoyoung.slackbot.claude.diagnostics import (
     classify_process_error,
     format_rate_limit_warning,
 )
-from seosoyoung.slackbot.claude.engine_types import EngineResult, InterventionCallback
+from seosoyoung.slackbot.claude.engine_types import EngineResult, InterventionCallback, EngineEvent, EngineEventType, EventCallback
 from seosoyoung.slackbot.claude.instrumented_client import InstrumentedClaudeClient
 from seosoyoung.slackbot.claude.sdk_compat import ParseAction, classify_parse_error
 from seosoyoung.slackbot.claude.session_validator import validate_session
@@ -572,6 +572,7 @@ class ClaudeRunner:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]],
         on_intervention: Optional[InterventionCallback] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_event: Optional[EventCallback] = None,
     ) -> None:
         """내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신"""
         thread_ts = self.thread_ts
@@ -648,6 +649,15 @@ class ClaudeRunner:
                                 except Exception as e:
                                     logger.warning(f"진행 상황 콜백 오류: {e}")
 
+                            if on_event:
+                                try:
+                                    await on_event(EngineEvent(
+                                        type=EngineEventType.THINKING_DELTA,
+                                        data={"text": block.text},
+                                    ))
+                                except Exception as e:
+                                    logger.warning(f"이벤트 콜백 오류 (THINKING_DELTA): {e}")
+
                         elif isinstance(block, ToolUseBlock):
                             tool_input = ""
                             if block.input:
@@ -662,6 +672,15 @@ class ClaudeRunner:
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                             })
 
+                            if on_event:
+                                try:
+                                    await on_event(EngineEvent(
+                                        type=EngineEventType.TOOL_START,
+                                        data={"tool_name": block.name, "tool_input": block.input or {}},
+                                    ))
+                                except Exception as e:
+                                    logger.warning(f"이벤트 콜백 오류 (TOOL_START): {e}")
+
                         elif isinstance(block, ToolResultBlock):
                             content = ""
                             if isinstance(block.content, str):
@@ -675,6 +694,20 @@ class ClaudeRunner:
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                             })
 
+                            if on_event:
+                                try:
+                                    is_error = getattr(block, "is_error", False)
+                                    await on_event(EngineEvent(
+                                        type=EngineEventType.TOOL_RESULT,
+                                        data={
+                                            "tool_name": msg_state.last_tool or "",
+                                            "result": content,
+                                            "is_error": is_error,
+                                        },
+                                    ))
+                                except Exception as e:
+                                    logger.warning(f"이벤트 콜백 오류 (TOOL_RESULT): {e}")
+
             # ResultMessage에서 최종 결과 추출
             elif isinstance(message, ResultMessage):
                 if hasattr(message, 'is_error'):
@@ -685,6 +718,19 @@ class ClaudeRunner:
                     msg_state.session_id = message.session_id
                 if hasattr(message, 'usage') and message.usage:
                     msg_state.usage = message.usage
+
+                if on_event:
+                    try:
+                        await on_event(EngineEvent(
+                            type=EngineEventType.RESULT,
+                            data={
+                                "success": not msg_state.is_error,
+                                "output": msg_state.result_text or msg_state.current_text,
+                                "error": None,
+                            },
+                        ))
+                    except Exception as e:
+                        logger.warning(f"이벤트 콜백 오류 (RESULT): {e}")
 
             # 컴팩션 이벤트 알림
             await self._notify_compact_events(compact_state, on_compact)
@@ -770,6 +816,7 @@ class ClaudeRunner:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_intervention: Optional[InterventionCallback] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_event: Optional[EventCallback] = None,
     ) -> EngineResult:
         """Claude Code 실행
 
@@ -785,6 +832,9 @@ class ClaudeRunner:
             on_session: 세션 ID 확보 콜백.
                 SystemMessage에서 session_id를 추출한 시점에 호출됩니다.
                 클라이언트에게 session_id를 조기 통지하는 데 사용합니다.
+            on_event: 세분화 이벤트 콜백 (Optional).
+                THINKING_DELTA, TOOL_START, TOOL_RESULT, RESULT 이벤트를 받습니다.
+                None이면 이벤트를 발행하지 않습니다.
 
         Returns:
             EngineResult: 엔진 순수 실행 결과.
@@ -802,7 +852,7 @@ class ClaudeRunner:
                     error=validation_error,
                 )
 
-        return await self._execute(prompt, session_id, on_progress, on_compact, on_intervention, on_session)
+        return await self._execute(prompt, session_id, on_progress, on_compact, on_intervention, on_session, on_event)
 
     async def _execute(
         self,
@@ -812,6 +862,7 @@ class ClaudeRunner:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_intervention: Optional[InterventionCallback] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_event: Optional[EventCallback] = None,
     ) -> EngineResult:
         """실제 실행 로직 (ClaudeSDKClient 기반)"""
         thread_ts = self.thread_ts
@@ -852,7 +903,7 @@ class ClaudeRunner:
 
                 await self._receive_messages(
                     client, compact_state, msg_state, on_progress, on_compact,
-                    on_intervention, on_session,
+                    on_intervention, on_session, on_event,
                 )
 
                 # PreCompact 훅 콜백 실행을 위한 이벤트 루프 양보
