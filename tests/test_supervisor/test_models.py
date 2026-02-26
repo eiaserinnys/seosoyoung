@@ -64,7 +64,6 @@ class TestProcessConfig:
         assert cfg.command == "python"
         assert cfg.args == []
         assert cfg.cwd is None
-        assert cfg.env == {}
         assert cfg.log_dir is None
         assert cfg.stdout_log is None
         assert cfg.stderr_log is None

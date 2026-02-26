@@ -29,7 +29,6 @@ def bot_config(tmp_path):
         command=sys.executable,
         args=["-c", "import sys; sys.exit(0)"],
         cwd=str(tmp_path),
-        env={"TEST_VAR": "1"},
         restart_policy=RestartPolicy(use_exit_codes=True),
         log_dir=str(tmp_path / "logs"),
     )

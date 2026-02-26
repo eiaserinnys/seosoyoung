@@ -52,7 +52,6 @@ class ProcessConfig:
     command: str
     args: list[str] = field(default_factory=list)
     cwd: str | None = None
-    env: dict[str, str] = field(default_factory=dict)
     restart_policy: RestartPolicy = field(default_factory=RestartPolicy)
     log_dir: str | None = None
     port: int | None = None  # 프로세스가 바인딩하는 포트 (시작 전 좀비 정리용)

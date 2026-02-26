@@ -123,7 +123,6 @@ class TestBuildProcessConfigs:
         assert "-m" in bot.args
         assert "seosoyoung.slackbot" in bot.args
         assert bot.restart_policy.use_exit_codes is True
-        assert bot.env.get("PYTHONUTF8") == "1"
         assert bot.log_dir is not None
 
     def test_mcp_seosoyoung_config(self):
@@ -141,9 +140,6 @@ class TestBuildProcessConfigs:
     def test_mcp_outline_config(self):
         configs = self._build()
         outline = next(c for c in configs if c.name == "mcp-outline")
-        assert outline.env.get("MCP_TRANSPORT") == "sse"
-        assert outline.env.get("MCP_HOST") == "127.0.0.1"
-        assert outline.env.get("MCP_PORT") == "3103"
         assert outline.restart_policy.auto_restart is True
         assert outline.log_dir is not None
 
@@ -174,7 +170,6 @@ class TestBuildProcessConfigs:
         assert soul.port == 3105
         assert soul.restart_policy.use_exit_codes is False
         assert soul.restart_policy.auto_restart is True
-        assert soul.env.get("PYTHONUTF8") == "1"
         assert soul.log_dir is not None
 
     def test_all_configs_have_log_dir(self):
