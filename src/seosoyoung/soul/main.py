@@ -20,6 +20,7 @@ from seosoyoung.soul.service import resource_manager, file_manager
 from seosoyoung.soul.service.engine_adapter import init_soul_engine
 from seosoyoung.soul.service.runner_pool import ClaudeRunnerPool
 from seosoyoung.soul.service.task_manager import init_task_manager, get_task_manager
+from seosoyoung.soul.service.event_store import EventStore
 from seosoyoung.soul.models import HealthResponse
 from seosoyoung.soul.config import get_settings, setup_logging
 
@@ -92,9 +93,14 @@ async def lifespan(app: FastAPI):
     await pool.start_maintenance()
     logger.info(f"  Runner pool maintenance loop started (interval={settings.runner_pool_maintenance_interval}s)")
 
+    # EventStore 초기화 (대시보드와 동일한 디렉토리에 JSONL 저장)
+    events_base_dir = Path(settings.workspace_dir).parent / "seosoyoung_runtime" / "data" / "events"
+    event_store = EventStore(base_dir=events_base_dir)
+    logger.info(f"  EventStore initialized: {events_base_dir}")
+
     # TaskManager 초기화 및 로드
     storage_path = Path(settings.workspace_dir) / "data" / "tasks.json"
-    task_manager = init_task_manager(storage_path=storage_path)
+    task_manager = init_task_manager(storage_path=storage_path, event_store=event_store)
     loaded = await task_manager.load()
     logger.info(f"  Loaded {loaded} tasks from storage")
 

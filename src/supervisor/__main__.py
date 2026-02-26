@@ -63,32 +63,9 @@ def _start_dashboard(
     logger.info("대시보드 시작: http://%s:%d", DASHBOARD_HOST, DASHBOARD_PORT)
 
 
-def _load_env() -> None:
-    """workspace의 .env 파일을 로드하여 환경변수에 반영.
-
-    모든 환경변수는 workspace/.env에 통합되어 있다.
-    supervisor가 로드한 값은 os.environ에 반영되어
-    non-Python 자식 프로세스(node, Go)에게도 상속된다.
-    """
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        logger.warning("python-dotenv가 설치되지 않아 .env 로딩을 건너뜁니다")
-        return
-
-    paths = _resolve_paths()
-    env_file = paths["workspace"] / ".env"
-    if env_file.exists():
-        load_dotenv(env_file, override=False)
-        logger.info(".env 로드 완료: %s", env_file)
-    else:
-        logger.warning(".env 파일을 찾을 수 없습니다: %s", env_file)
-
-
 def main() -> None:
     """메인 루프"""
     _setup_logging()
-    _load_env()
 
     paths = _resolve_paths()
     paths["logs"].mkdir(parents=True, exist_ok=True)
