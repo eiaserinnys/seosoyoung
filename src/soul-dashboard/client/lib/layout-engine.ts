@@ -38,6 +38,8 @@ export interface GraphNodeData extends Record<string, unknown> {
   isPlanMode?: boolean;
   isPlanModeEntry?: boolean;
   isPlanModeExit?: boolean;
+  /** 전체 텍스트 (user/intervention 노드의 상세 뷰용) */
+  fullContent?: string;
 }
 
 export type GraphNode = Node<GraphNodeData>;
@@ -295,6 +297,29 @@ function createToolResultNode(card: DashboardCard): GraphNode | null {
 }
 
 /**
+ * user_message 이벤트를 user 노드로 변환합니다.
+ * 세션 시작 시 사용자의 원본 프롬프트를 표시합니다.
+ */
+function createUserMessageNode(
+  event: Extract<SoulSSEEvent, { type: "user_message" }>,
+  index: number,
+): GraphNode {
+  return {
+    id: `node-user-${index}`,
+    type: "user",
+    position: { x: 0, y: 0 },
+    data: {
+      nodeType: "user",
+      label: `User (${event.user})`,
+      content: event.text.length > 120 ? event.text.slice(0, 117) + "..." : event.text,
+      streaming: false,
+      /** 전체 텍스트 (상세 뷰에서 사용) */
+      fullContent: event.text,
+    },
+  };
+}
+
+/**
  * intervention_sent 이벤트를 intervention 노드로 변환합니다.
  */
 function createInterventionNode(
@@ -310,6 +335,8 @@ function createInterventionNode(
       label: `Intervention (${event.user})`,
       content: event.text.length > 120 ? event.text.slice(0, 117) + "..." : event.text,
       streaming: false,
+      /** 전체 텍스트 (상세 뷰에서 사용) */
+      fullContent: event.text,
     },
   };
 }
@@ -513,8 +540,11 @@ export function buildGraph(
   // 그룹 노드 생성 (접힌 상태가 아닌 경우에만 내부 노드 표시)
   const createdGroups = new Set<string>();
 
-  // intervention 이벤트 추적: 카드 사이에 삽입할 위치를 결정하기 위해
-  // 이벤트 순서에 기반하여 intervention 노드를 카드 노드 사이에 배치
+  // user_message / intervention 이벤트 추적
+  const userMessageEvents: Array<{
+    event: Extract<SoulSSEEvent, { type: "user_message" }>;
+    index: number;
+  }> = [];
   const interventionEvents: Array<{
     event: Extract<SoulSSEEvent, { type: "intervention_sent" }>;
     index: number;
@@ -522,27 +552,43 @@ export function buildGraph(
   const systemEvents: Array<{ event: SoulSSEEvent; index: number }> = [];
 
   events.forEach((event, idx) => {
-    if (event.type === "intervention_sent") {
+    if (event.type === "user_message") {
+      userMessageEvents.push({ event, index: idx });
+    } else if (event.type === "intervention_sent") {
       interventionEvents.push({ event, index: idx });
     } else if (isSignificantSystemEvent(event)) {
       systemEvents.push({ event, index: idx });
     }
   });
 
-  // session 이벤트가 있으면 맨 앞에 system 노드 추가
+  // 메인 수직 흐름의 마지막 노드 ID (user, thinking, response, intervention, system)
+  // tool 노드는 이 체인에 포함되지 않고 수평으로 분기됩니다.
+  let prevMainFlowNodeId: string | null = null;
+
+  // user_message 이벤트가 있으면 맨 앞에 user 노드 추가 (세션 시작 메시지)
+  // 현재는 첫 번째 user_message만 표시 (세션 시작 프롬프트).
+  // TODO: 멀티턴 세션에서 복수 user_message 지원
+  if (userMessageEvents.length > 0) {
+    const userMsg = userMessageEvents[0];
+    const userNode = createUserMessageNode(userMsg.event, userMsg.index);
+    nodes.push(userNode);
+    prevMainFlowNodeId = userNode.id;
+  }
+
+  // session 이벤트가 있으면 user 노드 다음에 system 노드 추가
   const sessionEvent = systemEvents.find((s) => s.event.type === "session");
   if (sessionEvent) {
-    nodes.push(createSystemNode(sessionEvent.event, sessionEvent.index));
+    const sysNode = createSystemNode(sessionEvent.event, sessionEvent.index);
+    nodes.push(sysNode);
+
+    if (prevMainFlowNodeId) {
+      edges.push(createEdge(prevMainFlowNodeId, sysNode.id));
+    }
+    prevMainFlowNodeId = sysNode.id;
   }
 
   // 메인 노드 시퀀스에 삽입된 intervention 인덱스를 추적
   let interventionIdx = 0;
-
-  // 메인 수직 흐름의 마지막 노드 ID (thinking, response, intervention, system)
-  // tool 노드는 이 체인에 포함되지 않고 수평으로 분기됩니다.
-  let prevMainFlowNodeId: string | null = sessionEvent
-    ? `node-system-session-${sessionEvent.index}`
-    : null;
 
   // 현재 수평 tool 분기의 마지막 노드 ID
   // 새로운 text 카드가 나타나면 null로 리셋됩니다.

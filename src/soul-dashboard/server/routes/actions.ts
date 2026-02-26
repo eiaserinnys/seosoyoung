@@ -9,7 +9,9 @@ import { Router } from "express";
 import type {
   CreateSessionRequest,
   SendMessageRequest,
+  UserMessageEvent,
 } from "../../shared/types.js";
+import type { EventHub } from "../event-hub.js";
 import { parseSessionId } from "../utils/parse-session-id.js";
 
 const MAX_PROMPT_LENGTH = 100_000;
@@ -20,10 +22,12 @@ export interface ActionsRouterOptions {
   soulBaseUrl: string;
   /** 인증 토큰 */
   authToken?: string;
+  /** EventHub 인스턴스 (user_message 브로드캐스트용) */
+  eventHub?: EventHub;
 }
 
 export function createActionsRouter(options: ActionsRouterOptions): Router {
-  const { soulBaseUrl, authToken } = options;
+  const { soulBaseUrl, authToken, eventHub } = options;
   const router = Router();
 
   /**
@@ -108,10 +112,22 @@ export function createActionsRouter(options: ActionsRouterOptions): Router {
         await soulResponse.body.cancel();
       }
 
+      const sessionKey = `${clientId}:${requestId}`;
+
+      // user_message 이벤트 브로드캐스트 (세션 시작 시 사용자의 원본 프롬프트)
+      if (eventHub) {
+        const userMessageEvent: UserMessageEvent = {
+          type: "user_message",
+          user: clientId,
+          text: body.prompt,
+        };
+        eventHub.broadcast(sessionKey, 0, userMessageEvent);
+      }
+
       res.status(201).json({
         clientId,
         requestId,
-        sessionKey: `${clientId}:${requestId}`,
+        sessionKey,
         status: "running",
       });
     } catch (err) {

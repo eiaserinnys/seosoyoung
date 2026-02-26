@@ -28,6 +28,13 @@ export interface DashboardState {
   /** 선택된 카드 (상세 뷰에 표시) */
   selectedCardId: string | null;
 
+  /** 선택된 이벤트 노드 데이터 (user/intervention 노드용, 카드 기반이 아닌 노드) */
+  selectedEventNodeData: {
+    nodeType: string;
+    label: string;
+    content: string;
+  } | null;
+
   /** 활성 세션의 카드 목록 (SSE 이벤트로 구성) */
   cards: DashboardCard[];
 
@@ -59,6 +66,9 @@ export interface DashboardActions {
   // 카드 선택
   selectCard: (cardId: string | null) => void;
 
+  // 이벤트 노드 선택 (user/intervention 등 카드가 아닌 노드)
+  selectEventNode: (data: { nodeType: string; label: string; content: string } | null) => void;
+
   // SSE 이벤트 처리
   processEvent: (event: SoulSSEEvent, eventId: number) => void;
 
@@ -79,6 +89,7 @@ const initialState: DashboardState = {
   activeSessionKey: null,
   activeSession: null,
   selectedCardId: null,
+  selectedEventNodeData: null,
   cards: [],
   graphEvents: [],
   collapsedGroups: new Set<string>(),
@@ -107,6 +118,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
         activeSessionKey: key,
         activeSession: detail ?? null,
         selectedCardId: null,
+        selectedEventNodeData: null,
         cards: [],
         graphEvents: [],
         collapsedGroups: new Set<string>(),
@@ -115,7 +127,11 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
 
     // --- 카드 선택 ---
 
-    selectCard: (cardId) => set({ selectedCardId: cardId }),
+    selectCard: (cardId) => set({ selectedCardId: cardId, selectedEventNodeData: null }),
+
+    // --- 이벤트 노드 선택 ---
+
+    selectEventNode: (data) => set({ selectedEventNodeData: data, selectedCardId: null }),
 
     // --- SSE 이벤트 처리 ---
     // 주의: 카드 객체를 직접 변경하지 않고, 새 객체를 생성하여 참조 동등성을 보장합니다.
@@ -128,7 +144,8 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
         event.type === "session" ||
         event.type === "complete" ||
         event.type === "error" ||
-        event.type === "intervention_sent";
+        event.type === "intervention_sent" ||
+        event.type === "user_message";
       const graphEvents = isGraphRelevant
         ? [...state.graphEvents, event]
         : state.graphEvents;
@@ -251,6 +268,7 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
         collapsedGroups: new Set<string>(),
         lastEventId: 0,
         selectedCardId: null,
+        selectedEventNodeData: null,
       }),
 
     reset: () => set(initialState),

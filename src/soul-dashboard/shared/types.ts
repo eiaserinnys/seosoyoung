@@ -14,6 +14,7 @@ export type SSEEventType =
   | "memory"
   | "session"
   | "intervention_sent"
+  | "user_message"
   | "debug"
   | "complete"
   | "error"
@@ -50,6 +51,13 @@ export interface SessionEvent {
 
 export interface InterventionSentEvent {
   type: "intervention_sent";
+  user: string;
+  text: string;
+}
+
+/** 사용자가 보낸 초기 프롬프트 (세션 시작 시 대시보드가 생성) */
+export interface UserMessageEvent {
+  type: "user_message";
   user: string;
   text: string;
 }
@@ -136,6 +144,7 @@ export type SoulSSEEvent =
   | MemoryEvent
   | SessionEvent
   | InterventionSentEvent
+  | UserMessageEvent
   | DebugEvent
   | CompleteEvent
   | ErrorEvent

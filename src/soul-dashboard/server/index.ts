@@ -107,6 +107,7 @@ app.use(
   createActionsRouter({
     soulBaseUrl: SOUL_BASE_URL,
     authToken: AUTH_TOKEN,
+    eventHub,
   }),
 );
 

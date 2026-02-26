@@ -182,6 +182,7 @@ export class SoulClient {
       "memory",
       "session",
       "intervention_sent",
+      "user_message",
       "debug",
       "complete",
       "error",

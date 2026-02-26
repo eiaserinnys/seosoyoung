@@ -38,6 +38,7 @@ function NodeGraphInner() {
   const collapsedGroups = useDashboardStore((s) => s.collapsedGroups);
   const selectedCardId = useDashboardStore((s) => s.selectedCardId);
   const selectCard = useDashboardStore((s) => s.selectCard);
+  const selectEventNode = useDashboardStore((s) => s.selectEventNode);
   const activeSessionKey = useDashboardStore((s) => s.activeSessionKey);
 
   const { fitView } = useReactFlow();
@@ -99,22 +100,32 @@ function NodeGraphInner() {
     fitView,
   ]);
 
-  // 노드 선택 → 카드 선택 동기화
+  // 노드 선택 → 카드 선택 또는 이벤트 노드 선택 동기화
   const onSelectionChange = useCallback(
     ({ nodes: selectedNodes }: OnSelectionChangeParams) => {
       if (selectedNodes.length === 1) {
-        const cardId = selectedNodes[0].data?.cardId as string | undefined;
+        const nodeData = selectedNodes[0].data;
+        const cardId = nodeData?.cardId as string | undefined;
         if (cardId) {
           selectCard(cardId);
           return;
         }
+
+        // user/intervention 등 카드 기반이 아닌 노드 → 이벤트 노드 데이터 저장
+        const nodeType = nodeData?.nodeType as string | undefined;
+        if (nodeType === "user" || nodeType === "intervention") {
+          selectEventNode({
+            nodeType,
+            label: (nodeData?.label as string) ?? "",
+            content: (nodeData?.fullContent as string) ?? (nodeData?.content as string) ?? "",
+          });
+          return;
+        }
       }
-      // 선택 해제 또는 cardId 없는 노드
-      if (selectedNodes.length === 0) {
-        selectCard(null);
-      }
+      // 선택 해제, 다중 선택, 또는 처리되지 않은 노드 타입 → 선택 해제
+      selectCard(null);
     },
-    [selectCard],
+    [selectCard, selectEventNode],
   );
 
   // 빈 상태

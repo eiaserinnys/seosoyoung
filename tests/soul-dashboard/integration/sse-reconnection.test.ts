@@ -104,9 +104,12 @@ describe("SSE Reconnection & Event Replay", () => {
       expect(connected).toHaveLength(1);
 
       const dataEvents = events.filter((e) => e.event !== "connected");
-      expect(dataEvents.length).toBe(5);
-      expect(dataEvents[0].id).toBe("1");
-      expect(dataEvents[4].id).toBe("5");
+      // 합성 user_message(id:0) + 원본 5개 = 6개
+      expect(dataEvents.length).toBe(6);
+      expect(dataEvents[0].id).toBe("0");
+      expect(dataEvents[0].event).toBe("user_message");
+      expect(dataEvents[1].id).toBe("1");
+      expect(dataEvents[5].id).toBe("5");
     });
 
     it("Last-Event-ID=3 으로 재연결: ID 4, 5만 재전송", async () => {
