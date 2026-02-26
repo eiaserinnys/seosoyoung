@@ -250,7 +250,9 @@ class ListRunner:
     def get_active_sessions(self) -> list[ListRunSession]:
         """활성 세션 목록 조회
 
-        RUNNING, PAUSED, VERIFYING 상태인 세션만 반환합니다.
+        PENDING, RUNNING, PAUSED, VERIFYING 상태인 세션만 반환합니다.
+        PENDING을 포함하는 이유: create_session() 직후~첫 카드 처리 시작 전
+        사이의 경쟁 조건에서 동일 리스트의 중복 정주행을 방지하기 위함.
         조회 전 좀비 세션을 자동 정리합니다.
 
         Returns:
@@ -258,6 +260,7 @@ class ListRunner:
         """
         self._cleanup_zombie_sessions()
         active_statuses = {
+            SessionStatus.PENDING,
             SessionStatus.RUNNING,
             SessionStatus.PAUSED,
             SessionStatus.VERIFYING,
