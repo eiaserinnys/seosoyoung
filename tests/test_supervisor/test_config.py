@@ -101,8 +101,8 @@ class TestBuildProcessConfigs:
             "mcp-outline", "mcp-slack", "mcp-trello",
         }
         assert required.issubset(names)
-        # rescue-bot, mcp-eb-lore는 환경/패키지 유무에 따라 선택적
-        assert names - required <= {"rescue-bot", "mcp-eb-lore"}
+        # rescue-bot, mcp-eb-lore, soul-dashboard는 환경/패키지 유무에 따라 선택적
+        assert names - required <= {"rescue-bot", "mcp-eb-lore", "soul-dashboard"}
 
     def test_bot_config(self):
         configs = self._build()
@@ -166,3 +166,100 @@ class TestBuildProcessConfigs:
         configs = self._build()
         for cfg in configs:
             assert cfg.log_dir is not None, f"{cfg.name}에 log_dir가 없습니다"
+
+
+class TestSoulDashboardConfig:
+    """soul-dashboard 프로세스 설정 테스트."""
+
+    def _build_with_dashboard(self, tmp_path):
+        """tsx와 서버 엔트리 파일이 존재하는 환경을 시뮬레이트."""
+        # 가짜 dashboard 디렉토리 구조 생성
+        workspace = tmp_path / "slackbot_workspace"
+        dashboard_dir = (
+            workspace / ".projects" / "seosoyoung"
+            / "src" / "soul-dashboard"
+        )
+        tsx_dir = dashboard_dir / "node_modules" / "tsx" / "dist"
+        tsx_dir.mkdir(parents=True)
+        (tsx_dir / "cli.mjs").write_text("// tsx cli")
+
+        server_dir = dashboard_dir / "server"
+        server_dir.mkdir(parents=True)
+        (server_dir / "index.ts").write_text("// server")
+
+        # runtime 디렉토리
+        runtime = tmp_path / "seosoyoung_runtime"
+        (runtime / "venv" / "Scripts").mkdir(parents=True)
+        (runtime / "venv" / "Scripts" / "python.exe").write_text("")
+        (runtime / "mcp_venv" / "Scripts").mkdir(parents=True)
+        (runtime / "mcp_venv" / "Scripts" / "python.exe").write_text("")
+        (runtime / "logs").mkdir(parents=True)
+
+        patches = [
+            patch.dict(os.environ, {"SOYOUNG_ROOT": str(tmp_path)}),
+            patch("supervisor.config._find_node", return_value="node"),
+            patch("supervisor.config._find_supergateway", return_value="/sg/index.js"),
+            patch("supervisor.config._mcp_outline_available", return_value=False),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            return build_process_configs()
+        finally:
+            for p in patches:
+                p.stop()
+
+    def test_dashboard_included_when_files_exist(self, tmp_path):
+        """tsx와 서버 파일이 있으면 soul-dashboard 프로세스가 포함됨."""
+        configs = self._build_with_dashboard(tmp_path)
+        names = {c.name for c in configs}
+        assert "soul-dashboard" in names
+
+    def test_dashboard_config_details(self, tmp_path):
+        """soul-dashboard 프로세스 설정이 올바른지 확인."""
+        configs = self._build_with_dashboard(tmp_path)
+        dashboard = next(c for c in configs if c.name == "soul-dashboard")
+
+        assert dashboard.command == "node"
+        assert any("tsx" in arg and "cli.mjs" in arg for arg in dashboard.args)
+        assert any("index.ts" in arg for arg in dashboard.args)
+        assert dashboard.port == 3109
+        assert dashboard.restart_policy.auto_restart is True
+        assert dashboard.restart_policy.use_exit_codes is False
+        assert dashboard.log_dir is not None
+
+    def test_dashboard_excluded_when_tsx_missing(self, tmp_path):
+        """tsx가 설치되지 않으면 soul-dashboard가 제외됨."""
+        # tsx 없이 서버 파일만 존재
+        workspace = tmp_path / "slackbot_workspace"
+        dashboard_dir = (
+            workspace / ".projects" / "seosoyoung"
+            / "src" / "soul-dashboard"
+        )
+        server_dir = dashboard_dir / "server"
+        server_dir.mkdir(parents=True)
+        (server_dir / "index.ts").write_text("// server")
+
+        runtime = tmp_path / "seosoyoung_runtime"
+        (runtime / "venv" / "Scripts").mkdir(parents=True)
+        (runtime / "venv" / "Scripts" / "python.exe").write_text("")
+        (runtime / "mcp_venv" / "Scripts").mkdir(parents=True)
+        (runtime / "mcp_venv" / "Scripts" / "python.exe").write_text("")
+        (runtime / "logs").mkdir(parents=True)
+
+        patches = [
+            patch.dict(os.environ, {"SOYOUNG_ROOT": str(tmp_path)}),
+            patch("supervisor.config._find_node", return_value="node"),
+            patch("supervisor.config._find_supergateway", return_value="/sg/index.js"),
+            patch("supervisor.config._mcp_outline_available", return_value=False),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            configs = build_process_configs()
+        finally:
+            for p in patches:
+                p.stop()
+
+        names = {c.name for c in configs}
+        assert "soul-dashboard" not in names

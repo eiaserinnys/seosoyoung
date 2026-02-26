@@ -1,0 +1,36 @@
+{
+  "name": "@seosoyoung/soul-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/soul-dashboard/server/index.ts",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.10.1",
+    "cors": "^2.8.5",
+    "dagre": "^0.8.5",
+    "eventsource": "^3.0.6",
+    "express": "^5.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/dagre": "^0.7.53",
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.15.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.4",
+    "vitest": "^3.1.3"
+  }
+}
