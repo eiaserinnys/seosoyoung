@@ -113,6 +113,7 @@ def main() -> None:
             logger.exception("%s: 초기 시작 실패, 메인 루프에서 재시도 예정", name)
 
     # GitPoller: runtime 리포 변경 감지
+    # (deployer 생성 전이지만, restart marker 확인을 위해 paths를 사용)
     git_poller = GitPoller(
         repo_path=paths["runtime"],
         remote="origin",
@@ -128,6 +129,9 @@ def main() -> None:
         session_monitor=session_monitor,
         paths=paths,
     )
+
+    # 재시작 마커 확인: 이전 supervisor가 exit 42로 재시작한 경우 완료 알림 전송
+    deployer.check_and_notify_restart_complete()
 
     # 대시보드 (FastAPI + uvicorn, 백그라운드 스레드)
     _start_dashboard(pm, deployer, git_poller, paths["logs"])
@@ -203,6 +207,7 @@ def main() -> None:
                         "%s: exit 44 → supervisor 전체 재시작",
                         name,
                     )
+                    deployer.notify_and_mark_restart()
                     exiting_intentionally = True
                     pm.stop_all()
                     job_object.close_job_object()

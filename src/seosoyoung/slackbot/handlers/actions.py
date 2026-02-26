@@ -76,6 +76,69 @@ def send_restart_confirmation(
         logger.error(f"재시작 확인 메시지 전송 실패: {e}")
 
 
+def send_deploy_shutdown_popup(
+    client,
+    channel: str,
+    running_count: int,
+    restart_type: RestartType,
+) -> None:
+    """배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
+
+    supervisor에서 graceful shutdown 요청이 왔을 때 활성 세션이 있으면
+    사용자에게 즉시 종료 또는 세션 완료 후 종료를 선택하도록 한다.
+
+    Args:
+        client: Slack client
+        channel: 알림 채널 ID
+        running_count: 실행 중인 세션 수
+        restart_type: 재시작 유형
+    """
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f":warning: 진행 중인 세션이 *{running_count}개* 있습니다.\n"
+                    f"종료 방식을 선택해주세요."
+                ),
+            },
+        },
+        {
+            "type": "actions",
+            "block_id": "deploy_shutdown_actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "지금 종료"},
+                    "style": "danger",
+                    "action_id": "deploy_shutdown_yes",
+                    "value": str(restart_type.value),
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "세션 완료 후 종료"},
+                    "action_id": "deploy_shutdown_wait",
+                    "value": str(restart_type.value),
+                },
+            ],
+        },
+    ]
+
+    try:
+        client.chat_postMessage(
+            channel=channel,
+            blocks=blocks,
+            text=f"종료 확인 필요: {running_count}개 세션 진행 중",
+        )
+        logger.info(
+            "배포 종료 확인 팝업 전송: channel=%s, sessions=%d",
+            channel, running_count,
+        )
+    except Exception as e:
+        logger.error(f"배포 종료 확인 팝업 전송 실패: {e}")
+
+
 def register_action_handlers(app, dependencies: dict):
     """액션 핸들러 등록
 
@@ -180,3 +243,61 @@ def register_action_handlers(app, dependencies: dict):
         # 현재 실행 중인 세션이 없으면 즉시 재시작
         if get_running_session_count() == 0:
             restart_manager.check_and_restart_if_ready()
+
+    @app.action("deploy_shutdown_yes")
+    def handle_deploy_shutdown_yes(ack, body, client):
+        """배포 시 '지금 종료' 버튼 클릭 - 즉시 종료"""
+        ack()
+
+        value = body["actions"][0]["value"]
+        restart_type = RestartType(int(value))
+
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        try:
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=[],
+                text="알겠습니다, 지금 종료합니다.",
+            )
+        except Exception as e:
+            logger.error(f"메시지 업데이트 실패: {e}")
+
+        logger.info("배포 종료 승인 (즉시): type=%s", restart_type.name)
+        restart_manager.force_restart(restart_type)
+
+    @app.action("deploy_shutdown_wait")
+    def handle_deploy_shutdown_wait(ack, body, client):
+        """배포 시 '세션 완료 후 종료' 버튼 클릭 - 세션 종료 대기"""
+        ack()
+
+        value = body["actions"][0]["value"]
+        restart_type = RestartType(int(value))
+
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        try:
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=[],
+                text="알겠습니다, 세션이 완료되면 종료합니다.",
+            )
+        except Exception as e:
+            logger.error(f"메시지 업데이트 실패: {e}")
+
+        logger.info("배포 종료 대기: type=%s", restart_type.name)
+
+        # 시스템 종료 요청 등록 (세션 0 도달 시 자동 종료)
+        result = restart_manager.request_system_shutdown(restart_type)
+        if result:
+            # 이미 세션이 없어서 즉시 종료됨
+            return
+
+        # Trello 워처 일시 중단
+        trello_watcher = trello_watcher_ref()
+        if trello_watcher:
+            trello_watcher.pause()

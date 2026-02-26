@@ -66,15 +66,13 @@ def _format_commit_section(title: str, commits: list[str]) -> list[str]:
     return lines
 
 
-def format_deploy_start_message(
-    runtime_commits: list[str],
-    seosoyoung_commits: list[str],
-) -> str:
-    """배포 시작 메시지를 생성한다."""
-    lines = [":arrows_counterclockwise: *서소영 업데이트합니다...*"]
-    lines.extend(_format_commit_section("runtime", runtime_commits))
-    lines.extend(_format_commit_section("seosoyoung", seosoyoung_commits))
-    return "\n".join(lines)
+def format_deploy_start_message() -> str:
+    """배포 시작 메시지를 생성한다.
+
+    커밋 목록은 변경점 감지 메시지(format_change_detected_message)에서만 표시하고,
+    배포 시작 메시지에서는 중복을 피하기 위해 표시하지 않는다.
+    """
+    return ":arrows_counterclockwise: *서소영 업데이트합니다...*"
 
 
 def format_deploy_success_message() -> str:
@@ -122,17 +120,7 @@ def notify_deploy_start(
     url = load_webhook_url(config_path)
     if not url:
         return
-
-    runtime_commits = get_pending_commits(paths["runtime"])
-    dev_seosoyoung = paths["workspace"] / "seosoyoung"
-    seosoyoung_commits = (
-        get_pending_commits(dev_seosoyoung)
-        if dev_seosoyoung.exists()
-        else []
-    )
-
-    message = format_deploy_start_message(runtime_commits, seosoyoung_commits)
-    send_webhook(url, message)
+    send_webhook(url, format_deploy_start_message())
 
 
 def notify_deploy_success(config_path: Path | None = None) -> None:
@@ -156,6 +144,36 @@ def notify_deploy_failure(
     if not url:
         return
     send_webhook(url, format_deploy_failure_message(error))
+
+
+def format_restart_start_message() -> str:
+    """재시작 시작 메시지를 생성한다."""
+    return ":arrows_counterclockwise: *재시작 중입니다*"
+
+
+def format_restart_complete_message() -> str:
+    """재시작 완료 메시지를 생성한다."""
+    return ":white_check_mark: *재시작이 완료됐습니다*"
+
+
+def notify_restart_start(config_path: Path | None = None) -> None:
+    """재시작 시작 알림을 전송한다."""
+    if config_path is None:
+        return
+    url = load_webhook_url(config_path)
+    if not url:
+        return
+    send_webhook(url, format_restart_start_message())
+
+
+def notify_restart_complete(config_path: Path | None = None) -> None:
+    """재시작 완료 알림을 전송한다."""
+    if config_path is None:
+        return
+    url = load_webhook_url(config_path)
+    if not url:
+        return
+    send_webhook(url, format_restart_complete_message())
 
 
 def format_change_detected_message(

@@ -311,7 +311,8 @@
 - `format_dm_progress()` (seosoyoung/slackbot/formatting.py:76): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
 - `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
-- `register_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:79): 액션 핸들러 등록
+- `send_deploy_shutdown_popup()` (seosoyoung/slackbot/handlers/actions.py:79): 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
+- `register_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:142): 액션 핸들러 등록
 - `get_ancestors()` (seosoyoung/slackbot/handlers/commands.py:24): PID의 조상 체인(ancestor chain)을 반환
 - `format_elapsed()` (seosoyoung/slackbot/handlers/commands.py:38): 경과 시간을 사람이 읽기 쉬운 형태로 포맷
 - `handle_help()` (seosoyoung/slackbot/handlers/commands.py:162): help 명령어 핸들러
@@ -335,12 +336,12 @@
 - `process_translate_message()` (seosoyoung/slackbot/handlers/translate.py:194): 메시지를 번역 처리합니다.
 - `register_translate_handler()` (seosoyoung/slackbot/handlers/translate.py:319): 번역 핸들러를 앱에 등록합니다.
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/slackbot/main.py:272): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/slackbot/main.py:283): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/slackbot/main.py:294): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/slackbot/main.py:314): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/slackbot/main.py:324): 봇 사용자 ID 초기화
-- `main()` (seosoyoung/slackbot/main.py:334): 봇 메인 진입점
+- `notify_startup()` (seosoyoung/slackbot/main.py:292): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/slackbot/main.py:303): 봇 종료 알림
+- `start_trello_watcher()` (seosoyoung/slackbot/main.py:314): Trello 워처 시작
+- `start_list_runner()` (seosoyoung/slackbot/main.py:334): 리스트 러너 초기화
+- `init_bot_user_id()` (seosoyoung/slackbot/main.py:344): 봇 사용자 ID 초기화
+- `main()` (seosoyoung/slackbot/main.py:354): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `parse_intervention_markup()` (seosoyoung/slackbot/memory/channel_intervention.py:39): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
 - `async execute_interventions()` (seosoyoung/slackbot/memory/channel_intervention.py:80): InterventionAction 리스트를 슬랙 API로 발송합니다.
