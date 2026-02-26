@@ -22,7 +22,9 @@ export const SystemNode = memo(function SystemNode({ data, selected }: NodeProps
     <div
       data-testid="system-node"
       style={{
-        maxWidth: 280,
+        width: 280,
+        height: 40,
+        boxSizing: 'border-box',
         background: 'rgba(17, 24, 39, 0.95)',
         border: selected
           ? `1px solid ${accent}`

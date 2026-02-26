@@ -26,7 +26,9 @@ export const InterventionNode = memo(function InterventionNode({ data, selected 
     <div
       data-testid="intervention-node"
       style={{
-        maxWidth: 260,
+        width: 280,
+        height: 60,
+        boxSizing: 'border-box',
         background: 'rgba(17, 24, 39, 0.95)',
         border: selected
           ? `1px solid ${ACCENT}`

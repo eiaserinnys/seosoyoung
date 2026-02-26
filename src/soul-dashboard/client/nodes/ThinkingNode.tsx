@@ -31,7 +31,9 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
     <div
         data-testid="thinking-node"
         style={{
-          maxWidth: 260,
+          width: 280,
+          height: 60,
+          boxSizing: 'border-box',
           background: isPlanMode
             ? 'rgba(6, 182, 212, 0.06)'
             : 'rgba(17, 24, 39, 0.95)',

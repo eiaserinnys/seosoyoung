@@ -17,7 +17,7 @@ const truncateStyle: React.CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   display: '-webkit-box',
-  WebkitLineClamp: 3,
+  WebkitLineClamp: 2,
   WebkitBoxOrient: 'vertical',
 };
 
@@ -28,7 +28,9 @@ export const ResponseNode = memo(function ResponseNode({ data, selected }: NodeP
     <div
         data-testid="response-node"
         style={{
-          maxWidth: 260,
+          width: 280,
+          height: 60,
+          boxSizing: 'border-box',
           background: 'rgba(17, 24, 39, 0.95)',
           border: selected
             ? `1px solid ${ACCENT}`

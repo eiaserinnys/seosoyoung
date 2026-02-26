@@ -23,6 +23,79 @@ const __dirname = path.dirname(__filename);
 
 const SSE_INTERVAL = 200;
 
+// === 멀티 Tool SSE 이벤트 시퀀스 ===
+
+/**
+ * 3개의 연속 Tool 호출(Read → Write → Bash)을 포함하는 SSE 이벤트 시퀀스.
+ * thinking → 3개 tool 호출 → 2번째 thinking → response → complete
+ */
+const MULTI_TOOL_SSE_EVENTS = [
+  // 0) User message
+  {
+    delay: 0,
+    data: 'id: 0\nevent: user_message\ndata: {"type":"user_message","user":"dashboard","text":"src/utils.ts에 validateInput 함수를 추가하고 테스트를 실행해주세요."}\n\n',
+  },
+  // 1) Thinking: 분석
+  {
+    delay: 1 * SSE_INTERVAL,
+    data: 'id: 1\nevent: text_start\ndata: {"type":"text_start","card_id":"mt-t1"}\n\n',
+  },
+  {
+    delay: 2 * SSE_INTERVAL,
+    data: 'id: 2\nevent: text_delta\ndata: {"type":"text_delta","card_id":"mt-t1","text":"먼저 기존 파일을 읽고, 수정한 뒤, 테스트를 실행하겠습니다."}\n\n',
+  },
+  {
+    delay: 3 * SSE_INTERVAL,
+    data: 'id: 3\nevent: text_end\ndata: {"type":"text_end","card_id":"mt-t1"}\n\n',
+  },
+  // 2) Tool 1: Read
+  {
+    delay: 4 * SSE_INTERVAL,
+    data: 'id: 4\nevent: tool_start\ndata: {"type":"tool_start","card_id":"mt-tool1","tool_name":"Read","tool_input":{"file_path":"/src/utils.ts"}}\n\n',
+  },
+  {
+    delay: 5 * SSE_INTERVAL,
+    data: 'id: 5\nevent: tool_result\ndata: {"type":"tool_result","card_id":"mt-tool1","tool_name":"Read","result":"export function formatDate(d: Date) { return d.toISOString(); }","is_error":false}\n\n',
+  },
+  // 3) Tool 2: Write
+  {
+    delay: 6 * SSE_INTERVAL,
+    data: 'id: 6\nevent: tool_start\ndata: {"type":"tool_start","card_id":"mt-tool2","tool_name":"Write","tool_input":{"file_path":"/src/utils.ts","content":"export function validateInput(s: string) { return s.trim().length > 0; }"}}\n\n',
+  },
+  {
+    delay: 7 * SSE_INTERVAL,
+    data: 'id: 7\nevent: tool_result\ndata: {"type":"tool_result","card_id":"mt-tool2","tool_name":"Write","result":"File written successfully","is_error":false}\n\n',
+  },
+  // 4) Tool 3: Bash
+  {
+    delay: 8 * SSE_INTERVAL,
+    data: 'id: 8\nevent: tool_start\ndata: {"type":"tool_start","card_id":"mt-tool3","tool_name":"Bash","tool_input":{"command":"npm test -- --filter=utils"}}\n\n',
+  },
+  {
+    delay: 9 * SSE_INTERVAL,
+    data: 'id: 9\nevent: tool_result\ndata: {"type":"tool_result","card_id":"mt-tool3","tool_name":"Bash","result":"PASS src/utils.test.ts\\n  validateInput\\n    ✓ returns true for valid input (2ms)\\n    ✓ returns false for empty string (1ms)","is_error":false}\n\n',
+  },
+  // 5) 두 번째 Thinking
+  {
+    delay: 10 * SSE_INTERVAL,
+    data: 'id: 10\nevent: text_start\ndata: {"type":"text_start","card_id":"mt-t2"}\n\n',
+  },
+  {
+    delay: 11 * SSE_INTERVAL,
+    data: 'id: 11\nevent: text_delta\ndata: {"type":"text_delta","card_id":"mt-t2","text":"validateInput 함수를 추가하고 테스트가 모두 통과했습니다."}\n\n',
+  },
+  {
+    delay: 12 * SSE_INTERVAL,
+    data: 'id: 12\nevent: text_end\ndata: {"type":"text_end","card_id":"mt-t2"}\n\n',
+  },
+  // 6) Complete
+  {
+    delay: 14 * SSE_INTERVAL,
+    data: 'id: 13\nevent: complete\ndata: {"type":"complete","result":"src/utils.ts에 validateInput 함수를 추가하고 테스트를 통과했습니다.","attachments":[]}\n\n',
+    end: true,
+  },
+];
+
 const SSE_EVENTS = [
   // 0) User message
   {
@@ -113,6 +186,13 @@ const test = base.extend<{ dashboardServer: MockDashboardServer }>({
             eventCount: 3,
             createdAt: new Date(Date.now() - 7200000).toISOString(),
           },
+          {
+            clientId: "dashboard",
+            requestId: "e2e-ui-multi",
+            status: "running",
+            eventCount: 14,
+            createdAt: new Date(Date.now() - 60000).toISOString(),
+          },
         ],
       });
     });
@@ -123,7 +203,7 @@ const test = base.extend<{ dashboardServer: MockDashboardServer }>({
     });
 
     // --- Mock: SSE 이벤트 스트림 ---
-    app.get("/api/sessions/:id/events", (_req, res) => {
+    app.get("/api/sessions/:id/events", (req, res) => {
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -140,8 +220,12 @@ const test = base.extend<{ dashboardServer: MockDashboardServer }>({
       // 연결 확인
       res.write("event: connected\ndata: {}\n\n");
 
+      // 세션 ID에 따라 이벤트 시퀀스 선택
+      const sessionId = req.params.id;
+      const events = sessionId.includes("multi") ? MULTI_TOOL_SSE_EVENTS : SSE_EVENTS;
+
       // SSE 이벤트 스케줄링
-      for (const event of SSE_EVENTS) {
+      for (const event of events) {
         timers.push(
           setTimeout(() => {
             if (!res.writableEnded) {
@@ -205,7 +289,7 @@ async function navigateAndSelectSession(
   await page.goto(baseURL);
   await expect(
     page.locator('[data-testid^="session-item-"]'),
-  ).toHaveCount(3, { timeout: 10_000 });
+  ).toHaveCount(4, { timeout: 10_000 });
   await page
     .locator(`[data-testid="session-item-${sessionKey}"]`)
     .click();
@@ -250,11 +334,11 @@ test.describe("Soul Dashboard 브라우저 UI", () => {
     // 세션 항목이 렌더링될 때까지 대기 (mock에서 3개 반환)
     await expect(
       page.locator('[data-testid^="session-item-"]'),
-    ).toHaveCount(3, { timeout: 10_000 });
+    ).toHaveCount(4, { timeout: 10_000 });
 
     // 세션 상태 뱃지 확인
     const statusBadges = page.locator('[data-testid="session-status-badge"]');
-    await expect(statusBadges).toHaveCount(3);
+    await expect(statusBadges).toHaveCount(4);
 
     // 그래프 패널 확인 (세션 미선택 → "Select a session" 안내)
     const graphPanel = page.locator('[data-testid="graph-panel"]');
@@ -382,6 +466,107 @@ test.describe("Soul Dashboard 브라우저 UI", () => {
     // 스크린샷: Complete 상태의 전체 대시보드
     await page.screenshot({
       path: `${SCREENSHOT_DIR}/07-complete-state.png`,
+      fullPage: true,
+    });
+  });
+
+  test("5. 멀티 Tool 호출 시나리오 (Read → Write → Bash)", async ({
+    page,
+    dashboardServer,
+  }) => {
+    // 멀티 Tool 세션 선택
+    await navigateAndSelectSession(
+      page,
+      dashboardServer.baseURL,
+      "dashboard:e2e-ui-multi",
+    );
+
+    // Complete 이벤트까지 대기
+    await expect(page.getByText("Idle")).toBeVisible({ timeout: 15_000 });
+
+    // 3개의 Tool Call 노드 확인 (Read, Write, Bash)
+    const toolCallNodes = page.locator('[data-testid="tool-call-node"]');
+    await expect(toolCallNodes).toHaveCount(3, { timeout: 10_000 });
+
+    // 3개의 Tool Result 노드 확인
+    const toolResultNodes = page.locator('[data-testid="tool-result-node"]');
+    await expect(toolResultNodes).toHaveCount(3, { timeout: 10_000 });
+
+    // Response 노드 확인 (세션 완료 → 마지막 text가 response로 변환)
+    const responseNodes = page.locator('[data-testid="response-node"]');
+    await expect(responseNodes).toHaveCount(1, { timeout: 10_000 });
+
+    // User 노드 확인
+    const userNodes = page.locator('[data-testid="user-node"]');
+    await expect(userNodes).toHaveCount(1, { timeout: 10_000 });
+
+    // Thinking 노드 확인 (첫 번째 thinking만, 두 번째는 response로 변환)
+    const thinkingNodes = page.locator('[data-testid="thinking-node"]');
+    await expect(thinkingNodes).toHaveCount(1, { timeout: 10_000 });
+
+    // 전체 노드 수: user(1) + thinking(1) + tool_call(3) + tool_result(3) + response(1) + system(1, complete) = 10
+    const allNodes = page.locator(".react-flow__node");
+    const nodeCount = await allNodes.count();
+    expect(nodeCount).toBeGreaterThanOrEqual(10);
+
+    // 레이아웃 정렬 검증: Tool Call 노드들이 세로 체이닝 (같은 X 좌표)
+    const toolCallBoxes = await Promise.all(
+      Array.from({ length: 3 }, (_, i) =>
+        toolCallNodes.nth(i).boundingBox(),
+      ),
+    );
+
+    // BoundingBox가 null이 아닌지 명시적 확인
+    for (const box of toolCallBoxes) {
+      expect(box).not.toBeNull();
+    }
+
+    // 모든 Tool Call 노드의 X 좌표가 동일한지 확인 (±2px 허용)
+    const xPositions = toolCallBoxes.map((b) => b!.x);
+    expect(Math.abs(xPositions[0] - xPositions[1])).toBeLessThan(3);
+    expect(Math.abs(xPositions[1] - xPositions[2])).toBeLessThan(3);
+
+    // Tool Call 노드들이 위에서 아래로 정렬 (Y 좌표 증가)
+    expect(toolCallBoxes[0]!.y).toBeLessThan(toolCallBoxes[1]!.y);
+    expect(toolCallBoxes[1]!.y).toBeLessThan(toolCallBoxes[2]!.y);
+
+    // 레이아웃 정렬 검증: Tool Result 노드들이 Tool Call 오른쪽에 배치
+    const toolResultBoxes = await Promise.all(
+      Array.from({ length: 3 }, (_, i) =>
+        toolResultNodes.nth(i).boundingBox(),
+      ),
+    );
+
+    for (const box of toolResultBoxes) {
+      expect(box).not.toBeNull();
+    }
+
+    // Result가 Call 오른쪽에 있어야 함
+    expect(toolResultBoxes[0]!.x).toBeGreaterThan(toolCallBoxes[0]!.x);
+
+    // 노드 크기 일관성 검증: 모든 Tool Call 노드의 너비가 동일 (viewport zoom 적용)
+    const widths = toolCallBoxes.map((b) => b!.width);
+    expect(Math.abs(widths[0] - widths[1])).toBeLessThan(2);
+    expect(Math.abs(widths[1] - widths[2])).toBeLessThan(2);
+
+    // 스크린샷: 멀티 Tool 전체 그래프
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}/08-multi-tool-graph.png`,
+      fullPage: true,
+    });
+
+    // 각 Tool 노드 클릭하여 상세 확인
+    // React Flow 캔버스 내 노드는 뷰포트 밖에 있을 수 있으므로 force: true 사용
+    for (const toolName of ["Read", "Write", "Bash"]) {
+      const toolNode = toolCallNodes.filter({ hasText: toolName }).first();
+      await toolNode.click({ force: true });
+      const detailView = page.locator('[data-testid="detail-view"]');
+      await expect(detailView).toContainText(toolName, { timeout: 5_000 });
+    }
+
+    // 스크린샷: 마지막 Tool 상세
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}/09-multi-tool-detail.png`,
       fullPage: true,
     });
   });

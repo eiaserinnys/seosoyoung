@@ -31,7 +31,9 @@ export const ToolResultNode = memo(function ToolResultNode({ data, selected }: N
     <div
       data-testid="tool-result-node"
       style={{
-        maxWidth: 260,
+        width: 280,
+        height: 80,
+        boxSizing: 'border-box',
         background: 'rgba(17, 24, 39, 0.95)',
         border: selected
           ? `1px solid ${accent}`
@@ -111,6 +113,7 @@ export const ToolResultNode = memo(function ToolResultNode({ data, selected }: N
       <Handle
         type="target"
         position={Position.Left}
+        id="left"
         style={{
           width: 8,
           height: 8,
