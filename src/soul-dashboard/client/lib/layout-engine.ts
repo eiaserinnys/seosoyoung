@@ -34,6 +34,10 @@ export interface GraphNodeData extends Record<string, unknown> {
   streaming: boolean;
   subAgentId?: string;
   collapsed?: boolean;
+  /** 플랜 모드 관련 플래그 */
+  isPlanMode?: boolean;
+  isPlanModeEntry?: boolean;
+  isPlanModeExit?: boolean;
 }
 
 export type GraphNode = Node<GraphNodeData>;
@@ -189,6 +193,7 @@ function createTextNode(
   card: DashboardCard,
   isLastText: boolean,
   isSessionComplete: boolean,
+  planFlags?: { isPlanMode?: boolean },
 ): GraphNode {
   const nodeType: GraphNodeType =
     isLastText && isSessionComplete ? "response" : "thinking";
@@ -207,6 +212,7 @@ function createTextNode(
           ? card.content.slice(0, 117) + "..."
           : card.content || "(streaming...)",
       streaming: !card.completed,
+      isPlanMode: planFlags?.isPlanMode,
     },
   };
 }
@@ -214,7 +220,10 @@ function createTextNode(
 /**
  * 도구 카드를 tool_call 노드로 변환합니다.
  */
-function createToolCallNode(card: DashboardCard): GraphNode {
+function createToolCallNode(
+  card: DashboardCard,
+  planFlags?: { isPlanMode?: boolean; isPlanModeEntry?: boolean; isPlanModeExit?: boolean },
+): GraphNode {
   return {
     id: `node-${card.cardId}-call`,
     type: "tool_call",
@@ -227,6 +236,9 @@ function createToolCallNode(card: DashboardCard): GraphNode {
       toolName: card.toolName,
       toolInput: card.toolInput,
       streaming: !card.completed && !card.toolResult,
+      isPlanMode: planFlags?.isPlanMode,
+      isPlanModeEntry: planFlags?.isPlanModeEntry,
+      isPlanModeExit: planFlags?.isPlanModeExit,
     },
   };
 }
@@ -383,6 +395,45 @@ function isSignificantSystemEvent(event: SoulSSEEvent): boolean {
   return event.type === "session" || event.type === "complete" || event.type === "error";
 }
 
+// === Plan Mode Detection ===
+
+/** EnterPlanMode ~ ExitPlanMode 범위 */
+interface PlanModeRange {
+  enterIdx: number;
+  exitIdx: number;
+}
+
+/**
+ * DashboardCard 배열에서 EnterPlanMode / ExitPlanMode 도구 호출을 감지하여
+ * 플랜 모드 구간의 인덱스 범위를 반환합니다.
+ *
+ * EnterPlanMode 없이 ExitPlanMode만 있는 경우는 무시합니다.
+ * ExitPlanMode 없이 EnterPlanMode만 있으면 마지막 카드까지를 범위로 합니다.
+ */
+export function detectPlanModeRanges(cards: DashboardCard[]): PlanModeRange[] {
+  const ranges: PlanModeRange[] = [];
+  let enterIdx: number | null = null;
+
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    if (card.type !== "tool") continue;
+
+    if (card.toolName === "EnterPlanMode") {
+      enterIdx = i;
+    } else if (card.toolName === "ExitPlanMode" && enterIdx !== null) {
+      ranges.push({ enterIdx, exitIdx: i });
+      enterIdx = null;
+    }
+  }
+
+  // 아직 ExitPlanMode가 오지 않은 경우 (현재 플랜 모드 진행 중)
+  if (enterIdx !== null) {
+    ranges.push({ enterIdx, exitIdx: cards.length - 1 });
+  }
+
+  return ranges;
+}
+
 // === Main Build Function ===
 
 /**
@@ -419,6 +470,22 @@ export function buildGraph(
     if (cards[i].type === "text") {
       lastTextCardIndex = i;
       break;
+    }
+  }
+
+  // 플랜 모드 감지: EnterPlanMode ~ ExitPlanMode 사이의 카드 인덱스를 추적
+  const planModeRanges = detectPlanModeRanges(cards);
+  const planModeCardIds = new Set<string>();
+  const planModeEntryCardIds = new Set<string>();
+  const planModeExitCardIds = new Set<string>();
+
+  for (const range of planModeRanges) {
+    planModeEntryCardIds.add(cards[range.enterIdx].cardId);
+    for (let i = range.enterIdx; i <= range.exitIdx; i++) {
+      planModeCardIds.add(cards[i].cardId);
+    }
+    if (range.exitIdx < cards.length) {
+      planModeExitCardIds.add(cards[range.exitIdx].cardId);
     }
   }
 
@@ -526,7 +593,9 @@ export function buildGraph(
     if (card.type === "text") {
       // 텍스트 카드 -> thinking 또는 response 노드
       const isLast = i === lastTextCardIndex;
-      const textNode = createTextNode(card, isLast, isSessionComplete);
+      const textNode = createTextNode(card, isLast, isSessionComplete, {
+        isPlanMode: planModeCardIds.has(card.cardId),
+      });
 
       // 그룹 내부 노드의 경우 parentId 설정
       if (group && !group.collapsed) {
@@ -543,7 +612,11 @@ export function buildGraph(
       prevMainNodeId = textNode.id;
     } else if (card.type === "tool") {
       // 도구 카드 -> tool_call 노드 + tool_result 노드
-      const callNode = createToolCallNode(card);
+      const callNode = createToolCallNode(card, {
+        isPlanMode: planModeCardIds.has(card.cardId),
+        isPlanModeEntry: planModeEntryCardIds.has(card.cardId),
+        isPlanModeExit: planModeExitCardIds.has(card.cardId),
+      });
 
       if (group && !group.collapsed) {
         callNode.parentId = group.groupId;

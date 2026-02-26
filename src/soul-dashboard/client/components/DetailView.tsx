@@ -1,167 +1,43 @@
 /**
- * DetailView - 카드 상세 뷰 (Phase 6-C에서 확장 예정)
+ * DetailView - 선택된 카드의 상세 정보 패널
  *
- * 선택된 카드의 상세 정보를 표시합니다.
- * 텍스트 카드: 전체 텍스트 내용
- * 도구 카드: 도구명, 입력, 결과
+ * 카드 타입에 따라 적절한 상세 컴포넌트를 라우팅합니다.
+ * - text 카드 → ThinkingDetail
+ * - tool 카드 (Task) → SubAgentDetail
+ * - tool 카드 (에러) → ErrorDetail
+ * - tool 카드 (일반) → ToolDetail
  */
 
 import type { DashboardCard } from "@shared/types";
 import { useDashboardStore } from "../stores/dashboard-store";
+import { ThinkingDetail } from "./detail/ThinkingDetail";
+import { ToolDetail } from "./detail/ToolDetail";
+import { SubAgentDetail } from "./detail/SubAgentDetail";
+import { ErrorDetail } from "./detail/ErrorDetail";
 
-// === Detail Content Renderers ===
+// === Detail Router ===
 
-function TextCardDetail({ card }: { card: DashboardCard }) {
-  return (
-    <div style={{ padding: "16px" }}>
-      <div
-        style={{
-          fontSize: "11px",
-          color: "#6b7280",
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-          marginBottom: "8px",
-        }}
-      >
-        Text Output
-      </div>
-      <pre
-        style={{
-          fontSize: "13px",
-          color: "#d1d5db",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          lineHeight: "1.6",
-          margin: 0,
-          fontFamily: "'Cascadia Code', 'Fira Code', monospace",
-        }}
-      >
-        {card.content || "(empty)"}
-      </pre>
-    </div>
-  );
-}
+/**
+ * 카드 타입에 따라 적절한 상세 컴포넌트를 선택합니다.
+ *
+ * 우선순위:
+ * 1. tool + toolName === "Task" → SubAgentDetail
+ * 2. tool + isError === true → ErrorDetail
+ * 3. tool → ToolDetail
+ * 4. text → ThinkingDetail
+ */
+function CardDetail({ card }: { card: DashboardCard }) {
+  if (card.type === "tool") {
+    if (card.toolName === "Task") {
+      return <SubAgentDetail card={card} />;
+    }
+    if (card.isError) {
+      return <ErrorDetail card={card} />;
+    }
+    return <ToolDetail card={card} />;
+  }
 
-function ToolCardDetail({ card }: { card: DashboardCard }) {
-  return (
-    <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
-      {/* Tool name */}
-      <div>
-        <div
-          style={{
-            fontSize: "11px",
-            color: "#6b7280",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-            marginBottom: "4px",
-          }}
-        >
-          Tool
-        </div>
-        <div
-          style={{
-            fontSize: "14px",
-            color: "#e5e7eb",
-            fontWeight: 600,
-          }}
-        >
-          {card.toolName ?? "unknown"}
-        </div>
-      </div>
-
-      {/* Tool input */}
-      {card.toolInput && (
-        <div>
-          <div
-            style={{
-              fontSize: "11px",
-              color: "#6b7280",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              marginBottom: "4px",
-            }}
-          >
-            Input
-          </div>
-          <pre
-            style={{
-              fontSize: "12px",
-              color: "#9ca3af",
-              backgroundColor: "rgba(0,0,0,0.3)",
-              padding: "10px",
-              borderRadius: "6px",
-              overflow: "auto",
-              maxHeight: "200px",
-              margin: 0,
-              fontFamily: "'Cascadia Code', 'Fira Code', monospace",
-            }}
-          >
-            {JSON.stringify(card.toolInput, null, 2)}
-          </pre>
-        </div>
-      )}
-
-      {/* Tool result */}
-      {card.toolResult !== undefined && (
-        <div>
-          <div
-            style={{
-              fontSize: "11px",
-              color: card.isError ? "#ef4444" : "#6b7280",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              marginBottom: "4px",
-            }}
-          >
-            {card.isError ? "Error" : "Result"}
-          </div>
-          <pre
-            style={{
-              fontSize: "12px",
-              color: card.isError ? "#fca5a5" : "#9ca3af",
-              backgroundColor: card.isError
-                ? "rgba(239, 68, 68, 0.08)"
-                : "rgba(0,0,0,0.3)",
-              padding: "10px",
-              borderRadius: "6px",
-              overflow: "auto",
-              maxHeight: "300px",
-              margin: 0,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              fontFamily: "'Cascadia Code', 'Fira Code', monospace",
-            }}
-          >
-            {card.toolResult}
-          </pre>
-        </div>
-      )}
-
-      {/* Status indicator */}
-      {!card.completed && (
-        <div
-          style={{
-            fontSize: "12px",
-            color: "#22c55e",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-          }}
-        >
-          <span
-            style={{
-              width: "6px",
-              height: "6px",
-              borderRadius: "50%",
-              backgroundColor: "#22c55e",
-              animation: "pulse 2s infinite",
-            }}
-          />
-          Running...
-        </div>
-      )}
-    </div>
-  );
+  return <ThinkingDetail card={card} />;
 }
 
 // === DetailView ===
@@ -193,9 +69,25 @@ export function DetailView() {
           color: "#9ca3af",
           textTransform: "uppercase",
           letterSpacing: "0.05em",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
-        Detail
+        <span>Detail</span>
+        {selectedCard && (
+          <span
+            style={{
+              fontSize: "10px",
+              color: "#4b5563",
+              fontWeight: 400,
+              textTransform: "none",
+              fontFamily: "'Cascadia Code', 'Fira Code', monospace",
+            }}
+          >
+            {selectedCard.cardId}
+          </span>
+        )}
       </div>
 
       {/* Content */}
@@ -209,16 +101,11 @@ export function DetailView() {
               fontSize: "13px",
             }}
           >
-            Select a card to view details
+            Select a node to view details
           </div>
         )}
 
-        {selectedCard &&
-          (selectedCard.type === "text" ? (
-            <TextCardDetail card={selectedCard} />
-          ) : (
-            <ToolCardDetail card={selectedCard} />
-          ))}
+        {selectedCard && <CardDetail card={selectedCard} />}
       </div>
     </div>
   );

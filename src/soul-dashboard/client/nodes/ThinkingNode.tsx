@@ -12,6 +12,7 @@ import type { GraphNodeData } from '../lib/layout-engine';
 type ThinkingNodeType = Node<GraphNodeData, 'thinking'>;
 
 const ACCENT = '#8b5cf6';
+const PLAN_ACCENT = '#06b6d4';
 
 const truncateStyle: React.CSSProperties = {
   overflow: 'hidden',
@@ -23,15 +24,21 @@ const truncateStyle: React.CSSProperties = {
 
 export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeProps<ThinkingNodeType>) {
   const isStreaming = data.streaming;
+  const isPlanMode = data.isPlanMode;
+  const accentColor = isPlanMode ? PLAN_ACCENT : ACCENT;
 
   return (
     <div
         style={{
           maxWidth: 260,
-          background: 'rgba(17, 24, 39, 0.95)',
+          background: isPlanMode
+            ? 'rgba(6, 182, 212, 0.06)'
+            : 'rgba(17, 24, 39, 0.95)',
           border: selected
-            ? `1px solid ${ACCENT}`
-            : '1px solid rgba(255,255,255,0.1)',
+            ? `1px solid ${accentColor}`
+            : isPlanMode
+              ? '1px solid rgba(6, 182, 212, 0.25)'
+              : '1px solid rgba(255,255,255,0.1)',
           borderRadius: 8,
           boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
           display: 'flex',
@@ -44,7 +51,7 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
           style={{
             width: 4,
             flexShrink: 0,
-            background: ACCENT,
+            background: accentColor,
             borderRadius: '8px 0 0 8px',
           }}
         />
@@ -64,7 +71,7 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
             <span
               style={{
                 fontSize: 10,
-                color: '#6b7280',
+                color: isPlanMode ? PLAN_ACCENT : '#6b7280',
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
                 fontWeight: 600,
@@ -72,6 +79,20 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
             >
               Thinking
             </span>
+            {isPlanMode && (
+              <span
+                style={{
+                  fontSize: 9,
+                  color: PLAN_ACCENT,
+                  fontWeight: 500,
+                  padding: '1px 5px',
+                  borderRadius: 3,
+                  backgroundColor: 'rgba(6, 182, 212, 0.12)',
+                }}
+              >
+                PLAN
+              </span>
+            )}
             {isStreaming && (
               <span
                 style={{
@@ -79,7 +100,7 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
                   width: 6,
                   height: 6,
                   borderRadius: '50%',
-                  background: ACCENT,
+                  background: accentColor,
                   animation: 'pulse 2s infinite',
                   flexShrink: 0,
                 }}
@@ -109,8 +130,9 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
               inset: 0,
               borderRadius: 8,
               pointerEvents: 'none',
-              background:
-                'linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.06) 50%, transparent 100%)',
+              background: isPlanMode
+                ? 'linear-gradient(90deg, transparent 0%, rgba(6, 182, 212, 0.06) 50%, transparent 100%)'
+                : 'linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.06) 50%, transparent 100%)',
               backgroundSize: '200px 100%',
               animation: 'node-shimmer 1.5s infinite linear',
             }}
@@ -124,7 +146,7 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
           style={{
             width: 8,
             height: 8,
-            background: ACCENT,
+            background: accentColor,
             border: '2px solid rgba(17, 24, 39, 0.95)',
           }}
         />
@@ -134,7 +156,7 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
           style={{
             width: 8,
             height: 8,
-            background: ACCENT,
+            background: accentColor,
             border: '2px solid rgba(17, 24, 39, 0.95)',
           }}
         />

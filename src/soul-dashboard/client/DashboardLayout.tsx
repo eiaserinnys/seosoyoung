@@ -1,15 +1,17 @@
 /**
  * DashboardLayout - 3패널 레이아웃
  *
- * SessionList | NodeGraph | DetailView 구성.
- * SSE 구독과 세션 목록 폴링을 여기서 초기화합니다.
+ * SessionList | NodeGraph | DetailView + ChatInput 구성.
+ * SSE 구독, 세션 목록 폴링, 브라우저 알림을 여기서 초기화합니다.
  */
 
 import { SessionList } from "./components/SessionList";
 import { NodeGraph } from "./components/NodeGraph";
 import { DetailView } from "./components/DetailView";
+import { ChatInput } from "./components/ChatInput";
 import { useSessionList } from "./hooks/useSessionList";
 import { useSession } from "./hooks/useSession";
+import { useNotification } from "./hooks/useNotification";
 import { useDashboardStore } from "./stores/dashboard-store";
 
 // === Connection Status Badge ===
@@ -65,6 +67,9 @@ export function DashboardLayout() {
   const { status: sseStatus } = useSession({
     sessionKey: activeSessionKey,
   });
+
+  // 브라우저 알림 (완료/에러/인터벤션)
+  useNotification();
 
   return (
     <div
@@ -137,15 +142,20 @@ export function DashboardLayout() {
           <NodeGraph />
         </main>
 
-        {/* Right: Detail View */}
+        {/* Right: Detail View + Chat Input */}
         <aside
           style={{
             width: "360px",
             flexShrink: 0,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <DetailView />
+          <div style={{ flex: 1, overflow: "hidden" }}>
+            <DetailView />
+          </div>
+          <ChatInput />
         </aside>
       </div>
     </div>
