@@ -2090,5 +2090,173 @@ class TestClaudeRunnerPooled:
         assert result.success is True
 
 
+@pytest.mark.asyncio
+class TestEngineEventCallback:
+    """on_event 콜백을 통한 세분화 이벤트 발행 테스트"""
+
+    async def test_text_delta_event_emitted(self):
+        """TextBlock -> TEXT_DELTA 이벤트가 발행되는지 확인"""
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        runner = ClaudeRunner()
+        events = []
+
+        async def on_event(event: EngineEvent):
+            events.append(event)
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[MockTextBlock(text="응답 중...")]),
+            MockResultMessage(result="완료", session_id="evt-test"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                        await runner.run("테스트", on_event=on_event)
+
+        text_events = [e for e in events if e.type == EngineEventType.TEXT_DELTA]
+        assert len(text_events) == 1
+        assert text_events[0].data["text"] == "응답 중..."
+
+    async def test_tool_start_event_emitted(self):
+        """ToolUseBlock -> TOOL_START 이벤트가 발행되는지 확인"""
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        @dataclass
+        class MockToolUseBlock:
+            name: str
+            input: dict = None
+
+        runner = ClaudeRunner()
+        events = []
+
+        async def on_event(event: EngineEvent):
+            events.append(event)
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[MockToolUseBlock(name="Read", input={"file_path": "/test.py"})]),
+            MockResultMessage(result="완료", session_id="tool-test"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ToolUseBlock", MockToolUseBlock):
+                        await runner.run("테스트", on_event=on_event)
+
+        tool_events = [e for e in events if e.type == EngineEventType.TOOL_START]
+        assert len(tool_events) == 1
+        assert tool_events[0].data["tool_name"] == "Read"
+        assert tool_events[0].data["tool_input"] == {"file_path": "/test.py"}
+
+    async def test_tool_result_event_emitted(self):
+        """ToolResultBlock -> TOOL_RESULT 이벤트가 발행되는지 확인"""
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        @dataclass
+        class MockToolUseBlock:
+            name: str
+            input: dict = None
+
+        @dataclass
+        class MockToolResultBlock:
+            content: str = ""
+            is_error: bool = False
+
+        runner = ClaudeRunner()
+        events = []
+
+        async def on_event(event: EngineEvent):
+            events.append(event)
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[
+                MockToolUseBlock(name="Read", input={}),
+                MockToolResultBlock(content="파일 내용입니다", is_error=False),
+            ]),
+            MockResultMessage(result="완료", session_id="result-test"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ToolUseBlock", MockToolUseBlock):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.ToolResultBlock", MockToolResultBlock):
+                            await runner.run("테스트", on_event=on_event)
+
+        tool_result_events = [e for e in events if e.type == EngineEventType.TOOL_RESULT]
+        assert len(tool_result_events) == 1
+        assert tool_result_events[0].data["tool_name"] == "Read"
+        assert tool_result_events[0].data["result"] == "파일 내용입니다"
+        assert tool_result_events[0].data["is_error"] is False
+
+    async def test_result_event_emitted(self):
+        """ResultMessage -> RESULT 이벤트가 발행되는지 확인"""
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        runner = ClaudeRunner()
+        events = []
+
+        async def on_event(event: EngineEvent):
+            events.append(event)
+
+        mock_client = _make_mock_client(
+            MockResultMessage(result="최종 결과물", session_id="final-test"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                await runner.run("테스트", on_event=on_event)
+
+        result_events = [e for e in events if e.type == EngineEventType.RESULT]
+        assert len(result_events) == 1
+        assert result_events[0].data["success"] is True
+        assert result_events[0].data["output"] == "최종 결과물"
+
+    async def test_no_event_callback_backward_compat(self):
+        """on_event=None 시 기존 동작과 동일한지 확인 (회귀 테스트)"""
+        runner = ClaudeRunner()
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[MockTextBlock(text="텍스트")]),
+            MockResultMessage(result="완료", session_id="compat-test"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                        # on_event 없이 호출 - 기존 코드와 동일
+                        result = await runner.run("테스트")
+
+        assert result.success is True
+        assert result.output == "완료"
+
+    async def test_event_callback_error_does_not_raise(self):
+        """이벤트 콜백에서 예외 발생해도 실행이 중단되지 않는지 확인"""
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        runner = ClaudeRunner()
+
+        async def broken_on_event(event: EngineEvent):
+            raise RuntimeError("콜백 오류 시뮬레이션")
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[MockTextBlock(text="텍스트")]),
+            MockResultMessage(result="완료", session_id="err-test"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
+                        result = await runner.run("테스트", on_event=broken_on_event)
+
+        # 콜백 오류에도 불구하고 실행 결과는 정상
+        assert result.success is True
+        assert result.output == "완료"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

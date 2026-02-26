@@ -64,11 +64,11 @@ thread_ts 단위 인스턴스: 각 인스턴스가 자신의 client/pid/executio
 - `_build_compact_hook(self, compact_events)` (줄 472): PreCompact 훅을 생성합니다.
 - `_build_options(self, session_id, compact_events)` (줄 499): ClaudeAgentOptions와 stderr 파일을 반환합니다.
 - `async _notify_compact_events(self, compact_state, on_compact)` (줄 548): 미통지 compact 이벤트를 on_compact 콜백으로 전달
-- `async _receive_messages(self, client, compact_state, msg_state, on_progress, on_compact, on_intervention, on_session)` (줄 566): 내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신
-- `_evaluate_compact_retry(self, compact_state, msg_state, before_snapshot)` (줄 705): Compact retry 판정. True이면 외부 루프 continue, False이면 break.
-- `async run(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session)` (줄 765): Claude Code 실행
-- `async _execute(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session)` (줄 807): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 982): 세션 컴팩트 처리
+- `async _receive_messages(self, client, compact_state, msg_state, on_progress, on_compact, on_intervention, on_session, on_event)` (줄 566): 내부 메시지 수신 루프: receive_response()에서 메시지를 읽어 상태 갱신
+- `_evaluate_compact_retry(self, compact_state, msg_state, before_snapshot)` (줄 760): Compact retry 판정. True이면 외부 루프 continue, False이면 break.
+- `async run(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session, on_event)` (줄 820): Claude Code 실행
+- `async _execute(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session, on_event)` (줄 866): 실제 실행 로직 (ClaudeSDKClient 기반)
+- `async compact_session(self, session_id)` (줄 1042): 세션 컴팩트 처리
 
 ## 함수
 
@@ -107,7 +107,7 @@ Returns:
 - 설명: collected_messages에서 마지막 assistant 텍스트를 추출 (tool_use 제외)
 
 ### `async main()`
-- 위치: 줄 1004
+- 위치: 줄 1064
 
 ## 내부 의존성
 
@@ -115,7 +115,10 @@ Returns:
 - `seosoyoung.slackbot.claude.diagnostics.build_session_dump`
 - `seosoyoung.slackbot.claude.diagnostics.classify_process_error`
 - `seosoyoung.slackbot.claude.diagnostics.format_rate_limit_warning`
+- `seosoyoung.slackbot.claude.engine_types.EngineEvent`
+- `seosoyoung.slackbot.claude.engine_types.EngineEventType`
 - `seosoyoung.slackbot.claude.engine_types.EngineResult`
+- `seosoyoung.slackbot.claude.engine_types.EventCallback`
 - `seosoyoung.slackbot.claude.engine_types.InterventionCallback`
 - `seosoyoung.slackbot.claude.instrumented_client.InstrumentedClaudeClient`
 - `seosoyoung.slackbot.claude.sdk_compat.ParseAction`
