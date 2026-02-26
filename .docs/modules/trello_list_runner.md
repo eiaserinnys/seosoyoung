@@ -69,16 +69,16 @@ ListRunner - 리스트 정주행 기능
 - `get_session(self, session_id)` (줄 209): 세션 조회
 - `update_session_status(self, session_id, status, error_message)` (줄 220): 세션 상태 업데이트
 - `get_active_sessions(self)` (줄 250): 활성 세션 목록 조회
-- `_cleanup_zombie_sessions(self)` (줄 270): 좀비 세션 자동 정리
-- `get_paused_sessions(self)` (줄 316): 중단된 세션 목록 조회
-- `find_session_by_list_name(self, list_name)` (줄 329): 리스트 이름으로 활성 세션 검색
-- `pause_run(self, session_id, reason)` (줄 350): 정주행 세션 중단
-- `resume_run(self, session_id)` (줄 381): 중단된 정주행 세션 재개
-- `mark_card_processed(self, session_id, card_id, result)` (줄 410): 카드 처리 완료 표시
-- `get_next_card_id(self, session_id)` (줄 436): 다음 처리할 카드 ID 조회
-- `async start_run_by_name(self, list_name, trello_client)` (줄 454): 리스트 이름으로 정주행 세션 시작
-- `_parse_validation_result(output)` (줄 502): 검증 결과 마커 파싱
-- `async process_next_card(self, session_id, trello_client)` (줄 527): 다음 처리할 카드 정보 조회
-- `async execute_card(self, session_id, card_info, claude_runner)` (줄 548): 카드 실행
-- `async validate_completion(self, session_id, card_info, execution_output, claude_runner)` (줄 602): 카드 완료 검증
-- `async run_next_card(self, session_id, trello_client, claude_runner, auto_pause_on_fail)` (줄 669): 다음 카드 실행 및 검증
+- `_cleanup_zombie_sessions(self)` (줄 273): 좀비 세션 자동 정리
+- `get_paused_sessions(self)` (줄 319): 중단된 세션 목록 조회
+- `find_session_by_list_name(self, list_name)` (줄 332): 리스트 이름으로 활성 세션 검색
+- `pause_run(self, session_id, reason)` (줄 353): 정주행 세션 중단
+- `resume_run(self, session_id)` (줄 384): 중단된 정주행 세션 재개
+- `mark_card_processed(self, session_id, card_id, result)` (줄 413): 카드 처리 완료 표시
+- `get_next_card_id(self, session_id)` (줄 439): 다음 처리할 카드 ID 조회
+- `async start_run_by_name(self, list_name, trello_client)` (줄 457): 리스트 이름으로 정주행 세션 시작
+- `_parse_validation_result(output)` (줄 505): 검증 결과 마커 파싱
+- `async process_next_card(self, session_id, trello_client)` (줄 530): 다음 처리할 카드 정보 조회
+- `async execute_card(self, session_id, card_info, claude_runner)` (줄 551): 카드 실행
+- `async validate_completion(self, session_id, card_info, execution_output, claude_runner)` (줄 605): 카드 완료 검증
+- `async run_next_card(self, session_id, trello_client, claude_runner, auto_pause_on_fail)` (줄 672): 다음 카드 실행 및 검증

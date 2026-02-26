@@ -208,11 +208,33 @@ class TestListRunner:
 
             active = runner.get_active_sessions()
 
-            # RUNNING, PAUSED는 활성 세션
+            # RUNNING, PAUSED는 활성 세션 (COMPLETED는 비활성)
             assert len(active) == 2
             session_ids = [s.session_id for s in active]
             assert s1.session_id in session_ids
             assert s3.session_id in session_ids
+
+    def test_pending_session_included_in_active(self):
+        """PENDING 상태의 세션도 활성 세션으로 포함되어야 함
+
+        create_session() 직후 (PENDING) ~ 첫 카드 처리 시작 (RUNNING) 사이의
+        경쟁 조건에서 동일 리스트의 중복 정주행을 방지하기 위함.
+        """
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            runner = ListRunner(data_dir=Path(tmpdir))
+
+            # 세션 생성 직후 (PENDING 상태)
+            s1 = runner.create_session("list1", "List 1", ["card1"])
+            assert s1.status == SessionStatus.PENDING
+
+            active = runner.get_active_sessions()
+
+            # PENDING도 활성 세션에 포함되어야 함
+            assert len(active) == 1
+            assert active[0].session_id == s1.session_id
+            assert active[0].list_id == "list1"
 
     def test_mark_card_processed(self):
         """카드 처리 완료 표시"""

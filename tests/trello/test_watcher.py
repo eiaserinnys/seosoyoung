@@ -338,7 +338,7 @@ class TestListRunSaySignature:
 
         import tempfile
         from pathlib import Path
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             list_runner = ListRunner(data_dir=Path(tmpdir))
 
             watcher = TrelloWatcher(
@@ -346,6 +346,7 @@ class TestListRunSaySignature:
                 session_manager=MagicMock(),
                 claude_runner_factory=MagicMock(),
                 list_runner_ref=lambda: list_runner,
+                data_dir=Path(tmpdir),
             )
 
             # 세션 생성
@@ -945,7 +946,7 @@ class TestProcessListRunCardTracked:
 
         import tempfile
         from pathlib import Path
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
             list_runner = ListRunner(data_dir=Path(tmpdir))
 
             watcher = TrelloWatcher(
@@ -953,6 +954,7 @@ class TestProcessListRunCardTracked:
                 session_manager=MagicMock(),
                 claude_runner_factory=MagicMock(),
                 list_runner_ref=lambda: list_runner,
+                data_dir=Path(tmpdir),
             )
 
             # 세션 생성
@@ -1035,6 +1037,184 @@ class TestProcessListRunCardTracked:
             watcher._poll()
             # _tracked에 이미 있으므로 _handle_new_card가 호출되지 않아야 함
             mock_handle.assert_not_called()
+
+
+class TestListRunDuplicatePrevention:
+    """리스트 정주행 동시 실행 시 중복 방지 테스트"""
+
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_list_run_lock_serializes_concurrent_starts(self, mock_config, mock_trello_client):
+        """_list_run_lock이 동시 _check_run_list_labels 호출을 직렬화
+
+        두 스레드가 동시에 _check_run_list_labels를 호출하면,
+        첫 번째가 세션을 생성한 후 두 번째는 활성 세션을 발견하여 스킵해야 함.
+        """
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = None
+        mock_config.TRELLO_BACKLOG_LIST_ID = None
+        mock_config.TRELLO_BLOCKED_LIST_ID = None
+        mock_config.TRELLO_DRAFT_LIST_ID = None
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+        from seosoyoung.slackbot.trello.client import TrelloCard
+        from seosoyoung.slackbot.trello.list_runner import ListRunner
+
+        import tempfile
+        from pathlib import Path
+        import threading
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+
+            watcher = TrelloWatcher(
+                slack_client=MagicMock(),
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+            )
+
+            run_list_label = {"id": "label_run", "name": "🏃 Run List"}
+            card = TrelloCard(
+                id="card_plan", name="Plan Card", desc="",
+                url="", list_id="list_plan",
+                labels=[run_list_label],
+            )
+
+            mock_trello.get_lists.return_value = [
+                {"id": "list_plan", "name": "📌 PLAN: Test"},
+            ]
+            mock_trello.get_cards_in_list.return_value = [card]
+            mock_trello.remove_label_from_card.return_value = True
+
+            start_call_count = 0
+            original_start = watcher._start_list_run
+
+            def counting_start(*args, **kwargs):
+                nonlocal start_call_count
+                start_call_count += 1
+                # _start_list_run에서 create_session이 호출되도록 원본 호출
+                # 단, DM/슬랙 전송 등 부수 효과를 피하기 위해 직접 세션만 생성
+                list_runner.create_session(args[0], args[1], [c.id for c in args[2]])
+
+            with patch.object(watcher, "_start_list_run", side_effect=counting_start):
+                # 두 스레드에서 동시에 호출
+                barrier = threading.Barrier(2)
+                results = []
+
+                def run_check():
+                    barrier.wait()
+                    watcher._check_run_list_labels()
+                    results.append(True)
+
+                t1 = threading.Thread(target=run_check)
+                t2 = threading.Thread(target=run_check)
+                t1.start()
+                t2.start()
+                t1.join(timeout=5)
+                t2.join(timeout=5)
+
+            # 락 직렬화로 _start_list_run은 최대 1번만 호출되어야 함
+            assert start_call_count <= 1, (
+                f"_start_list_run이 {start_call_count}번 호출됨 (기대: ≤1)"
+            )
+
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_tracked_card_skipped_in_list_run(self, mock_config, mock_trello_client):
+        """다른 세션에서 처리 중인 카드(다른 thread_ts)는 skipped_duplicate로 처리"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = None
+
+        mock_trello = MagicMock()
+        mock_trello_client.return_value = mock_trello
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher, TrackedCard
+        from seosoyoung.slackbot.trello.list_runner import ListRunner, SessionStatus
+
+        import tempfile
+        from pathlib import Path
+
+        mock_slack = MagicMock()
+        mock_slack.chat_postMessage.return_value = {"ts": "ts_123"}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            list_runner = ListRunner(data_dir=Path(tmpdir))
+
+            watcher = TrelloWatcher(
+                slack_client=mock_slack,
+                session_manager=MagicMock(),
+                claude_runner_factory=MagicMock(),
+                list_runner_ref=lambda: list_runner,
+                data_dir=Path(tmpdir),
+            )
+
+            # 세션 생성 (카드 1개만: card_a 스킵 후 자연스럽게 COMPLETED)
+            session = list_runner.create_session(
+                list_id="list_123",
+                list_name="Plan List",
+                card_ids=["card_a"],
+            )
+            list_runner.update_session_status(session.session_id, SessionStatus.RUNNING)
+
+            # card_a가 이미 다른 세션에 의해 처리 중 (_tracked에 등록됨)
+            # thread_ts="other_thread" ≠ 현재 세션의 "ts_123" → 중복으로 감지
+            tracked = TrackedCard(
+                card_id="card_a",
+                card_name="Card A",
+                card_url="https://trello.com/c/a",
+                list_id="list_123",
+                list_key="list_run",
+                thread_ts="other_thread",
+                channel_id="C12345",
+                detected_at=datetime.now().isoformat(),
+                has_execute=True,
+            )
+            watcher._tracked["card_a"] = tracked
+
+            watcher._process_list_run_card(session.session_id, "ts_123")
+
+            # card_a는 "skipped_duplicate"로 처리되어야 함
+            updated_session = list_runner.get_session(session.session_id)
+            assert "card_a" in updated_session.processed_cards
+            assert updated_session.processed_cards["card_a"] == "skipped_duplicate"
+            # 카드 1개이므로 세션은 COMPLETED
+            assert updated_session.status == SessionStatus.COMPLETED
+
+    @patch("seosoyoung.slackbot.trello.watcher.TrelloClient")
+    @patch("seosoyoung.slackbot.trello.watcher.Config")
+    def test_watcher_has_list_run_lock(self, mock_config, mock_trello_client):
+        """TrelloWatcher가 _list_run_lock 속성을 가지고 있어야 함"""
+        mock_config.get_session_path.return_value = "/tmp/sessions"
+        mock_config.TRELLO_NOTIFY_CHANNEL = "C12345"
+        mock_config.TRELLO_WATCH_LISTS = {}
+        mock_config.TRELLO_REVIEW_LIST_ID = None
+        mock_config.TRELLO_DONE_LIST_ID = None
+        mock_config.TRELLO_IN_PROGRESS_LIST_ID = None
+
+        mock_trello_client.return_value = MagicMock()
+
+        from seosoyoung.slackbot.trello.watcher import TrelloWatcher
+
+        watcher = TrelloWatcher(
+            slack_client=MagicMock(),
+            session_manager=MagicMock(),
+            claude_runner_factory=MagicMock(),
+        )
+
+        assert hasattr(watcher, "_list_run_lock")
+        assert isinstance(watcher._list_run_lock, type(threading.Lock()))
 
 
 class TestGetOperationalListIds:
@@ -1161,6 +1341,7 @@ class TestMultiCardChainingIntegration:
                 session_manager=MagicMock(),
                 claude_runner_factory=MagicMock(),
                 list_runner_ref=lambda: list_runner,
+                data_dir=Path(tmpdir),
             )
             watcher._spawn_claude_thread = sync_spawn
 
@@ -1370,6 +1551,7 @@ class TestMultiCardChainingIntegration:
                 session_manager=MagicMock(),
                 claude_runner_factory=MagicMock(),
                 list_runner_ref=lambda: list_runner,
+                data_dir=Path(tmpdir),
             )
 
             session = list_runner.create_session(
@@ -1679,6 +1861,7 @@ class TestListRunOnSuccessLockOrder:
                 claude_runner_factory=MagicMock(),
                 list_runner_ref=lambda: list_runner,
                 get_session_lock=get_session_lock,
+                data_dir=Path(tmpdir),
             )
             watcher._preemptive_compact = MagicMock()
 

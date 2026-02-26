@@ -115,6 +115,11 @@ class TrelloWatcher:
         self._paused = False
         self._pause_lock = threading.Lock()
 
+        # 리스트 정주행 시작 직렬화 락
+        # _check_run_list_labels → _start_list_run 경로를 직렬화하여
+        # 동시 폴링 시 같은 리스트의 정주행이 중복 시작되는 것을 방지
+        self._list_run_lock = threading.Lock()
+
     def _load_tracked(self):
         """추적 상태 로드"""
         if self.tracked_file.exists():
@@ -733,6 +738,8 @@ class TrelloWatcher:
         레이블이 발견되면:
         1. 첫 카드에서 레이블 제거 (실패 시 정주행 시작 안 함)
         2. 해당 리스트의 정주행을 시작
+
+        _list_run_lock으로 직렬화하여 동시 폴링에 의한 중복 시작을 방지합니다.
         """
         lists = self.trello.get_lists()
         operational_ids = self._get_operational_list_ids()
@@ -758,38 +765,42 @@ class TrelloWatcher:
             # 🏃 Run List 레이블 발견!
             logger.info(f"🏃 Run List 레이블 감지: {list_name} - {first_card.name}")
 
-            # 활성 정주행 세션 가드: 동일 리스트에 이미 활성 세션이 있으면 스킵
-            # ⚠️ 레이블 제거보다 먼저 체크해야 함 — 가드에 걸렸을 때 레이블이
-            # 소실되어 재시도가 불가능해지는 교착 상태를 방지
-            list_runner = self.list_runner_ref() if self.list_runner_ref else None
-            if list_runner:
-                active_sessions = list_runner.get_active_sessions()
-                already_running = any(
-                    s.list_id == list_id for s in active_sessions
-                )
-                if already_running:
-                    logger.warning(
-                        f"이미 활성 정주행 세션이 있어 스킵 (레이블 유지): {list_name}"
+            # 🔒 정주행 시작 크리티컬 섹션: 활성 세션 확인 → 레이블 제거 → 세션 생성을
+            # 직렬화하여 동시 폴링 시 같은 리스트의 중복 정주행을 방지
+            with self._list_run_lock:
+                # 활성 정주행 세션 가드: 동일 리스트에 이미 활성 세션이 있으면 스킵
+                # ⚠️ 레이블 제거보다 먼저 체크해야 함 — 가드에 걸렸을 때 레이블이
+                # 소실되어 재시도가 불가능해지는 교착 상태를 방지
+                list_runner = self.list_runner_ref() if self.list_runner_ref else None
+                if list_runner:
+                    active_sessions = list_runner.get_active_sessions()
+                    already_running = any(
+                        s.list_id == list_id for s in active_sessions
                     )
-                    continue
+                    if already_running:
+                        logger.warning(
+                            f"이미 활성 정주행 세션이 있어 스킵 (레이블 유지): {list_name}"
+                        )
+                        continue
 
-            # 레이블 제거 (실패 시 정주행 시작하지 않음)
-            label_id = self._get_run_list_label_id(first_card)
-            if label_id:
-                if self.trello.remove_label_from_card(first_card.id, label_id):
-                    logger.info(f"🏃 Run List 레이블 제거: {first_card.name}")
+                # 레이블 제거 (실패 시 정주행 시작하지 않음)
+                label_id = self._get_run_list_label_id(first_card)
+                if label_id:
+                    if self.trello.remove_label_from_card(first_card.id, label_id):
+                        logger.info(f"🏃 Run List 레이블 제거: {first_card.name}")
+                    else:
+                        logger.warning(
+                            f"🏃 Run List 레이블 제거 실패, 정주행 스킵: {first_card.name} "
+                            f"(다음 폴링에서 재시도)"
+                        )
+                        continue
                 else:
-                    logger.warning(
-                        f"🏃 Run List 레이블 제거 실패, 정주행 스킵: {first_card.name} "
-                        f"(다음 폴링에서 재시도)"
-                    )
+                    logger.warning(f"🏃 Run List 레이블 ID를 찾을 수 없음: {first_card.name}")
                     continue
-            else:
-                logger.warning(f"🏃 Run List 레이블 ID를 찾을 수 없음: {first_card.name}")
-                continue
 
-            # 리스트 정주행 시작
-            self._start_list_run(list_id, list_name, cards)
+                # 리스트 정주행 시작 (_start_list_run 내에서 create_session 호출 →
+                # 이후 get_active_sessions()에서 PENDING 포함하여 감지 가능)
+                self._start_list_run(list_id, list_name, cards)
 
     # 선제적 컴팩트 타임아웃 (초)
     COMPACT_TIMEOUT_SECONDS = 60
@@ -982,6 +993,23 @@ class TrelloWatcher:
 
         # 세션 상태를 RUNNING으로 변경
         list_runner.update_session_status(session_id, SessionStatus.RUNNING)
+
+        # 카드 레벨 중복 처리 방지: 다른 세션에서 이미 처리 중인 카드는 스킵
+        # 동시 정주행 시작 시 첫 번째 카드가 두 세션에서 처리되는 것을 방지
+        # 같은 세션(thread_ts)의 엔트리는 재시작 시 로드된 stale 데이터일 수 있으므로 무시
+        if next_card_id in self._tracked:
+            existing = self._tracked[next_card_id]
+            if existing.thread_ts != thread_ts:
+                logger.warning(
+                    f"카드가 다른 세션에서 이미 처리 중이므로 스킵: {next_card_id} "
+                    f"(current_session={session_id}, "
+                    f"existing_thread={existing.thread_ts})"
+                )
+                list_runner.mark_card_processed(
+                    session_id, next_card_id, "skipped_duplicate"
+                )
+                self._process_list_run_card(session_id, thread_ts, run_channel)
+                return
 
         # 카드 정보 조회
         card = self.trello.get_card(next_card_id)
