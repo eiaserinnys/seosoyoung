@@ -1,15 +1,18 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  plugins: [react()],
+  root: ".",
   resolve: {
     alias: {
       "@shared": resolve(__dirname, "shared"),
     },
   },
   build: {
-    // Phase 6에서 클라이언트 빌드 설정 추가 예정
     outDir: "dist/client",
+    emptyOutDir: true,
   },
   server: {
     // 개발 시 대시보드 서버로 API 프록시

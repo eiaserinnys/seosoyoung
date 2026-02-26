@@ -125,6 +125,11 @@ export interface ResultEvent {
   error?: string;
 }
 
+export interface ReconnectEvent {
+  type: "reconnect";
+  last_event_id?: number;
+}
+
 /** Soul에서 수신하는 모든 SSE 이벤트 유니온 */
 export type SoulSSEEvent =
   | ProgressEvent
@@ -141,7 +146,8 @@ export type SoulSSEEvent =
   | TextEndEvent
   | ToolStartEvent
   | ToolResultEvent
-  | ResultEvent;
+  | ResultEvent
+  | ReconnectEvent;
 
 // === JSONL Record ===
 
