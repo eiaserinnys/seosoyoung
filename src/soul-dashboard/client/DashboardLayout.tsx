@@ -1,7 +1,7 @@
 /**
  * DashboardLayout - 3패널 레이아웃
  *
- * SessionList | NodeGraph | DetailView + ChatInput 구성.
+ * SessionList | NodeGraph + ChatInput | DetailView 구성.
  * SSE 구독, 세션 목록 폴링, 브라우저 알림을 여기서 초기화합니다.
  */
 
@@ -131,31 +131,31 @@ export function DashboardLayout() {
           <SessionList sessions={sessions} loading={loading} error={error} />
         </aside>
 
-        {/* Center: Node Graph (execution flow) */}
+        {/* Center: Node Graph + Chat Input */}
         <main
           style={{
             flex: 1,
             borderRight: "1px solid rgba(255,255,255,0.08)",
-            overflow: "hidden",
-          }}
-        >
-          <NodeGraph />
-        </main>
-
-        {/* Right: Detail View + Chat Input */}
-        <aside
-          style={{
-            width: "360px",
-            flexShrink: 0,
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
           }}
         >
           <div style={{ flex: 1, overflow: "hidden" }}>
-            <DetailView />
+            <NodeGraph />
           </div>
           <ChatInput />
+        </main>
+
+        {/* Right: Detail View */}
+        <aside
+          style={{
+            width: "360px",
+            flexShrink: 0,
+            overflow: "hidden",
+          }}
+        >
+          <DetailView />
         </aside>
       </div>
     </div>

@@ -5,7 +5,7 @@
  * POST /api/sessions/:id/message 엔드포인트를 호출합니다.
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useDashboardStore } from "../stores/dashboard-store";
 
 const ACCENT = "#f97316";
@@ -13,6 +13,16 @@ const MAX_LENGTH = 50_000;
 
 export function ChatInput() {
   const activeSessionKey = useDashboardStore((s) => s.activeSessionKey);
+  const sessions = useDashboardStore((s) => s.sessions);
+
+  // 활성 세션의 상태에 따라 라벨 결정: running → "Intervention", 그 외 → "Chat"
+  const isRunning = useMemo(() => {
+    if (!activeSessionKey) return false;
+    const session = sessions.find(
+      (s) => `${s.clientId}:${s.requestId}` === activeSessionKey,
+    );
+    return session?.status === "running";
+  }, [activeSessionKey, sessions]);
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -125,8 +135,8 @@ export function ChatInput() {
           fontWeight: 600,
         }}
       >
-        <span style={{ fontSize: "12px" }}>{"\u270B"}</span>
-        Intervention
+        <span style={{ fontSize: "12px" }}>{isRunning ? "\u270B" : "\uD83D\uDCAC"}</span>
+        {isRunning ? "Intervention" : "Chat"}
       </div>
 
       {/* Input area */}
