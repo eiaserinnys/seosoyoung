@@ -94,6 +94,7 @@
 - [`soul/main.py`](modules/soul_main.md): Seosoyoung Soul - FastAPI Application
 - [`models/schemas.py`](modules/models_schemas.md): Pydantic 모델 - Request/Response 스키마
 - [`service/engine_adapter.py`](modules/service_engine_adapter.md): soul 엔진 어댑터
+- [`service/event_store.py`](modules/service_event_store.md): Event Store - JSONL 기반 이벤트 저장소
 - [`service/file_manager.py`](modules/service_file_manager.md): FileManager - 첨부 파일 관리
 - [`service/resource_manager.py`](modules/service_resource_manager.md): ResourceManager - 동시 실행 제한 관리
 - [`service/runner_pool.py`](modules/service_runner_pool.md): ClaudeRunner 풀링 시스템
@@ -247,13 +248,14 @@
 - `ResultSSEEvent` (seosoyoung/soul/models/schemas.py:249): 엔진 최종 결과 이벤트 (dashboard 전용)
 - `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:94): 개입 메시지 데이터
 - `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:141): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
+- `EventStore` (seosoyoung/soul/service/event_store.py:23): JSONL 기반 이벤트 저장소
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
 - `FileManager` (seosoyoung/soul/service/file_manager.py:28): 첨부 파일 관리자
 - `ResourceManager` (seosoyoung/soul/service/resource_manager.py:17): 동시 실행 제한 관리자
 - `ClaudeRunnerPool` (seosoyoung/soul/service/runner_pool.py:27): ClaudeRunner 인스턴스 LRU 풀
-- `TaskExecutor` (seosoyoung/soul/service/task_executor.py:19): 백그라운드 태스크 실행 관리자
+- `TaskExecutor` (seosoyoung/soul/service/task_executor.py:20): 백그라운드 태스크 실행 관리자
 - `TaskListenerManager` (seosoyoung/soul/service/task_listener.py:16): SSE 리스너 관리자
-- `TaskManager` (seosoyoung/soul/service/task_manager.py:52): 태스크 라이프사이클 관리자
+- `TaskManager` (seosoyoung/soul/service/task_manager.py:53): 태스크 라이프사이클 관리자
 - `TaskStatus` (seosoyoung/soul/service/task_models.py:14): 태스크 상태
 - `TaskConflictError` (seosoyoung/soul/service/task_models.py:21): 태스크 충돌 오류 (같은 키로 running 태스크 존재)
 - `TaskNotFoundError` (seosoyoung/soul/service/task_models.py:26): 태스크 없음 오류
@@ -421,14 +423,14 @@
 - `async upload_attachment()` (seosoyoung/soul/api/attachments.py:27): 첨부 파일 업로드
 - `async cleanup_attachments()` (seosoyoung/soul/api/attachments.py:83): 스레드의 첨부 파일 정리
 - `async verify_token()` (seosoyoung/soul/api/auth.py:20): Bearer 토큰 검증
-- `task_to_response()` (seosoyoung/soul/api/tasks.py:39): Task를 TaskResponse로 변환
-- `async execute_task()` (seosoyoung/soul/api/tasks.py:62): Claude Code 실행 (SSE 스트리밍)
-- `async get_tasks()` (seosoyoung/soul/api/tasks.py:153): 클라이언트의 태스크 목록 조회
-- `async get_task()` (seosoyoung/soul/api/tasks.py:175): 특정 태스크 조회
-- `async reconnect_stream()` (seosoyoung/soul/api/tasks.py:205): 태스크 SSE 스트림에 재연결
-- `async ack_task()` (seosoyoung/soul/api/tasks.py:292): 결과 수신 확인
-- `async intervene_task()` (seosoyoung/soul/api/tasks.py:330): 실행 중인 태스크에 개입 메시지 전송
-- `async intervene_by_session()` (seosoyoung/soul/api/tasks.py:391): session_id 기반 개입 메시지 전송
+- `task_to_response()` (seosoyoung/soul/api/tasks.py:40): Task를 TaskResponse로 변환
+- `async execute_task()` (seosoyoung/soul/api/tasks.py:63): Claude Code 실행 (SSE 스트리밍)
+- `async get_tasks()` (seosoyoung/soul/api/tasks.py:159): 클라이언트의 태스크 목록 조회
+- `async get_task()` (seosoyoung/soul/api/tasks.py:181): 특정 태스크 조회
+- `async reconnect_stream()` (seosoyoung/soul/api/tasks.py:211): 태스크 SSE 스트림에 재연결
+- `async ack_task()` (seosoyoung/soul/api/tasks.py:317): 결과 수신 확인
+- `async intervene_task()` (seosoyoung/soul/api/tasks.py:355): 실행 중인 태스크에 개입 메시지 전송
+- `async intervene_by_session()` (seosoyoung/soul/api/tasks.py:416): session_id 기반 개입 메시지 전송
 - `get_settings()` (seosoyoung/soul/config.py:160): 설정 싱글톤 반환
 - `setup_logging()` (seosoyoung/soul/config.py:165): 로깅 설정
 - `async periodic_cleanup()` (seosoyoung/soul/main.py:42): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
@@ -438,9 +440,9 @@
 - `async get_status()` (seosoyoung/soul/main.py:209): 서비스 상태 조회
 - `async global_exception_handler()` (seosoyoung/soul/main.py:247): 전역 예외 핸들러
 - `init_soul_engine()` (seosoyoung/soul/service/engine_adapter.py:396): soul_engine 싱글톤을 (재)초기화한다.
-- `get_task_manager()` (seosoyoung/soul/service/task_manager.py:570): TaskManager 싱글톤 반환
-- `init_task_manager()` (seosoyoung/soul/service/task_manager.py:578): TaskManager 초기화
-- `set_task_manager()` (seosoyoung/soul/service/task_manager.py:585): TaskManager 인스턴스 설정 (테스트용)
+- `get_task_manager()` (seosoyoung/soul/service/task_manager.py:588): TaskManager 싱글톤 반환
+- `init_task_manager()` (seosoyoung/soul/service/task_manager.py:596): TaskManager 초기화
+- `set_task_manager()` (seosoyoung/soul/service/task_manager.py:606): TaskManager 인스턴스 설정 (테스트용)
 - `utc_now()` (seosoyoung/soul/service/task_models.py:36): 현재 UTC 시간 반환
 - `datetime_to_str()` (seosoyoung/soul/service/task_models.py:41): datetime을 ISO 문자열로 변환
 - `str_to_datetime()` (seosoyoung/soul/service/task_models.py:46): ISO 문자열을 datetime으로 변환

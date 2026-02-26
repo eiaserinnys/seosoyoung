@@ -30,6 +30,7 @@ from seosoyoung.soul.service.task_models import (
 from seosoyoung.soul.service.task_storage import TaskStorage
 from seosoyoung.soul.service.task_listener import TaskListenerManager
 from seosoyoung.soul.service.task_executor import TaskExecutor
+from seosoyoung.soul.service.event_store import EventStore
 
 # Re-export for backward compatibility
 __all__ = [
@@ -63,10 +64,15 @@ class TaskManager:
     7. 백그라운드 실행 (via TaskExecutor)
     """
 
-    def __init__(self, storage_path: Optional[Path] = None):
+    def __init__(
+        self,
+        storage_path: Optional[Path] = None,
+        event_store: Optional[EventStore] = None,
+    ):
         """
         Args:
             storage_path: 태스크 저장 파일 경로 (None이면 영속화 안 함)
+            event_store: 이벤트 영속화 저장소 (None이면 이벤트 저장하지 않음)
         """
         # 핵심 데이터
         self._tasks: Dict[str, Task] = {}
@@ -77,6 +83,7 @@ class TaskManager:
         # 서브 컴포넌트들
         self._storage = TaskStorage(storage_path)
         self._listener_manager = TaskListenerManager(self._tasks)
+        self._event_store = event_store
         self._executor = TaskExecutor(
             tasks=self._tasks,
             listener_manager=self._listener_manager,
@@ -84,6 +91,7 @@ class TaskManager:
             complete_task_func=self._complete_task_internal,
             error_task_func=self._error_task_internal,
             register_session_func=self.register_session,
+            event_store=event_store,
         )
 
     # === session_id 인덱스 ===
@@ -483,10 +491,20 @@ class TaskManager:
         self,
         client_id: str,
         request_id: str,
-        queue: asyncio.Queue
+        queue: asyncio.Queue,
+        last_event_id: Optional[int] = None,
     ) -> None:
-        """재연결 시 현재 상태 이벤트 전송"""
-        await self._executor.send_reconnect_status(client_id, request_id, queue)
+        """재연결 시 현재 상태 이벤트 전송
+
+        Args:
+            client_id: 클라이언트 ID
+            request_id: 요청 ID
+            queue: 이벤트를 받을 큐
+            last_event_id: 클라이언트가 마지막으로 수신한 이벤트 ID
+        """
+        await self._executor.send_reconnect_status(
+            client_id, request_id, queue, last_event_id=last_event_id
+        )
 
     # === 정리 ===
 
@@ -575,10 +593,13 @@ def get_task_manager() -> TaskManager:
     return task_manager
 
 
-def init_task_manager(storage_path: Optional[Path] = None) -> TaskManager:
+def init_task_manager(
+    storage_path: Optional[Path] = None,
+    event_store: Optional[EventStore] = None,
+) -> TaskManager:
     """TaskManager 초기화"""
     global task_manager
-    task_manager = TaskManager(storage_path=storage_path)
+    task_manager = TaskManager(storage_path=storage_path, event_store=event_store)
     return task_manager
 
 

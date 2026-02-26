@@ -11,6 +11,7 @@ from typing import Dict, Callable, Awaitable, Optional, TYPE_CHECKING
 from seosoyoung.soul.service.task_models import Task, TaskStatus
 
 if TYPE_CHECKING:
+    from seosoyoung.soul.service.event_store import EventStore
     from seosoyoung.soul.service.task_listener import TaskListenerManager
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ class TaskExecutor:
 
     Claude Code 실행을 백그라운드에서 관리하고,
     실행 결과를 리스너에게 브로드캐스트합니다.
+    이벤트는 EventStore에 영속화되어 재연결 시 재생할 수 있습니다.
     """
 
     def __init__(
@@ -32,6 +34,7 @@ class TaskExecutor:
         complete_task_func: Callable[[str, str, str, Optional[str]], Awaitable[Optional[Task]]],
         error_task_func: Callable[[str, str, str], Awaitable[Optional[Task]]],
         register_session_func: Optional[Callable[[str, str, str], None]] = None,
+        event_store: Optional["EventStore"] = None,
     ):
         """
         Args:
@@ -41,6 +44,7 @@ class TaskExecutor:
             complete_task_func: 태스크 완료 처리 함수
             error_task_func: 태스크 에러 처리 함수
             register_session_func: session_id 등록 함수 (session_id, client_id, request_id)
+            event_store: 이벤트 영속화 저장소 (None이면 저장하지 않음)
         """
         self._tasks = tasks
         self._listener_manager = listener_manager
@@ -48,6 +52,7 @@ class TaskExecutor:
         self._complete_task = complete_task_func
         self._error_task = error_task_func
         self._register_session = register_session_func
+        self._event_store = event_store
 
     async def start_execution(
         self,
@@ -137,6 +142,17 @@ class TaskExecutor:
                     if event.type == "progress":
                         task.last_progress_text = event_dict.get("text", "")
 
+                    # 이벤트 영속화 (broadcast 전에 저장)
+                    if self._event_store is not None:
+                        try:
+                            event_id = self._event_store.append(
+                                task.client_id, task.request_id, event_dict
+                            )
+                            # SSE id 필드로 사용할 수 있도록 주입
+                            event_dict["_event_id"] = event_id
+                        except Exception as e:
+                            logger.warning(f"Failed to persist event for {key}: {e}")
+
                     # 리스너들에게 브로드캐스트
                     await self._listener_manager.broadcast(
                         task.client_id, task.request_id, event_dict
@@ -196,12 +212,20 @@ class TaskExecutor:
         self,
         client_id: str,
         request_id: str,
-        queue: asyncio.Queue
+        queue: asyncio.Queue,
+        last_event_id: Optional[int] = None,
     ) -> None:
         """
         재연결 시 현재 상태 이벤트 전송
 
         새로 연결된 리스너에게 현재 태스크 상태를 알려줍니다.
+        last_event_id가 주어지면 EventStore에서 미수신 이벤트를 재전송합니다.
+
+        Args:
+            client_id: 클라이언트 ID
+            request_id: 요청 ID
+            queue: 이벤트를 받을 큐
+            last_event_id: 클라이언트가 마지막으로 수신한 이벤트 ID (SSE Last-Event-ID)
         """
         key = f"{client_id}:{request_id}"
         task = self._tasks.get(key)
@@ -222,6 +246,26 @@ class TaskExecutor:
         try:
             await queue.put(reconnect_event)
             logger.debug(f"Sent reconnect status to listener for task {key}")
+
+            # EventStore에서 미수신 이벤트 재전송
+            # read_since는 {"id": N, "event": {...}} 형식을 반환하므로
+            # 라이브 이벤트와 같은 형식으로 정규화한다: event_dict + _event_id
+            if self._event_store is not None and last_event_id is not None:
+                try:
+                    missed_events = self._event_store.read_since(
+                        client_id, request_id, after_id=last_event_id
+                    )
+                    for ev in missed_events:
+                        normalized = dict(ev.get("event", {}))
+                        normalized["_event_id"] = ev["id"]
+                        await queue.put(normalized)
+                    if missed_events:
+                        logger.info(
+                            f"Replayed {len(missed_events)} missed events for {key} "
+                            f"(after_id={last_event_id})"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to replay events from store: {e}")
 
         except Exception as e:
             logger.warning(f"Failed to send reconnect status: {e}")

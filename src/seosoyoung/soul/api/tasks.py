@@ -8,7 +8,8 @@ Tasks API - 태스크 기반 API 엔드포인트
 import asyncio
 import logging
 import json
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional
+from fastapi import APIRouter, Header, HTTPException, Depends
 from sse_starlette.sse import EventSourceResponse
 
 from seosoyoung.soul.models import (
@@ -125,10 +126,15 @@ async def execute_task(
             while True:
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=30.0)
-                    yield {
+                    sse_event = {
                         "event": event.get("type", "unknown"),
                         "data": json.dumps(event, ensure_ascii=False),
                     }
+                    # EventStore가 부여한 이벤트 ID를 SSE id로 전달
+                    event_id = event.pop("_event_id", None)
+                    if event_id is not None:
+                        sse_event["id"] = str(event_id)
+                    yield sse_event
 
                     # 완료 또는 에러면 종료
                     if event.get("type") in ["complete", "error"]:
@@ -206,6 +212,7 @@ async def reconnect_stream(
     client_id: str,
     request_id: str,
     _: str = Depends(verify_token),
+    last_event_id: Optional[str] = Header(None, alias="Last-Event-ID"),
 ):
     """
     태스크 SSE 스트림에 재연결
@@ -213,7 +220,17 @@ async def reconnect_stream(
     running 태스크: 현재 상태 전송 후 진행 중인 이벤트를 계속 수신
     completed 태스크: 저장된 결과를 즉시 반환
     error 태스크: 저장된 에러를 즉시 반환
+
+    Last-Event-ID 헤더가 있으면 해당 ID 이후의 미수신 이벤트를 재전송합니다.
     """
+    # Last-Event-ID 파싱
+    parsed_last_event_id: Optional[int] = None
+    if last_event_id is not None:
+        try:
+            parsed_last_event_id = int(last_event_id)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid Last-Event-ID header: {last_event_id!r}")
+
     task_manager = get_task_manager()
     task = await task_manager.get_task(client_id, request_id)
 
@@ -258,18 +275,26 @@ async def reconnect_stream(
         await task_manager.add_listener(client_id, request_id, event_queue)
 
         try:
-            # 재연결 시 현재 상태 이벤트 전송
-            await task_manager.send_reconnect_status(client_id, request_id, event_queue)
+            # 재연결 시 현재 상태 이벤트 전송 + 미수신 이벤트 재전송
+            await task_manager.send_reconnect_status(
+                client_id, request_id, event_queue,
+                last_event_id=parsed_last_event_id,
+            )
 
             while True:
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=30.0)
 
-                    # reconnected 이벤트도 클라이언트에 전달
-                    yield {
+                    # 모든 이벤트는 정규화된 형식: {"type": ..., "_event_id": N, ...}
+                    sse_event = {
                         "event": event.get("type", "unknown"),
                         "data": json.dumps(event, ensure_ascii=False),
                     }
+                    # EventStore가 부여한 이벤트 ID를 SSE id로 전달
+                    event_id = event.pop("_event_id", None) if isinstance(event, dict) else None
+                    if event_id is not None:
+                        sse_event["id"] = str(event_id)
+                    yield sse_event
 
                     # 완료 또는 에러면 종료
                     if event.get("type") in ["complete", "error"]:
