@@ -21,7 +21,7 @@ export const SystemNode = memo(function SystemNode({ data, selected }: NodeProps
   return (
     <div
       style={{
-        maxWidth: 220,
+        maxWidth: 280,
         background: 'rgba(17, 24, 39, 0.95)',
         border: selected
           ? `1px solid ${accent}`
