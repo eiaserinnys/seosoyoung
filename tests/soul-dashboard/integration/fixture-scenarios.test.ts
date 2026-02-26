@@ -268,19 +268,29 @@ describe("JSONL Fixture Integration Tests", () => {
       }
     });
 
-    it("연속 tool 호출이 수평으로 체이닝된다", () => {
+    it("연속 tool 호출이 트리뷰로 thinking에서 분기된다", () => {
       const { cards, graphEvents } = replayFixture("multi-tool");
       const { edges, nodes } = buildGraph(cards, graphEvents);
 
-      // 첫 번째 thinking 후에 연속된 tool_call들
+      // 트리뷰: 모든 tool_call은 thinking 노드에서 right→left로 분기
       const toolCallNodes = nodes.filter((n) => n.type === "tool_call");
-      // 최소 하나의 tool_call→tool_call 체이닝 (수평 엣지)
+      const thinkingNodes = nodes.filter((n) => n.type === "thinking");
+
+      // tool_call→tool_call 직접 연결은 없어야 함
       const chainEdges = edges.filter((e) => {
         const source = nodes.find((n) => n.id === e.source);
         const target = nodes.find((n) => n.id === e.target);
         return source?.type === "tool_call" && target?.type === "tool_call";
       });
-      expect(chainEdges.length).toBeGreaterThanOrEqual(1);
+      expect(chainEdges.length).toBe(0);
+
+      // 대신 thinking→tool_call 엣지가 tool 개수만큼 있어야 함
+      const branchEdges = edges.filter((e) => {
+        const source = nodes.find((n) => n.id === e.source);
+        const target = nodes.find((n) => n.id === e.target);
+        return (source?.type === "thinking" || source?.type === "response") && target?.type === "tool_call";
+      });
+      expect(branchEdges.length).toBeGreaterThanOrEqual(toolCallNodes.length);
     });
 
     it("lastEventId가 마지막 이벤트 ID와 일치한다", () => {

@@ -28,8 +28,8 @@ export const ResponseNode = memo(function ResponseNode({ data, selected }: NodeP
     <div
         data-testid="response-node"
         style={{
-          width: 280,
-          height: 60,
+          width: 260,
+          height: 84,
           boxSizing: 'border-box',
           background: 'rgba(17, 24, 39, 0.95)',
           border: selected

@@ -26,8 +26,8 @@ export const UserNode = memo(function UserNode({ data, selected }: NodeProps<Use
     <div
       data-testid="user-node"
       style={{
-        width: 280,
-        height: 60,
+        width: 260,
+        height: 84,
         boxSizing: 'border-box',
         background: 'rgba(17, 24, 39, 0.95)',
         border: selected

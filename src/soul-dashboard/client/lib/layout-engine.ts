@@ -78,13 +78,13 @@ export type ToolBranches = Map<string, ToolChainEntry[]>;
 
 /** 노드 타입별 기본 크기 (dagre 레이아웃에 사용) */
 const NODE_DIMENSIONS: Record<GraphNodeType | "group", { width: number; height: number }> = {
-  user: { width: 280, height: 60 },
-  thinking: { width: 280, height: 60 },
-  tool_call: { width: 280, height: 80 },
-  tool_result: { width: 280, height: 80 },
-  response: { width: 280, height: 60 },
-  system: { width: 280, height: 40 },
-  intervention: { width: 280, height: 60 },
+  user: { width: 260, height: 84 },
+  thinking: { width: 260, height: 84 },
+  tool_call: { width: 260, height: 84 },
+  tool_result: { width: 260, height: 84 },
+  response: { width: 260, height: 84 },
+  system: { width: 260, height: 84 },
+  intervention: { width: 260, height: 84 },
   group: { width: 320, height: 100 },
 };
 
@@ -94,7 +94,7 @@ const NODE_DIMENSIONS: Record<GraphNodeType | "group", { width: number; height: 
 export function getNodeDimensions(
   nodeType: GraphNodeType | "group",
 ): { width: number; height: number } {
-  return NODE_DIMENSIONS[nodeType] ?? { width: 280, height: 60 };
+  return NODE_DIMENSIONS[nodeType] ?? { width: 260, height: 84 };
 }
 
 // === Edge Creation ===
@@ -705,16 +705,14 @@ export function buildGraph(
 
       nodes.push(callNode);
 
-      if (prevToolBranchNodeId) {
-        // 이미 tool 분기가 있으면 그 아래에 세로 체이닝 (bottom → top)
-        edges.push(
-          createEdge(prevToolBranchNodeId, callNode.id, !card.completed && !card.toolResult, "bottom", "top"),
-        );
-      } else if (prevMainFlowNodeId) {
-        // 첫 번째 tool: 메인 흐름에서 수평 분기 (right → left)
-        edges.push(
-          createEdge(prevMainFlowNodeId, callNode.id, !card.completed && !card.toolResult, "right", "left"),
-        );
+      {
+        // 트리뷰: 모든 tool_call은 parent(thinking) 노드의 right → tool의 left로 연결
+        const toolParentNodeId = currentToolParentId ?? prevMainFlowNodeId;
+        if (toolParentNodeId) {
+          edges.push(
+            createEdge(toolParentNodeId, callNode.id, !card.completed && !card.toolResult, "right", "left"),
+          );
+        }
       }
 
       // tool_result 노드 생성 (결과가 있으면)

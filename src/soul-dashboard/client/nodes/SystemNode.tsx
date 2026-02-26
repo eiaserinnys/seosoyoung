@@ -22,8 +22,8 @@ export const SystemNode = memo(function SystemNode({ data, selected }: NodeProps
     <div
       data-testid="system-node"
       style={{
-        width: 280,
-        height: 40,
+        width: 260,
+        height: 84,
         boxSizing: 'border-box',
         background: 'rgba(17, 24, 39, 0.95)',
         border: selected
@@ -45,30 +45,46 @@ export const SystemNode = memo(function SystemNode({ data, selected }: NodeProps
         }}
       />
 
-      {/* Content area (compact) */}
-      <div
-        style={{
-          flex: 1,
-          padding: '6px 10px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          minWidth: 0,
-        }}
-      >
-        <span style={{ fontSize: 12, flexShrink: 0 }}>{'\u2699\uFE0F'}</span>
-        <span
+      {/* Content area */}
+      <div style={{ flex: 1, padding: '10px 12px', minWidth: 0 }}>
+        {/* Header row */}
+        <div
           style={{
-            fontSize: 11,
-            color: isError ? '#fca5a5' : '#9ca3af',
-            fontWeight: 500,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 6,
           }}
         >
-          {data.label || 'system'}
-        </span>
+          <span style={{ fontSize: 14, flexShrink: 0 }}>{'\u2699\uFE0F'}</span>
+          <span
+            style={{
+              fontSize: 10,
+              color: isError ? COLOR_ERROR : '#6b7280',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              fontWeight: 600,
+            }}
+          >
+            {data.label || 'System'}
+          </span>
+        </div>
+
+        {/* Content text */}
+        <div
+          style={{
+            fontSize: 12,
+            color: isError ? '#fca5a5' : '#9ca3af',
+            lineHeight: '1.5',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+          }}
+        >
+          {data.content || ''}
+        </div>
       </div>
 
       {/* Handles */}

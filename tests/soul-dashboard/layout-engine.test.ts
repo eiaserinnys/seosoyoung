@@ -46,9 +46,9 @@ function toolCard(
 
 describe("getNodeDimensions", () => {
   it("returns correct dimensions for each node type", () => {
-    expect(getNodeDimensions("thinking")).toEqual({ width: 280, height: 60 });
-    expect(getNodeDimensions("tool_call")).toEqual({ width: 280, height: 80 });
-    expect(getNodeDimensions("system")).toEqual({ width: 280, height: 40 });
+    expect(getNodeDimensions("thinking")).toEqual({ width: 260, height: 84 });
+    expect(getNodeDimensions("tool_call")).toEqual({ width: 260, height: 84 });
+    expect(getNodeDimensions("system")).toEqual({ width: 260, height: 84 });
     expect(getNodeDimensions("group")).toEqual({ width: 320, height: 100 });
   });
 });
@@ -420,13 +420,13 @@ describe("buildGraph", () => {
       expect(t1ToA).toBeDefined();
       expect(t1ToA!.sourceHandle).toBe("right");
 
-      // toolA→toolB: vertical chain (bottom→top, from toolA-call)
-      const aToB = edges.find(
-        (e) => e.source === "node-toolA-call" && e.target === "node-toolB-call",
+      // toolB도 thinking(t1)에서 수평 분기 (트리뷰: right→left)
+      const t1ToB = edges.find(
+        (e) => e.source === "node-t1" && e.target === "node-toolB-call",
       );
-      expect(aToB).toBeDefined();
-      expect(aToB!.sourceHandle).toBe("bottom");
-      expect(aToB!.targetHandle).toBe("top");
+      expect(t1ToB).toBeDefined();
+      expect(t1ToB!.sourceHandle).toBe("right");
+      expect(t1ToB!.targetHandle).toBe("left");
 
       // t1→t2: vertical (main flow)
       const t1ToT2 = edges.find(
