@@ -20,10 +20,14 @@ export function ChatInput() {
   const [lastSent, setLastSent] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // 세션 변경 시 상태 초기화
+  // 세션 변경 시 상태 초기화 & in-flight 요청 취소
   useEffect(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     setText("");
+    setSending(false);
     setError(null);
     setLastSent(null);
   }, [activeSessionKey]);
@@ -46,6 +50,11 @@ export function ChatInput() {
       return;
     }
 
+    // 이전 요청 취소
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setSending(true);
     setError(null);
 
@@ -59,6 +68,7 @@ export function ChatInput() {
             text: trimmed,
             user: "dashboard",
           }),
+          signal: controller.signal,
         },
       );
 
@@ -70,6 +80,8 @@ export function ChatInput() {
       setLastSent(trimmed);
       setText("");
     } catch (err) {
+      // AbortError는 의도적 취소이므로 무시
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Failed to send");
     } finally {
       setSending(false);

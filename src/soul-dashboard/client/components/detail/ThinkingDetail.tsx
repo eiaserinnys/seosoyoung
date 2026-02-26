@@ -6,8 +6,7 @@
  */
 
 import type { DashboardCard } from "@shared/types";
-
-const monoFont = "'Cascadia Code', 'Fira Code', monospace";
+import { monoFont } from "./shared";
 
 export function ThinkingDetail({ card }: { card: DashboardCard }) {
   return (

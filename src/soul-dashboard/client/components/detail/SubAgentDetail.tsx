@@ -6,8 +6,7 @@
  */
 
 import type { DashboardCard } from "@shared/types";
-
-const monoFont = "'Cascadia Code', 'Fira Code', monospace";
+import { monoFont, SectionLabel, CodeBlock } from "./shared";
 
 export function SubAgentDetail({ card }: { card: DashboardCard }) {
   const input = card.toolInput ?? {};
@@ -101,23 +100,7 @@ export function SubAgentDetail({ card }: { card: DashboardCard }) {
       {prompt && (
         <div>
           <SectionLabel>Prompt</SectionLabel>
-          <pre
-            style={{
-              fontSize: "12px",
-              color: "#9ca3af",
-              backgroundColor: "rgba(0,0,0,0.3)",
-              padding: "10px",
-              borderRadius: "6px",
-              overflow: "auto",
-              maxHeight: "300px",
-              margin: 0,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              fontFamily: monoFont,
-            }}
-          >
-            {prompt}
-          </pre>
+          <CodeBlock>{prompt}</CodeBlock>
         </div>
       )}
 
@@ -125,44 +108,11 @@ export function SubAgentDetail({ card }: { card: DashboardCard }) {
       {card.toolResult !== undefined && (
         <div>
           <SectionLabel>{card.isError ? "Error" : "Result"}</SectionLabel>
-          <pre
-            style={{
-              fontSize: "12px",
-              color: card.isError ? "#fca5a5" : "#9ca3af",
-              backgroundColor: card.isError
-                ? "rgba(239, 68, 68, 0.08)"
-                : "rgba(0,0,0,0.3)",
-              padding: "10px",
-              borderRadius: "6px",
-              overflow: "auto",
-              maxHeight: "300px",
-              margin: 0,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              fontFamily: monoFont,
-            }}
-          >
+          <CodeBlock variant={card.isError ? "error" : "default"}>
             {card.toolResult}
-          </pre>
+          </CodeBlock>
         </div>
       )}
-    </div>
-  );
-}
-
-/** 섹션 라벨 */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        fontSize: "11px",
-        color: "#6b7280",
-        textTransform: "uppercase",
-        letterSpacing: "0.05em",
-        marginBottom: "4px",
-      }}
-    >
-      {children}
     </div>
   );
 }

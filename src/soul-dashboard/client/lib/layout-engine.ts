@@ -398,9 +398,11 @@ function isSignificantSystemEvent(event: SoulSSEEvent): boolean {
 // === Plan Mode Detection ===
 
 /** EnterPlanMode ~ ExitPlanMode 범위 */
-interface PlanModeRange {
+export interface PlanModeRange {
   enterIdx: number;
   exitIdx: number;
+  /** ExitPlanMode가 명시적으로 발견되었는지 여부 */
+  closed: boolean;
 }
 
 /**
@@ -408,7 +410,7 @@ interface PlanModeRange {
  * 플랜 모드 구간의 인덱스 범위를 반환합니다.
  *
  * EnterPlanMode 없이 ExitPlanMode만 있는 경우는 무시합니다.
- * ExitPlanMode 없이 EnterPlanMode만 있으면 마지막 카드까지를 범위로 합니다.
+ * ExitPlanMode 없이 EnterPlanMode만 있으면 마지막 카드까지를 범위로 합니다 (closed=false).
  */
 export function detectPlanModeRanges(cards: DashboardCard[]): PlanModeRange[] {
   const ranges: PlanModeRange[] = [];
@@ -421,14 +423,14 @@ export function detectPlanModeRanges(cards: DashboardCard[]): PlanModeRange[] {
     if (card.toolName === "EnterPlanMode") {
       enterIdx = i;
     } else if (card.toolName === "ExitPlanMode" && enterIdx !== null) {
-      ranges.push({ enterIdx, exitIdx: i });
+      ranges.push({ enterIdx, exitIdx: i, closed: true });
       enterIdx = null;
     }
   }
 
   // 아직 ExitPlanMode가 오지 않은 경우 (현재 플랜 모드 진행 중)
   if (enterIdx !== null) {
-    ranges.push({ enterIdx, exitIdx: cards.length - 1 });
+    ranges.push({ enterIdx, exitIdx: cards.length - 1, closed: false });
   }
 
   return ranges;
@@ -484,7 +486,8 @@ export function buildGraph(
     for (let i = range.enterIdx; i <= range.exitIdx; i++) {
       planModeCardIds.add(cards[i].cardId);
     }
-    if (range.exitIdx < cards.length) {
+    // 명시적 ExitPlanMode가 있는 경우에만 종료 노드 표시
+    if (range.closed) {
       planModeExitCardIds.add(cards[range.exitIdx].cardId);
     }
   }

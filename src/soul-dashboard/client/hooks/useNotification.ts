@@ -27,10 +27,22 @@ export function useNotification(enabled = true) {
   // 이미 알림을 보낸 이벤트 수를 추적 (중복 방지)
   const notifiedCountRef = useRef(0);
 
+  // 알림 자동 닫기 타이머를 추적 (메모리 누수 방지)
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
   // 세션 변경 시 카운터 리셋
   useEffect(() => {
     notifiedCountRef.current = 0;
   }, [activeSessionKey]);
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const t of timers) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
 
   // 알림 권한 요청
   useEffect(() => {
@@ -66,8 +78,12 @@ export function useNotification(enabled = true) {
           notification.close();
         };
 
-        // 10초 후 자동 닫기
-        setTimeout(() => notification.close(), 10_000);
+        // 10초 후 자동 닫기 (타이머 추적하여 언마운트 시 정리)
+        const timer = setTimeout(() => {
+          notification.close();
+          timersRef.current.delete(timer);
+        }, 10_000);
+        timersRef.current.add(timer);
       } catch {
         // Notification 생성 실패 (Service Worker 환경 등)
       }

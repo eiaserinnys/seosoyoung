@@ -6,8 +6,7 @@
  */
 
 import type { DashboardCard } from "@shared/types";
-
-const monoFont = "'Cascadia Code', 'Fira Code', monospace";
+import { monoFont, SectionLabel, CodeBlock, safeStringify } from "./shared";
 
 export function ErrorDetail({ card }: { card: DashboardCard }) {
   return (
@@ -87,42 +86,9 @@ export function ErrorDetail({ card }: { card: DashboardCard }) {
       {card.toolInput && (
         <div>
           <SectionLabel>Input</SectionLabel>
-          <pre
-            style={{
-              fontSize: "12px",
-              color: "#9ca3af",
-              backgroundColor: "rgba(0,0,0,0.3)",
-              padding: "10px",
-              borderRadius: "6px",
-              overflow: "auto",
-              maxHeight: "200px",
-              margin: 0,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              fontFamily: monoFont,
-            }}
-          >
-            {JSON.stringify(card.toolInput, null, 2)}
-          </pre>
+          <CodeBlock maxHeight={200}>{safeStringify(card.toolInput)}</CodeBlock>
         </div>
       )}
-    </div>
-  );
-}
-
-/** 섹션 라벨 */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        fontSize: "11px",
-        color: "#6b7280",
-        textTransform: "uppercase",
-        letterSpacing: "0.05em",
-        marginBottom: "4px",
-      }}
-    >
-      {children}
     </div>
   );
 }
