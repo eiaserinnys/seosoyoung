@@ -926,37 +926,14 @@ class ClaudeRunner:
                     msg_state.reset_for_retry()
                     continue
 
-                # 무출력 종료 디버깅
+                # 무출력 종료: 로그만 남기고 스레드 덤프는 생략
                 if not msg_state.has_result:
                     _dur = (datetime.now(timezone.utc) - _session_start).total_seconds()
-                    # seosoyoung-mcp 출력 도구로 이미 응답을 전달한 경우
-                    # 텍스트 결과가 없어도 정상 종료로 간주
-                    _output_tools = (
-                        "mcp__seosoyoung-mcp__slack_post_message",
-                        "mcp__seosoyoung-mcp__slack_attach_file",
-                        "mcp__seosoyoung-mcp__slack_generate_image",
+                    logger.warning(
+                        f"세션 무출력 종료: thread={thread_ts}, "
+                        f"duration={_dur:.1f}s, msgs={msg_state.msg_count}, "
+                        f"last_tool={msg_state.last_tool}"
                     )
-                    if msg_state.last_tool in _output_tools:
-                        logger.info(
-                            f"세션 무출력이나 MCP 출력 도구로 응답 전달됨 - 덤프 생략: "
-                            f"thread={thread_ts}, duration={_dur:.1f}s, "
-                            f"last_tool={msg_state.last_tool}"
-                        )
-                    else:
-                        dump = build_session_dump(
-                            reason="CLI exited with no output (StopAsyncIteration)",
-                            pid=self.pid,
-                            duration_sec=_dur,
-                            message_count=msg_state.msg_count,
-                            last_tool=msg_state.last_tool,
-                            current_text_len=len(msg_state.current_text),
-                            result_text_len=len(msg_state.result_text),
-                            session_id=msg_state.session_id,
-                            active_clients_count=len(_registry),
-                            thread_ts=thread_ts,
-                        )
-                        logger.warning(f"세션 무출력 종료 덤프: thread={thread_ts}, duration={_dur:.1f}s, msgs={msg_state.msg_count}, last_tool={msg_state.last_tool}")
-                        self._debug(dump)
                 break
 
             # 정상 완료

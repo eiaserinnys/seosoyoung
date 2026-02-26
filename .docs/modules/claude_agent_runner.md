@@ -68,7 +68,7 @@ thread_ts 단위 인스턴스: 각 인스턴스가 자신의 client/pid/executio
 - `_evaluate_compact_retry(self, compact_state, msg_state, before_snapshot)` (줄 760): Compact retry 판정. True이면 외부 루프 continue, False이면 break.
 - `async run(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session, on_event)` (줄 820): Claude Code 실행
 - `async _execute(self, prompt, session_id, on_progress, on_compact, on_intervention, on_session, on_event)` (줄 866): 실제 실행 로직 (ClaudeSDKClient 기반)
-- `async compact_session(self, session_id)` (줄 1056): 세션 컴팩트 처리
+- `async compact_session(self, session_id)` (줄 1033): 세션 컴팩트 처리
 
 ## 함수
 
@@ -107,7 +107,7 @@ Returns:
 - 설명: collected_messages에서 마지막 assistant 텍스트를 추출 (tool_use 제외)
 
 ### `async main()`
-- 위치: 줄 1078
+- 위치: 줄 1055
 
 ## 내부 의존성
 
