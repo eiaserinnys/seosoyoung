@@ -197,6 +197,7 @@ function NodeGraphInner() {
 export function NodeGraph() {
   return (
     <div
+      data-testid="node-graph"
       style={{
         display: "flex",
         flexDirection: "column",

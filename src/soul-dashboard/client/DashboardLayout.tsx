@@ -73,6 +73,7 @@ export function DashboardLayout() {
 
   return (
     <div
+      data-testid="dashboard-layout"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -121,6 +122,7 @@ export function DashboardLayout() {
       >
         {/* Left: Session List */}
         <aside
+          data-testid="session-panel"
           style={{
             width: "240px",
             flexShrink: 0,
@@ -133,6 +135,7 @@ export function DashboardLayout() {
 
         {/* Center: Node Graph + Chat Input */}
         <main
+          data-testid="graph-panel"
           style={{
             flex: 1,
             borderRight: "1px solid rgba(255,255,255,0.08)",
@@ -149,6 +152,7 @@ export function DashboardLayout() {
 
         {/* Right: Detail View */}
         <aside
+          data-testid="detail-panel"
           style={{
             width: "360px",
             flexShrink: 0,

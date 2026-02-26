@@ -33,6 +33,7 @@ export const ToolCallNode = memo(function ToolCallNode({ data, selected }: NodeP
 
   return (
     <div
+        data-testid="tool-call-node"
         style={{
           maxWidth: 260,
           background: isPlanMode

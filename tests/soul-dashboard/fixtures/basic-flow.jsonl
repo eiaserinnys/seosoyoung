@@ -1,0 +1,10 @@
+{"id":1,"event":{"type":"user_message","user":"dashboard","text":"Analyze this code and explain what it does"}}
+{"id":2,"event":{"type":"session","session_id":"sess-basic-001"}}
+{"id":3,"event":{"type":"text_start","card_id":"card-t1"}}
+{"id":4,"event":{"type":"text_delta","card_id":"card-t1","text":"Let me analyze the code..."}}
+{"id":5,"event":{"type":"text_delta","card_id":"card-t1","text":" This appears to be a React component."}}
+{"id":6,"event":{"type":"text_end","card_id":"card-t1"}}
+{"id":7,"event":{"type":"text_start","card_id":"card-t2"}}
+{"id":8,"event":{"type":"text_delta","card_id":"card-t2","text":"The component renders a dashboard layout with three panels."}}
+{"id":9,"event":{"type":"text_end","card_id":"card-t2"}}
+{"id":10,"event":{"type":"complete","result":"Analysis complete","attachments":[]}}

@@ -24,6 +24,7 @@ const truncateStyle: React.CSSProperties = {
 export const UserNode = memo(function UserNode({ data, selected }: NodeProps<UserNodeType>) {
   return (
     <div
+      data-testid="user-node"
       style={{
         maxWidth: 260,
         background: 'rgba(17, 24, 39, 0.95)',

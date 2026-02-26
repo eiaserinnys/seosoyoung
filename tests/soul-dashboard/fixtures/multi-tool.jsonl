@@ -1,0 +1,20 @@
+{"id":1,"event":{"type":"user_message","user":"bot","text":"Fix the bug in auth module"}}
+{"id":2,"event":{"type":"session","session_id":"sess-multi-001"}}
+{"id":3,"event":{"type":"text_start","card_id":"card-t1"}}
+{"id":4,"event":{"type":"text_delta","card_id":"card-t1","text":"Let me investigate the auth module."}}
+{"id":5,"event":{"type":"text_end","card_id":"card-t1"}}
+{"id":6,"event":{"type":"tool_start","card_id":"card-tool1","tool_name":"Read","tool_input":{"file_path":"/src/auth/login.ts"}}}
+{"id":7,"event":{"type":"tool_result","card_id":"card-tool1","tool_name":"Read","result":"export function login(user, pass) { return fetch('/api/login', { body: { user, pass } }); }","is_error":false}}
+{"id":8,"event":{"type":"tool_start","card_id":"card-tool2","tool_name":"Read","tool_input":{"file_path":"/src/auth/session.ts"}}}
+{"id":9,"event":{"type":"tool_result","card_id":"card-tool2","tool_name":"Read","result":"export function getSession() { return localStorage.getItem('session'); }","is_error":false}}
+{"id":10,"event":{"type":"tool_start","card_id":"card-tool3","tool_name":"Grep","tool_input":{"pattern":"token","path":"/src/auth/"}}}
+{"id":11,"event":{"type":"tool_result","card_id":"card-tool3","tool_name":"Grep","result":"session.ts:5: const token = session?.token;","is_error":false}}
+{"id":12,"event":{"type":"text_start","card_id":"card-t2"}}
+{"id":13,"event":{"type":"text_delta","card_id":"card-t2","text":"Found the issue. The login function doesn't properly set the auth token."}}
+{"id":14,"event":{"type":"text_end","card_id":"card-t2"}}
+{"id":15,"event":{"type":"tool_start","card_id":"card-tool4","tool_name":"Edit","tool_input":{"file_path":"/src/auth/login.ts","old_string":"return fetch","new_string":"const res = await fetch"}}}
+{"id":16,"event":{"type":"tool_result","card_id":"card-tool4","tool_name":"Edit","result":"File updated successfully","is_error":false}}
+{"id":17,"event":{"type":"text_start","card_id":"card-t3"}}
+{"id":18,"event":{"type":"text_delta","card_id":"card-t3","text":"The bug has been fixed. The login function now properly awaits the fetch response and stores the token."}}
+{"id":19,"event":{"type":"text_end","card_id":"card-t3"}}
+{"id":20,"event":{"type":"complete","result":"Bug fixed","attachments":[]}}
