@@ -30,20 +30,19 @@ OM 전용 필드는 포함하지 않습니다.
 - 설명: 엔진 이벤트 타입
 
 Soul Dashboard가 구독하는 세분화 이벤트 종류.
-THINKING_*: 모델 사고 스트림
+TEXT_DELTA: AssistantMessage의 TextBlock 텍스트 (모델의 가시적 응답)
 TOOL_*: 도구 호출 및 결과
 RESULT: 최종 결과 (성공/실패 포함)
-STATE_CHANGE: 엔진 상태 전환 (idle → running 등)
+
+Note: SDK의 TextBlock은 assistant의 visible output입니다.
+ThinkingBlock(extended thinking)과는 다릅니다.
+어댑터 계층(engine_adapter)에서 TEXT_DELTA를
+text_start → text_delta → text_end 카드 시퀀스로 변환합니다.
 
 ### `EngineEvent`
-- 위치: 줄 71
+- 위치: 줄 72
 - 설명: 엔진에서 발행하는 단일 이벤트
 
-type: 이벤트 종류
+type: 이벤트 종류 (EngineEventType)
 timestamp: 발행 시각 (Unix epoch, float)
-data: 이벤트별 페이로드 (dict)
-  - THINKING_DELTA: {"text": str}
-  - TOOL_START: {"tool_name": str, "tool_input": dict}
-  - TOOL_RESULT: {"tool_name": str, "result": Any}
-  - RESULT: {"success": bool, "output": str, "error": Optional[str]}
-  - STATE_CHANGE: {"from_state": str, "to_state": str}
+data: 이벤트별 페이로드 (dict) — 스키마는 아래 참조

@@ -130,34 +130,28 @@ class TestEngineEventType:
     """EngineEventType enum 테스트"""
 
     def test_all_members_exist(self):
-        """7가지 이벤트 타입이 모두 존재"""
+        """4가지 이벤트 타입이 모두 존재"""
         from seosoyoung.slackbot.claude.engine_types import EngineEventType
 
-        assert EngineEventType.THINKING_START
-        assert EngineEventType.THINKING_DELTA
-        assert EngineEventType.THINKING_END
+        assert EngineEventType.TEXT_DELTA
         assert EngineEventType.TOOL_START
         assert EngineEventType.TOOL_RESULT
         assert EngineEventType.RESULT
-        assert EngineEventType.STATE_CHANGE
 
     def test_total_count(self):
-        """정확히 7개의 이벤트 타입"""
+        """정확히 4개의 이벤트 타입"""
         from seosoyoung.slackbot.claude.engine_types import EngineEventType
 
-        assert len(EngineEventType) == 7
+        assert len(EngineEventType) == 4
 
     def test_string_values(self):
         """값이 snake_case 문자열"""
         from seosoyoung.slackbot.claude.engine_types import EngineEventType
 
-        assert EngineEventType.THINKING_START.value == "thinking_start"
-        assert EngineEventType.THINKING_DELTA.value == "thinking_delta"
-        assert EngineEventType.THINKING_END.value == "thinking_end"
+        assert EngineEventType.TEXT_DELTA.value == "text_delta"
         assert EngineEventType.TOOL_START.value == "tool_start"
         assert EngineEventType.TOOL_RESULT.value == "tool_result"
         assert EngineEventType.RESULT.value == "result"
-        assert EngineEventType.STATE_CHANGE.value == "state_change"
 
     def test_is_enum(self):
         """EngineEventType이 Enum 서브클래스"""
@@ -170,8 +164,8 @@ class TestEngineEventType:
         """값으로 역조회 가능"""
         from seosoyoung.slackbot.claude.engine_types import EngineEventType
 
-        assert EngineEventType("thinking_start") is EngineEventType.THINKING_START
-        assert EngineEventType("state_change") is EngineEventType.STATE_CHANGE
+        assert EngineEventType("text_delta") is EngineEventType.TEXT_DELTA
+        assert EngineEventType("result") is EngineEventType.RESULT
 
 
 class TestEngineEvent:
@@ -181,8 +175,8 @@ class TestEngineEvent:
         """type만 지정하여 생성 — data/timestamp는 기본값"""
         from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
 
-        event = EngineEvent(type=EngineEventType.THINKING_START)
-        assert event.type is EngineEventType.THINKING_START
+        event = EngineEvent(type=EngineEventType.TEXT_DELTA)
+        assert event.type is EngineEventType.TEXT_DELTA
         assert event.data == {}
         assert isinstance(event.timestamp, float)
 
@@ -205,12 +199,12 @@ class TestEngineEvent:
         e1.data["tool_name"] = "Read"
         assert "tool_name" not in e2.data
 
-    def test_thinking_delta_payload(self):
-        """THINKING_DELTA 이벤트 페이로드 패턴"""
+    def test_text_delta_payload(self):
+        """TEXT_DELTA 이벤트 페이로드 패턴"""
         from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
 
         event = EngineEvent(
-            type=EngineEventType.THINKING_DELTA,
+            type=EngineEventType.TEXT_DELTA,
             data={"text": "분석 중..."},
         )
         assert event.data["text"] == "분석 중..."
@@ -237,23 +231,12 @@ class TestEngineEvent:
         assert event.data["success"] is True
         assert event.data["error"] is None
 
-    def test_state_change_payload(self):
-        """STATE_CHANGE 이벤트 페이로드 패턴"""
-        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
-
-        event = EngineEvent(
-            type=EngineEventType.STATE_CHANGE,
-            data={"from_state": "idle", "to_state": "running"},
-        )
-        assert event.data["from_state"] == "idle"
-        assert event.data["to_state"] == "running"
-
     def test_custom_timestamp(self):
         """명시적 timestamp 지정 가능"""
         from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
 
         ts = 1700000000.0
-        event = EngineEvent(type=EngineEventType.THINKING_END, timestamp=ts)
+        event = EngineEvent(type=EngineEventType.RESULT, timestamp=ts)
         assert event.timestamp == ts
 
     def test_fields(self):

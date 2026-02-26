@@ -20,13 +20,12 @@ class SSEEventType(str, Enum):
     COMPLETE = "complete"
     ERROR = "error"
     # 세분화 이벤트 (dashboard용)
-    THINKING_START = "thinking_start"
-    THINKING_DELTA = "thinking_delta"
-    THINKING_END = "thinking_end"
+    TEXT_START = "text_start"
+    TEXT_DELTA = "text_delta"
+    TEXT_END = "text_end"
     TOOL_START = "tool_start"
     TOOL_RESULT = "tool_result"
     RESULT = "result"
-    STATE_CHANGE = "state_change"
 
 
 # === Request Models ===
@@ -198,37 +197,42 @@ class TaskInterveneRequest(BaseModel):
 
 
 # === 세분화 SSE Event Models (dashboard용) ===
+#
+# TextBlock(assistant 가시적 응답)을 "카드" 단위로 추상화합니다.
+# SDK의 TextBlock은 extended thinking(ThinkingBlock)이 아닌
+# assistant의 visible output 텍스트입니다.
 
-class ThinkingStartSSEEvent(BaseModel):
-    """사고 블록 시작 이벤트
+class TextStartSSEEvent(BaseModel):
+    """텍스트 블록 시작 이벤트
 
-    TextBlock 하나를 '카드'로 추상화하여 시작 시점을 알립니다.
+    AssistantMessage의 TextBlock 하나를 '카드'로 추상화하여
+    시작 시점을 알립니다.
     """
-    type: str = "thinking_start"
-    card_id: str = Field(..., description="사고 블록 단위 카드 ID")
+    type: str = "text_start"
+    card_id: str = Field(..., description="텍스트 블록 단위 카드 ID")
 
 
-class ThinkingDeltaSSEEvent(BaseModel):
-    """사고 텍스트 이벤트
+class TextDeltaSSEEvent(BaseModel):
+    """텍스트 블록 내용 이벤트
 
     TextBlock의 전체 텍스트 내용. SDK가 청크 스트리밍을 지원하지
     않으므로 한 번에 전체 텍스트가 전달됩니다.
     """
-    type: str = "thinking_delta"
+    type: str = "text_delta"
     card_id: str = Field(..., description="카드 ID")
-    text: str = Field(..., description="사고 텍스트 내용")
+    text: str = Field(..., description="텍스트 내용")
 
 
-class ThinkingEndSSEEvent(BaseModel):
-    """사고 블록 완료 이벤트"""
-    type: str = "thinking_end"
+class TextEndSSEEvent(BaseModel):
+    """텍스트 블록 완료 이벤트"""
+    type: str = "text_end"
     card_id: str = Field(..., description="카드 ID")
 
 
 class ToolStartSSEEvent(BaseModel):
     """도구 호출 시작 이벤트"""
     type: str = "tool_start"
-    card_id: Optional[str] = Field(None, description="연관된 사고 블록의 카드 ID")
+    card_id: Optional[str] = Field(None, description="연관된 텍스트 블록의 카드 ID")
     tool_name: str = Field(..., description="도구 이름")
     tool_input: dict = Field(default_factory=dict, description="도구 입력 파라미터")
 
@@ -236,7 +240,7 @@ class ToolStartSSEEvent(BaseModel):
 class ToolResultSSEEvent(BaseModel):
     """도구 결과 이벤트"""
     type: str = "tool_result"
-    card_id: Optional[str] = Field(None, description="연관된 사고 블록의 카드 ID")
+    card_id: Optional[str] = Field(None, description="연관된 텍스트 블록의 카드 ID")
     tool_name: str = Field(..., description="도구 이름")
     result: str = Field(..., description="도구 실행 결과")
     is_error: bool = Field(False, description="오류 여부")
@@ -253,10 +257,3 @@ class ResultSSEEvent(BaseModel):
     success: bool = Field(..., description="성공 여부")
     output: str = Field(..., description="출력 텍스트")
     error: Optional[str] = Field(None, description="오류 메시지")
-
-
-class StateChangeSSEEvent(BaseModel):
-    """엔진 상태 전환 이벤트"""
-    type: str = "state_change"
-    from_state: str = Field(..., description="이전 상태")
-    to_state: str = Field(..., description="새 상태")

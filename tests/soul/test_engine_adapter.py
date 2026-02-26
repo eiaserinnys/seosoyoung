@@ -817,12 +817,12 @@ class TestCardTracker:
 class TestEngineEventConversion:
     """on_engine_event 콜백 → SSE 이벤트 변환 테스트"""
 
-    async def test_thinking_delta_produces_three_events(self):
-        """THINKING_DELTA → ThinkingStart + ThinkingDelta + ThinkingEnd"""
+    async def test_text_delta_produces_three_events(self):
+        """TEXT_DELTA → TextStart + TextDelta + TextEnd"""
         from seosoyoung.soul.models import (
-            ThinkingDeltaSSEEvent,
-            ThinkingEndSSEEvent,
-            ThinkingStartSSEEvent,
+            TextDeltaSSEEvent,
+            TextEndSSEEvent,
+            TextStartSSEEvent,
         )
         from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
 
@@ -833,8 +833,8 @@ class TestEngineEventConversion:
                            on_session=None, on_event=None):
             if on_event:
                 await on_event(EngineEvent(
-                    type=EngineEventType.THINKING_DELTA,
-                    data={"text": "모델이 생각 중..."},
+                    type=EngineEventType.TEXT_DELTA,
+                    data={"text": "모델이 응답 중..."},
                 ))
             return EngineResult(success=True, output="done")
 
@@ -845,18 +845,18 @@ class TestEngineEventConversion:
             instance.run = fake_run
             events = await collect_events(adapter, "test")
 
-        thinking_events = [
+        text_events = [
             e for e in events
-            if isinstance(e, (ThinkingStartSSEEvent, ThinkingDeltaSSEEvent, ThinkingEndSSEEvent))
+            if isinstance(e, (TextStartSSEEvent, TextDeltaSSEEvent, TextEndSSEEvent))
         ]
-        assert len(thinking_events) == 3
-        start, delta, end = thinking_events
-        assert isinstance(start, ThinkingStartSSEEvent)
-        assert isinstance(delta, ThinkingDeltaSSEEvent)
-        assert isinstance(end, ThinkingEndSSEEvent)
+        assert len(text_events) == 3
+        start, delta, end = text_events
+        assert isinstance(start, TextStartSSEEvent)
+        assert isinstance(delta, TextDeltaSSEEvent)
+        assert isinstance(end, TextEndSSEEvent)
         # 세 이벤트 모두 동일한 card_id
         assert start.card_id == delta.card_id == end.card_id
-        assert delta.text == "모델이 생각 중..."
+        assert delta.text == "모델이 응답 중..."
 
     async def test_tool_start_event(self):
         """TOOL_START → ToolStartSSEEvent"""
@@ -946,9 +946,9 @@ class TestEngineEventConversion:
         assert result_events[0].success is True
         assert result_events[0].output == "최종 결과"
 
-    async def test_multiple_thinking_blocks_get_distinct_card_ids(self):
-        """두 THINKING_DELTA → 서로 다른 card_id"""
-        from seosoyoung.soul.models import ThinkingStartSSEEvent
+    async def test_multiple_text_blocks_get_distinct_card_ids(self):
+        """두 TEXT_DELTA → 서로 다른 card_id"""
+        from seosoyoung.soul.models import TextStartSSEEvent
         from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
 
         adapter = SoulEngineAdapter(workspace_dir="/test")
@@ -958,11 +958,11 @@ class TestEngineEventConversion:
                            on_session=None, on_event=None):
             if on_event:
                 await on_event(EngineEvent(
-                    type=EngineEventType.THINKING_DELTA,
+                    type=EngineEventType.TEXT_DELTA,
                     data={"text": "첫 번째 사고"},
                 ))
                 await on_event(EngineEvent(
-                    type=EngineEventType.THINKING_DELTA,
+                    type=EngineEventType.TEXT_DELTA,
                     data={"text": "두 번째 사고"},
                 ))
             return EngineResult(success=True, output="done")
@@ -974,13 +974,13 @@ class TestEngineEventConversion:
             instance.run = fake_run
             events = await collect_events(adapter, "test")
 
-        start_events = [e for e in events if isinstance(e, ThinkingStartSSEEvent)]
+        start_events = [e for e in events if isinstance(e, TextStartSSEEvent)]
         assert len(start_events) == 2
         assert start_events[0].card_id != start_events[1].card_id
 
-    async def test_tool_linked_to_thinking_card(self):
-        """TOOL_START.card_id = 직전 THINKING_DELTA의 card_id"""
-        from seosoyoung.soul.models import ThinkingStartSSEEvent, ToolStartSSEEvent
+    async def test_tool_linked_to_text_card(self):
+        """TOOL_START.card_id = 직전 TEXT_DELTA의 card_id"""
+        from seosoyoung.soul.models import TextStartSSEEvent, ToolStartSSEEvent
         from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
 
         adapter = SoulEngineAdapter(workspace_dir="/test")
@@ -990,7 +990,7 @@ class TestEngineEventConversion:
                            on_session=None, on_event=None):
             if on_event:
                 await on_event(EngineEvent(
-                    type=EngineEventType.THINKING_DELTA,
+                    type=EngineEventType.TEXT_DELTA,
                     data={"text": "Read 파일을 먼저"},
                 ))
                 await on_event(EngineEvent(
@@ -1006,7 +1006,7 @@ class TestEngineEventConversion:
             instance.run = fake_run
             events = await collect_events(adapter, "test")
 
-        thinking_starts = [e for e in events if isinstance(e, ThinkingStartSSEEvent)]
+        thinking_starts = [e for e in events if isinstance(e, TextStartSSEEvent)]
         tool_starts = [e for e in events if isinstance(e, ToolStartSSEEvent)]
         assert len(thinking_starts) == 1
         assert len(tool_starts) == 1
@@ -1014,7 +1014,7 @@ class TestEngineEventConversion:
 
     async def test_existing_progress_still_emitted_alongside_new_events(self):
         """기존 ProgressEvent도 그대로 발행 (슬랙봇 하위호환)"""
-        from seosoyoung.soul.models import ThinkingStartSSEEvent
+        from seosoyoung.soul.models import TextStartSSEEvent
         from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
 
         adapter = SoulEngineAdapter(workspace_dir="/test")
@@ -1028,7 +1028,7 @@ class TestEngineEventConversion:
             # 신규 on_event (dashboard용)
             if on_event:
                 await on_event(EngineEvent(
-                    type=EngineEventType.THINKING_DELTA,
+                    type=EngineEventType.TEXT_DELTA,
                     data={"text": "사고 중..."},
                 ))
             return EngineResult(success=True, output="done")
@@ -1043,8 +1043,8 @@ class TestEngineEventConversion:
         # 기존 ProgressEvent 유지
         progress_events = [e for e in events if isinstance(e, ProgressEvent)]
         assert len(progress_events) == 1
-        # 신규 ThinkingStartSSEEvent 추가
-        thinking_events = [e for e in events if isinstance(e, ThinkingStartSSEEvent)]
+        # 신규 TextStartSSEEvent 추가
+        thinking_events = [e for e in events if isinstance(e, TextStartSSEEvent)]
         assert len(thinking_events) == 1
 
     async def test_on_event_passed_to_runner(self):

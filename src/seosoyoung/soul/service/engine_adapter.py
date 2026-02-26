@@ -29,10 +29,9 @@ from seosoyoung.soul.models import (
     ProgressEvent,
     ResultSSEEvent,
     SessionEvent,
-    StateChangeSSEEvent,
-    ThinkingDeltaSSEEvent,
-    ThinkingEndSSEEvent,
-    ThinkingStartSSEEvent,
+    TextDeltaSSEEvent,
+    TextEndSSEEvent,
+    TextStartSSEEvent,
     ToolResultSSEEvent,
     ToolStartSSEEvent,
 )
@@ -54,12 +53,12 @@ _DONE = object()
 
 
 class _CardTracker:
-    """SSE 이벤트용 카드 ID 관리 + thinking↔tool 관계 추적
+    """SSE 이벤트용 카드 ID 관리 + text↔tool 관계 추적
 
-    TextBlock(thinking) 하나를 '카드'로 추상화합니다.
+    AssistantMessage의 TextBlock 하나를 '카드'로 추상화합니다.
     카드 ID는 UUID4 기반 8자리 식별자로 생성됩니다.
 
-    SDK는 TextBlock을 청크 스트리밍하지 않으므로 THINKING_DELTA 하나가
+    SDK는 TextBlock을 청크 스트리밍하지 않으므로 TEXT_DELTA 하나가
     하나의 완전한 카드에 해당합니다.
     """
 
@@ -257,17 +256,25 @@ class SoulEngineAdapter:
             기존 on_progress/on_compact 이벤트와 병행 발행됩니다.
             슬랙봇 하위호환 유지: 기존 이벤트를 대체하지 않습니다.
             """
-            if event.type == EngineEventType.THINKING_DELTA:
+            if event.type == EngineEventType.TEXT_DELTA:
                 text = event.data.get("text", "")
                 # TextBlock 전체 = 하나의 카드 (SDK는 청크 스트리밍 미지원)
                 card_id = tracker.new_card()
-                await queue.put(ThinkingStartSSEEvent(card_id=card_id))
-                await queue.put(ThinkingDeltaSSEEvent(card_id=card_id, text=text))
-                await queue.put(ThinkingEndSSEEvent(card_id=card_id))
+                await queue.put(TextStartSSEEvent(card_id=card_id))
+                await queue.put(TextDeltaSSEEvent(card_id=card_id, text=text))
+                await queue.put(TextEndSSEEvent(card_id=card_id))
 
             elif event.type == EngineEventType.TOOL_START:
                 tool_name = event.data.get("tool_name", "")
                 tool_input = event.data.get("tool_input", {})
+                # SSE 페이로드 크기 제한: 대형 tool_input 방지
+                try:
+                    import json as _json
+                    tool_input_str = _json.dumps(tool_input, ensure_ascii=False)
+                    if len(tool_input_str) > 2000:
+                        tool_input = {"_truncated": tool_input_str[:2000] + "..."}
+                except (TypeError, ValueError):
+                    tool_input = {"_error": "serialize_failed"}
                 tracker.set_last_tool(tool_name)
                 await queue.put(ToolStartSSEEvent(
                     card_id=tracker.current_card_id,
@@ -295,14 +302,6 @@ class SoulEngineAdapter:
                     success=success,
                     output=output,
                     error=error,
-                ))
-
-            elif event.type == EngineEventType.STATE_CHANGE:
-                from_state = event.data.get("from_state", "")
-                to_state = event.data.get("to_state", "")
-                await queue.put(StateChangeSSEEvent(
-                    from_state=from_state,
-                    to_state=to_state,
                 ))
 
         # --- 백그라운드 실행 ---

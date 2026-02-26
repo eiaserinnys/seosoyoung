@@ -652,11 +652,11 @@ class ClaudeRunner:
                             if on_event:
                                 try:
                                     await on_event(EngineEvent(
-                                        type=EngineEventType.THINKING_DELTA,
+                                        type=EngineEventType.TEXT_DELTA,
                                         data={"text": block.text},
                                     ))
                                 except Exception as e:
-                                    logger.warning(f"이벤트 콜백 오류 (THINKING_DELTA): {e}")
+                                    logger.warning(f"이벤트 콜백 오류 (TEXT_DELTA): {e}")
 
                         elif isinstance(block, ToolUseBlock):
                             tool_input = ""
@@ -674,9 +674,17 @@ class ClaudeRunner:
 
                             if on_event:
                                 try:
+                                    # tool_input 크기 제한: 대형 파일 내용 등 방지
+                                    event_tool_input = block.input or {}
+                                    try:
+                                        _input_str = json.dumps(event_tool_input, ensure_ascii=False)
+                                        if len(_input_str) > 2000:
+                                            event_tool_input = {"_truncated": _input_str[:2000] + "..."}
+                                    except (TypeError, ValueError):
+                                        event_tool_input = {"_error": "serialize_failed"}
                                     await on_event(EngineEvent(
                                         type=EngineEventType.TOOL_START,
-                                        data={"tool_name": block.name, "tool_input": block.input or {}},
+                                        data={"tool_name": block.name, "tool_input": event_tool_input},
                                     ))
                                 except Exception as e:
                                     logger.warning(f"이벤트 콜백 오류 (TOOL_START): {e}")
@@ -721,12 +729,13 @@ class ClaudeRunner:
 
                 if on_event:
                     try:
+                        result_output = msg_state.result_text or msg_state.current_text
                         await on_event(EngineEvent(
                             type=EngineEventType.RESULT,
                             data={
                                 "success": not msg_state.is_error,
-                                "output": msg_state.result_text or msg_state.current_text,
-                                "error": None,
+                                "output": result_output,
+                                "error": result_output if msg_state.is_error else None,
                             },
                         ))
                     except Exception as e:
@@ -833,7 +842,7 @@ class ClaudeRunner:
                 SystemMessage에서 session_id를 추출한 시점에 호출됩니다.
                 클라이언트에게 session_id를 조기 통지하는 데 사용합니다.
             on_event: 세분화 이벤트 콜백 (Optional).
-                THINKING_DELTA, TOOL_START, TOOL_RESULT, RESULT 이벤트를 받습니다.
+                TEXT_DELTA, TOOL_START, TOOL_RESULT, RESULT 이벤트를 받습니다.
                 None이면 이벤트를 발행하지 않습니다.
 
         Returns:

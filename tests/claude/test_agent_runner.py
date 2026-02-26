@@ -2094,8 +2094,8 @@ class TestClaudeRunnerPooled:
 class TestEngineEventCallback:
     """on_event 콜백을 통한 세분화 이벤트 발행 테스트"""
 
-    async def test_thinking_delta_event_emitted(self):
-        """TextBlock -> THINKING_DELTA 이벤트가 발행되는지 확인"""
+    async def test_text_delta_event_emitted(self):
+        """TextBlock -> TEXT_DELTA 이벤트가 발행되는지 확인"""
         from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
 
         runner = ClaudeRunner()
@@ -2105,7 +2105,7 @@ class TestEngineEventCallback:
             events.append(event)
 
         mock_client = _make_mock_client(
-            MockAssistantMessage(content=[MockTextBlock(text="사고 중...")]),
+            MockAssistantMessage(content=[MockTextBlock(text="응답 중...")]),
             MockResultMessage(result="완료", session_id="evt-test"),
         )
 
@@ -2115,9 +2115,9 @@ class TestEngineEventCallback:
                     with patch("seosoyoung.slackbot.claude.agent_runner.TextBlock", MockTextBlock):
                         await runner.run("테스트", on_event=on_event)
 
-        thinking_events = [e for e in events if e.type == EngineEventType.THINKING_DELTA]
-        assert len(thinking_events) == 1
-        assert thinking_events[0].data["text"] == "사고 중..."
+        text_events = [e for e in events if e.type == EngineEventType.TEXT_DELTA]
+        assert len(text_events) == 1
+        assert text_events[0].data["text"] == "응답 중..."
 
     async def test_tool_start_event_emitted(self):
         """ToolUseBlock -> TOOL_START 이벤트가 발행되는지 확인"""
