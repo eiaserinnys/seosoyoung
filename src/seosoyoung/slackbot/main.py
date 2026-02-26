@@ -83,14 +83,16 @@ def _check_restart_on_session_stop():
 session_runtime.set_on_session_stopped(_check_restart_on_session_stop)
 
 
-_GRACEFUL_SHUTDOWN_TIMEOUT = 60  # 최대 대기 시간(초)
+_GRACEFUL_SHUTDOWN_TIMEOUT = 300  # 최대 대기 시간(초) — 사용자 응답 대기 포함
 
 
 def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
-    """활성 세션을 확인하고, 있으면 대기 후 종료.
+    """활성 세션을 확인하고, 있으면 사용자에게 팝업으로 확인 후 종료.
 
     세션이 없으면 즉시 종료.
-    세션이 있으면 RestartManager의 pending 메커니즘으로 세션 종료 후 자동 종료.
+    세션이 있으면 Slack 팝업으로 사용자에게 확인을 받는다.
+    - "지금 종료": 즉시 os._exit
+    - "세션 완료 후 종료": pending 등록, 세션 0 도달 시 자동 종료
     최대 _GRACEFUL_SHUTDOWN_TIMEOUT 초 초과 시 강제 종료 (타임아웃 안전망).
 
     Args:
@@ -98,16 +100,34 @@ def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
         source: 로그용 호출 출처 (예: "SIGTERM", "HTTP /shutdown")
     """
     logger.info(f"[{source}] graceful shutdown 시작")
-    result = restart_manager.request_system_shutdown(restart_type)
-    if result:
-        # 즉시 종료됨 (활성 세션 없음) — request_system_shutdown 내부에서 _perform_restart 호출
+
+    running_count = session_runtime.get_running_session_count()
+    if running_count == 0:
+        logger.info(f"[{source}] 활성 세션 없음 — 즉시 종료")
+        _perform_restart(restart_type)
         return
 
-    # 세션 대기 모드: 타임아웃 안전망 등록
+    # 활성 세션 있음 — 사용자에게 팝업으로 확인
     logger.info(
-        f"[{source}] 세션 종료 대기 중 (최대 {_GRACEFUL_SHUTDOWN_TIMEOUT}초)"
+        f"[{source}] 활성 세션 {running_count}개, 사용자 확인 팝업 전송"
     )
+    channel = Config.trello.notify_channel
+    if channel:
+        from seosoyoung.slackbot.handlers.actions import send_deploy_shutdown_popup
+        send_deploy_shutdown_popup(
+            client=app.client,
+            channel=channel,
+            running_count=running_count,
+            restart_type=restart_type,
+        )
+    else:
+        # notify_channel 미설정 시 팝업 불가 → 세션 대기 모드로 진입
+        logger.warning(
+            f"[{source}] notify_channel 미설정, 세션 대기 모드로 진입"
+        )
+        restart_manager.request_system_shutdown(restart_type)
 
+    # 타임아웃 안전망: 사용자 응답이 없으면 강제 종료
     def _force_shutdown():
         logger.warning(
             f"[{source}] 타임아웃 {_GRACEFUL_SHUTDOWN_TIMEOUT}초 초과 — 강제 종료"

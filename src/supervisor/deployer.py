@@ -11,10 +11,11 @@ from typing import TYPE_CHECKING
 
 from .notifier import (
     notify_deploy_start,
-    notify_deploy_success,
     notify_deploy_failure,
     notify_change_detected,
     notify_waiting_sessions,
+    notify_restart_start,
+    notify_restart_complete,
 )
 
 if TYPE_CHECKING:
@@ -28,6 +29,13 @@ _SUPERVISOR_PATH_PREFIX = "src/supervisor/"
 
 # waiting_sessions 상태 최대 대기 시간 (초)
 _WAITING_SESSIONS_TIMEOUT = 600  # 10분
+
+# 배포 시 프로세스 stop() 타임아웃 (초)
+# 봇이 사용자 응답(팝업)을 대기할 수 있으므로 충분히 확보
+_DEPLOY_STOP_TIMEOUT = 300.0  # 5분
+
+# 재시작 마커 파일명
+_RESTART_MARKER_NAME = "restart_in_progress"
 
 
 class SupervisorRestartRequired(Exception):
@@ -139,7 +147,8 @@ class Deployer:
 
         if supervisor_changed:
             logger.info("supervisor 코드 변경 감지 → 자식 프로세스 중지 후 exit 42")
-            self._pm.stop_all()
+            self.notify_and_mark_restart()
+            self._pm.stop_all(timeout=_DEPLOY_STOP_TIMEOUT)
             raise SupervisorRestartRequired()
 
         # 배포 시작 알림 (실패해도 배포는 계속)
@@ -150,10 +159,16 @@ class Deployer:
 
         try:
             logger.info("배포 시작: 프로세스 중지")
-            self._pm.stop_all()
+            self._pm.stop_all(timeout=_DEPLOY_STOP_TIMEOUT)
 
             logger.info("배포: 업데이트 수행")
             self._do_update()
+
+            # 재시작 시작 알림
+            try:
+                notify_restart_start(self._webhook_config)
+            except Exception:
+                logger.exception("재시작 시작 알림 전송 실패")
 
             logger.info("배포: 프로세스 재시작")
             for name in self._pm.registered_names:
@@ -161,11 +176,11 @@ class Deployer:
 
             logger.info("배포 완료")
 
-            # 배포 성공 알림
+            # 재시작 완료 알림
             try:
-                notify_deploy_success(self._webhook_config)
+                notify_restart_complete(self._webhook_config)
             except Exception:
-                logger.exception("배포 성공 알림 전송 실패")
+                logger.exception("재시작 완료 알림 전송 실패")
         except Exception as exc:
             logger.exception("배포 실패, 프로세스 재시작 시도")
 
@@ -220,6 +235,49 @@ class Deployer:
             )
 
         logger.info("업데이트 완료")
+
+    def _create_restart_marker(self) -> None:
+        """재시작 마커 파일을 생성한다.
+
+        supervisor 자체 재시작(exit 42) 시, 새 인스턴스가 기동 후
+        '재시작이 완료됐습니다' 메시지를 전송할 수 있도록 마커를 남긴다.
+        """
+        marker = self._paths["runtime"] / "data" / _RESTART_MARKER_NAME
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text("restart", encoding="utf-8")
+            logger.info("재시작 마커 파일 생성: %s", marker)
+        except OSError:
+            logger.exception("재시작 마커 파일 생성 실패")
+
+    def notify_and_mark_restart(self) -> None:
+        """재시작 시작 알림을 전송하고 마커 파일을 생성한다.
+
+        supervisor 자체 재시작(exit 42/44) 전에 호출한다.
+        마커 파일은 새 supervisor 인스턴스가 기동 시 '재시작이 완료됐습니다'
+        메시지를 전송하기 위해 사용된다.
+        """
+        try:
+            notify_restart_start(self._webhook_config)
+        except Exception:
+            logger.exception("재시작 시작 알림 전송 실패")
+        self._create_restart_marker()
+
+    def check_and_notify_restart_complete(self) -> None:
+        """재시작 마커가 있으면 재시작 완료 알림을 전송하고 마커를 삭제한다.
+
+        supervisor 기동 시 호출하여, 이전 인스턴스가 exit 42로 재시작한 경우
+        '재시작이 완료됐습니다' 메시지를 보낸다.
+        """
+        marker = self._paths["runtime"] / "data" / _RESTART_MARKER_NAME
+        if not marker.exists():
+            return
+        try:
+            notify_restart_complete(self._webhook_config)
+            marker.unlink()
+            logger.info("재시작 마커 감지 → 재시작 완료 알림 전송 및 마커 삭제")
+        except Exception:
+            logger.exception("재시작 완료 알림 전송 실패 (마커 유지)")
 
     def status(self) -> dict:
         """현재 배포 상태 반환 (대시보드용)."""
