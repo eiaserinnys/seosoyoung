@@ -239,4 +239,37 @@ def build_process_configs() -> list[ProcessConfig]:
     except FileNotFoundError as e:
         logger.warning("node 기반 MCP 서버 설정 건너뜀: %s", e)
 
+    # --- 선택적: soul-dashboard (TypeScript, port 3109) ---
+    # Soul 실행 내역을 실시간 모니터링하는 대시보드 서버
+    dashboard_dir = (
+        paths["workspace"] / ".projects" / "seosoyoung"
+        / "src" / "soul-dashboard"
+    )
+    tsx_cli = dashboard_dir / "node_modules" / "tsx" / "dist" / "cli.mjs"
+    dashboard_entry = dashboard_dir / "server" / "index.ts"
+
+    if tsx_cli.is_file() and dashboard_entry.is_file():
+        try:
+            node = _find_node()
+            configs.append(ProcessConfig(
+                name="soul-dashboard",
+                command=node,
+                args=[str(tsx_cli), str(dashboard_entry)],
+                cwd=str(paths["workspace"].resolve()),
+                restart_policy=RestartPolicy(
+                    use_exit_codes=False,
+                    auto_restart=True,
+                    restart_delay=3.0,
+                ),
+                log_dir=str(paths["logs"]),
+                port=3109,
+            ))
+        except FileNotFoundError:
+            logger.warning("soul-dashboard 설정 건너뜀: node를 찾을 수 없음")
+    else:
+        logger.info(
+            "soul-dashboard 설정 건너뜀: tsx 또는 서버 엔트리 없음 (%s)",
+            dashboard_dir,
+        )
+
     return configs

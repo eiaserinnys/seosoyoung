@@ -3,7 +3,7 @@
  *
  * Soul SSE를 구독하고 대시보드 클라이언트에 이벤트를 중계하는 서버.
  *
- * 포트: 3106 (supervisor 포트 체계: 3101-3105 다음)
+ * 포트: 3109 (supervisor 포트 체계: 3101-3108 다음)
  * Soul: http://localhost:3105
  */
 
@@ -18,7 +18,7 @@ import { createActionsRouter } from "./routes/actions.js";
 
 // === Configuration ===
 
-const PORT = parseInt(process.env.DASHBOARD_PORT ?? "3106", 10);
+const PORT = parseInt(process.env.DASHBOARD_PORT ?? "3109", 10);
 const SOUL_BASE_URL =
   process.env.SOUL_BASE_URL ?? "http://localhost:3105";
 const AUTH_TOKEN = process.env.CLAUDE_SERVICE_TOKEN ?? "";

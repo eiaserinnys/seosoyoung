@@ -18,7 +18,7 @@ export default defineConfig({
     // 개발 시 대시보드 서버로 API 프록시
     proxy: {
       "/api": {
-        target: "http://localhost:3106",
+        target: "http://localhost:3109",
         changeOrigin: true,
       },
     },
@@ -29,6 +29,19 @@ export default defineConfig({
     include: ["../../tests/soul-dashboard/**/*.test.ts"],
     alias: {
       "@shared": resolve(__dirname, "shared"),
+    },
+    server: {
+      deps: {
+        external: [
+          "express",
+          "cors",
+          "eventsource",
+        ],
+        moduleDirectories: [
+          resolve(__dirname, "node_modules"),
+          "node_modules",
+        ],
+      },
     },
   },
 });
