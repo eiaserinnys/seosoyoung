@@ -12,31 +12,31 @@ Seosoyoung Soul - FastAPI Application
 ## 함수
 
 ### `async periodic_cleanup()`
-- 위치: 줄 42
+- 위치: 줄 43
 - 설명: 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
 
 ### `async lifespan(app)`
-- 위치: 줄 58
+- 위치: 줄 59
 - 데코레이터: asynccontextmanager
 - 설명: 애플리케이션 라이프사이클 관리
 
 ### `async shutdown()`
-- 위치: 줄 173
+- 위치: 줄 179
 - 데코레이터: app.post
 - 설명: Graceful shutdown 엔드포인트 (supervisor 전용)
 
 ### `async health_check()`
-- 위치: 줄 198
+- 위치: 줄 204
 - 데코레이터: app.get
 - 설명: 헬스 체크 엔드포인트
 
 ### `async get_status()`
-- 위치: 줄 209
+- 위치: 줄 215
 - 데코레이터: app.get
 - 설명: 서비스 상태 조회
 
 ### `async global_exception_handler(request, exc)`
-- 위치: 줄 247
+- 위치: 줄 253
 - 데코레이터: app.exception_handler
 - 설명: 전역 예외 핸들러
 
@@ -48,6 +48,7 @@ Seosoyoung Soul - FastAPI Application
 - `seosoyoung.soul.config.setup_logging`
 - `seosoyoung.soul.models.HealthResponse`
 - `seosoyoung.soul.service.engine_adapter.init_soul_engine`
+- `seosoyoung.soul.service.event_store.EventStore`
 - `seosoyoung.soul.service.file_manager`
 - `seosoyoung.soul.service.resource_manager`
 - `seosoyoung.soul.service.runner_pool.ClaudeRunnerPool`
