@@ -60,18 +60,17 @@ def _resolve_mcp_servers_dir() -> str:
     return resolved
 
 
-def _find_mcp_outline_exe() -> str:
-    """mcp-outline 실행 파일 경로를 찾는다."""
-    path = os.environ.get("MCP_OUTLINE_EXE")
-    if path and Path(path).exists():
-        return str(Path(path).resolve())
-    exe = shutil.which("mcp-outline")
-    if exe:
-        return str(Path(exe).resolve())
-    raise FileNotFoundError(
-        "mcp-outline을 찾을 수 없습니다. "
-        "MCP_OUTLINE_EXE 환경변수를 설정하거나 pip install mcp-outline을 실행하세요."
-    )
+def _mcp_outline_available(python: str) -> bool:
+    """mcp_venv에 mcp-outline 패키지가 설치되어 있는지 확인."""
+    import subprocess
+    try:
+        subprocess.run(
+            [python, "-c", "import mcp_outline"],
+            capture_output=True, timeout=5,
+        ).check_returncode()
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return False
 
 
 def build_process_configs() -> list[ProcessConfig]:
@@ -176,16 +175,13 @@ def build_process_configs() -> list[ProcessConfig]:
         shutdown_url="http://127.0.0.1:3107/shutdown",
     ))
 
-    # --- 선택적: mcp-outline ---
-    try:
-        mcp_outline_exe = _find_mcp_outline_exe()
-        # mcp-outline.exe가 사용자 Python에 설치된 경우,
-        # SYSTEM 계정에서 실행하면 site-packages를 찾지 못함.
-        # exe 위치에서 site-packages 경로를 추론하여 PYTHONPATH에 추가.
+    # --- 선택적: mcp-outline (mcp_venv에서 실행) ---
+    mcp_venv_py = str(paths["mcp_venv_python"])
+    if _mcp_outline_available(mcp_venv_py):
         configs.append(ProcessConfig(
             name="mcp-outline",
-            command=mcp_outline_exe,
-            args=[],
+            command=mcp_venv_py,
+            args=["-X", "utf8", "-m", "mcp_outline"],
             cwd=mcp_servers_dir,
             restart_policy=RestartPolicy(
                 use_exit_codes=False,
@@ -195,8 +191,8 @@ def build_process_configs() -> list[ProcessConfig]:
             log_dir=str(paths["logs"]),
             port=3103,
         ))
-    except FileNotFoundError as e:
-        logger.warning("mcp-outline 설정 건너뜀: %s", e)
+    else:
+        logger.warning("mcp-outline 설정 건너뜀: mcp_venv에 mcp-outline 미설치")
 
     # --- 선택적: node 기반 MCP 서버들 ---
     try:

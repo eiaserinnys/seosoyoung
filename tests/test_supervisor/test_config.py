@@ -10,7 +10,7 @@ from supervisor.config import (
     _resolve_paths,
     _find_node,
     _find_supergateway,
-    _find_mcp_outline_exe,
+    _mcp_outline_available,
 )
 
 
@@ -61,25 +61,12 @@ class TestFinders:
             with pytest.raises(FileNotFoundError):
                 _find_supergateway()
 
-    def test_find_mcp_outline_from_env(self, tmp_path):
-        exe = tmp_path / "mcp-outline.exe"
-        exe.write_text("")
-        with patch.dict(os.environ, {"MCP_OUTLINE_EXE": str(exe)}):
-            assert _find_mcp_outline_exe() == str(exe)
+    def test_mcp_outline_available_true(self):
+        import sys
+        assert _mcp_outline_available(sys.executable) is True
 
-    def test_find_mcp_outline_from_which(self):
-        from pathlib import Path
-
-        with patch.dict(os.environ, {"MCP_OUTLINE_EXE": ""}):
-            with patch("shutil.which", return_value="C:/scripts/mcp-outline.exe"):
-                result = _find_mcp_outline_exe()
-                assert Path(result) == Path("C:/scripts/mcp-outline.exe").resolve()
-
-    def test_find_mcp_outline_not_found(self):
-        with patch.dict(os.environ, {"MCP_OUTLINE_EXE": ""}):
-            with patch("shutil.which", return_value=None):
-                with pytest.raises(FileNotFoundError):
-                    _find_mcp_outline_exe()
+    def test_mcp_outline_available_false(self):
+        assert _mcp_outline_available("/nonexistent/python") is False
 
 
 def _mock_finders():
@@ -87,7 +74,7 @@ def _mock_finders():
     return [
         patch("supervisor.config._find_node", return_value="node"),
         patch("supervisor.config._find_supergateway", return_value="/path/to/supergateway/index.js"),
-        patch("supervisor.config._find_mcp_outline_exe", return_value="/path/to/mcp-outline.exe"),
+        patch("supervisor.config._mcp_outline_available", return_value=True),
     ]
 
 
@@ -140,6 +127,9 @@ class TestBuildProcessConfigs:
     def test_mcp_outline_config(self):
         configs = self._build()
         outline = next(c for c in configs if c.name == "mcp-outline")
+        assert "-m" in outline.args
+        assert "mcp_outline" in outline.args
+        assert "mcp_venv" in outline.command
         assert outline.restart_policy.auto_restart is True
         assert outline.log_dir is not None
 
