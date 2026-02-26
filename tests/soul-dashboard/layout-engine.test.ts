@@ -204,11 +204,13 @@ describe("buildGraph", () => {
     expect(resultNodes).toHaveLength(1);
     expect(resultNodes[0].data.toolResult).toContain("file1.txt");
 
-    // Should have horizontal edge from call to result
-    const horizontalEdge = edges.find(
-      (e) => e.sourceHandle === "right" && e.targetHandle === "left",
+    // Should have vertical edge from call to result (no handles)
+    const callToResult = edges.find(
+      (e) => e.source === "node-tool1-call" && e.target === "node-tool1-result",
     );
-    expect(horizontalEdge).toBeDefined();
+    expect(callToResult).toBeDefined();
+    expect(callToResult!.sourceHandle).toBeUndefined();
+    expect(callToResult!.targetHandle).toBeUndefined();
   });
 
   it("creates system nodes for session and complete events", () => {
@@ -278,9 +280,232 @@ describe("buildGraph", () => {
 
     const { edges } = buildGraph(cards, events);
 
-    // Should have vertical edges connecting the sequence
-    // t1 -> tool_call -> tool_result -> t2
+    // Tree layout: t1 -horizontal-> tool_call, tool_call -> tool_result, t1 -vertical-> t2
     expect(edges.length).toBeGreaterThanOrEqual(3);
+  });
+
+  // === 트리 뷰 레이아웃 구조 검증 ===
+
+  describe("tree view layout (thinking→tool horizontal branch)", () => {
+    it("thinking→tool_call uses horizontal edge (right→left)", () => {
+      const cards = [
+        textCard("t1", "thinking about tools"),
+        toolCard("tool1", "Bash", {
+          toolResult: "ok",
+          completed: true,
+        }),
+      ];
+      const events: SoulSSEEvent[] = [];
+
+      const { edges } = buildGraph(cards, events);
+
+      // thinking→tool_call should use right→left handles
+      const thinkingToTool = edges.find(
+        (e) => e.source === "node-t1" && e.target === "node-tool1-call",
+      );
+      expect(thinkingToTool).toBeDefined();
+      expect(thinkingToTool!.sourceHandle).toBe("right");
+      expect(thinkingToTool!.targetHandle).toBe("left");
+    });
+
+    it("thinking→thinking uses vertical edge (no handles)", () => {
+      const cards = [
+        textCard("t1", "first thinking"),
+        toolCard("tool1", "Bash", {
+          toolResult: "ok",
+          completed: true,
+        }),
+        textCard("t2", "second thinking"),
+      ];
+      const events: SoulSSEEvent[] = [];
+
+      const { edges } = buildGraph(cards, events);
+
+      // t1→t2 should be vertical (no handles / default)
+      const thinkingToThinking = edges.find(
+        (e) => e.source === "node-t1" && e.target === "node-t2",
+      );
+      expect(thinkingToThinking).toBeDefined();
+      expect(thinkingToThinking!.sourceHandle).toBeUndefined();
+      expect(thinkingToThinking!.targetHandle).toBeUndefined();
+    });
+
+    it("tool nodes do NOT participate in main vertical chain", () => {
+      // Scenario: thinking → tool → thinking → response
+      // Main flow: t1 → t2 (vertical)
+      // Tool branch: t1 → tool1 (horizontal)
+      const cards = [
+        textCard("t1", "first"),
+        toolCard("tool1", "Bash", {
+          toolResult: "ok",
+          completed: true,
+        }),
+        textCard("t2", "second"),
+      ];
+      const events: SoulSSEEvent[] = [];
+
+      const { edges } = buildGraph(cards, events);
+
+      // NO vertical edge from tool_result to t2
+      const resultToThinking = edges.find(
+        (e) => e.source === "node-tool1-result" && e.target === "node-t2",
+      );
+      expect(resultToThinking).toBeUndefined();
+
+      // Instead, t1→t2 should be directly connected vertically
+      const t1ToT2 = edges.find(
+        (e) => e.source === "node-t1" && e.target === "node-t2",
+      );
+      expect(t1ToT2).toBeDefined();
+    });
+
+    it("multiple tools from same thinking chain horizontally", () => {
+      // thinking → toolA → toolB
+      // t1 -right→ toolA -right→ toolB
+      const cards = [
+        textCard("t1", "thinking"),
+        toolCard("toolA", "Bash", {
+          toolResult: "ok",
+          completed: true,
+        }),
+        toolCard("toolB", "Read", {
+          toolResult: "content",
+          completed: true,
+        }),
+        textCard("t2", "next"),
+      ];
+      const events: SoulSSEEvent[] = [];
+
+      const { edges } = buildGraph(cards, events);
+
+      // t1→toolA: horizontal
+      const t1ToA = edges.find(
+        (e) => e.source === "node-t1" && e.target === "node-toolA-call",
+      );
+      expect(t1ToA).toBeDefined();
+      expect(t1ToA!.sourceHandle).toBe("right");
+
+      // toolA→toolB: horizontal chain (from toolA-call)
+      const aToB = edges.find(
+        (e) => e.source === "node-toolA-call" && e.target === "node-toolB-call",
+      );
+      expect(aToB).toBeDefined();
+      expect(aToB!.sourceHandle).toBe("right");
+      expect(aToB!.targetHandle).toBe("left");
+
+      // t1→t2: vertical (main flow)
+      const t1ToT2 = edges.find(
+        (e) => e.source === "node-t1" && e.target === "node-t2",
+      );
+      expect(t1ToT2).toBeDefined();
+      expect(t1ToT2!.sourceHandle).toBeUndefined();
+    });
+
+    it("tool_call→tool_result uses vertical edge (below)", () => {
+      const cards = [
+        textCard("t1", "thinking"),
+        toolCard("tool1", "Bash", {
+          toolResult: "ok",
+          completed: true,
+        }),
+      ];
+      const events: SoulSSEEvent[] = [];
+
+      const { edges } = buildGraph(cards, events);
+
+      // tool_call→tool_result should be vertical (below, no handles)
+      const callToResult = edges.find(
+        (e) => e.source === "node-tool1-call" && e.target === "node-tool1-result",
+      );
+      expect(callToResult).toBeDefined();
+      // Vertical = no sourceHandle/targetHandle (or bottom→top)
+      expect(callToResult!.sourceHandle).toBeUndefined();
+      expect(callToResult!.targetHandle).toBeUndefined();
+    });
+
+    it("complex scenario: thinking→tool→thinking→tool→response", () => {
+      // Full tree:
+      //   [t1]  ──→  [toolA-call]
+      //    │              │
+      //    │         [toolA-result]
+      //    ▼
+      //   [t2]  ──→  [toolB-call]
+      //    │              │
+      //    │         [toolB-result]
+      //    ▼
+      //   [t3] (response)
+      const cards = [
+        textCard("t1", "first thinking"),
+        toolCard("toolA", "Bash", { toolResult: "ok", completed: true }),
+        textCard("t2", "second thinking"),
+        toolCard("toolB", "Read", { toolResult: "file", completed: true }),
+        textCard("t3", "final response"),
+      ];
+      const events: SoulSSEEvent[] = [
+        { type: "complete", result: "done", attachments: [] },
+      ];
+
+      const { nodes, edges } = buildGraph(cards, events);
+
+      // Main vertical chain: t1 → t2 → t3
+      expect(edges.find((e) => e.source === "node-t1" && e.target === "node-t2")).toBeDefined();
+      expect(edges.find((e) => e.source === "node-t2" && e.target === "node-t3")).toBeDefined();
+
+      // Horizontal branches: t1→toolA, t2→toolB
+      const t1ToA = edges.find((e) => e.source === "node-t1" && e.target === "node-toolA-call");
+      expect(t1ToA).toBeDefined();
+      expect(t1ToA!.sourceHandle).toBe("right");
+
+      const t2ToB = edges.find((e) => e.source === "node-t2" && e.target === "node-toolB-call");
+      expect(t2ToB).toBeDefined();
+      expect(t2ToB!.sourceHandle).toBe("right");
+
+      // Vertical tool results
+      expect(edges.find((e) => e.source === "node-toolA-call" && e.target === "node-toolA-result")).toBeDefined();
+      expect(edges.find((e) => e.source === "node-toolB-call" && e.target === "node-toolB-result")).toBeDefined();
+
+      // t3 should be response node
+      const responseNode = nodes.find((n) => n.id === "node-t3");
+      expect(responseNode?.type).toBe("response");
+
+      // No tool→thinking vertical edges
+      expect(edges.find((e) => e.source === "node-toolA-result" && e.target === "node-t2")).toBeUndefined();
+      expect(edges.find((e) => e.source === "node-toolB-result" && e.target === "node-t3")).toBeUndefined();
+    });
+
+    it("tool without preceding thinking attaches to prevMainNode", () => {
+      // Edge case: first card is a tool (no thinking before it)
+      const cards = [
+        toolCard("tool1", "Bash", { toolResult: "ok", completed: true }),
+        textCard("t1", "after tool"),
+      ];
+      const events: SoulSSEEvent[] = [];
+
+      const { edges } = buildGraph(cards, events);
+
+      // No tool→thinking vertical connection
+      const toolToThinking = edges.find(
+        (e) => e.source === "node-tool1-result" && e.target === "node-t1",
+      );
+      expect(toolToThinking).toBeUndefined();
+    });
+
+    it("streaming tool (no result yet) still branches horizontally", () => {
+      const cards = [
+        textCard("t1", "thinking"),
+        toolCard("tool1", "Bash", { completed: false }),
+      ];
+      const events: SoulSSEEvent[] = [];
+
+      const { edges } = buildGraph(cards, events);
+
+      // t1→tool1-call horizontal
+      const t1ToTool = edges.find(
+        (e) => e.source === "node-t1" && e.target === "node-tool1-call",
+      );
+      expect(t1ToTool).toBeDefined();
+      expect(t1ToTool!.sourceHandle).toBe("right");
+    });
   });
 
   it("ignores noise events (progress, debug, memory)", () => {

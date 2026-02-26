@@ -447,7 +447,11 @@ export function detectPlanModeRanges(cards: DashboardCard[]): PlanModeRange[] {
  * - intervention_sent 이벤트 -> intervention 노드
  * - session/complete/error 이벤트 -> system 노드
  *
- * 노드는 순서대로 수직 연결되며, tool_call -> tool_result는 수평 연결됩니다.
+ * 레이아웃 규칙:
+ * - text 카드는 메인 수직 흐름을 형성 (thinking → thinking → response)
+ * - tool 카드는 메인 흐름에서 수평으로 분기 (thinking →right→ tool_call)
+ * - tool_call → tool_result는 수직 연결 (아래로)
+ * - 연속된 tool 카드는 수평으로 체이닝 (tool_call →right→ tool_call)
  *
  * @param cards - 현재 세션의 DashboardCard 배열
  * @param events - 원본 SSE 이벤트 배열 (시스템/개입 노드 생성용)
@@ -534,10 +538,15 @@ export function buildGraph(
   // 메인 노드 시퀀스에 삽입된 intervention 인덱스를 추적
   let interventionIdx = 0;
 
-  // 수직 연결 체인의 마지막 노드 ID (다음 노드의 소스)
-  let prevMainNodeId: string | null = sessionEvent
+  // 메인 수직 흐름의 마지막 노드 ID (thinking, response, intervention, system)
+  // tool 노드는 이 체인에 포함되지 않고 수평으로 분기됩니다.
+  let prevMainFlowNodeId: string | null = sessionEvent
     ? `node-system-session-${sessionEvent.index}`
     : null;
+
+  // 현재 수평 tool 분기의 마지막 노드 ID
+  // 새로운 text 카드가 나타나면 null로 리셋됩니다.
+  let prevToolBranchNodeId: string | null = null;
 
   // 카드를 순회하며 노드 생성
   for (let i = 0; i < cards.length; i++) {
@@ -586,10 +595,11 @@ export function buildGraph(
       const intvNode = createInterventionNode(intv.event, intv.index);
       nodes.push(intvNode);
 
-      if (prevMainNodeId) {
-        edges.push(createEdge(prevMainNodeId, intvNode.id));
+      if (prevMainFlowNodeId) {
+        edges.push(createEdge(prevMainFlowNodeId, intvNode.id));
       }
-      prevMainNodeId = intvNode.id;
+      prevMainFlowNodeId = intvNode.id;
+      prevToolBranchNodeId = null; // 메인 흐름 변경 시 tool 분기 리셋
       interventionIdx++;
     }
 
@@ -608,13 +618,15 @@ export function buildGraph(
 
       nodes.push(textNode);
 
-      // 이전 노드와 수직 연결
-      if (prevMainNodeId) {
-        edges.push(createEdge(prevMainNodeId, textNode.id, !card.completed));
+      // 이전 메인 흐름 노드와 수직 연결
+      if (prevMainFlowNodeId) {
+        edges.push(createEdge(prevMainFlowNodeId, textNode.id, !card.completed));
       }
-      prevMainNodeId = textNode.id;
+      prevMainFlowNodeId = textNode.id;
+      prevToolBranchNodeId = null; // 새 text 노드가 나타나면 tool 분기 리셋
     } else if (card.type === "tool") {
       // 도구 카드 -> tool_call 노드 + tool_result 노드
+      // tool은 메인 흐름에서 수평으로 분기 (prevMainFlowNodeId를 갱신하지 않음)
       const callNode = createToolCallNode(card, {
         isPlanMode: planModeCardIds.has(card.cardId),
         isPlanModeEntry: planModeEntryCardIds.has(card.cardId),
@@ -628,10 +640,15 @@ export function buildGraph(
 
       nodes.push(callNode);
 
-      // 이전 노드와 수직 연결
-      if (prevMainNodeId) {
+      if (prevToolBranchNodeId) {
+        // 이미 수평 tool 분기가 있으면 그 뒤에 체이닝 (수평)
         edges.push(
-          createEdge(prevMainNodeId, callNode.id, !card.completed && !card.toolResult),
+          createEdge(prevToolBranchNodeId, callNode.id, !card.completed && !card.toolResult, "right", "left"),
+        );
+      } else if (prevMainFlowNodeId) {
+        // 첫 번째 tool: 메인 흐름에서 수평 분기 (right → left)
+        edges.push(
+          createEdge(prevMainFlowNodeId, callNode.id, !card.completed && !card.toolResult, "right", "left"),
         );
       }
 
@@ -645,15 +662,16 @@ export function buildGraph(
 
         nodes.push(resultNode);
 
-        // tool_call -> tool_result: 수평 엣지 (right -> left 핸들)
-        edges.push(createEdge(callNode.id, resultNode.id, false, "right", "left"));
+        // tool_call -> tool_result: 수직 엣지 (아래로, 핸들 없음)
+        edges.push(createEdge(callNode.id, resultNode.id, false));
 
-        // 다음 노드 연결을 위해 result 노드를 체인에 넣음
-        prevMainNodeId = resultNode.id;
+        // 다음 tool은 이 call 노드 이후에 수평 체이닝
+        prevToolBranchNodeId = callNode.id;
       } else {
-        // 결과 아직 없음: call 노드가 체인의 끝
-        prevMainNodeId = callNode.id;
+        // 결과 아직 없음: call 노드가 분기의 끝
+        prevToolBranchNodeId = callNode.id;
       }
+      // prevMainFlowNodeId는 변경하지 않음 (tool은 메인 흐름에 영향 없음)
     }
   }
 
@@ -663,10 +681,11 @@ export function buildGraph(
     const intvNode = createInterventionNode(intv.event, intv.index);
     nodes.push(intvNode);
 
-    if (prevMainNodeId) {
-      edges.push(createEdge(prevMainNodeId, intvNode.id));
+    if (prevMainFlowNodeId) {
+      edges.push(createEdge(prevMainFlowNodeId, intvNode.id));
     }
-    prevMainNodeId = intvNode.id;
+    prevMainFlowNodeId = intvNode.id;
+    prevToolBranchNodeId = null; // 메인 흐름 변경 시 tool 분기 리셋
     interventionIdx++;
   }
 
@@ -678,10 +697,10 @@ export function buildGraph(
     const sysNode = createSystemNode(sysEvt.event, sysEvt.index);
     nodes.push(sysNode);
 
-    if (prevMainNodeId) {
-      edges.push(createEdge(prevMainNodeId, sysNode.id));
+    if (prevMainFlowNodeId) {
+      edges.push(createEdge(prevMainFlowNodeId, sysNode.id));
     }
-    prevMainNodeId = sysNode.id;
+    prevMainFlowNodeId = sysNode.id;
   }
 
   // dagre 레이아웃 적용
