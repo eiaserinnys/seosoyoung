@@ -1,0 +1,11 @@
+{"id":1,"event":{"type":"user_message","user":"dashboard","text":"Create a simple hello world function"}}
+{"id":2,"event":{"type":"session","session_id":"sess-complete-001"}}
+{"id":3,"event":{"type":"text_start","card_id":"card-t1"}}
+{"id":4,"event":{"type":"text_delta","card_id":"card-t1","text":"I'll create a simple hello world function for you."}}
+{"id":5,"event":{"type":"text_end","card_id":"card-t1"}}
+{"id":6,"event":{"type":"tool_start","card_id":"card-tool1","tool_name":"Write","tool_input":{"file_path":"/src/hello.ts","content":"export function hello(name: string): string {\n  return `Hello, ${name}!`;\n}"}}}
+{"id":7,"event":{"type":"tool_result","card_id":"card-tool1","tool_name":"Write","result":"File created successfully","is_error":false}}
+{"id":8,"event":{"type":"text_start","card_id":"card-resp"}}
+{"id":9,"event":{"type":"text_delta","card_id":"card-resp","text":"I've created the hello world function at /src/hello.ts. It takes a name parameter and returns a greeting string."}}
+{"id":10,"event":{"type":"text_end","card_id":"card-resp"}}
+{"id":11,"event":{"type":"complete","result":"Function created successfully","attachments":["/src/hello.ts"]}}

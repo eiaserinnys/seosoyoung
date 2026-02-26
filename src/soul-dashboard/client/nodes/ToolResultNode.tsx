@@ -29,6 +29,7 @@ export const ToolResultNode = memo(function ToolResultNode({ data, selected }: N
 
   return (
     <div
+      data-testid="tool-result-node"
       style={{
         maxWidth: 260,
         background: 'rgba(17, 24, 39, 0.95)',

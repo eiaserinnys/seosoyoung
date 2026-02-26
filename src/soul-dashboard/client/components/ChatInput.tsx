@@ -113,6 +113,7 @@ export function ChatInput() {
 
   return (
     <div
+      data-testid="chat-input"
       style={{
         borderTop: "1px solid rgba(255,255,255,0.08)",
         padding: "12px",
@@ -179,6 +180,7 @@ export function ChatInput() {
           }}
         />
         <button
+          data-testid="send-button"
           onClick={sendMessage}
           disabled={sending || !text.trim()}
           style={{

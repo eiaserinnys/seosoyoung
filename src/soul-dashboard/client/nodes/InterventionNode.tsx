@@ -24,6 +24,7 @@ const truncateStyle: React.CSSProperties = {
 export const InterventionNode = memo(function InterventionNode({ data, selected }: NodeProps<InterventionNodeType>) {
   return (
     <div
+      data-testid="intervention-node"
       style={{
         maxWidth: 260,
         background: 'rgba(17, 24, 39, 0.95)',

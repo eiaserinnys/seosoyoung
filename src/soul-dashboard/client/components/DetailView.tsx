@@ -123,6 +123,7 @@ export function DetailView() {
 
   return (
     <div
+      data-testid="detail-view"
       style={{
         display: "flex",
         flexDirection: "column",

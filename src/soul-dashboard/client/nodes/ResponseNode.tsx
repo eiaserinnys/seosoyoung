@@ -26,6 +26,7 @@ export const ResponseNode = memo(function ResponseNode({ data, selected }: NodeP
 
   return (
     <div
+        data-testid="response-node"
         style={{
           maxWidth: 260,
           background: 'rgba(17, 24, 39, 0.95)',

@@ -29,6 +29,7 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
 
   return (
     <div
+        data-testid="thinking-node"
         style={{
           maxWidth: 260,
           background: isPlanMode

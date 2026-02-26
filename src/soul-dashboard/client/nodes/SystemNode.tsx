@@ -20,6 +20,7 @@ export const SystemNode = memo(function SystemNode({ data, selected }: NodeProps
 
   return (
     <div
+      data-testid="system-node"
       style={{
         maxWidth: 280,
         background: 'rgba(17, 24, 39, 0.95)',

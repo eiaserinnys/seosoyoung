@@ -28,6 +28,11 @@ sessions/
 node_modules/
 dist/
 
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+
 # OS
 .DS_Store
 Thumbs.db

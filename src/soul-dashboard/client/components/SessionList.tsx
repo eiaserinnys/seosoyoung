@@ -68,6 +68,7 @@ function SessionItem({ session, isActive, onClick }: SessionItemProps) {
 
   return (
     <button
+      data-testid={`session-item-${sessionKey}`}
       onClick={onClick}
       style={{
         display: "flex",
@@ -127,6 +128,7 @@ function SessionItem({ session, isActive, onClick }: SessionItemProps) {
             {timeStr}
           </span>
           <span
+            data-testid="session-status-badge"
             style={{
               fontSize: "10px",
               color: config.color,
@@ -179,6 +181,7 @@ export function SessionList({ sessions, loading, error }: SessionListProps) {
 
   return (
     <div
+      data-testid="session-list"
       style={{
         display: "flex",
         flexDirection: "column",

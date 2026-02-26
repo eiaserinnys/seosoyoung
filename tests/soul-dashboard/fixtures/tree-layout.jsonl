@@ -1,0 +1,16 @@
+{"id":1,"event":{"type":"user_message","user":"dashboard","text":"Read two files and compare them"}}
+{"id":2,"event":{"type":"session","session_id":"sess-tree-001"}}
+{"id":3,"event":{"type":"text_start","card_id":"card-t1"}}
+{"id":4,"event":{"type":"text_delta","card_id":"card-t1","text":"I'll read both files for comparison."}}
+{"id":5,"event":{"type":"text_end","card_id":"card-t1"}}
+{"id":6,"event":{"type":"tool_start","card_id":"card-tool1","tool_name":"Read","tool_input":{"file_path":"/src/app.tsx"}}}
+{"id":7,"event":{"type":"tool_result","card_id":"card-tool1","tool_name":"Read","result":"export function App() { return <div>Hello</div>; }","is_error":false}}
+{"id":8,"event":{"type":"text_start","card_id":"card-t2"}}
+{"id":9,"event":{"type":"text_delta","card_id":"card-t2","text":"Now reading the second file..."}}
+{"id":10,"event":{"type":"text_end","card_id":"card-t2"}}
+{"id":11,"event":{"type":"tool_start","card_id":"card-tool2","tool_name":"Read","tool_input":{"file_path":"/src/main.tsx"}}}
+{"id":12,"event":{"type":"tool_result","card_id":"card-tool2","tool_name":"Read","result":"import { App } from './app'; render(<App />);","is_error":false}}
+{"id":13,"event":{"type":"text_start","card_id":"card-t3"}}
+{"id":14,"event":{"type":"text_delta","card_id":"card-t3","text":"Both files are part of the same React application. app.tsx defines the root component, main.tsx bootstraps it."}}
+{"id":15,"event":{"type":"text_end","card_id":"card-t3"}}
+{"id":16,"event":{"type":"complete","result":"Comparison complete","attachments":[]}}
