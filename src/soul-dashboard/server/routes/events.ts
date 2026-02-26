@@ -91,40 +91,15 @@ export function createEventsRouter(deps: EventsRouterDeps): Router {
         lastEventId,
       );
 
-      // 사용자 메시지 합성: 첫 번째 progress 이벤트에서 프롬프트를 추출하여
-      // user_message 이벤트를 맨 앞에 삽입 (historical replay 시 세션 시작 맥락 제공)
-      // 주의: progress.text가 원본 프롬프트와 다를 수 있음 (best-effort heuristic)
-      let eventsWithUserMessage = allEvents;
-      const hasUserMessage = allEvents.some(
-        (ev) => ev.event.type === "user_message",
-      );
-      if (!hasUserMessage && allEvents.length > 0) {
-        let prompt: string | undefined;
-        for (const record of allEvents) {
-          if (record.event.type === "progress") {
-            prompt = record.event.text as string;
-            break;
-          }
-        }
-        if (prompt) {
-          // id: 0 → 항상 첫 이벤트. Last-Event-ID >= 0이면 필터링됨 (이미 수신 완료)
-          const syntheticEvent = {
-            id: 0,
-            event: {
-              type: "user_message" as const,
-              user: clientId,
-              text: prompt,
-            },
-          };
-          eventsWithUserMessage = [syntheticEvent, ...allEvents];
-        }
-      }
+      // user_message는 세션 생성 시 actions.ts에서 JSONL에 persist됨.
+      // progress.text 기반 합성은 잘못된 텍스트(Claude thinking)를 표시하므로 제거.
+      // JSONL에 user_message가 없는 레거시 세션은 user 노드 없이 표시됨.
 
       // 재생할 이벤트 결정
       const eventsToReplay =
         lastEventId > 0
-          ? eventsWithUserMessage.filter((ev) => ev.id > lastEventId)
-          : eventsWithUserMessage;
+          ? allEvents.filter((ev) => ev.id > lastEventId)
+          : allEvents;
 
       if (eventsToReplay.length > 0) {
         eventHub.replayEvents(dashClientId, eventsToReplay);

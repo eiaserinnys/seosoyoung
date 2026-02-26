@@ -161,6 +161,17 @@ export const ThinkingNode = memo(function ThinkingNode({ data, selected }: NodeP
             border: '2px solid rgba(17, 24, 39, 0.95)',
           }}
         />
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="right"
+          style={{
+            width: 8,
+            height: 8,
+            background: accentColor,
+            border: '2px solid rgba(17, 24, 39, 0.95)',
+          }}
+        />
       </div>
   );
 });

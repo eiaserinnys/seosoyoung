@@ -24,6 +24,11 @@ const __dirname = path.dirname(__filename);
 const SSE_INTERVAL = 200;
 
 const SSE_EVENTS = [
+  // 0) User message
+  {
+    delay: 0,
+    data: 'id: 0\nevent: user_message\ndata: {"type":"user_message","user":"dashboard","text":"src/index.ts 파일을 분석하고 에러 핸들링을 추가해주세요."}\n\n',
+  },
   // 1) Thinking 카드: text_start → text_delta → text_end
   {
     delay: 1 * SSE_INTERVAL,
@@ -346,7 +351,7 @@ test.describe("Soul Dashboard 브라우저 UI", () => {
     });
   });
 
-  test("4. Complete 상태 표시", async ({ page, dashboardServer }) => {
+  test("4. Complete 상태 + 레이아웃 검증", async ({ page, dashboardServer }) => {
     await navigateAndSelectSession(page, dashboardServer.baseURL);
 
     // Complete 이벤트 수신까지 대기 (약 2.2초 후)
@@ -361,9 +366,18 @@ test.describe("Soul Dashboard 브라우저 UI", () => {
     const toolNodes = page.locator('[data-testid="tool-call-node"]');
     await expect(toolNodes.first()).toBeVisible({ timeout: 10_000 });
 
+    // user 노드 존재 확인 (user_message 이벤트 추가됨)
+    const userNodes = page.locator('[data-testid="user-node"]');
+    await expect(userNodes.first()).toBeVisible({ timeout: 10_000 });
+
     // thinking + tool 노드가 모두 존재하는지 확인
     const thinkingCount = await thinkingNodes.count();
     expect(thinkingCount).toBeGreaterThanOrEqual(1);
+
+    // 레이아웃 검증: thinking 노드들이 세로로 정렬되고, tool 노드가 오른쪽에 배치
+    const allNodes = page.locator(".react-flow__node");
+    const nodeCount = await allNodes.count();
+    expect(nodeCount).toBeGreaterThanOrEqual(4); // user + thinking + tool + thinking (or response)
 
     // 스크린샷: Complete 상태의 전체 대시보드
     await page.screenshot({

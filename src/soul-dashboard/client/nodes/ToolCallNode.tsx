@@ -154,6 +154,18 @@ export const ToolCallNode = memo(function ToolCallNode({ data, selected }: NodeP
         <Handle
           type="target"
           position={Position.Top}
+          id="top"
+          style={{
+            width: 8,
+            height: 8,
+            background: accentColor,
+            border: '2px solid rgba(17, 24, 39, 0.95)',
+          }}
+        />
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="left"
           style={{
             width: 8,
             height: 8,

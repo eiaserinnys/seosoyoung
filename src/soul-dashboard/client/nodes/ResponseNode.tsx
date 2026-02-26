@@ -117,10 +117,20 @@ export const ResponseNode = memo(function ResponseNode({ data, selected }: NodeP
           />
         )}
 
-        {/* Top target handle only */}
+        {/* Handles */}
         <Handle
           type="target"
           position={Position.Top}
+          style={{
+            width: 8,
+            height: 8,
+            background: ACCENT,
+            border: '2px solid rgba(17, 24, 39, 0.95)',
+          }}
+        />
+        <Handle
+          type="source"
+          position={Position.Bottom}
           style={{
             width: 8,
             height: 8,

@@ -204,13 +204,13 @@ describe("buildGraph", () => {
     expect(resultNodes).toHaveLength(1);
     expect(resultNodes[0].data.toolResult).toContain("file1.txt");
 
-    // Should have vertical edge from call to result (no handles)
+    // Should have horizontal edge from call to result (right→left)
     const callToResult = edges.find(
       (e) => e.source === "node-tool1-call" && e.target === "node-tool1-result",
     );
     expect(callToResult).toBeDefined();
-    expect(callToResult!.sourceHandle).toBeUndefined();
-    expect(callToResult!.targetHandle).toBeUndefined();
+    expect(callToResult!.sourceHandle).toBe("right");
+    expect(callToResult!.targetHandle).toBe("left");
   });
 
   it("tool_result node includes cardId for DetailView selection", () => {
@@ -420,13 +420,13 @@ describe("buildGraph", () => {
       expect(t1ToA).toBeDefined();
       expect(t1ToA!.sourceHandle).toBe("right");
 
-      // toolA→toolB: horizontal chain (from toolA-call)
+      // toolA→toolB: vertical chain (bottom→top, from toolA-call)
       const aToB = edges.find(
         (e) => e.source === "node-toolA-call" && e.target === "node-toolB-call",
       );
       expect(aToB).toBeDefined();
-      expect(aToB!.sourceHandle).toBe("right");
-      expect(aToB!.targetHandle).toBe("left");
+      expect(aToB!.sourceHandle).toBe("bottom");
+      expect(aToB!.targetHandle).toBe("top");
 
       // t1→t2: vertical (main flow)
       const t1ToT2 = edges.find(
@@ -436,7 +436,7 @@ describe("buildGraph", () => {
       expect(t1ToT2!.sourceHandle).toBeUndefined();
     });
 
-    it("tool_call→tool_result uses vertical edge (below)", () => {
+    it("tool_call→tool_result uses horizontal edge (right→left)", () => {
       const cards = [
         textCard("t1", "thinking"),
         toolCard("tool1", "Bash", {
@@ -448,14 +448,13 @@ describe("buildGraph", () => {
 
       const { edges } = buildGraph(cards, events);
 
-      // tool_call→tool_result should be vertical (below, no handles)
+      // tool_call→tool_result should be horizontal (right→left)
       const callToResult = edges.find(
         (e) => e.source === "node-tool1-call" && e.target === "node-tool1-result",
       );
       expect(callToResult).toBeDefined();
-      // Vertical = no sourceHandle/targetHandle (or bottom→top)
-      expect(callToResult!.sourceHandle).toBeUndefined();
-      expect(callToResult!.targetHandle).toBeUndefined();
+      expect(callToResult!.sourceHandle).toBe("right");
+      expect(callToResult!.targetHandle).toBe("left");
     });
 
     it("complex scenario: thinking→tool→thinking→tool→response", () => {
@@ -495,9 +494,16 @@ describe("buildGraph", () => {
       expect(t2ToB).toBeDefined();
       expect(t2ToB!.sourceHandle).toBe("right");
 
-      // Vertical tool results
-      expect(edges.find((e) => e.source === "node-toolA-call" && e.target === "node-toolA-result")).toBeDefined();
-      expect(edges.find((e) => e.source === "node-toolB-call" && e.target === "node-toolB-result")).toBeDefined();
+      // Horizontal tool results (right→left)
+      const aResult = edges.find((e) => e.source === "node-toolA-call" && e.target === "node-toolA-result");
+      expect(aResult).toBeDefined();
+      expect(aResult!.sourceHandle).toBe("right");
+      expect(aResult!.targetHandle).toBe("left");
+
+      const bResult = edges.find((e) => e.source === "node-toolB-call" && e.target === "node-toolB-result");
+      expect(bResult).toBeDefined();
+      expect(bResult!.sourceHandle).toBe("right");
+      expect(bResult!.targetHandle).toBe("left");
 
       // t3 should be response node
       const responseNode = nodes.find((n) => n.id === "node-t3");
@@ -555,6 +561,113 @@ describe("buildGraph", () => {
 
     const systemNodes = nodes.filter((n) => n.type === "system");
     expect(systemNodes).toHaveLength(0);
+  });
+});
+
+describe("buildGraph layout: tool nodes positioned to the right of thinking", () => {
+  it("tool_call node is positioned to the right of its parent thinking node", () => {
+    const cards = [
+      textCard("t1", "thinking about tools"),
+      toolCard("tool1", "Bash", {
+        toolResult: "ok",
+        completed: true,
+      }),
+      textCard("t2", "next thinking"),
+    ];
+    const events: SoulSSEEvent[] = [];
+
+    const { nodes } = buildGraph(cards, events);
+
+    const thinkingNode = nodes.find((n) => n.id === "node-t1")!;
+    const toolCallNode = nodes.find((n) => n.id === "node-tool1-call")!;
+
+    // tool_call should be to the right of thinking
+    expect(toolCallNode.position.x).toBeGreaterThan(thinkingNode.position.x);
+  });
+
+  it("tool_result is to the right of its tool_call (same y)", () => {
+    const cards = [
+      textCard("t1", "thinking"),
+      toolCard("tool1", "Bash", {
+        toolResult: "output",
+        completed: true,
+      }),
+    ];
+    const events: SoulSSEEvent[] = [];
+
+    const { nodes } = buildGraph(cards, events);
+
+    const toolCallNode = nodes.find((n) => n.id === "node-tool1-call")!;
+    const toolResultNode = nodes.find((n) => n.id === "node-tool1-result")!;
+
+    // result should be to the right of call (same y, greater x)
+    expect(toolResultNode.position.x).toBeGreaterThan(toolCallNode.position.x);
+    expect(toolResultNode.position.y).toBe(toolCallNode.position.y);
+  });
+
+  it("second thinking node is below first thinking node (not pushed down by tools)", () => {
+    const cards = [
+      textCard("t1", "first"),
+      toolCard("tool1", "Bash", { toolResult: "ok", completed: true }),
+      toolCard("tool2", "Read", { toolResult: "content", completed: true }),
+      textCard("t2", "second"),
+    ];
+    const events: SoulSSEEvent[] = [];
+
+    const { nodes } = buildGraph(cards, events);
+
+    const t1 = nodes.find((n) => n.id === "node-t1")!;
+    const t2 = nodes.find((n) => n.id === "node-t2")!;
+
+    // t2 should be below t1
+    expect(t2.position.y).toBeGreaterThan(t1.position.y);
+  });
+
+  it("multiple tool chains are stacked vertically to the right", () => {
+    // thinking → toolA → toolB (chained)
+    // Each tool_call is at the same x as the first, but stacked vertically
+    const cards = [
+      textCard("t1", "thinking"),
+      toolCard("toolA", "Bash", { toolResult: "ok", completed: true }),
+      toolCard("toolB", "Read", { toolResult: "content", completed: true }),
+      textCard("t2", "next"),
+    ];
+    const events: SoulSSEEvent[] = [];
+
+    const { nodes } = buildGraph(cards, events);
+
+    const t1 = nodes.find((n) => n.id === "node-t1")!;
+    const toolA = nodes.find((n) => n.id === "node-toolA-call")!;
+    const toolB = nodes.find((n) => n.id === "node-toolB-call")!;
+
+    // Both tools should be to the right of thinking
+    expect(toolA.position.x).toBeGreaterThan(t1.position.x);
+    expect(toolB.position.x).toBeGreaterThan(t1.position.x);
+
+    // toolB should be below toolA (vertical stacking)
+    expect(toolB.position.y).toBeGreaterThan(toolA.position.y);
+  });
+
+  it("thinking node dagre height accounts for tool chain height (no overlap)", () => {
+    // When thinking has a large tool chain, the next thinking should not overlap with tools
+    const cards = [
+      textCard("t1", "first"),
+      toolCard("toolA", "Bash", { toolResult: "ok", completed: true }),
+      toolCard("toolB", "Read", { toolResult: "content", completed: true }),
+      toolCard("toolC", "Glob", { toolResult: "files", completed: true }),
+      textCard("t2", "second"),
+    ];
+    const events: SoulSSEEvent[] = [];
+
+    const { nodes } = buildGraph(cards, events);
+
+    const t1 = nodes.find((n) => n.id === "node-t1")!;
+    const t2 = nodes.find((n) => n.id === "node-t2")!;
+
+    // t2 should be significantly below t1 (at least the height of 3 tool rows + gaps)
+    // 3 tools * 80px + 2 gaps * 16px = 272px minimum vertical separation
+    const minSeparation = 3 * 80 + 2 * 16; // 272
+    expect(t2.position.y - t1.position.y).toBeGreaterThanOrEqual(minSeparation);
   });
 });
 

@@ -8,8 +8,8 @@
  * 각 줄: {"id": <monotonic_int>, "event": <event_dict>}
  */
 
-import { readFile, readdir, stat } from "fs/promises";
-import { join, basename } from "path";
+import { readFile, readdir, stat, mkdir, appendFile } from "fs/promises";
+import { join, basename, dirname } from "path";
 import type {
   EventRecord,
   SessionSummary,
@@ -154,6 +154,33 @@ export class SessionStore {
   ): Promise<EventRecord[]> {
     const events = await this.readEvents(clientId, requestId);
     return events.filter((ev) => ev.id > afterId);
+  }
+
+  /**
+   * JSONL 파일에 이벤트를 추가합니다.
+   *
+   * 대시보드에서 생성한 이벤트(user_message 등)를 JSONL에 기록하여
+   * 히스토리 리플레이 시에도 사용할 수 있게 합니다.
+   *
+   * @param clientId - 클라이언트 ID
+   * @param requestId - 요청 ID
+   * @param eventId - 이벤트 ID (단조증가)
+   * @param event - 이벤트 페이로드
+   */
+  async appendEvent(
+    clientId: string,
+    requestId: string,
+    eventId: number,
+    event: Record<string, unknown>,
+  ): Promise<void> {
+    const filePath = this.sessionPath(clientId, requestId);
+    const dirPath = dirname(filePath);
+
+    // 디렉토리가 없으면 생성
+    await mkdir(dirPath, { recursive: true });
+
+    const record = JSON.stringify({ id: eventId, event });
+    await appendFile(filePath, record + "\n", "utf-8");
   }
 
   /**

@@ -12,6 +12,7 @@ import type {
   UserMessageEvent,
 } from "../../shared/types.js";
 import type { EventHub } from "../event-hub.js";
+import type { SessionStore } from "../session-store.js";
 import { parseSessionId } from "../utils/parse-session-id.js";
 
 const MAX_PROMPT_LENGTH = 100_000;
@@ -24,10 +25,12 @@ export interface ActionsRouterOptions {
   authToken?: string;
   /** EventHub 인스턴스 (user_message 브로드캐스트용) */
   eventHub?: EventHub;
+  /** SessionStore 인스턴스 (user_message JSONL persist용) */
+  sessionStore?: SessionStore;
 }
 
 export function createActionsRouter(options: ActionsRouterOptions): Router {
-  const { soulBaseUrl, authToken, eventHub } = options;
+  const { soulBaseUrl, authToken, eventHub, sessionStore } = options;
   const router = Router();
 
   /**
@@ -114,14 +117,25 @@ export function createActionsRouter(options: ActionsRouterOptions): Router {
 
       const sessionKey = `${clientId}:${requestId}`;
 
-      // user_message 이벤트 브로드캐스트 (세션 시작 시 사용자의 원본 프롬프트)
+      // user_message 이벤트 브로드캐스트 + JSONL persist (세션 시작 시 사용자의 원본 프롬프트)
+      const userMessageEvent: UserMessageEvent = {
+        type: "user_message",
+        user: clientId,
+        text: body.prompt,
+      };
+
       if (eventHub) {
-        const userMessageEvent: UserMessageEvent = {
-          type: "user_message",
-          user: clientId,
-          text: body.prompt,
-        };
         eventHub.broadcast(sessionKey, 0, userMessageEvent);
+      }
+
+      // JSONL에 user_message를 persist하여 히스토리 리플레이 시에도 사용할 수 있게 함
+      if (sessionStore) {
+        sessionStore.appendEvent(
+          clientId, requestId, 0,
+          userMessageEvent as unknown as Record<string, unknown>,
+        ).catch((err) => {
+          console.warn(`[actions] Failed to persist user_message for ${sessionKey}:`, err);
+        });
       }
 
       res.status(201).json({
