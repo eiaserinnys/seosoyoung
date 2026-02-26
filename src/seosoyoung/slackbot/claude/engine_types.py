@@ -4,7 +4,9 @@
 슬랙/트렐로/OM 등 응용 계층의 개념을 포함하지 않습니다.
 """
 
+import time
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Optional
 
@@ -44,3 +46,46 @@ class RoleConfig:
 ProgressCallback = Callable[[str], Coroutine[Any, Any, None]]
 CompactCallback = Callable[[str, str], Coroutine[Any, Any, None]]
 InterventionCallback = Callable[[], Coroutine[Any, Any, Optional[str]]]
+
+
+class EngineEventType(Enum):
+    """엔진 이벤트 타입
+
+    Soul Dashboard가 구독하는 세분화 이벤트 종류.
+    THINKING_*: 모델 사고 스트림
+    TOOL_*: 도구 호출 및 결과
+    RESULT: 최종 결과 (성공/실패 포함)
+    STATE_CHANGE: 엔진 상태 전환 (idle → running 등)
+    """
+
+    THINKING_START = "thinking_start"
+    THINKING_DELTA = "thinking_delta"
+    THINKING_END = "thinking_end"
+    TOOL_START = "tool_start"
+    TOOL_RESULT = "tool_result"
+    RESULT = "result"
+    STATE_CHANGE = "state_change"
+
+
+@dataclass
+class EngineEvent:
+    """엔진에서 발행하는 단일 이벤트
+
+    type: 이벤트 종류
+    timestamp: 발행 시각 (Unix epoch, float)
+    data: 이벤트별 페이로드 (dict)
+      - THINKING_DELTA: {"text": str}
+      - TOOL_START: {"tool_name": str, "tool_input": dict}
+      - TOOL_RESULT: {"tool_name": str, "result": Any}
+      - RESULT: {"success": bool, "output": str, "error": Optional[str]}
+      - STATE_CHANGE: {"from_state": str, "to_state": str}
+    """
+
+    type: EngineEventType
+    data: dict = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
+
+
+# 이벤트 콜백 타입 alias
+# EngineEvent를 받아서 코루틴을 반환하는 비동기 콜백
+EventCallback = Callable[[EngineEvent], Coroutine[Any, Any, None]]
