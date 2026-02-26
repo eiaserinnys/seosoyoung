@@ -117,17 +117,11 @@ class ChannelMessageCollector:
         ts = source.get("ts", "") or event.get("ts", "")
         thread_ts = source.get("thread_ts") or event.get("thread_ts")
 
-        # 봇 멘션 자동 감지 및 마킹 (Step 6: 이중 안전망)
+        # 봇 멘션 자동 감지 및 마킹 (마킹만 수행, 수집은 계속 진행)
+        # 멘션 스레드 메시지도 pending/thread_buffers에 정상 수집하여
+        # 파이프라인에서 소화(consume)할 수 있도록 합니다.
+        # 리액션/개입 필터링은 파이프라인(channel_pipeline.py)에서 처리합니다.
         self._detect_and_mark_mention(text, ts, thread_ts)
-
-        # 멘션으로 이미 처리 중인 스레드의 메시지는 수집 스킵
-        if self.mention_tracker:
-            check_ts = thread_ts or ts
-            if self.mention_tracker.is_handled(check_ts):
-                logger.debug(
-                    f"멘션 스레드 수집 스킵: channel={channel}, ts={ts}, thread_ts={thread_ts}"
-                )
-                return False
 
         bot_id = source.get("bot_id") or event.get("bot_id") or ""
         msg = {"ts": ts, "user": user, "text": text}
