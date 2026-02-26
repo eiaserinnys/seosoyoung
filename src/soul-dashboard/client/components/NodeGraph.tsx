@@ -14,6 +14,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  useStoreApi,
   ReactFlowProvider,
   type OnSelectionChangeParams,
 } from "@xyflow/react";
@@ -23,12 +24,19 @@ import { useDashboardStore } from "../stores/dashboard-store";
 import { nodeTypes } from "../nodes";
 import {
   buildGraph,
+  getNodeDimensions,
   type GraphNode,
   type GraphEdge,
 } from "../lib/layout-engine";
 
 /** 그래프 재구성 디바운스 간격 (ms) - 고빈도 text_delta 이벤트 대응 */
 const REBUILD_DEBOUNCE_MS = 100;
+
+/** 고정 줌 비율 (Complete 상태 기준) */
+const FIXED_ZOOM = 0.75;
+
+/** 뷰포트 가장자리와 새 노드 사이의 최소 마진 (px) */
+const PAN_MARGIN = 80;
 
 // === Inner Graph (needs ReactFlow context) ===
 
@@ -41,20 +49,24 @@ function NodeGraphInner() {
   const selectEventNode = useDashboardStore((s) => s.selectEventNode);
   const activeSessionKey = useDashboardStore((s) => s.activeSessionKey);
 
-  const { fitView } = useReactFlow();
+  const { fitView, getViewport, setViewport } = useReactFlow();
+  const store = useStoreApi();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<GraphEdge>([]);
 
-  // 노드 수 추적 (fitView 트리거용)
-  const prevNodeCountRef = useRef(0);
+  // 신규 노드 감지를 위한 ID 추적
+  const prevNodeIdsRef = useRef<Set<string>>(new Set());
+  // 첫 로드 판별 플래그
+  const hasInitializedRef = useRef(false);
 
   // 카드/이벤트가 변경되면 그래프 재구성 (디바운스 적용)
   useEffect(() => {
     if (!activeSessionKey) {
       setNodes([]);
       setEdges([]);
-      prevNodeCountRef.current = 0;
+      prevNodeIdsRef.current = new Set();
+      hasInitializedRef.current = false;
       return;
     }
 
@@ -76,11 +88,98 @@ function NodeGraphInner() {
       setNodes(nodesWithSelection);
       setEdges(newEdges);
 
-      // 새 노드가 추가되면 fitView (rAF로 레이아웃 후 실행)
-      if (newNodes.length !== prevNodeCountRef.current) {
-        prevNodeCountRef.current = newNodes.length;
+      // 신규 노드 감지: 이전에 없던 ID가 추가되었는지 확인
+      const currentIds = new Set(nodesWithSelection.map((n) => n.id));
+      const addedNodes = nodesWithSelection.filter(
+        (n) => !prevNodeIdsRef.current.has(n.id),
+      );
+      prevNodeIdsRef.current = currentIds;
+
+      if (addedNodes.length > 0) {
+        const isFirstLoad = !hasInitializedRef.current;
+        hasInitializedRef.current = true;
+
         rafId = requestAnimationFrame(() => {
-          fitView({ padding: 0.2, duration: 300 });
+          if (isFirstLoad) {
+            // 첫 로드: 고정 줌 비율로 중앙 배치
+            fitView({
+              padding: 0.3,
+              duration: 300,
+              maxZoom: FIXED_ZOOM,
+              minZoom: FIXED_ZOOM,
+            });
+            return;
+          }
+
+          // 이후 노드 추가: 줌 유지, 필요 시 최소 pan만 수행
+          const viewport = getViewport();
+          const { width: vpW, height: vpH } = store.getState();
+          if (vpW === 0 || vpH === 0) return;
+
+          // 추가된 노드 중 가장 아래쪽과 가장 오른쪽 노드를 추적
+          // (tool 노드는 수평 분기되므로 우측 노드도 확인 필요)
+          const zoom = viewport.zoom;
+          let maxBottom = -Infinity;
+          let maxRight = -Infinity;
+          let bottomNode = addedNodes[0];
+          let rightNode = addedNodes[0];
+
+          for (const n of addedNodes) {
+            const d = getNodeDimensions(n.data.nodeType);
+            const bottom = n.position.y + d.height;
+            const right = n.position.x + d.width;
+            if (bottom > maxBottom) {
+              maxBottom = bottom;
+              bottomNode = n;
+            }
+            if (right > maxRight) {
+              maxRight = right;
+              rightNode = n;
+            }
+          }
+
+          // 두 타겟 노드의 화면 좌표를 계산하여 dx, dy를 합산
+          let dx = 0;
+          let dy = 0;
+
+          for (const targetNode of [bottomNode, rightNode]) {
+            const dims = getNodeDimensions(targetNode.data.nodeType);
+            const screenX = targetNode.position.x * zoom + viewport.x;
+            const screenY = targetNode.position.y * zoom + viewport.y;
+            const nodeW = dims.width * zoom;
+            const nodeH = dims.height * zoom;
+
+            // 뷰포트 안에 있는지 체크 (마진 포함)
+            const isVisible =
+              screenX + nodeW > PAN_MARGIN &&
+              screenX < vpW - PAN_MARGIN &&
+              screenY + nodeH > PAN_MARGIN &&
+              screenY < vpH - PAN_MARGIN;
+
+            if (isVisible) continue;
+
+            // 최소 pan 계산 (노드가 뷰포트보다 클 때를 방어적으로 클램프)
+            if (screenX + nodeW <= PAN_MARGIN) {
+              dx = Math.max(dx, PAN_MARGIN - screenX);
+            } else if (screenX >= vpW - PAN_MARGIN) {
+              const idealDx = vpW - PAN_MARGIN - nodeW - screenX;
+              dx = Math.min(dx, Math.max(idealDx, PAN_MARGIN - screenX));
+            }
+
+            if (screenY + nodeH <= PAN_MARGIN) {
+              dy = Math.max(dy, PAN_MARGIN - screenY);
+            } else if (screenY >= vpH - PAN_MARGIN) {
+              const idealDy = vpH - PAN_MARGIN - nodeH - screenY;
+              dy = Math.min(dy, Math.max(idealDy, PAN_MARGIN - screenY));
+            }
+          }
+
+          if (dx === 0 && dy === 0) return;
+
+          setViewport(
+            { x: viewport.x + dx, y: viewport.y + dy, zoom },
+            { duration: 300 },
+          );
         });
       }
     }, REBUILD_DEBOUNCE_MS);
@@ -98,6 +197,9 @@ function NodeGraphInner() {
     setNodes,
     setEdges,
     fitView,
+    getViewport,
+    setViewport,
+    store,
   ]);
 
   // 노드 선택 → 카드 선택 또는 이벤트 노드 선택 동기화
@@ -167,8 +269,7 @@ function NodeGraphInner() {
       onEdgesChange={onEdgesChange}
       onSelectionChange={onSelectionChange}
       nodeTypes={nodeTypes}
-      fitView
-      fitViewOptions={{ padding: 0.2 }}
+      defaultViewport={{ x: 0, y: 0, zoom: FIXED_ZOOM }}
       minZoom={0.1}
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
