@@ -113,8 +113,8 @@ app.use(
 // === Static File Serving ===
 
 // dist/client/ 는 vite build 결과물이 위치하는 디렉토리.
-// server/ 기준으로 ../../dist/client/ (soul-dashboard/dist/client/)
-const clientDistDir = path.resolve(__dirname, "../../dist/client");
+// server/ → soul-dashboard/ → dist/client/
+const clientDistDir = path.resolve(__dirname, "../dist/client");
 
 app.use(express.static(clientDistDir));
 
