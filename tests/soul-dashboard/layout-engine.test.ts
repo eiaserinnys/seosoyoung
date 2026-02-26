@@ -213,6 +213,41 @@ describe("buildGraph", () => {
     expect(callToResult!.targetHandle).toBeUndefined();
   });
 
+  it("tool_result node includes cardId for DetailView selection", () => {
+    const cards = [
+      toolCard("tool1", "Bash", {
+        toolInput: { command: "ls" },
+        toolResult: "output",
+        completed: true,
+      }),
+    ];
+    const events: SoulSSEEvent[] = [];
+
+    const { nodes } = buildGraph(cards, events);
+
+    const resultNode = nodes.find((n) => n.type === "tool_result");
+    expect(resultNode).toBeDefined();
+    expect(resultNode!.data.cardId).toBe("tool1");
+  });
+
+  it("empty tool_result node includes cardId for DetailView selection", () => {
+    // 결과 없이 완료된 경우 (빈 결과)
+    const cards = [
+      toolCard("tool1", "Bash", {
+        toolInput: { command: "echo" },
+        toolResult: undefined,
+        completed: true,
+      }),
+    ];
+    const events: SoulSSEEvent[] = [];
+
+    const { nodes } = buildGraph(cards, events);
+
+    const resultNode = nodes.find((n) => n.type === "tool_result");
+    expect(resultNode).toBeDefined();
+    expect(resultNode!.data.cardId).toBe("tool1");
+  });
+
   it("creates system nodes for session and complete events", () => {
     const cards = [textCard("t1", "hello")];
     const events: SoulSSEEvent[] = [

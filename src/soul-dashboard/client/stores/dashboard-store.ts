@@ -185,13 +185,14 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
           break;
         }
 
-        // 도구 카드 결과 — card_id 없을 때 tool_name으로 폴백 매칭
+        // 도구 카드 결과 — card_id 우선, 실패 시 tool_name으로 폴백 매칭
         case "tool_result": {
           let idx = -1;
           if (event.card_id) {
             idx = cards.findIndex((c) => c.cardId === event.card_id);
-          } else {
-            // 폴백: 가장 마지막 미완료 tool 카드 중 tool_name 일치
+          }
+          // 폴백: card_id 미제공 또는 매칭 실패 시 tool_name으로 재탐색
+          if (idx === -1) {
             for (let i = cards.length - 1; i >= 0; i--) {
               if (
                 cards[i].type === "tool" &&

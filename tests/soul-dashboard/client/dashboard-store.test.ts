@@ -246,6 +246,59 @@ describe("dashboard-store", () => {
       expect(cards[0].completed).toBe(true);
     });
 
+    it("should fallback to tool_name when tool_start has no card_id but tool_result has card_id", () => {
+      // 시나리오: tool_start에 card_id 없음 → 카드는 "tool-10" ID로 생성
+      // tool_result에 card_id "abc123" 있음 → card_id로 찾으면 매칭 실패
+      // 폴백: tool_name으로 마지막 미완료 카드를 매칭해야 함
+      const { processEvent } = useDashboardStore.getState();
+
+      processEvent({
+        type: "tool_start",
+        // card_id 없음
+        tool_name: "Bash",
+        tool_input: { command: "echo hello" },
+      } as ToolStartEvent, 10);
+
+      processEvent({
+        type: "tool_result",
+        card_id: "abc123", // card_id가 있지만 "tool-10"과 불일치
+        tool_name: "Bash",
+        result: "hello",
+        is_error: false,
+      } as ToolResultEvent, 11);
+
+      const cards = useDashboardStore.getState().cards;
+      expect(cards).toHaveLength(1);
+      expect(cards[0].cardId).toBe("tool-10"); // 원래 생성된 ID 유지
+      expect(cards[0].toolResult).toBe("hello");
+      expect(cards[0].completed).toBe(true);
+    });
+
+    it("should fallback to tool_name when card_id mismatch between tool_start and tool_result", () => {
+      // 시나리오: tool_start card_id="A", tool_result card_id="B" → 불일치
+      const { processEvent } = useDashboardStore.getState();
+
+      processEvent({
+        type: "tool_start",
+        card_id: "cardA",
+        tool_name: "Read",
+        tool_input: { file_path: "/test.ts" },
+      } as ToolStartEvent, 1);
+
+      processEvent({
+        type: "tool_result",
+        card_id: "cardB", // 불일치
+        tool_name: "Read",
+        result: "file content",
+        is_error: false,
+      } as ToolResultEvent, 2);
+
+      const cards = useDashboardStore.getState().cards;
+      expect(cards).toHaveLength(1);
+      expect(cards[0].toolResult).toBe("file content");
+      expect(cards[0].completed).toBe(true);
+    });
+
     it("should match tool_result to the last uncompleted tool with matching name", () => {
       const { processEvent } = useDashboardStore.getState();
 
