@@ -284,28 +284,6 @@ if ((Test-Path $mcpPip) -and (Test-Path $mcpRequirements)) {
     }
 }
 
-# .pth 파일 생성 (PYTHONPATH 대체)
-# supervisor가 환경변수를 주입하지 않으므로, 각 venv에서 모듈 경로를 직접 인식하도록 함
-Write-Host "  .pth 파일 생성 중..." -ForegroundColor Cyan
-
-$venvSitePackages = Join-Path $venvDir "Lib\site-packages"
-$mcpSitePackages = Join-Path $mcpVenvDir "Lib\site-packages"
-
-if (Test-Path $venvSitePackages) {
-    $pthContent = (Join-Path $runtimeDir "src").Replace("\", "/")
-    Set-Content -Path (Join-Path $venvSitePackages "supervisor.pth") -Value $pthContent -Encoding UTF8
-    Write-Host "  venv: supervisor.pth 생성 완료" -ForegroundColor Green
-}
-
-if (Test-Path $mcpSitePackages) {
-    $mcpPthLines = @(
-        (Join-Path $devCloneDir "src").Replace("\", "/"),
-        (Join-Path $workspaceDir ".projects\eb_lore").Replace("\", "/")
-    )
-    Set-Content -Path (Join-Path $mcpSitePackages "mcp-paths.pth") -Value ($mcpPthLines -join "`n") -Encoding UTF8
-    Write-Host "  mcp_venv: mcp-paths.pth 생성 완료" -ForegroundColor Green
-}
-
 # ============================================================
 # 6. 설정 파일 복사
 # ============================================================
