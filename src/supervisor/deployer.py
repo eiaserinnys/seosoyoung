@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import enum
 import logging
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -27,6 +28,10 @@ logger = logging.getLogger("supervisor")
 # supervisor 코드가 포함된 경로 접두사
 _SUPERVISOR_PATH_PREFIX = "src/supervisor/"
 
+# soul-dashboard 관련 경로 접두사
+_SOUL_DASHBOARD_PATH_PREFIX = "src/soul-dashboard/"
+_SOUL_DASHBOARD_PACKAGE_LOCK = "src/soul-dashboard/package-lock.json"
+
 # waiting_sessions 상태 최대 대기 시간 (초)
 _WAITING_SESSIONS_TIMEOUT = 600  # 10분
 
@@ -36,6 +41,9 @@ _DEPLOY_STOP_TIMEOUT = 300.0  # 5분
 
 # 재시작 마커 파일명
 _RESTART_MARKER_NAME = "restart_in_progress"
+
+# npm 빌드 타임아웃 (초)
+_NPM_TIMEOUT = 120
 
 
 class SupervisorRestartRequired(Exception):
@@ -197,12 +205,12 @@ class Deployer:
                     logger.exception("프로세스 재시작 실패: %s", name)
 
     def _do_update(self) -> None:
-        """git pull + pip install (기존 __main__._do_update 로직 이관)."""
+        """git pull + pip install + soul-dashboard 빌드."""
         runtime = self._paths["runtime"]
         workspace = self._paths["workspace"]
         venv_pip = runtime / "venv" / "Scripts" / "pip.exe"
         requirements = runtime / "requirements.txt"
-        dev_seosoyoung = workspace / "seosoyoung"
+        dev_seosoyoung = workspace / ".projects" / "seosoyoung"
 
         # runtime git pull
         logger.info("업데이트: runtime git pull")
@@ -228,13 +236,159 @@ class Deployer:
 
         # 개발 소스 동기화
         if dev_seosoyoung.exists():
+            old_head = self._get_repo_head(dev_seosoyoung)
+
             logger.info("업데이트: seosoyoung 개발 소스 동기화")
-            subprocess.run(
+            pull_result = subprocess.run(
                 ["git", "pull", "origin", "main"],
                 cwd=str(dev_seosoyoung),
+                capture_output=True,
+                text=True,
             )
+            if pull_result.returncode != 0:
+                logger.warning(
+                    "seosoyoung git pull 실패 (rc=%d): %s",
+                    pull_result.returncode,
+                    pull_result.stderr.strip()[:500],
+                )
+
+            new_head = self._get_repo_head(dev_seosoyoung)
+
+            # soul-dashboard 빌드 (변경 감지 시)
+            if old_head and new_head and old_head != new_head:
+                changed = self._get_changed_files_between(
+                    dev_seosoyoung, old_head, new_head,
+                )
+                if self._has_soul_dashboard_changes(changed):
+                    needs_install = any(
+                        f == _SOUL_DASHBOARD_PACKAGE_LOCK for f in changed
+                    )
+                    dashboard_dir = dev_seosoyoung / "src" / "soul-dashboard"
+                    build_ok = self._build_soul_dashboard(
+                        dashboard_dir, npm_install=needs_install,
+                    )
+                    if not build_ok:
+                        logger.warning(
+                            "soul-dashboard 빌드 실패, "
+                            "이전 빌드 결과물로 프로세스 재시작 진행",
+                        )
 
         logger.info("업데이트 완료")
+
+    @staticmethod
+    def _get_repo_head(repo_path: Path) -> str | None:
+        """리포지토리의 현재 HEAD 커밋 해시를 반환한다."""
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except (subprocess.SubprocessError, OSError) as exc:
+            logger.warning("git rev-parse 실패 (%s): %s", repo_path, exc)
+        return None
+
+    @staticmethod
+    def _get_changed_files_between(
+        repo_path: Path, old_ref: str, new_ref: str,
+    ) -> list[str]:
+        """두 커밋 사이에서 변경된 파일 목록을 반환한다."""
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--name-only", f"{old_ref}..{new_ref}"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                return [f for f in result.stdout.strip().split("\n") if f]
+        except (subprocess.SubprocessError, OSError) as exc:
+            logger.warning("git diff 실패 (%s): %s", repo_path, exc)
+        return []
+
+    @staticmethod
+    def _has_soul_dashboard_changes(changed_files: list[str]) -> bool:
+        """변경 파일 중 soul-dashboard 코드가 포함되어 있는지 확인."""
+        return any(
+            f.startswith(_SOUL_DASHBOARD_PATH_PREFIX) for f in changed_files
+        )
+
+    @staticmethod
+    def _build_soul_dashboard(
+        dashboard_dir: Path,
+        *,
+        npm_install: bool = False,
+    ) -> bool:
+        """soul-dashboard 클라이언트를 빌드한다.
+
+        npm_install이 True이면 빌드 전에 npm install을 실행한다.
+        빌드 성공 시 True, 실패 시 False를 반환한다.
+        """
+        npm = shutil.which("npm")
+        if not npm:
+            logger.warning("soul-dashboard 빌드 건너뜀: npm을 찾을 수 없음")
+            return False
+
+        if not dashboard_dir.is_dir():
+            logger.warning(
+                "soul-dashboard 빌드 건너뜀: 디렉토리 없음 (%s)", dashboard_dir,
+            )
+            return False
+
+        cwd = str(dashboard_dir)
+
+        if npm_install:
+            logger.info("soul-dashboard: npm install")
+            try:
+                result = subprocess.run(
+                    [npm, "install"],
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=_NPM_TIMEOUT,
+                )
+                if result.returncode != 0:
+                    logger.warning(
+                        "soul-dashboard npm install 실패 (rc=%d): %s",
+                        result.returncode,
+                        result.stderr.strip()[:500],
+                    )
+                    return False
+            except subprocess.TimeoutExpired:
+                logger.warning("soul-dashboard npm install 타임아웃")
+                return False
+            except (subprocess.SubprocessError, OSError) as exc:
+                logger.warning("soul-dashboard npm install 오류: %s", exc)
+                return False
+
+        logger.info("soul-dashboard: npm run build")
+        try:
+            result = subprocess.run(
+                [npm, "run", "build"],
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=_NPM_TIMEOUT,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    "soul-dashboard build 실패 (rc=%d): %s",
+                    result.returncode,
+                    result.stderr.strip()[:500],
+                )
+                return False
+        except subprocess.TimeoutExpired:
+            logger.warning("soul-dashboard build 타임아웃")
+            return False
+        except (subprocess.SubprocessError, OSError) as exc:
+            logger.warning("soul-dashboard build 오류: %s", exc)
+            return False
+
+        logger.info("soul-dashboard 빌드 완료")
+        return True
 
     def _create_restart_marker(self) -> None:
         """재시작 마커 파일을 생성한다.

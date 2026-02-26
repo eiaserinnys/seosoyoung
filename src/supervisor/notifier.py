@@ -204,7 +204,7 @@ def notify_change_detected(
         return
 
     runtime_commits = get_pending_commits(paths["runtime"])
-    dev_seosoyoung = paths["workspace"] / "seosoyoung"
+    dev_seosoyoung = paths["workspace"] / ".projects" / "seosoyoung"
     seosoyoung_commits = (
         get_pending_commits(dev_seosoyoung)
         if dev_seosoyoung.exists()
