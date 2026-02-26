@@ -1,5 +1,10 @@
-"""MentionTracker 단위 테스트 + collector/pipeline 통합 테스트"""
+"""MentionTracker 단위 테스트 + collector/pipeline 통합 테스트
 
+v2: 멘션 스레드도 수집(collect) + 소화(consume)는 정상 처리하되,
+    리액션/개입만 필터링하는 방식으로 전환.
+"""
+
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -43,7 +48,7 @@ class TestMentionTracker:
 
     def test_unmark_nonexistent_no_error(self, tracker):
         """존재하지 않는 ts를 unmark해도 에러 없음"""
-        tracker.unmark("not_exists")  # discard는 에러를 내지 않음
+        tracker.unmark("not_exists")  # pop(, None)는 에러를 내지 않음
 
     def test_mark_empty_string_ignored(self, tracker):
         """빈 문자열은 마킹하지 않음"""
@@ -66,13 +71,71 @@ class TestMentionTracker:
         assert tracker.handled_count == 1
 
 
+# ── MentionTracker TTL 테스트 ───────────────────────────
+
+class TestMentionTrackerTTL:
+    """TTL 기반 자동 만료 테스트"""
+
+    def test_ttl_expiration(self):
+        """TTL 초과 시 자동으로 만료됨"""
+        tracker = MentionTracker(ttl_seconds=0)  # 즉시 만료
+        tracker.mark("1234.5678")
+        # TTL=0이므로 다음 호출 시 만료
+        time.sleep(0.01)
+        assert tracker.is_handled("1234.5678") is False
+
+    def test_ttl_not_expired_within_window(self):
+        """TTL 내에서는 유효함"""
+        tracker = MentionTracker(ttl_seconds=3600)  # 1시간
+        tracker.mark("1234.5678")
+        assert tracker.is_handled("1234.5678") is True
+
+    def test_ttl_handled_count_after_expiry(self):
+        """만료 후 handled_count가 감소함"""
+        tracker = MentionTracker(ttl_seconds=0)
+        tracker.mark("a")
+        tracker.mark("b")
+        time.sleep(0.01)
+        assert tracker.handled_count == 0
+
+    def test_re_mark_refreshes_ttl(self):
+        """재마킹 시 TTL이 갱신됨"""
+        tracker = MentionTracker(ttl_seconds=3600)
+        tracker.mark("1234.5678")
+        # 재마킹
+        tracker.mark("1234.5678")
+        assert tracker.is_handled("1234.5678") is True
+        assert tracker.handled_count == 1
+
+    def test_default_ttl_is_30_minutes(self):
+        """기본 TTL이 30분(1800초)임"""
+        tracker = MentionTracker()
+        assert tracker._ttl_seconds == 1800
+
+    def test_mixed_expired_and_active(self):
+        """만료된 항목과 활성 항목이 공존할 때 올바르게 처리"""
+        tracker = MentionTracker(ttl_seconds=0)
+        tracker.mark("old")
+        time.sleep(0.01)
+        # old는 만료, new는 활성
+        tracker._ttl_seconds = 3600  # TTL을 늘려서 new는 만료 안 되게
+        tracker.mark("new")
+        assert tracker.is_handled("old") is False
+        assert tracker.is_handled("new") is True
+        assert tracker.handled_count == 1
+
+
 # ── Collector + MentionTracker 통합 테스트 ──────────────
 
 class TestCollectorWithMentionTracker:
-    """채널 수집기가 MentionTracker와 연동하여 멘션 스레드를 스킵하는지 테스트"""
+    """채널 수집기가 MentionTracker와 연동하여 멘션 스레드를 수집+마킹하는지 테스트
 
-    def test_skip_mention_handled_thread(self, store, tracker):
-        """멘션으로 처리 중인 스레드 메시지는 수집하지 않음"""
+    v2 변경: 멘션 스레드 메시지도 정상 수집(collect=True)하되 마킹만 유지.
+    리액션/개입 필터링은 파이프라인에서 처리합니다.
+    """
+
+    def test_collect_mention_handled_thread(self, store, tracker):
+        """멘션으로 처리 중인 스레드 메시지도 정상 수집됨"""
         collector = ChannelMessageCollector(
             store=store,
             target_channels=["C_OBS"],
@@ -90,14 +153,15 @@ class TestCollectorWithMentionTracker:
             "thread_ts": "1234.0000",
         }
         result = collector.collect(event)
-        assert result is False
+        assert result is True  # 수집됨 (v2: 스킵하지 않음)
 
-        # 버퍼에 저장되지 않아야 함
+        # 버퍼에 저장됨
         msgs = store.load_thread_buffer("C_OBS", "1234.0000")
-        assert msgs == []
+        assert len(msgs) == 1
+        assert msgs[0]["ts"] == "1234.9999"
 
-    def test_skip_mention_handled_root_message(self, store, tracker):
-        """멘션으로 처리 중인 채널 루트 메시지는 수집하지 않음"""
+    def test_collect_mention_handled_root_message(self, store, tracker):
+        """멘션으로 처리 중인 채널 루트 메시지도 정상 수집됨"""
         collector = ChannelMessageCollector(
             store=store,
             target_channels=["C_OBS"],
@@ -113,7 +177,7 @@ class TestCollectorWithMentionTracker:
             "text": "<@BOT123> 질문입니다",
         }
         result = collector.collect(event)
-        assert result is False
+        assert result is True  # 수집됨 (v2: 스킵하지 않음)
 
     def test_collect_non_mention_thread(self, store, tracker):
         """멘션과 무관한 스레드 메시지는 정상 수집"""
@@ -135,8 +199,8 @@ class TestCollectorWithMentionTracker:
         result = collector.collect(event)
         assert result is True
 
-    def test_auto_detect_bot_mention_and_skip(self, store, tracker):
-        """봇 멘션이 포함된 메시지를 자동 감지하여 마킹 후 수집 스킵"""
+    def test_auto_detect_bot_mention_and_collect(self, store, tracker):
+        """봇 멘션이 포함된 메시지를 자동 감지하여 마킹 + 수집"""
         collector = ChannelMessageCollector(
             store=store,
             target_channels=["C_OBS"],
@@ -152,12 +216,12 @@ class TestCollectorWithMentionTracker:
             "text": "<@BOT123> 안녕하세요",
         }
         result = collector.collect(event)
-        # 자동 감지 후 마킹 → 스킵
-        assert result is False
-        assert tracker.is_handled("1234.5678") is True
+        # 자동 감지 후 마킹 + 수집
+        assert result is True  # v2: 수집됨
+        assert tracker.is_handled("1234.5678") is True  # 마킹도 됨
 
     def test_auto_detect_bot_mention_in_thread(self, store, tracker):
-        """스레드 내 봇 멘션도 자동 감지하여 thread_ts를 마킹"""
+        """스레드 내 봇 멘션도 자동 감지하여 thread_ts를 마킹 + 수집"""
         collector = ChannelMessageCollector(
             store=store,
             target_channels=["C_OBS"],
@@ -173,7 +237,7 @@ class TestCollectorWithMentionTracker:
             "thread_ts": "1234.0000",
         }
         result = collector.collect(event)
-        assert result is False
+        assert result is True  # v2: 수집됨
         # thread_ts가 마킹됨
         assert tracker.is_handled("1234.0000") is True
 
@@ -215,11 +279,17 @@ class TestCollectorWithMentionTracker:
 # ── Pipeline + MentionTracker 통합 테스트 ──────────────
 
 class TestPipelineWithMentionTracker:
-    """파이프라인에서 멘션 스레드가 필터링되는지 테스트"""
+    """파이프라인에서 멘션 스레드가 소화(consume)되지만 리액션은 필터링되는지 테스트
+
+    v2 변경:
+    - 멘션 스레드 메시지는 judge에서 제외 (토큰 절약)
+    - 멘션 스레드 메시지는 pending→judged로 정상 이동 (소화)
+    - 멘션 스레드에 대한 리액션/개입은 필터링
+    """
 
     @pytest.mark.asyncio
-    async def test_mention_thread_filtered_from_pending(self, store, tracker, tmp_path):
-        """멘션으로 처리 중인 스레드 메시지가 pending에서 필터링됨"""
+    async def test_mention_thread_excluded_from_judge(self, store, tracker, tmp_path):
+        """멘션으로 처리 중인 스레드 메시지가 judge에서 제외됨"""
         from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
 
         channel_id = "C_TEST"
@@ -270,11 +340,59 @@ class TestPipelineWithMentionTracker:
         pending_ts = {m["ts"] for m in observer.last_pending}
         assert "1001.000" in pending_ts
         assert "1003.000" in pending_ts
-        assert "1002.000" not in pending_ts  # 멘션 스레드 메시지 필터링됨
+        assert "1002.000" not in pending_ts  # 멘션 스레드 메시지 제외
 
     @pytest.mark.asyncio
-    async def test_mention_thread_buffers_filtered(self, store, tracker, tmp_path):
-        """멘션으로 처리 중인 스레드가 thread_buffers에서 제외됨"""
+    async def test_mention_thread_consumed_to_judged(self, store, tracker, tmp_path):
+        """멘션 스레드 메시지가 pending에서 judged로 정상 이동(소화)됨"""
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
+
+        channel_id = "C_TEST"
+        # pending에 일반 메시지와 멘션 스레드 메시지
+        store.append_pending(channel_id, {
+            "ts": "1001.000", "user": "U1", "text": "일반 메시지 " * 20,
+        })
+        store.append_pending(channel_id, {
+            "ts": "1002.000", "user": "U2", "text": "멘션 스레드 메시지 " * 20,
+            "thread_ts": "MENTION_THREAD",
+        })
+
+        tracker.mark("MENTION_THREAD")
+
+        class FakeObs:
+            async def judge(self, **kwargs):
+                return JudgeResult(importance=3, reaction_type="none")
+
+            async def digest(self, **kwargs):
+                return None
+
+        observer = FakeObs()
+        client = MagicMock()
+        history = InterventionHistory(base_dir=tmp_path)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            mention_tracker=tracker,
+        )
+
+        # pending이 비워져야 함 (멘션 포함 모두 judged로 이동)
+        remaining_pending = store.load_pending(channel_id)
+        assert len(remaining_pending) == 0
+
+        # judged에 모든 메시지가 있어야 함
+        judged = store.load_judged(channel_id)
+        judged_ts = {m["ts"] for m in judged}
+        assert "1001.000" in judged_ts
+        assert "1002.000" in judged_ts  # 멘션 스레드도 소화됨
+
+    @pytest.mark.asyncio
+    async def test_mention_thread_buffers_excluded_from_judge(self, store, tracker, tmp_path):
+        """멘션으로 처리 중인 스레드가 judge의 thread_buffers에서 제외됨"""
         from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
 
         channel_id = "C_TEST"
@@ -316,9 +434,173 @@ class TestPipelineWithMentionTracker:
             mention_tracker=tracker,
         )
 
-        # MENTION_THREAD가 필터링됨
+        # judge에서 MENTION_THREAD가 제외됨
         assert "MENTION_THREAD" not in observer.last_thread_buffers
         assert "NORMAL_THREAD" in observer.last_thread_buffers
+
+    @pytest.mark.asyncio
+    async def test_mention_thread_buffers_consumed(self, store, tracker, tmp_path):
+        """멘션 스레드의 thread_buffer도 정상 소화(consume)됨"""
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
+
+        channel_id = "C_TEST"
+        store.append_pending(channel_id, {
+            "ts": "1001.000", "user": "U1", "text": "일반 메시지 " * 20,
+        })
+        store.append_thread_message(channel_id, "MENTION_THREAD", {
+            "ts": "2001.000", "user": "U2", "text": "멘션 스레드 대화",
+        })
+
+        tracker.mark("MENTION_THREAD")
+
+        class FakeObs:
+            async def judge(self, **kwargs):
+                return JudgeResult(importance=3, reaction_type="none")
+
+            async def digest(self, **kwargs):
+                return None
+
+        observer = FakeObs()
+        client = MagicMock()
+        history = InterventionHistory(base_dir=tmp_path)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            mention_tracker=tracker,
+        )
+
+        # pending이 비워져야 함
+        assert len(store.load_pending(channel_id)) == 0
+
+        # thread buffer도 비워져야 함 (judged로 이동)
+        assert len(store.load_all_thread_buffers(channel_id)) == 0
+
+        # judged에 모든 메시지가 있어야 함
+        judged = store.load_judged(channel_id)
+        judged_ts = {m["ts"] for m in judged}
+        assert "1001.000" in judged_ts
+        assert "2001.000" in judged_ts
+
+    @pytest.mark.asyncio
+    async def test_mention_thread_no_reaction(self, store, tracker, tmp_path):
+        """멘션 스레드에 대해 리액션/개입이 발생하지 않음"""
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
+
+        channel_id = "C_TEST"
+        # 멘션 스레드에 속한 메시지
+        store.append_pending(channel_id, {
+            "ts": "MENTION_MSG", "user": "U1", "text": "멘션 메시지 " * 20,
+            "thread_ts": "MENTION_THREAD",
+        })
+        # 일반 메시지
+        store.append_pending(channel_id, {
+            "ts": "NORMAL_MSG", "user": "U2", "text": "일반 메시지 " * 20,
+        })
+
+        tracker.mark("MENTION_THREAD")
+
+        class FakeObs:
+            async def judge(self, **kwargs):
+                # 일반 메시지에만 react 반응
+                return JudgeResult(items=[
+                    JudgeItem(
+                        ts="NORMAL_MSG",
+                        importance=5,
+                        reaction_type="react",
+                        reaction_target="NORMAL_MSG",
+                        reaction_content="thumbsup",
+                    ),
+                ])
+
+            async def digest(self, **kwargs):
+                return None
+
+        observer = FakeObs()
+        client = MagicMock()
+        # reactions_add 호출 추적
+        client.reactions_add = MagicMock()
+        history = InterventionHistory(base_dir=tmp_path)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            mention_tracker=tracker,
+        )
+
+        # 일반 메시지에는 리액션이 실행됨
+        client.reactions_add.assert_called_once()
+        call_kwargs = client.reactions_add.call_args.kwargs
+        assert call_kwargs.get("name") == "thumbsup"
+        assert call_kwargs.get("timestamp") == "NORMAL_MSG"
+
+    @pytest.mark.asyncio
+    async def test_mention_thread_no_intervention(self, store, tracker, tmp_path):
+        """멘션 스레드에 대한 intervene 액션도 필터링됨"""
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
+
+        channel_id = "C_TEST"
+        # 멘션 스레드에 속한 메시지
+        store.append_pending(channel_id, {
+            "ts": "MENTION_MSG", "user": "U1", "text": "멘션 메시지 " * 20,
+            "thread_ts": "MENTION_THREAD",
+        })
+        # 일반 메시지
+        store.append_pending(channel_id, {
+            "ts": "NORMAL_MSG", "user": "U2", "text": "일반 메시지 " * 20,
+        })
+
+        tracker.mark("MENTION_THREAD")
+
+        class FakeObs:
+            async def judge(self, **kwargs):
+                # 일반 메시지에 intervene 반응 (멘션 메시지는 judge에 전달 안 됨)
+                return JudgeResult(items=[
+                    JudgeItem(
+                        ts="NORMAL_MSG",
+                        importance=8,
+                        reaction_type="intervene",
+                        reaction_target="NORMAL_MSG",
+                        reaction_content="이건 중요한 메시지입니다",
+                    ),
+                ])
+
+            async def digest(self, **kwargs):
+                return None
+
+        observer = FakeObs()
+        client = MagicMock()
+        client.reactions_add = MagicMock()
+        client.reactions_remove = MagicMock()
+        client.chat_postMessage = MagicMock(return_value={"ts": "resp.000"})
+        history = InterventionHistory(base_dir=tmp_path)
+
+        # llm_call을 제공하지 않으면 execute_interventions 경로로 감
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            mention_tracker=tracker,
+            intervention_threshold=0.0,  # 항상 개입 통과
+        )
+
+        # pending이 모두 소화됨 (멘션 포함)
+        assert len(store.load_pending(channel_id)) == 0
+        judged = store.load_judged(channel_id)
+        judged_ts = {m["ts"] for m in judged}
+        assert "MENTION_MSG" in judged_ts
+        assert "NORMAL_MSG" in judged_ts
 
     @pytest.mark.asyncio
     async def test_no_mention_tracker_backward_compatible(self, store, tmp_path):
@@ -357,8 +639,8 @@ class TestPipelineWithMentionTracker:
         assert observer.judge_count == 1
 
     @pytest.mark.asyncio
-    async def test_mention_root_message_filtered(self, store, tracker, tmp_path):
-        """멘션 루트 메시지 자체도 pending에서 필터링됨"""
+    async def test_mention_root_message_excluded_from_judge(self, store, tracker, tmp_path):
+        """멘션 루트 메시지 자체도 judge에서 제외됨"""
         from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
 
         channel_id = "C_TEST"
@@ -400,6 +682,47 @@ class TestPipelineWithMentionTracker:
         pending_ts = {m["ts"] for m in observer.last_pending}
         assert "MENTION_ROOT" not in pending_ts
         assert "1002.000" in pending_ts
+
+    @pytest.mark.asyncio
+    async def test_mention_root_consumed_to_judged(self, store, tracker, tmp_path):
+        """멘션 루트 메시지도 pending→judged로 소화됨"""
+        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
+
+        channel_id = "C_TEST"
+        store.append_pending(channel_id, {
+            "ts": "MENTION_ROOT", "user": "U1",
+            "text": "<@BOT123> 질문입니다 " * 20,
+        })
+
+        tracker.mark("MENTION_ROOT")
+
+        class FakeObs:
+            async def judge(self, **kwargs):
+                return JudgeResult(importance=3, reaction_type="none")
+
+            async def digest(self, **kwargs):
+                return None
+
+        observer = FakeObs()
+        client = MagicMock()
+        history = InterventionHistory(base_dir=tmp_path)
+
+        await run_channel_pipeline(
+            store=store,
+            observer=observer,
+            channel_id=channel_id,
+            slack_client=client,
+            cooldown=history,
+            threshold_a=1,
+            mention_tracker=tracker,
+        )
+
+        # pending이 비워져야 함
+        assert len(store.load_pending(channel_id)) == 0
+        # judged에 소화됨
+        judged = store.load_judged(channel_id)
+        judged_ts = {m["ts"] for m in judged}
+        assert "MENTION_ROOT" in judged_ts
 
     @pytest.mark.asyncio
     async def test_non_mention_channel_mention_unaffected(self, store, tracker, tmp_path):

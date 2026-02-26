@@ -159,7 +159,7 @@
 - `EmojiConfig` (seosoyoung/slackbot/config.py:229): 이모지 설정
 - `Config` (seosoyoung/slackbot/config.py:257): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/slackbot/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
-- `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:13): 멘션으로 처리 중인 스레드를 추적
+- `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:20): 멘션으로 처리 중인 스레드를 추적 (TTL 기반 자동 만료)
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
 - `InterventionAction` (seosoyoung/slackbot/memory/channel_intervention.py:31): 개입 액션
 - `InterventionHistory` (seosoyoung/slackbot/memory/channel_intervention.py:224): 개입 이력 관리
@@ -354,7 +354,7 @@
 - `send_multi_judge_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:544): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
 - `parse_channel_observer_output()` (seosoyoung/slackbot/memory/channel_observer.py:104): Observer 응답에서 XML 태그를 파싱합니다.
 - `parse_judge_output()` (seosoyoung/slackbot/memory/channel_observer.py:130): Judge 응답에서 XML 태그를 파싱합니다.
-- `async run_channel_pipeline()` (seosoyoung/slackbot/memory/channel_pipeline.py:239): 소화/판단 분리 파이프라인을 실행합니다.
+- `async run_channel_pipeline()` (seosoyoung/slackbot/memory/channel_pipeline.py:269): 소화/판단 분리 파이프라인을 실행합니다.
 - `build_channel_observer_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:65): 채널 관찰 시스템 프롬프트를 반환합니다.
 - `build_channel_observer_user_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:70): 채널 관찰 사용자 프롬프트를 구성합니다.
 - `build_digest_compressor_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:104): digest 압축 시스템 프롬프트를 반환합니다.

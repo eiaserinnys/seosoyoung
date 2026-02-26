@@ -236,6 +236,36 @@ def _filter_already_reacted(
     return filtered
 
 
+def _filter_mention_thread_actions(
+    actions: list[InterventionAction],
+    mention_handled_ts: set[str],
+) -> list[InterventionAction]:
+    """멘션으로 처리 중인 스레드에 대한 액션을 필터링합니다.
+
+    멘션 스레드 메시지는 소화(consume)는 정상 처리하되,
+    리액션이나 개입은 수행하지 않습니다.
+
+    Args:
+        actions: InterventionAction 리스트
+        mention_handled_ts: 멘션으로 처리 중인 메시지 ts 집합
+
+    Returns:
+        멘션 스레드 대상을 제외한 액션 리스트
+    """
+    if not mention_handled_ts or not actions:
+        return actions
+
+    filtered = []
+    for action in actions:
+        if action.target in mention_handled_ts:
+            logger.debug(
+                f"멘션 스레드 액션 필터링: type={action.type}, target={action.target}"
+            )
+        else:
+            filtered.append(action)
+    return filtered
+
+
 async def run_channel_pipeline(
     store: ChannelStore,
     observer: ChannelObserver,
@@ -337,43 +367,53 @@ async def run_channel_pipeline(
     pending_messages = store.load_pending(channel_id)
     thread_buffers = store.load_all_thread_buffers(channel_id)
 
-    # 멘션 스레드 필터링: mention_tracker가 있으면 멘션으로 처리 중인 스레드 메시지를 제거
-    if mention_tracker:
-        pre_filter_count = len(pending_messages)
-        pending_messages = [
-            m for m in pending_messages
-            if not mention_tracker.is_handled(m.get("thread_ts", ""))
-               and not mention_tracker.is_handled(m.get("ts", ""))
-        ]
-        if thread_buffers:
-            thread_buffers = {
-                ts: msgs for ts, msgs in thread_buffers.items()
-                if not mention_tracker.is_handled(ts)
-            }
-        filtered_count = pre_filter_count - len(pending_messages)
-        if filtered_count > 0:
-            logger.info(
-                f"멘션 스레드 필터링 ({channel_id}): "
-                f"pending {filtered_count}건 제거"
-            )
-
-    # 스냅샷 ts 기록
+    # 스냅샷 ts 기록 — 멘션 여부와 무관하게 모든 pending을 포함
+    # 멘션 스레드 메시지도 정상적으로 judged로 이동(소화)되어야 합니다.
     snapshot_ts = {m.get("ts", "") for m in pending_messages if m.get("ts")}
     snapshot_thread_ts = set(thread_buffers.keys()) if thread_buffers else None
 
+    # 멘션 스레드 식별: 리액션/개입 필터링에 사용 (소화는 정상 처리)
+    mention_handled_ts: set[str] = set()
+    if mention_tracker:
+        for m in pending_messages:
+            thread = m.get("thread_ts", "")
+            ts = m.get("ts", "")
+            if mention_tracker.is_handled(thread) or mention_tracker.is_handled(ts):
+                mention_handled_ts.add(ts)
+
+        # judge에는 멘션 스레드를 제외한 pending만 전달 (토큰 절약)
+        judge_pending = [
+            m for m in pending_messages
+            if m.get("ts", "") not in mention_handled_ts
+        ]
+        judge_thread_buffers = (
+            {ts: msgs for ts, msgs in thread_buffers.items()
+             if not mention_tracker.is_handled(ts)}
+            if thread_buffers else thread_buffers
+        )
+        filtered_count = len(pending_messages) - len(judge_pending)
+        if filtered_count > 0:
+            logger.info(
+                f"멘션 스레드 필터링 ({channel_id}): "
+                f"judge에서 pending {filtered_count}건 제외 (소화는 정상 처리)"
+            )
+    else:
+        judge_pending = pending_messages
+        judge_thread_buffers = thread_buffers
+
     logger.info(
         f"리액션 판단 시작 ({channel_id}): "
-        f"pending {len(pending_messages)}건, "
+        f"pending {len(judge_pending)}건 (전체 {len(pending_messages)}건), "
         f"judged {len(judged_messages)}건, "
-        f"threads {len(thread_buffers)}건"
+        f"threads {len(judge_thread_buffers) if judge_thread_buffers else 0}건"
     )
 
     judge_result = await observer.judge(
         channel_id=channel_id,
         digest=current_digest,
         judged_messages=judged_messages,
-        pending_messages=pending_messages,
-        thread_buffers=thread_buffers,
+        pending_messages=judge_pending,
+        thread_buffers=judge_thread_buffers,
         bot_user_id=bot_user_id,
         slack_client=slack_client,
     )
@@ -385,21 +425,21 @@ async def run_channel_pipeline(
     # d-0a) Bug D: pending ts에 없는 JudgeItem 필터링
     #   AI가 THREAD CONVERSATIONS 섹션 메시지에 대해서도 판단을 생성할 수 있음
     if judge_result.items:
-        pending_ts = {m.get("ts", "") for m in pending_messages if m.get("ts")}
-        filtered_items = [item for item in judge_result.items if item.ts in pending_ts]
+        judge_pending_ts = {m.get("ts", "") for m in judge_pending if m.get("ts")}
+        filtered_items = [item for item in judge_result.items if item.ts in judge_pending_ts]
         if len(filtered_items) < len(judge_result.items):
             removed = len(judge_result.items) - len(filtered_items)
             logger.info(
                 f"non-pending JudgeItem {removed}건 필터링 ({channel_id}): "
-                f"pending_ts={len(pending_ts)}건"
+                f"judge_pending_ts={len(judge_pending_ts)}건"
             )
         judge_result.items = filtered_items
 
     # d-0b) linked_message_ts 환각 검증
-    _validate_linked_messages(judge_result, judged_messages, pending_messages, thread_buffers)
+    _validate_linked_messages(judge_result, judged_messages, judge_pending, judge_thread_buffers)
 
     # d-0c) 가중치 적용: related_to_me, addressed_to_me 강제 반응
-    _apply_importance_modifiers(judge_result, pending_messages)
+    _apply_importance_modifiers(judge_result, judge_pending)
 
     # d) 리액션 처리
     # e) 스냅샷 메시지는 예외 발생 여부와 무관하게 반드시 judged로 이동해야 함
@@ -413,7 +453,7 @@ async def run_channel_pipeline(
                 channel_id=channel_id,
                 slack_client=slack_client,
                 cooldown=cooldown,
-                pending_messages=pending_messages,
+                pending_messages=judge_pending,
                 current_digest=current_digest,
                 debug_channel=debug_channel,
                 intervention_threshold=intervention_threshold,
@@ -421,7 +461,8 @@ async def run_channel_pipeline(
                 claude_runner=claude_runner,
                 bot_user_id=bot_user_id,
                 session_manager=kwargs.get("session_manager"),
-                thread_buffers=thread_buffers,
+                thread_buffers=judge_thread_buffers,
+                mention_handled_ts=mention_handled_ts,
             )
         else:
             # 하위호환: 단일 판단 경로
@@ -431,7 +472,7 @@ async def run_channel_pipeline(
                 channel_id=channel_id,
                 slack_client=slack_client,
                 cooldown=cooldown,
-                pending_messages=pending_messages,
+                pending_messages=judge_pending,
                 current_digest=current_digest,
                 debug_channel=debug_channel,
                 intervention_threshold=intervention_threshold,
@@ -439,7 +480,8 @@ async def run_channel_pipeline(
                 claude_runner=claude_runner,
                 bot_user_id=bot_user_id,
                 session_manager=kwargs.get("session_manager"),
-                thread_buffers=thread_buffers,
+                thread_buffers=judge_thread_buffers,
+                mention_handled_ts=mention_handled_ts,
             )
     finally:
         # 스냅샷에 포함된 메시지만 judged로 이동 (파이프라인 중 새로 도착한 메시지는 pending에 잔류)
@@ -461,9 +503,13 @@ async def _handle_multi_judge(
     bot_user_id: str | None = None,
     session_manager=None,
     thread_buffers: dict[str, list[dict]] | None = None,
+    mention_handled_ts: set[str] | None = None,
 ) -> None:
     """복수 JudgeItem 처리: 이모지 일괄 + 개입 확률 판단"""
     actions = _parse_judge_actions(judge_result)
+
+    # 멘션 스레드 대상 액션 필터링 (소화는 정상 처리, 리액션/개입만 제외)
+    actions = _filter_mention_thread_actions(actions, mention_handled_ts or set())
 
     react_actions = [a for a in actions if a.type == "react"]
     message_actions = [a for a in actions if a.type == "message"]
@@ -518,9 +564,12 @@ async def _handle_multi_judge(
 
         if passed:
             # 개입은 1건만 (가장 중요한 것)
+            # message_actions는 이미 멘션 필터를 거쳤으므로,
+            # 필터된 target 집합에 속하는 항목만 선택합니다.
+            filtered_targets = {a.target for a in message_actions}
             intervene_item = None
             for item in judge_result.items:
-                if item.reaction_type == "intervene":
+                if item.reaction_type == "intervene" and item.reaction_target in filtered_targets:
                     if intervene_item is None or item.importance > intervene_item.importance:
                         intervene_item = item
 
@@ -577,6 +626,7 @@ async def _handle_single_judge(
     bot_user_id: str | None = None,
     session_manager=None,
     thread_buffers: dict[str, list[dict]] | None = None,
+    mention_handled_ts: set[str] | None = None,
 ) -> None:
     """하위호환: 단일 JudgeResult 처리"""
     logger.info(
@@ -598,6 +648,8 @@ async def _handle_single_judge(
         )
 
     actions = _parse_judge_actions(judge_result)
+    # 멘션 스레드 대상 액션 필터링 (소화는 정상 처리, 리액션/개입만 제외)
+    actions = _filter_mention_thread_actions(actions, mention_handled_ts or set())
     if not actions:
         await send_debug_log(
             client=slack_client,
