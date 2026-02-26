@@ -1,0 +1,702 @@
+/**
+ * Soul Dashboard - Layout Engine
+ *
+ * DashboardCard[] 및 SSE 이벤트를 React Flow 노드/엣지로 변환하는 레이아웃 엔진.
+ * dagre 라이브러리를 사용하여 자동 레이아웃을 적용합니다.
+ */
+
+import dagre from "dagre";
+import type { Node, Edge } from "@xyflow/react";
+import type { DashboardCard, SoulSSEEvent } from "@shared/types";
+
+// === Graph Node Types ===
+
+/** 노드 그래프에 표시되는 커스텀 노드 타입 */
+export type GraphNodeType =
+  | "user"
+  | "thinking"
+  | "tool_call"
+  | "tool_result"
+  | "response"
+  | "system"
+  | "intervention";
+
+/** React Flow 노드의 data 필드 */
+export interface GraphNodeData extends Record<string, unknown> {
+  nodeType: GraphNodeType;
+  cardId?: string;
+  label: string;
+  content: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolResult?: string;
+  isError?: boolean;
+  streaming: boolean;
+  subAgentId?: string;
+  collapsed?: boolean;
+}
+
+export type GraphNode = Node<GraphNodeData>;
+export type GraphEdge = Edge;
+
+// === Sub-Agent Grouping ===
+
+/** Task 도구 호출로 감지된 서브 에이전트 그룹 */
+export interface SubAgentGroup {
+  /** 그룹 고유 ID */
+  groupId: string;
+  /** Task tool_call 카드 ID */
+  taskCardId: string;
+  /** 그룹에 포함된 카드 ID 목록 (Task 카드 자체 포함) */
+  cardIds: string[];
+  /** 그룹 레이블 (Task 입력에서 추출) */
+  label: string;
+  /** 접힌 상태 여부 */
+  collapsed: boolean;
+}
+
+// === Node Dimensions ===
+
+/** 노드 타입별 기본 크기 (dagre 레이아웃에 사용) */
+const NODE_DIMENSIONS: Record<GraphNodeType | "group", { width: number; height: number }> = {
+  user: { width: 280, height: 60 },
+  thinking: { width: 280, height: 60 },
+  tool_call: { width: 280, height: 80 },
+  tool_result: { width: 280, height: 80 },
+  response: { width: 280, height: 60 },
+  system: { width: 280, height: 40 },
+  intervention: { width: 280, height: 60 },
+  group: { width: 320, height: 100 },
+};
+
+/**
+ * 노드 타입에 대한 크기를 반환합니다.
+ */
+export function getNodeDimensions(
+  nodeType: GraphNodeType | "group",
+): { width: number; height: number } {
+  return NODE_DIMENSIONS[nodeType] ?? { width: 280, height: 60 };
+}
+
+// === Edge Creation ===
+
+/**
+ * React Flow 엣지를 생성합니다.
+ *
+ * 결정론적 ID를 사용합니다 (source, target, handle 조합으로 유일성 보장).
+ * 모듈 레벨 상태를 사용하지 않아 동시 호출에 안전합니다.
+ *
+ * @param source - 소스 노드 ID
+ * @param target - 타겟 노드 ID
+ * @param animated - 애니메이션 여부 (스트리밍 중인 연결에 사용)
+ * @param sourceHandle - 소스 핸들 (수평 연결 시 "right")
+ * @param targetHandle - 타겟 핸들 (수평 연결 시 "left")
+ */
+export function createEdge(
+  source: string,
+  target: string,
+  animated = false,
+  sourceHandle?: string,
+  targetHandle?: string,
+): GraphEdge {
+  const handleSuffix = sourceHandle || targetHandle
+    ? `-${sourceHandle ?? "d"}-${targetHandle ?? "d"}`
+    : "";
+  return {
+    id: `e-${source}-${target}${handleSuffix}`,
+    source,
+    target,
+    animated,
+    sourceHandle,
+    targetHandle,
+    style: { stroke: animated ? "#3b82f6" : "#4b5563", strokeWidth: 1.5 },
+  };
+}
+
+// === Sub-Agent Detection ===
+
+/**
+ * DashboardCard 배열에서 Task 도구 호출을 감지하여 서브 에이전트 그룹을 추출합니다.
+ *
+ * Task 도구의 tool_call과 tool_result 사이에 있는 모든 카드를
+ * 하나의 서브 에이전트 그룹으로 묶습니다.
+ */
+export function detectSubAgents(cards: DashboardCard[]): SubAgentGroup[] {
+  const groups: SubAgentGroup[] = [];
+  let groupCounter = 0;
+
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+
+    // Task 도구 호출 감지
+    if (card.type === "tool" && card.toolName === "Task") {
+      groupCounter += 1;
+      const groupId = `subagent-${groupCounter}`;
+      const groupCardIds: string[] = [card.cardId];
+
+      // Task 카드의 입력에서 레이블 추출
+      const taskDescription =
+        (card.toolInput?.description as string) ??
+        (card.toolInput?.prompt as string) ??
+        "Sub-agent Task";
+      const label =
+        taskDescription.length > 50
+          ? taskDescription.slice(0, 47) + "..."
+          : taskDescription;
+
+      // Task 카드 이후부터 해당 Task의 결과(completed)까지의 카드를 수집
+      // Task 카드 자체가 completed이면 그 사이의 카드가 없으므로 Task 카드만 포함
+      if (!card.completed) {
+        // 아직 실행 중인 Task: 이후 모든 카드를 그룹에 포함
+        for (let j = i + 1; j < cards.length; j++) {
+          groupCardIds.push(cards[j].cardId);
+        }
+      } else {
+        // 완료된 Task: tool_result가 도착한 시점까지 중간 카드를 찾아야 하지만,
+        // DashboardCard 구조에서는 Task 카드 자체에 결과가 포함되므로
+        // Task 카드와 그 다음 카드들 중 다음 Task 시작 전까지를 그룹에 포함
+        for (let j = i + 1; j < cards.length; j++) {
+          const next = cards[j];
+          // 다음 Task 도구 호출을 만나면 중단
+          if (next.type === "tool" && next.toolName === "Task") {
+            break;
+          }
+          groupCardIds.push(next.cardId);
+        }
+      }
+
+      groups.push({
+        groupId,
+        taskCardId: card.cardId,
+        cardIds: groupCardIds,
+        label,
+        collapsed: false,
+      });
+    }
+  }
+
+  return groups;
+}
+
+// === Node Creation Helpers ===
+
+/**
+ * 텍스트 카드를 thinking 또는 response 노드로 변환합니다.
+ *
+ * 세션이 완료된 상태에서 마지막 텍스트 카드는 response 타입으로 생성됩니다.
+ */
+function createTextNode(
+  card: DashboardCard,
+  isLastText: boolean,
+  isSessionComplete: boolean,
+): GraphNode {
+  const nodeType: GraphNodeType =
+    isLastText && isSessionComplete ? "response" : "thinking";
+  const label = nodeType === "response" ? "Response" : "Thinking";
+
+  return {
+    id: `node-${card.cardId}`,
+    type: nodeType,
+    position: { x: 0, y: 0 },
+    data: {
+      nodeType,
+      cardId: card.cardId,
+      label,
+      content:
+        card.content.length > 120
+          ? card.content.slice(0, 117) + "..."
+          : card.content || "(streaming...)",
+      streaming: !card.completed,
+    },
+  };
+}
+
+/**
+ * 도구 카드를 tool_call 노드로 변환합니다.
+ */
+function createToolCallNode(card: DashboardCard): GraphNode {
+  return {
+    id: `node-${card.cardId}-call`,
+    type: "tool_call",
+    position: { x: 0, y: 0 },
+    data: {
+      nodeType: "tool_call",
+      cardId: card.cardId,
+      label: card.toolName ?? "Tool",
+      content: formatToolInput(card.toolInput),
+      toolName: card.toolName,
+      toolInput: card.toolInput,
+      streaming: !card.completed && !card.toolResult,
+    },
+  };
+}
+
+/**
+ * 도구 카드의 결과를 tool_result 노드로 변환합니다.
+ * tool_result가 있을 때만 생성됩니다.
+ */
+function createToolResultNode(card: DashboardCard): GraphNode | null {
+  if (card.toolResult === undefined && card.completed) {
+    // 결과 없이 완료된 경우 (빈 결과)
+    return {
+      id: `node-${card.cardId}-result`,
+      type: "tool_result",
+      position: { x: 0, y: 0 },
+      data: {
+        nodeType: "tool_result",
+        cardId: card.cardId,
+        label: `${card.toolName ?? "Tool"} Result`,
+        content: "(no output)",
+        toolName: card.toolName,
+        toolResult: "",
+        isError: card.isError,
+        streaming: false,
+      },
+    };
+  }
+
+  if (card.toolResult === undefined) {
+    // 아직 결과가 도착하지 않음
+    return null;
+  }
+
+  const resultPreview =
+    card.toolResult.length > 120
+      ? card.toolResult.slice(0, 117) + "..."
+      : card.toolResult;
+
+  return {
+    id: `node-${card.cardId}-result`,
+    type: "tool_result",
+    position: { x: 0, y: 0 },
+    data: {
+      nodeType: "tool_result",
+      cardId: card.cardId,
+      label: `${card.toolName ?? "Tool"} Result`,
+      content: resultPreview,
+      toolName: card.toolName,
+      toolResult: card.toolResult,
+      isError: card.isError,
+      streaming: false,
+    },
+  };
+}
+
+/**
+ * intervention_sent 이벤트를 intervention 노드로 변환합니다.
+ */
+function createInterventionNode(
+  event: Extract<SoulSSEEvent, { type: "intervention_sent" }>,
+  index: number,
+): GraphNode {
+  return {
+    id: `node-intervention-${index}`,
+    type: "intervention",
+    position: { x: 0, y: 0 },
+    data: {
+      nodeType: "intervention",
+      label: `Intervention (${event.user})`,
+      content: event.text.length > 120 ? event.text.slice(0, 117) + "..." : event.text,
+      streaming: false,
+    },
+  };
+}
+
+/**
+ * 시스템 이벤트(session, complete, error)를 system 노드로 변환합니다.
+ */
+function createSystemNode(
+  event: SoulSSEEvent,
+  index: number,
+): GraphNode {
+  let label: string;
+  let content: string;
+
+  switch (event.type) {
+    case "session":
+      label = "Session Started";
+      content = `Session ID: ${event.session_id}`;
+      break;
+    case "complete":
+      label = "Complete";
+      content = event.result
+        ? event.result.length > 100
+          ? event.result.slice(0, 97) + "..."
+          : event.result
+        : "Session completed";
+      break;
+    case "error":
+      label = "Error";
+      content = event.message;
+      break;
+    default:
+      label = event.type;
+      content = "";
+  }
+
+  return {
+    id: `node-system-${event.type}-${index}`,
+    type: "system",
+    position: { x: 0, y: 0 },
+    data: {
+      nodeType: "system",
+      label,
+      content,
+      isError: event.type === "error",
+      streaming: false,
+    },
+  };
+}
+
+// === Utility ===
+
+/**
+ * 도구 입력을 읽기 쉬운 문자열로 변환합니다.
+ */
+function formatToolInput(input?: Record<string, unknown>): string {
+  if (!input) return "(no input)";
+
+  const keys = Object.keys(input);
+  if (keys.length === 0) return "(no input)";
+
+  // 주요 필드만 간략히 표시
+  const parts: string[] = [];
+  for (const key of keys.slice(0, 3)) {
+    const val = input[key];
+    const str = typeof val === "string" ? val : JSON.stringify(val);
+    const truncated = str && str.length > 50 ? str.slice(0, 47) + "..." : str;
+    parts.push(`${key}: ${truncated}`);
+  }
+
+  if (keys.length > 3) {
+    parts.push(`+${keys.length - 3} more`);
+  }
+
+  return parts.join("\n");
+}
+
+/**
+ * 이벤트가 그래프에 system 노드로 표시할 만큼 중요한지 판단합니다.
+ * progress, debug, memory, context_usage 등 노이즈성 이벤트는 제외합니다.
+ */
+function isSignificantSystemEvent(event: SoulSSEEvent): boolean {
+  return event.type === "session" || event.type === "complete" || event.type === "error";
+}
+
+// === Main Build Function ===
+
+/**
+ * DashboardCard 배열과 SSE 이벤트를 React Flow 노드/엣지로 변환합니다.
+ *
+ * 변환 규칙:
+ * - text 카드 -> thinking 노드 (마지막 text 카드 + 세션 완료 시 response 노드)
+ * - tool 카드 -> tool_call 노드 + tool_result 노드 (결과 존재 시)
+ * - intervention_sent 이벤트 -> intervention 노드
+ * - session/complete/error 이벤트 -> system 노드
+ *
+ * 노드는 순서대로 수직 연결되며, tool_call -> tool_result는 수평 연결됩니다.
+ *
+ * @param cards - 현재 세션의 DashboardCard 배열
+ * @param events - 원본 SSE 이벤트 배열 (시스템/개입 노드 생성용)
+ * @returns dagre 레이아웃이 적용된 노드와 엣지
+ */
+export function buildGraph(
+  cards: DashboardCard[],
+  events: SoulSSEEvent[],
+  collapsedGroups?: Set<string>,
+): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+
+  // 세션 완료 여부: complete 또는 error 이벤트가 있는지 확인
+  const isSessionComplete = events.some(
+    (e) => e.type === "complete" || e.type === "error",
+  );
+
+  // 마지막 텍스트 카드 인덱스 (response 노드 판정용)
+  let lastTextCardIndex = -1;
+  for (let i = cards.length - 1; i >= 0; i--) {
+    if (cards[i].type === "text") {
+      lastTextCardIndex = i;
+      break;
+    }
+  }
+
+  // 서브 에이전트 그룹 감지 (collapsedGroups가 있으면 그룹 접힘 상태 반영)
+  const subAgentGroups = detectSubAgents(cards);
+  if (collapsedGroups) {
+    for (const group of subAgentGroups) {
+      group.collapsed = collapsedGroups.has(group.groupId);
+    }
+  }
+  const cardToGroup = new Map<string, SubAgentGroup>();
+  for (const group of subAgentGroups) {
+    for (const cardId of group.cardIds) {
+      cardToGroup.set(cardId, group);
+    }
+  }
+
+  // 그룹 노드 생성 (접힌 상태가 아닌 경우에만 내부 노드 표시)
+  const createdGroups = new Set<string>();
+
+  // intervention 이벤트 추적: 카드 사이에 삽입할 위치를 결정하기 위해
+  // 이벤트 순서에 기반하여 intervention 노드를 카드 노드 사이에 배치
+  const interventionEvents: Array<{
+    event: Extract<SoulSSEEvent, { type: "intervention_sent" }>;
+    index: number;
+  }> = [];
+  const systemEvents: Array<{ event: SoulSSEEvent; index: number }> = [];
+
+  events.forEach((event, idx) => {
+    if (event.type === "intervention_sent") {
+      interventionEvents.push({ event, index: idx });
+    } else if (isSignificantSystemEvent(event)) {
+      systemEvents.push({ event, index: idx });
+    }
+  });
+
+  // session 이벤트가 있으면 맨 앞에 system 노드 추가
+  const sessionEvent = systemEvents.find((s) => s.event.type === "session");
+  if (sessionEvent) {
+    nodes.push(createSystemNode(sessionEvent.event, sessionEvent.index));
+  }
+
+  // 메인 노드 시퀀스에 삽입된 intervention 인덱스를 추적
+  let interventionIdx = 0;
+
+  // 수직 연결 체인의 마지막 노드 ID (다음 노드의 소스)
+  let prevMainNodeId: string | null = sessionEvent
+    ? `node-system-session-${sessionEvent.index}`
+    : null;
+
+  // 카드를 순회하며 노드 생성
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    const group = cardToGroup.get(card.cardId);
+
+    // 그룹 노드가 필요하고 아직 생성되지 않았으면 추가
+    if (group && !createdGroups.has(group.groupId)) {
+      createdGroups.add(group.groupId);
+
+      const groupNode: GraphNode = {
+        id: group.groupId,
+        type: "group",
+        position: { x: 0, y: 0 },
+        data: {
+          nodeType: "tool_call",
+          label: `Sub-agent: ${group.label}`,
+          content: "",
+          streaming: !cards.find((c) => c.cardId === group.taskCardId)?.completed,
+          subAgentId: group.groupId,
+          collapsed: group.collapsed,
+        },
+        style: {
+          backgroundColor: "rgba(59, 130, 246, 0.05)",
+          borderColor: "rgba(59, 130, 246, 0.3)",
+          borderWidth: 1,
+          borderRadius: 8,
+          padding: 16,
+        },
+      };
+      nodes.push(groupNode);
+    }
+
+    // 접힌 그룹 내부의 노드는 건너뜀 (Task 카드 자체는 제외)
+    if (group?.collapsed && card.cardId !== group.taskCardId) {
+      continue;
+    }
+
+    // intervention 이벤트를 카드 사이에 삽입 (이벤트 순서 기준 근사 배치)
+    // 간단한 휴리스틱: 카드 인덱스 비례로 intervention 삽입
+    while (
+      interventionIdx < interventionEvents.length &&
+      interventionEvents[interventionIdx].index <= i * (events.length / Math.max(cards.length, 1))
+    ) {
+      const intv = interventionEvents[interventionIdx];
+      const intvNode = createInterventionNode(intv.event, intv.index);
+      nodes.push(intvNode);
+
+      if (prevMainNodeId) {
+        edges.push(createEdge(prevMainNodeId, intvNode.id));
+      }
+      prevMainNodeId = intvNode.id;
+      interventionIdx++;
+    }
+
+    if (card.type === "text") {
+      // 텍스트 카드 -> thinking 또는 response 노드
+      const isLast = i === lastTextCardIndex;
+      const textNode = createTextNode(card, isLast, isSessionComplete);
+
+      // 그룹 내부 노드의 경우 parentId 설정
+      if (group && !group.collapsed) {
+        textNode.parentId = group.groupId;
+        textNode.extent = "parent";
+      }
+
+      nodes.push(textNode);
+
+      // 이전 노드와 수직 연결
+      if (prevMainNodeId) {
+        edges.push(createEdge(prevMainNodeId, textNode.id, !card.completed));
+      }
+      prevMainNodeId = textNode.id;
+    } else if (card.type === "tool") {
+      // 도구 카드 -> tool_call 노드 + tool_result 노드
+      const callNode = createToolCallNode(card);
+
+      if (group && !group.collapsed) {
+        callNode.parentId = group.groupId;
+        callNode.extent = "parent";
+      }
+
+      nodes.push(callNode);
+
+      // 이전 노드와 수직 연결
+      if (prevMainNodeId) {
+        edges.push(
+          createEdge(prevMainNodeId, callNode.id, !card.completed && !card.toolResult),
+        );
+      }
+
+      // tool_result 노드 생성 (결과가 있으면)
+      const resultNode = createToolResultNode(card);
+      if (resultNode) {
+        if (group && !group.collapsed) {
+          resultNode.parentId = group.groupId;
+          resultNode.extent = "parent";
+        }
+
+        nodes.push(resultNode);
+
+        // tool_call -> tool_result: 수평 엣지 (right -> left 핸들)
+        edges.push(createEdge(callNode.id, resultNode.id, false, "right", "left"));
+
+        // 다음 노드 연결을 위해 result 노드를 체인에 넣음
+        prevMainNodeId = resultNode.id;
+      } else {
+        // 결과 아직 없음: call 노드가 체인의 끝
+        prevMainNodeId = callNode.id;
+      }
+    }
+  }
+
+  // 남은 intervention 이벤트 추가
+  while (interventionIdx < interventionEvents.length) {
+    const intv = interventionEvents[interventionIdx];
+    const intvNode = createInterventionNode(intv.event, intv.index);
+    nodes.push(intvNode);
+
+    if (prevMainNodeId) {
+      edges.push(createEdge(prevMainNodeId, intvNode.id));
+    }
+    prevMainNodeId = intvNode.id;
+    interventionIdx++;
+  }
+
+  // complete/error 시스템 노드를 맨 끝에 추가
+  const terminalEvents = systemEvents.filter(
+    (s) => s.event.type === "complete" || s.event.type === "error",
+  );
+  for (const sysEvt of terminalEvents) {
+    const sysNode = createSystemNode(sysEvt.event, sysEvt.index);
+    nodes.push(sysNode);
+
+    if (prevMainNodeId) {
+      edges.push(createEdge(prevMainNodeId, sysNode.id));
+    }
+    prevMainNodeId = sysNode.id;
+  }
+
+  // dagre 레이아웃 적용
+  return applyDagreLayout(nodes, edges);
+}
+
+// === Dagre Layout ===
+
+/**
+ * dagre 라이브러리를 사용하여 노드에 자동 레이아웃을 적용합니다.
+ *
+ * @param nodes - 위치가 미지정인 노드 배열
+ * @param edges - 엣지 배열
+ * @param direction - 레이아웃 방향 (TB: 위→아래, LR: 왼→오른)
+ * @returns 위치가 계산된 노드와 엣지
+ */
+export function applyDagreLayout(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  direction: "TB" | "LR" = "TB",
+): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  if (nodes.length === 0) {
+    return { nodes, edges };
+  }
+
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+
+  g.setGraph({
+    rankdir: direction,
+    ranksep: 60,
+    nodesep: 30,
+    marginx: 20,
+    marginy: 20,
+  });
+
+  // 노드 추가 (그룹이 아닌 노드만 dagre에 등록, 그룹 내부 노드는 부모 기준 상대 배치)
+  const topLevelNodes = nodes.filter((n) => !n.parentId);
+  const childNodes = nodes.filter((n) => n.parentId);
+
+  for (const node of topLevelNodes) {
+    const nodeType = node.data.nodeType;
+    const dims =
+      node.type === "group"
+        ? getNodeDimensions("group")
+        : getNodeDimensions(nodeType);
+    g.setNode(node.id, { width: dims.width, height: dims.height });
+  }
+
+  // 엣지 추가 (top-level 노드 간 엣지만)
+  const topLevelNodeIds = new Set(topLevelNodes.map((n) => n.id));
+  for (const edge of edges) {
+    if (topLevelNodeIds.has(edge.source) && topLevelNodeIds.has(edge.target)) {
+      g.setEdge(edge.source, edge.target);
+    }
+  }
+
+  dagre.layout(g);
+
+  // dagre 결과를 노드 위치에 반영
+  const positionedNodes = nodes.map((node) => {
+    if (node.parentId) {
+      // 그룹 내부 노드: 부모 기준 상대 위치 (간단한 세로 정렬)
+      const siblings = childNodes.filter((n) => n.parentId === node.parentId);
+      const siblingIndex = siblings.findIndex((n) => n.id === node.id);
+      const dims = getNodeDimensions(node.data.nodeType);
+      return {
+        ...node,
+        position: {
+          x: 20,
+          y: 40 + siblingIndex * (dims.height + 16),
+        },
+      };
+    }
+
+    const dagreNode = g.node(node.id);
+    if (!dagreNode) return node;
+
+    const dims =
+      node.type === "group"
+        ? getNodeDimensions("group")
+        : getNodeDimensions(node.data.nodeType);
+
+    return {
+      ...node,
+      position: {
+        x: dagreNode.x - dims.width / 2,
+        y: dagreNode.y - dims.height / 2,
+      },
+    };
+  });
+
+  return { nodes: positionedNodes, edges };
+}

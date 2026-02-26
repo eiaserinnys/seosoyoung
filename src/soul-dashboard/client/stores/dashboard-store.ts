@@ -31,6 +31,16 @@ export interface DashboardState {
   /** 활성 세션의 카드 목록 (SSE 이벤트로 구성) */
   cards: DashboardCard[];
 
+  /**
+   * 그래프 레이아웃에 영향을 주는 SSE 이벤트만 저장.
+   * session, complete, error, intervention_sent 이벤트만 포함합니다.
+   * text_delta 등 노이즈성 이벤트는 저장하지 않아 메모리 사용을 제한합니다.
+   */
+  graphEvents: SoulSSEEvent[];
+
+  /** 접힌 서브 에이전트 그룹 ID 집합 */
+  collapsedGroups: Set<string>;
+
   /** 마지막으로 수신한 이벤트 ID (SSE 재연결용) */
   lastEventId: number;
 }
@@ -52,6 +62,9 @@ export interface DashboardActions {
   // SSE 이벤트 처리
   processEvent: (event: SoulSSEEvent, eventId: number) => void;
 
+  // 서브 에이전트 그룹 접기/펼치기
+  toggleGroupCollapse: (groupId: string) => void;
+
   // 상태 초기화
   clearCards: () => void;
   reset: () => void;
@@ -67,6 +80,8 @@ const initialState: DashboardState = {
   activeSession: null,
   selectedCardId: null,
   cards: [],
+  graphEvents: [],
+  collapsedGroups: new Set<string>(),
   lastEventId: 0,
 };
 
@@ -93,6 +108,8 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
         activeSession: detail ?? null,
         selectedCardId: null,
         cards: [],
+        graphEvents: [],
+        collapsedGroups: new Set<string>(),
         lastEventId: 0,
       }),
 
@@ -106,6 +123,15 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
     processEvent: (event, eventId) => {
       const state = get();
       const cards = [...state.cards];
+      // 그래프 레이아웃에 영향을 주는 이벤트만 저장 (메모리 절약)
+      const isGraphRelevant =
+        event.type === "session" ||
+        event.type === "complete" ||
+        event.type === "error" ||
+        event.type === "intervention_sent";
+      const graphEvents = isGraphRelevant
+        ? [...state.graphEvents, event]
+        : state.graphEvents;
       let updated = false;
 
       switch (event.type) {
@@ -195,16 +221,36 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
           break;
       }
 
-      if (updated) {
-        set({ cards, lastEventId: eventId });
+      if (updated || isGraphRelevant) {
+        set({ cards, graphEvents, lastEventId: eventId });
       } else {
         set({ lastEventId: eventId });
       }
     },
 
+    // --- 서브 에이전트 그룹 ---
+
+    toggleGroupCollapse: (groupId) => {
+      const current = get().collapsedGroups;
+      const next = new Set(current);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      set({ collapsedGroups: next });
+    },
+
     // --- 초기화 ---
 
-    clearCards: () => set({ cards: [], lastEventId: 0, selectedCardId: null }),
+    clearCards: () =>
+      set({
+        cards: [],
+        graphEvents: [],
+        collapsedGroups: new Set<string>(),
+        lastEventId: 0,
+        selectedCardId: null,
+      }),
 
     reset: () => set(initialState),
   }),
