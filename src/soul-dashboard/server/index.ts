@@ -7,6 +7,8 @@
  * Soul: http://localhost:3105
  */
 
+import path from "path";
+import { fileURLToPath } from "url";
 import express from "express";
 import cors from "cors";
 import { SoulClient } from "./soul-client.js";
@@ -15,6 +17,9 @@ import { EventHub } from "./event-hub.js";
 import { createSessionsRouter } from "./routes/sessions.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createActionsRouter } from "./routes/actions.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // === Configuration ===
 
@@ -104,6 +109,19 @@ app.use(
     authToken: AUTH_TOKEN,
   }),
 );
+
+// === Static File Serving ===
+
+// dist/client/ 는 vite build 결과물이 위치하는 디렉토리.
+// server/ 기준으로 ../../dist/client/ (soul-dashboard/dist/client/)
+const clientDistDir = path.resolve(__dirname, "../../dist/client");
+
+app.use(express.static(clientDistDir));
+
+// SPA fallback: API가 아닌 모든 GET 요청에 index.html 반환
+app.get("/{*splat}", (_req, res) => {
+  res.sendFile(path.join(clientDistDir, "index.html"));
+});
 
 // === Keepalive Timer ===
 
