@@ -1,6 +1,7 @@
 """대시보드 API 테스트"""
 
 import sys
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,7 +15,7 @@ from supervisor.models import (
     RestartPolicy,
 )
 from supervisor.process_manager import ProcessManager
-from supervisor.dashboard import create_app
+from supervisor.dashboard import create_app, _RestartState
 
 
 @pytest.fixture
@@ -60,12 +61,26 @@ def mock_git_poller():
 
 
 @pytest.fixture
-def client(pm, mock_deployer, mock_git_poller, tmp_path):
+def mock_session_monitor():
+    monitor = MagicMock()
+    monitor.active_session_count.return_value = 0
+    return monitor
+
+
+@pytest.fixture
+def restart_state():
+    return _RestartState()
+
+
+@pytest.fixture
+def client(pm, mock_deployer, mock_git_poller, mock_session_monitor, restart_state, tmp_path):
     app = create_app(
         process_manager=pm,
         deployer=mock_deployer,
         git_poller=mock_git_poller,
+        session_monitor=mock_session_monitor,
         log_dir=tmp_path,
+        restart_state=restart_state,
     )
     return TestClient(app)
 
@@ -97,6 +112,18 @@ class TestGetStatus:
         data = resp.json()
         assert "git" in data
         assert "local_head" in data["git"]
+
+    def test_supervisor_fields(self, client):
+        resp = client.get("/api/status")
+        data = resp.json()
+        assert "supervisor" in data
+        sv = data["supervisor"]
+        assert "cooldown_remaining" in sv
+        assert "active_sessions_count" in sv
+        assert sv["active_sessions_count"] == 0
+        assert sv["cooldown_remaining"] == 0.0
+        # last_restart_time은 노출하지 않음 (monotonic 값은 클라이언트에 무의미)
+        assert "last_restart_time" not in sv
 
 
 class TestProcessControl:
@@ -138,6 +165,126 @@ class TestDeploy:
         resp = client.post("/api/deploy")
         data = resp.json()
         assert "state" in data
+
+
+class TestSupervisorRestart:
+    """POST /api/supervisor/restart 엔드포인트 테스트"""
+
+    def test_restart_ok(self, client, restart_state):
+        """세션 없고 쿨다운 없으면 재기동 수락"""
+        resp = client.post(
+            "/api/supervisor/restart",
+            json={"force": False},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert restart_state.restart_requested.is_set()
+
+    def test_restart_no_body(self, client, restart_state):
+        """바디 없이 호출해도 기본값으로 동작"""
+        resp = client.post("/api/supervisor/restart")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+
+    def test_restart_cooldown(self, client, restart_state):
+        """쿨다운 중이면 429 응답"""
+        # 먼저 한 번 재기동
+        restart_state.try_mark_restart()
+        # 이벤트를 클리어하여 중복 테스트 가능하게
+        restart_state.restart_requested.clear()
+
+        resp = client.post(
+            "/api/supervisor/restart",
+            json={"force": False},
+        )
+        assert resp.status_code == 429
+        data = resp.json()
+        assert "cooldown_remaining" in data["detail"]
+        assert data["detail"]["cooldown_remaining"] > 0
+
+    def test_double_restart_second_blocked(self, client, restart_state):
+        """첫 번째 재기동 수락 후 즉시 두 번째 요청은 429"""
+        resp1 = client.post("/api/supervisor/restart", json={"force": False})
+        assert resp1.status_code == 200
+        assert resp1.json()["ok"] is True
+
+        resp2 = client.post("/api/supervisor/restart", json={"force": False})
+        assert resp2.status_code == 429
+
+    def test_restart_active_sessions_warning(
+        self, client, mock_session_monitor, restart_state,
+    ):
+        """활성 세션이 있고 force가 아니면 경고 응답"""
+        mock_session_monitor.active_session_count.return_value = 2
+
+        resp = client.post(
+            "/api/supervisor/restart",
+            json={"force": False},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+        assert data["warning"] is True
+        assert data["active_sessions_count"] == 2
+        # 재기동 시그널은 보내지 않음
+        assert not restart_state.restart_requested.is_set()
+
+    def test_restart_force_with_sessions(
+        self, client, mock_session_monitor, restart_state,
+    ):
+        """force=true이면 세션이 있어도 재기동"""
+        mock_session_monitor.active_session_count.return_value = 3
+
+        resp = client.post(
+            "/api/supervisor/restart",
+            json={"force": True},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert restart_state.restart_requested.is_set()
+
+
+class TestRestartState:
+    """_RestartState 내부 클래스 테스트"""
+
+    def test_initial_no_cooldown(self):
+        state = _RestartState()
+        assert state.cooldown_remaining() == 0.0
+        assert not state.is_in_cooldown()
+
+    def test_try_mark_restart_sets_event(self):
+        state = _RestartState()
+        assert not state.restart_requested.is_set()
+        remaining = state.try_mark_restart()
+        assert remaining == 0.0
+        assert state.restart_requested.is_set()
+
+    def test_cooldown_after_mark(self):
+        state = _RestartState()
+        state.try_mark_restart()
+        assert state.is_in_cooldown()
+        assert state.cooldown_remaining() > 0
+
+    def test_try_mark_restart_blocked_during_cooldown(self):
+        """쿨다운 중 try_mark_restart는 남은 시간을 반환하고 이벤트를 설정하지 않음"""
+        state = _RestartState()
+        # 첫 번째: 수락
+        assert state.try_mark_restart() == 0.0
+        state.restart_requested.clear()
+        # 두 번째: 쿨다운으로 거부
+        remaining = state.try_mark_restart()
+        assert remaining > 0
+        assert not state.restart_requested.is_set()
+
+    def test_cooldown_expires(self):
+        state = _RestartState()
+        # 수동으로 과거 시간 설정하여 쿨다운 만료 시뮬레이션
+        state._last_restart_time = time.monotonic() - 120
+        assert not state.is_in_cooldown()
+        assert state.cooldown_remaining() == 0.0
 
 
 class TestLogs:

@@ -15,6 +15,10 @@
   h2 { font-size: 0.9rem; font-weight: 600; color: #8b949e; text-transform: uppercase;
        letter-spacing: 0.05em; margin-bottom: 0.75rem; }
 
+  /* 헤더 영역 */
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .header h1 { margin-bottom: 0; }
+
   /* 프로세스 카드 */
   .cards { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
   .card {
@@ -46,6 +50,10 @@
   button.btn-danger:hover { background: #da3633; color: #fff; }
   button.btn-primary { border-color: #1f6feb; color: #58a6ff; }
   button.btn-primary:hover { background: #1f6feb; color: #fff; }
+  button.btn-warning { border-color: #d29922; color: #e3b341; }
+  button.btn-warning:hover { background: #d29922; color: #fff; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button:disabled:hover { background: #21262d; color: #c9d1d9; }
 
   /* 정보 박스 */
   .info-box {
@@ -80,11 +88,59 @@
   }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: #1a7f37; display: inline-block; }
   .dot-error { background: #da3633; }
+
+  /* 모달 오버레이 */
+  .modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 1.5rem; max-width: 420px; width: 90%;
+  }
+  .modal-title { font-size: 1rem; font-weight: 600; color: #e6edf3; margin-bottom: 0.75rem; }
+  .modal-body { font-size: 0.85rem; color: #c9d1d9; margin-bottom: 1rem; }
+  .modal-warning { color: #f85149; font-weight: 600; margin-bottom: 0.5rem; }
+  .modal-checkbox { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; font-size: 0.85rem; }
+  .modal-checkbox input { accent-color: #da3633; }
+  .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+
+  /* 재기동 오버레이 */
+  .restart-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(15,17,23,0.92); z-index: 200;
+    align-items: center; justify-content: center; flex-direction: column;
+  }
+  .restart-overlay.active { display: flex; }
+  .restart-spinner {
+    width: 40px; height: 40px; border: 3px solid #30363d;
+    border-top-color: #58a6ff; border-radius: 50%;
+    animation: spin 1s linear infinite; margin-bottom: 1rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .restart-text { font-size: 1rem; color: #e6edf3; }
+  .restart-sub { font-size: 0.8rem; color: #8b949e; margin-top: 0.5rem; }
+
+  /* 토스트 */
+  .toast {
+    position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+    background: #1a7f37; color: #fff; padding: 0.75rem 1.5rem;
+    border-radius: 8px; font-size: 0.85rem; z-index: 300;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
 
-<h1>supervisor dashboard</h1>
+<!-- 헤더 -->
+<div class="header">
+  <h1>supervisor dashboard</h1>
+  <button class="btn-warning" id="btn-sv-restart" onclick="showRestartDialog()">
+    Restart Supervisor
+  </button>
+</div>
 
 <!-- 프로세스 카드 -->
 <h2>Processes</h2>
@@ -111,6 +167,10 @@
     <span class="info-label">Deploy State</span>
     <span class="info-value" id="deploy-state">-</span>
   </div>
+  <div class="info-row">
+    <span class="info-label">Active Sessions</span>
+    <span class="info-value" id="active-sessions">-</span>
+  </div>
   <div style="margin-top:0.75rem;">
     <button class="btn-primary" onclick="triggerDeploy()">Deploy Now</button>
   </div>
@@ -136,9 +196,45 @@
   <span id="poll-time">-</span>
 </div>
 
+<!-- 재기동 확인 다이얼로그 -->
+<div class="modal-overlay" id="restart-modal">
+  <div class="modal">
+    <div class="modal-title">Supervisor Restart</div>
+    <div class="modal-body">
+      <p>supervisor를 재기동하시겠습니까?</p>
+      <p style="color:#8b949e; margin-top:0.5rem;">모든 관리 프로세스가 종료되었다가 다시 시작됩니다.</p>
+      <div class="modal-warning" id="restart-session-warn" style="display:none; margin-top:0.75rem;">
+        <span id="restart-session-count"></span>개의 활성 Claude Code 세션이 있습니다.
+      </div>
+      <div class="modal-checkbox" id="restart-force-box" style="display:none;">
+        <input type="checkbox" id="restart-force-check">
+        <label for="restart-force-check">세션이 있어도 강제 재기동</label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button onclick="hideRestartDialog()">취소</button>
+      <button class="btn-danger" id="btn-confirm-restart" onclick="confirmRestart()">재기동</button>
+    </div>
+  </div>
+</div>
+
+<!-- 재기동 중 오버레이 -->
+<div class="restart-overlay" id="restart-overlay">
+  <div class="restart-spinner"></div>
+  <div class="restart-text">Restarting supervisor...</div>
+  <div class="restart-sub" id="restart-sub">연결 복구를 기다리는 중</div>
+</div>
+
+<!-- 토스트 -->
+<div class="toast" id="toast"></div>
+
 <script>
 const POLL_INTERVAL = 3000;
+const RECONNECT_INTERVAL = 3000;
 let knownProcesses = [];
+let supervisorInfo = null;
+let isRestarting = false;
+let reconnectTimer = null;
 
 function badgeClass(status) {
   const map = { running: 'badge-running', stopped: 'badge-stopped', dead: 'badge-dead', restarting: 'badge-restarting' };
@@ -156,6 +252,13 @@ function esc(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}
+
+function showToast(message, duration = 3000) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), duration);
 }
 
 function renderProcessCards(processes) {
@@ -208,6 +311,27 @@ function renderStatus(data) {
   const state = data.deploy.state;
   ds.textContent = state;
   ds.className = 'info-value ' + deployClass(state);
+
+  // supervisor 정보
+  if (data.supervisor) {
+    supervisorInfo = data.supervisor;
+    document.getElementById('active-sessions').textContent = data.supervisor.active_sessions_count;
+    updateRestartButton();
+  }
+}
+
+function updateRestartButton() {
+  const btn = document.getElementById('btn-sv-restart');
+  if (!supervisorInfo) return;
+
+  const cd = supervisorInfo.cooldown_remaining;
+  if (cd > 0) {
+    btn.disabled = true;
+    btn.textContent = `Restart Supervisor (${Math.ceil(cd)}s)`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Restart Supervisor';
+  }
 }
 
 async function pollStatus() {
@@ -220,10 +344,114 @@ async function pollStatus() {
     renderStatus(data);
     dot.className = 'dot';
     document.getElementById('poll-time').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+    // 재기동 중이었는데 API가 복구되면 완료 처리
+    if (isRestarting) {
+      isRestarting = false;
+      document.getElementById('restart-overlay').classList.remove('active');
+      if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
+      showToast('Supervisor restart complete');
+    }
   } catch (e) {
     dot.className = 'dot dot-error';
     document.getElementById('poll-time').textContent = 'Error: ' + e.message;
   }
+}
+
+function showRestartDialog() {
+  const modal = document.getElementById('restart-modal');
+  const warn = document.getElementById('restart-session-warn');
+  const forceBox = document.getElementById('restart-force-box');
+  const forceCheck = document.getElementById('restart-force-check');
+
+  forceCheck.checked = false;
+
+  if (supervisorInfo && supervisorInfo.active_sessions_count > 0) {
+    document.getElementById('restart-session-count').textContent = supervisorInfo.active_sessions_count;
+    warn.style.display = 'block';
+    forceBox.style.display = 'flex';
+  } else {
+    warn.style.display = 'none';
+    forceBox.style.display = 'none';
+  }
+
+  modal.classList.add('active');
+}
+
+function hideRestartDialog() {
+  document.getElementById('restart-modal').classList.remove('active');
+}
+
+async function confirmRestart() {
+  const btn = document.getElementById('btn-confirm-restart');
+  btn.disabled = true;  // 더블클릭 방지
+
+  const forceCheck = document.getElementById('restart-force-check');
+  const force = forceCheck.checked;
+
+  hideRestartDialog();
+
+  try {
+    const resp = await fetch('/api/supervisor/restart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force }),
+    });
+
+    if (resp.status === 429) {
+      const data = await resp.json();
+      showToast(`Cooldown: ${Math.ceil(data.detail.cooldown_remaining)}s remaining`);
+      return;
+    }
+
+    const data = await resp.json();
+
+    if (data.warning) {
+      // 최신 세션 카운트로 갱신 후 다이얼로그 다시 표시
+      if (supervisorInfo) {
+        supervisorInfo.active_sessions_count = data.active_sessions_count;
+      }
+      showRestartDialog();
+      return;
+    }
+
+    if (data.ok) {
+      // 재기동 시작 → 오버레이 표시
+      isRestarting = true;
+      document.getElementById('restart-overlay').classList.add('active');
+      startReconnect();
+    }
+  } catch (e) {
+    showToast('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function startReconnect() {
+  const MAX_RECONNECT_ATTEMPTS = 60;  // 3분 (3초 × 60)
+  let attempts = 0;
+  reconnectTimer = setInterval(async () => {
+    attempts++;
+    if (attempts > MAX_RECONNECT_ATTEMPTS) {
+      clearInterval(reconnectTimer);
+      reconnectTimer = null;
+      document.getElementById('restart-sub').textContent =
+        '재연결 실패. 페이지를 새로고침해 주세요.';
+      return;
+    }
+    document.getElementById('restart-sub').textContent =
+      `재연결 시도 중... (${attempts}/${MAX_RECONNECT_ATTEMPTS})`;
+    try {
+      const resp = await fetch('/api/status');
+      if (resp.ok) {
+        // 복구됨 → pollStatus에서 처리
+        pollStatus();
+      }
+    } catch (e) {
+      // 아직 연결 안됨 — 계속 시도
+    }
+  }, RECONNECT_INTERVAL);
 }
 
 async function processAction(name, action) {

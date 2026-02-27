@@ -12,7 +12,7 @@ from pathlib import Path
 
 from . import job_object
 from .config import build_process_configs, _resolve_paths
-from .dashboard import create_app
+from .dashboard import create_app, _RestartState
 from .deployer import Deployer, SupervisorRestartRequired
 from .git_poller import GitPoller
 from .models import ExitAction, RESTART_DELAY_SECONDS, ProcessStatus
@@ -40,7 +40,9 @@ def _start_dashboard(
     pm: ProcessManager,
     deployer: Deployer,
     git_poller: GitPoller,
+    session_monitor: SessionMonitor,
     log_dir: Path,
+    restart_state: _RestartState,
 ) -> None:
     """대시보드 서버를 데몬 스레드로 실행."""
     import uvicorn
@@ -49,7 +51,9 @@ def _start_dashboard(
         process_manager=pm,
         deployer=deployer,
         git_poller=git_poller,
+        session_monitor=session_monitor,
         log_dir=log_dir,
+        restart_state=restart_state,
     )
     config = uvicorn.Config(
         app,
@@ -133,8 +137,14 @@ def main() -> None:
     # 재시작 마커 확인: 이전 supervisor가 exit 42로 재시작한 경우 완료 알림 전송
     deployer.check_and_notify_restart_complete()
 
+    # 재기동 상태 (대시보드 ↔ 메인 루프 통신)
+    restart_state = _RestartState()
+
     # 대시보드 (FastAPI + uvicorn, 백그라운드 스레드)
-    _start_dashboard(pm, deployer, git_poller, paths["logs"])
+    _start_dashboard(
+        pm, deployer, git_poller, session_monitor,
+        paths["logs"], restart_state,
+    )
 
     # graceful shutdown 핸들러
     shutting_down = False
@@ -164,6 +174,15 @@ def main() -> None:
     try:
         while not shutting_down:
             time.sleep(HEALTH_CHECK_INTERVAL)
+
+            # 대시보드에서 재기동 요청이 왔는지 확인
+            if restart_state.restart_requested.is_set():
+                logger.info("대시보드에서 supervisor 재기동 요청 수신")
+                deployer.notify_and_mark_restart()
+                exiting_intentionally = True
+                pm.stop_all()
+                job_object.close_job_object()
+                sys.exit(EXIT_CODE_SUPERVISOR_PLAIN_RESTART)
 
             # 프로세스 헬스체크
             for name in pm.registered_names:
