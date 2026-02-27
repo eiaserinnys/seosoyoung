@@ -1088,6 +1088,38 @@ export function applyDagreLayout(
 
   dagre.layout(g);
 
+  // === 메인 플로우 노드 Y 좌표 순차 재계산 ===
+  // dagre는 tool 체인 확장 높이를 center 기반으로 배치하므로,
+  // response/complete 등 후속 노드가 이전 노드 위에 겹칠 수 있음.
+  // dagre에서 X와 순서만 사용하고, Y는 직접 순차 계산함.
+  const MAIN_FLOW_V_GAP = 60; // ranksep과 동일
+
+  // dagre Y 기준으로 메인 플로우 노드 순서 결정
+  const mainFlowOrder: { id: string; dagreX: number; dagreY: number }[] = [];
+  for (const nodeId of dagreNodeIds) {
+    const dn = g.node(nodeId);
+    if (dn) {
+      mainFlowOrder.push({ id: nodeId, dagreX: dn.x, dagreY: dn.y });
+    }
+  }
+  mainFlowOrder.sort((a, b) => a.dagreY - b.dagreY);
+
+  // 순차적으로 top-left Y 계산: 이전 노드 Y + effectiveHeight + gap
+  const sequentialTopY = new Map<string, number>();
+  if (mainFlowOrder.length > 0) {
+    const first = mainFlowOrder[0];
+    const firstEffH = dagreHeights.get(first.id) ?? 84;
+    let currentTopY = first.dagreY - firstEffH / 2; // 첫 노드는 dagre 위치 유지
+    sequentialTopY.set(first.id, currentTopY);
+
+    for (let i = 1; i < mainFlowOrder.length; i++) {
+      const prevId = mainFlowOrder[i - 1].id;
+      const prevEffH = dagreHeights.get(prevId) ?? 84;
+      currentTopY = sequentialTopY.get(prevId)! + prevEffH + MAIN_FLOW_V_GAP;
+      sequentialTopY.set(mainFlowOrder[i].id, currentTopY);
+    }
+  }
+
   // dagre 결과를 노드 위치에 반영
   const nodePositions = new Map<string, { x: number; y: number }>();
 
@@ -1110,20 +1142,18 @@ export function applyDagreLayout(
     const dagreNode = g.node(node.id);
     if (!dagreNode) return node;
 
-    const dims =
-      node.type === "group"
-        ? getNodeDimensions("group")
-        : getNodeDimensions(node.data.nodeType);
-
     // dagre 확장 크기 사용: tool 체인이 있는 노드는 dagre 영역 좌상단에 배치
-    // 의도: effectiveWidth로 좌측 정렬하여 부모 노드가 dagre 영역의 왼쪽에,
-    // tool 체인이 오른쪽으로 확장되도록 함. dagre가 전체 공간을 할당하므로 겹침 없음.
-    const effectiveWidth = dagreWidths.get(node.id) ?? dims.width;
-    const effectiveHeight = dagreHeights.get(node.id) ?? dims.height;
+    // X: dagre에서 가져옴 (effectiveWidth로 좌측 정렬)
+    // Y: 순차 계산 결과 사용 (메인 플로우 노드가 항상 이전 노드 아래에 배치)
+    const effectiveWidth = dagreWidths.get(node.id) ?? (
+      node.type === "group"
+        ? getNodeDimensions("group").width
+        : getNodeDimensions(node.data.nodeType).width
+    );
 
     const pos = {
       x: dagreNode.x - effectiveWidth / 2,
-      y: dagreNode.y - effectiveHeight / 2,
+      y: sequentialTopY.get(node.id) ?? (dagreNode.y - (dagreHeights.get(node.id) ?? 84) / 2),
     };
     nodePositions.set(node.id, pos);
     return { ...node, position: pos };
