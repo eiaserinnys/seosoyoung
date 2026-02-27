@@ -946,32 +946,42 @@ export function buildGraph(
 
 // === Dagre Layout ===
 
-/** tool 노드의 수평/수직 간격 */
-const H_GAP = 40;
+/** tool 체인이 부모 노드 우측에 배치될 때의 수평 간격 */
+const TOOL_BRANCH_H_GAP = 40;
 const V_GAP = 16;
 
 /**
- * thinking 노드에 연결된 tool 체인의 총 높이를 계산합니다.
- * dagre에 thinking 노드의 높이를 반영할 때 사용합니다.
+ * 부모 노드에 연결된 tool 체인이 차지하는 공간(가로+세로)을 계산합니다.
+ * dagre에 부모 노드의 크기를 반영할 때 사용합니다.
+ *
+ * width: TOOL_BRANCH_H_GAP + tool_call_width (+ TOOL_BRANCH_H_GAP + tool_result_width)
+ * height: 각 tool entry를 세로로 쌓은 합
  */
-function calcToolChainHeight(chain: ToolChainEntry[]): number {
-  if (chain.length === 0) return 0;
+export function calcToolChainBounds(chain: ToolChainEntry[]): { width: number; height: number } {
+  if (chain.length === 0) return { width: 0, height: 0 };
 
+  let maxWidth = 0;
   let totalHeight = 0;
+
   for (let i = 0; i < chain.length; i++) {
     // tool_group 노드인지 확인 (ID에 '-group' 접미사)
     const isGroupNode = chain[i].callId.endsWith("-group");
     const callDims = isGroupNode
       ? getNodeDimensions("tool_group")
       : getNodeDimensions("tool_call");
-    totalHeight += callDims.height;
+
+    // 가로: gap + call (+ gap + result)
+    let rowWidth = TOOL_BRANCH_H_GAP + callDims.width;
+    let rowHeight = callDims.height;
 
     if (chain[i].resultId) {
-      // tool_result는 tool_call 오른쪽에 배치되므로 높이에는 영향 없음
-      // 단, tool_result 높이가 tool_call보다 클 경우 그 차이를 반영
       const resultDims = getNodeDimensions("tool_result");
-      totalHeight = totalHeight - callDims.height + Math.max(callDims.height, resultDims.height);
+      rowWidth += TOOL_BRANCH_H_GAP + resultDims.width;
+      rowHeight = Math.max(callDims.height, resultDims.height);
     }
+
+    maxWidth = Math.max(maxWidth, rowWidth);
+    totalHeight += rowHeight;
 
     // 다음 tool과의 간격 (마지막 제외)
     if (i < chain.length - 1) {
@@ -979,7 +989,7 @@ function calcToolChainHeight(chain: ToolChainEntry[]): number {
     }
   }
 
-  return totalHeight;
+  return { width: maxWidth, height: totalHeight };
 }
 
 /**
@@ -987,7 +997,7 @@ function calcToolChainHeight(chain: ToolChainEntry[]): number {
  *
  * 2단계 레이아웃:
  * 1. 메인 플로우 노드(user, thinking, response, system, intervention)만 dagre에 등록
- *    - thinking 노드의 dagre 높이에 연결된 tool 체인의 높이를 반영
+ *    - tool 체인이 있는 노드는 dagre width/height 모두 확장하여 수평 공간 확보
  * 2. dagre 레이아웃 실행 후, tool 노드를 부모 노드 기준으로 수동 배치
  *
  * @param nodes - 위치가 미지정인 노드 배열
@@ -1034,8 +1044,9 @@ export function applyDagreLayout(
   const topLevelNodes = nodes.filter((n) => !n.parentId);
   const childNodes = nodes.filter((n) => n.parentId);
 
-  // dagre에 전달한 확장 높이를 기억 (position 계산에 사용)
+  // dagre에 전달한 확장 크기를 기억 (position 계산에 사용)
   const dagreHeights = new Map<string, number>();
+  const dagreWidths = new Map<string, number>();
 
   // 메인 플로우 노드만 dagre에 등록 (tool 노드 제외)
   for (const node of topLevelNodes) {
@@ -1047,15 +1058,18 @@ export function applyDagreLayout(
         ? getNodeDimensions("group")
         : getNodeDimensions(nodeType);
 
-    // thinking 노드의 높이에 tool 체인 높이를 반영
+    // tool 체인이 있는 노드: width와 height 모두 확장
+    let width = dims.width;
     let height = dims.height;
     if (toolBranches?.has(node.id)) {
-      const chainHeight = calcToolChainHeight(toolBranches.get(node.id)!);
-      height = Math.max(height, chainHeight);
+      const chainBounds = calcToolChainBounds(toolBranches.get(node.id)!);
+      width = dims.width + chainBounds.width;
+      height = Math.max(height, chainBounds.height);
     }
 
+    dagreWidths.set(node.id, width);
     dagreHeights.set(node.id, height);
-    g.setNode(node.id, { width: dims.width, height });
+    g.setNode(node.id, { width, height });
   }
 
   // 메인 플로우 간 엣지만 dagre에 등록 (tool 노드 관련 엣지 제외)
@@ -1101,11 +1115,14 @@ export function applyDagreLayout(
         ? getNodeDimensions("group")
         : getNodeDimensions(node.data.nodeType);
 
-    // dagre 확장 높이 사용: tool 체인이 있는 노드는 dagre 영역 상단에 배치
+    // dagre 확장 크기 사용: tool 체인이 있는 노드는 dagre 영역 좌상단에 배치
+    // 의도: effectiveWidth로 좌측 정렬하여 부모 노드가 dagre 영역의 왼쪽에,
+    // tool 체인이 오른쪽으로 확장되도록 함. dagre가 전체 공간을 할당하므로 겹침 없음.
+    const effectiveWidth = dagreWidths.get(node.id) ?? dims.width;
     const effectiveHeight = dagreHeights.get(node.id) ?? dims.height;
 
     const pos = {
-      x: dagreNode.x - dims.width / 2,
+      x: dagreNode.x - effectiveWidth / 2,
       y: dagreNode.y - effectiveHeight / 2,
     };
     nodePositions.set(node.id, pos);
@@ -1118,7 +1135,13 @@ export function applyDagreLayout(
       const parentPos = nodePositions.get(parentId);
       if (!parentPos) continue;
 
-      const parentDims = getNodeDimensions("thinking"); // parent는 thinking 계열
+      // 부모 노드의 실제 타입으로 크기 조회 (하드코딩 제거)
+      const parentNode = nodes.find((n) => n.id === parentId);
+      const parentDims = parentNode
+        ? (parentNode.type === "group"
+            ? getNodeDimensions("group")
+            : getNodeDimensions(parentNode.data.nodeType))
+        : getNodeDimensions("thinking"); // 폴백
       let currentY = parentPos.y; // tool[0]의 y는 parent의 y와 같음
 
       for (let i = 0; i < chain.length; i++) {
@@ -1130,7 +1153,7 @@ export function applyDagreLayout(
           : getNodeDimensions("tool_call");
 
         // tool_call/tool_group: parent의 오른쪽에 배치
-        const callX = parentPos.x + parentDims.width + H_GAP;
+        const callX = parentPos.x + parentDims.width + TOOL_BRANCH_H_GAP;
         const callPos = { x: callX, y: currentY };
 
         // positionedNodes에서 해당 노드를 찾아 위치 업데이트
@@ -1143,7 +1166,7 @@ export function applyDagreLayout(
         // tool_result: tool_call의 오른쪽에 배치
         if (entry.resultId) {
           const resultDims = getNodeDimensions("tool_result");
-          const resultX = callX + callDims.width + H_GAP;
+          const resultX = callX + callDims.width + TOOL_BRANCH_H_GAP;
           const resultPos = { x: resultX, y: currentY };
 
           const resultIdx = positionedNodes.findIndex((n) => n.id === entry.resultId);
