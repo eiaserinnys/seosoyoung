@@ -947,7 +947,7 @@ export function buildGraph(
 // === Dagre Layout ===
 
 /** tool 체인이 부모 노드 우측에 배치될 때의 수평 간격 */
-const TOOL_BRANCH_H_GAP = 40;
+const TOOL_BRANCH_H_GAP = 120;
 const V_GAP = 16;
 
 /**

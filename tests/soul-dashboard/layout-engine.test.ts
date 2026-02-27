@@ -870,7 +870,7 @@ describe("applyDagreLayout", () => {
 // === calcToolChainBounds 테스트 ===
 
 describe("calcToolChainBounds", () => {
-  const TOOL_BRANCH_H_GAP = 40; // layout-engine.ts 상수와 동일
+  const TOOL_BRANCH_H_GAP = 120; // layout-engine.ts 상수와 동일
   const callWidth = getNodeDimensions("tool_call").width;   // 260
   const callHeight = getNodeDimensions("tool_call").height; // 84
   const resultWidth = getNodeDimensions("tool_result").width;
