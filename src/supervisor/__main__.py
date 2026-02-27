@@ -124,6 +124,16 @@ def main() -> None:
         branch="main",
     )
 
+    # GitPoller: soulstream 리포 변경 감지
+    soulstream_poller: GitPoller | None = None
+    if paths["soulstream"].is_dir():
+        soulstream_poller = GitPoller(
+            repo_path=paths["soulstream"],
+            remote="origin",
+            branch="main",
+        )
+        logger.info("soulstream git poller 활성화: %s", paths["soulstream"])
+
     # SessionMonitor: 봇 자식 프로세스 중 Claude Code 세션 감지
     session_monitor = SessionMonitor(process_manager=pm)
 
@@ -243,6 +253,8 @@ def main() -> None:
                 last_git_check = now
                 if git_poller.check():
                     deployer.notify_change()
+                if soulstream_poller is not None and soulstream_poller.check():
+                    deployer.notify_change(source="soulstream")
 
             # Deployer tick (세션 대기 → 배포 진행)
             deployer.tick()

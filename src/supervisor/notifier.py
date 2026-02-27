@@ -179,11 +179,14 @@ def notify_restart_complete(config_path: Path | None = None) -> None:
 def format_change_detected_message(
     runtime_commits: list[str],
     seosoyoung_commits: list[str],
+    soulstream_commits: list[str] | None = None,
 ) -> str:
     """변경점 감지 메시지를 생성한다."""
     lines = [":mag: *변경점이 발견됐습니다*"]
     lines.extend(_format_commit_section("runtime", runtime_commits))
     lines.extend(_format_commit_section("seosoyoung", seosoyoung_commits))
+    if soulstream_commits:
+        lines.extend(_format_commit_section("soulstream", soulstream_commits))
     return "\n".join(lines)
 
 
@@ -210,8 +213,16 @@ def notify_change_detected(
         if dev_seosoyoung.exists()
         else []
     )
+    soulstream = paths.get("soulstream")
+    soulstream_commits = (
+        get_pending_commits(soulstream)
+        if soulstream and soulstream.exists()
+        else []
+    )
 
-    message = format_change_detected_message(runtime_commits, seosoyoung_commits)
+    message = format_change_detected_message(
+        runtime_commits, seosoyoung_commits, soulstream_commits,
+    )
     send_webhook(url, message)
 
 

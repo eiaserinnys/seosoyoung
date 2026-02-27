@@ -32,6 +32,11 @@ _SUPERVISOR_PATH_PREFIX = "src/supervisor/"
 _SOUL_DASHBOARD_PATH_PREFIX = "src/soul-dashboard/"
 _SOUL_DASHBOARD_PACKAGE_LOCK = "src/soul-dashboard/package-lock.json"
 
+# soulstream 관련 경로 접두사
+_SOULSTREAM_DASHBOARD_PATH_PREFIX = "soul-dashboard/"
+_SOULSTREAM_DASHBOARD_PACKAGE_LOCK = "soul-dashboard/package-lock.json"
+_SOULSTREAM_SERVER_PATH_PREFIX = "soul-server/"
+
 # waiting_sessions 상태 최대 대기 시간 (초)
 _WAITING_SESSIONS_TIMEOUT = 600  # 10분
 
@@ -78,11 +83,11 @@ class Deployer:
     def state(self) -> DeployState:
         return self._state
 
-    def notify_change(self) -> None:
+    def notify_change(self, source: str = "runtime") -> None:
         """git 변경 감지 알림. idle이면 pending으로 전환."""
         if self._state == DeployState.IDLE:
             self._state = DeployState.PENDING
-            logger.info("배포 상태: idle → pending")
+            logger.info("배포 상태: idle → pending (source: %s)", source)
             try:
                 notify_change_detected(self._paths, self._webhook_config)
             except Exception:
@@ -270,6 +275,69 @@ class Deployer:
                     if not build_ok:
                         logger.warning(
                             "soul-dashboard 빌드 실패, "
+                            "이전 빌드 결과물로 프로세스 재시작 진행",
+                        )
+
+        # soulstream 리포 동기화
+        soulstream_dir = workspace / ".projects" / "soulstream"
+        soulstream_runtime = self._paths.get("soulstream_runtime")
+        if soulstream_dir.exists():
+            old_head = self._get_repo_head(soulstream_dir)
+
+            logger.info("업데이트: soulstream 소스 동기화")
+            pull_result = subprocess.run(
+                ["git", "pull", "origin", "main"],
+                cwd=str(soulstream_dir),
+                capture_output=True,
+                text=True,
+            )
+            if pull_result.returncode != 0:
+                logger.warning(
+                    "soulstream git pull 실패 (rc=%d): %s",
+                    pull_result.returncode,
+                    pull_result.stderr.strip()[:500],
+                )
+
+            new_head = self._get_repo_head(soulstream_dir)
+
+            if old_head and new_head and old_head != new_head:
+                changed = self._get_changed_files_between(
+                    soulstream_dir, old_head, new_head,
+                )
+
+                # soul-server 변경 시 pip install
+                if any(f.startswith(_SOULSTREAM_SERVER_PATH_PREFIX) for f in changed):
+                    packages_file = soulstream_dir / "soul-server" / "packages.txt"
+                    if packages_file.exists() and soulstream_runtime:
+                        soulstream_pip = soulstream_runtime / "venv" / "Scripts" / "pip.exe"
+                        if soulstream_pip.exists():
+                            logger.info("soulstream: pip install (packages.txt)")
+                            pip_result = subprocess.run(
+                                [str(soulstream_pip), "install", "-r",
+                                 str(packages_file), "--quiet"],
+                                cwd=str(soulstream_dir / "soul-server"),
+                                capture_output=True,
+                                text=True,
+                            )
+                            if pip_result.returncode != 0:
+                                logger.warning(
+                                    "soulstream pip install 실패 (rc=%d): %s",
+                                    pip_result.returncode,
+                                    pip_result.stderr.strip()[:500],
+                                )
+
+                # soulstream-dashboard 변경 시 npm install
+                if any(f.startswith(_SOULSTREAM_DASHBOARD_PATH_PREFIX) for f in changed):
+                    needs_install = any(
+                        f == _SOULSTREAM_DASHBOARD_PACKAGE_LOCK for f in changed
+                    )
+                    dashboard_dir = soulstream_dir / "soul-dashboard"
+                    build_ok = self._build_soul_dashboard(
+                        dashboard_dir, npm_install=needs_install,
+                    )
+                    if not build_ok:
+                        logger.warning(
+                            "soulstream-dashboard 빌드 실패, "
                             "이전 빌드 결과물로 프로세스 재시작 진행",
                         )
 
