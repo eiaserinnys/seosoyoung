@@ -1,9 +1,7 @@
-"""Claude Soul Service HTTP + SSE 클라이언트
+"""Soulstream Service HTTP + SSE 클라이언트
 
-seosoyoung-soul 서버와 통신하는 HTTP 클라이언트.
+Soulstream 서버(독립 soul-server, 기본 포트 4105)와 통신하는 HTTP 클라이언트.
 CLAUDE_EXECUTION_MODE=remote일 때 사용됩니다.
-
-dorothy-bot의 claude_service_client.py 패턴을 seosoyoung에 맞게 적응.
 """
 
 import asyncio
@@ -36,7 +34,7 @@ class SSEEvent:
 
 @dataclass
 class ExecuteResult:
-    """soul 서버 실행 결과"""
+    """Soulstream 서버 실행 결과"""
     success: bool
     result: str
     claude_session_id: Optional[str] = None
@@ -108,12 +106,12 @@ class ExponentialBackoff:
 # === 클라이언트 ===
 
 class SoulServiceClient:
-    """seosoyoung-soul 서버 HTTP + SSE 클라이언트
+    """Soulstream 서버 HTTP + SSE 클라이언트
 
     Task API를 사용하여 Claude Code를 원격 실행합니다.
 
     사용 예:
-        client = SoulServiceClient(base_url="http://localhost:3105", token="xxx")
+        client = SoulServiceClient(base_url="http://localhost:4105", token="xxx")
         result = await client.execute(
             client_id="seosoyoung_bot",
             request_id="thread_ts",
@@ -260,8 +258,8 @@ class SoulServiceClient:
 
         return ExecuteResult(
             success=False,
-            result=f"소울 서비스 연결이 끊어졌습니다 ({backoff.max_retries}회 재시도 실패)",
-            error=f"소울 서비스 연결이 끊어졌습니다 ({backoff.max_retries}회 재시도 실패)",
+            result=f"Soulstream 연결이 끊어졌습니다 ({backoff.max_retries}회 재시도 실패)",
+            error=f"Soulstream 연결이 끊어졌습니다 ({backoff.max_retries}회 재시도 실패)",
         )
 
     async def intervene(
@@ -463,7 +461,7 @@ class SoulServiceClient:
         while True:
             try:
                 # asyncio.wait_for 타임아웃 제거: Claude 실행이 오래 걸릴 수 있음 (테스트 등).
-                # soul 서버가 주기적으로 keepalive 이벤트(:)를 보내므로 readline()은 블로킹되지 않음.
+                # Soulstream이 주기적으로 keepalive 이벤트(:)를 보내므로 readline()은 블로킹되지 않음.
                 # 전체 스트림 타임아웃도 제거: aiohttp.ClientTimeout(total=None).
                 line_bytes = await response.content.readline()
 
@@ -504,7 +502,7 @@ class SoulServiceClient:
                     f"[SSE] 네트워크 오류로 연결 끊김 (마지막 이벤트: {last_event_name}): {e}"
                 )
                 raise ConnectionLostError(
-                    f"소울 서비스 연결이 끊어졌습니다: {e}"
+                    f"Soulstream 연결이 끊어졌습니다: {e}"
                 )
 
     async def _parse_error(self, response: aiohttp.ClientResponse) -> str:

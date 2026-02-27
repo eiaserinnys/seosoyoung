@@ -30,8 +30,8 @@
 - [`claude/message_formatter.py`](modules/claude_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티
 - [`claude/result_processor.py`](modules/claude_result_processor.md): Claude 실행 결과 처리
 - [`claude/sdk_compat.py`](modules/claude_sdk_compat.md): SDK 메시지 파싱 에러 호환 레이어
-- [`claude/service_adapter.py`](modules/claude_service_adapter.md): Claude Soul Service Adapter
-- [`claude/service_client.py`](modules/claude_service_client.md): Claude Soul Service HTTP + SSE 클라이언트
+- [`claude/service_adapter.py`](modules/claude_service_adapter.md): Soulstream Service Adapter
+- [`claude/service_client.py`](modules/claude_service_client.md): Soulstream Service HTTP + SSE 클라이언트
 - [`claude/session.py`](modules/claude_session.md): Claude Code 세션 관리
 - [`claude/session_context.py`](modules/claude_session_context.md): 세션 컨텍스트 주입
 - [`claude/session_validator.py`](modules/claude_session_validator.md): 세션 검증 모듈
@@ -123,24 +123,24 @@
 - `RoleConfig` (seosoyoung/slackbot/claude/engine_types.py:33): 역할별 도구 접근 설정
 - `EngineEventType` (seosoyoung/slackbot/claude/engine_types.py:51): 엔진 이벤트 타입
 - `EngineEvent` (seosoyoung/slackbot/claude/engine_types.py:72): 엔진에서 발행하는 단일 이벤트
-- `SoulHealthTracker` (seosoyoung/slackbot/claude/executor.py:38): Soul 서버 헬스 상태 추적
+- `SoulHealthTracker` (seosoyoung/slackbot/claude/executor.py:38): Soulstream 서버 헬스 상태 추적
 - `ClaudeExecutor` (seosoyoung/slackbot/claude/executor.py:154): Claude Code 실행기
 - `InstrumentedClaudeClient` (seosoyoung/slackbot/claude/instrumented_client.py:42): rate_limit_event 등 SDK가 skip하는 이벤트를 관찰할 수 있는 확장 클라이언트.
 - `PendingPrompt` (seosoyoung/slackbot/claude/intervention.py:17): 인터벤션 대기 중인 프롬프트 정보
 - `InterventionManager` (seosoyoung/slackbot/claude/intervention.py:34): 인터벤션 관리자
 - `ResultProcessor` (seosoyoung/slackbot/claude/result_processor.py:19): Claude 실행 결과를 처리하여 슬랙에 응답
 - `ParseAction` (seosoyoung/slackbot/claude/sdk_compat.py:16): MessageParseError 처리 결과
-- `ClaudeServiceAdapter` (seosoyoung/slackbot/claude/service_adapter.py:25): 원격 soul 서버 어댑터
-- `SSEEvent` (seosoyoung/slackbot/claude/service_client.py:31): Server-Sent Event 데이터
-- `ExecuteResult` (seosoyoung/slackbot/claude/service_client.py:38): soul 서버 실행 결과
-- `SoulServiceError` (seosoyoung/slackbot/claude/service_client.py:48): Soul Service 클라이언트 오류
-- `TaskConflictError` (seosoyoung/slackbot/claude/service_client.py:53): 태스크 충돌 오류 (이미 실행 중인 태스크 존재)
-- `TaskNotFoundError` (seosoyoung/slackbot/claude/service_client.py:58): 태스크를 찾을 수 없음
-- `TaskNotRunningError` (seosoyoung/slackbot/claude/service_client.py:63): 태스크가 실행 중이 아님
-- `RateLimitError` (seosoyoung/slackbot/claude/service_client.py:68): 동시 실행 제한 초과
-- `ConnectionLostError` (seosoyoung/slackbot/claude/service_client.py:73): SSE 연결 끊김 (재시도 실패)
-- `ExponentialBackoff` (seosoyoung/slackbot/claude/service_client.py:80): 지수 백오프 유틸리티
-- `SoulServiceClient` (seosoyoung/slackbot/claude/service_client.py:110): seosoyoung-soul 서버 HTTP + SSE 클라이언트
+- `ClaudeServiceAdapter` (seosoyoung/slackbot/claude/service_adapter.py:25): Soulstream 서버 어댑터
+- `SSEEvent` (seosoyoung/slackbot/claude/service_client.py:29): Server-Sent Event 데이터
+- `ExecuteResult` (seosoyoung/slackbot/claude/service_client.py:36): Soulstream 서버 실행 결과
+- `SoulServiceError` (seosoyoung/slackbot/claude/service_client.py:46): Soul Service 클라이언트 오류
+- `TaskConflictError` (seosoyoung/slackbot/claude/service_client.py:51): 태스크 충돌 오류 (이미 실행 중인 태스크 존재)
+- `TaskNotFoundError` (seosoyoung/slackbot/claude/service_client.py:56): 태스크를 찾을 수 없음
+- `TaskNotRunningError` (seosoyoung/slackbot/claude/service_client.py:61): 태스크가 실행 중이 아님
+- `RateLimitError` (seosoyoung/slackbot/claude/service_client.py:66): 동시 실행 제한 초과
+- `ConnectionLostError` (seosoyoung/slackbot/claude/service_client.py:71): SSE 연결 끊김 (재시도 실패)
+- `ExponentialBackoff` (seosoyoung/slackbot/claude/service_client.py:78): 지수 백오프 유틸리티
+- `SoulServiceClient` (seosoyoung/slackbot/claude/service_client.py:108): Soulstream 서버 HTTP + SSE 클라이언트
 - `Session` (seosoyoung/slackbot/claude/session.py:19): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/slackbot/claude/session.py:41): 세션 매니저
 - `SessionRuntime` (seosoyoung/slackbot/claude/session.py:263): 세션 실행 상태 관리자
@@ -156,8 +156,8 @@
 - `OMConfig` (seosoyoung/slackbot/config.py:140): Observational Memory 설정
 - `ChannelObserverConfig` (seosoyoung/slackbot/config.py:166): Channel Observer 설정
 - `ClaudeConfig` (seosoyoung/slackbot/config.py:219): Claude 실행 모드 설정
-- `EmojiConfig` (seosoyoung/slackbot/config.py:229): 이모지 설정
-- `Config` (seosoyoung/slackbot/config.py:257): 애플리케이션 설정
+- `EmojiConfig` (seosoyoung/slackbot/config.py:232): 이모지 설정
+- `Config` (seosoyoung/slackbot/config.py:260): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/slackbot/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:20): 멘션으로 처리 중인 스레드를 추적 (TTL 기반 자동 만료)
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커

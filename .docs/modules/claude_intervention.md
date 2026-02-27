@@ -34,4 +34,4 @@ Slack 필드(channel, say, client 등)는 presentation 컨텍스트에 포함됩
 - `pop_pending(self, thread_ts)` (줄 51): pending 프롬프트를 꺼내고 제거
 - `pending_prompts(self)` (줄 57): pending_prompts dict 직접 접근 (테스트용)
 - `fire_interrupt_local(self, thread_ts)` (줄 61): Local 모드: 모듈 레지스트리에서 runner를 찾아 interrupt 전송
-- `fire_interrupt_remote(self, thread_ts, prompt, active_remote_requests, service_adapter)` (줄 75): Remote 모드: soul 서버에 HTTP intervene 요청
+- `fire_interrupt_remote(self, thread_ts, prompt, active_remote_requests, service_adapter)` (줄 75): Remote 모드: Soulstream에 HTTP intervene 요청

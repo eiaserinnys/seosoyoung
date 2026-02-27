@@ -142,7 +142,7 @@ class TestExecute:
         result = await adapter.execute(prompt="hello", request_id="thread-8")
 
         assert result.success is False
-        assert "소울 서비스 오류" in result.error
+        assert "Soulstream 오류" in result.error
 
     @pytest.mark.asyncio
     async def test_unexpected_error(self, adapter, mock_client):
