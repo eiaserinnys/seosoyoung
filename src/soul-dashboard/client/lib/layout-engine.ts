@@ -17,6 +17,7 @@ export type GraphNodeType =
   | "thinking"
   | "tool_call"
   | "tool_result"
+  | "tool_group"
   | "response"
   | "system"
   | "intervention";
@@ -40,6 +41,10 @@ export interface GraphNodeData extends Record<string, unknown> {
   isPlanModeExit?: boolean;
   /** 전체 텍스트 (user/intervention 노드의 상세 뷰용) */
   fullContent?: string;
+  /** 도구 그룹 노드: 그룹에 포함된 카드 ID 목록 */
+  groupedCardIds?: string[];
+  /** 도구 그룹 노드: 그룹 내 도구 개수 */
+  groupCount?: number;
 }
 
 export type GraphNode = Node<GraphNodeData>;
@@ -82,6 +87,7 @@ const NODE_DIMENSIONS: Record<GraphNodeType | "group", { width: number; height: 
   thinking: { width: 260, height: 84 },
   tool_call: { width: 260, height: 84 },
   tool_result: { width: 260, height: 84 },
+  tool_group: { width: 260, height: 84 },
   response: { width: 260, height: 84 },
   system: { width: 260, height: 84 },
   intervention: { width: 260, height: 84 },
@@ -509,6 +515,28 @@ export function detectPlanModeRanges(cards: DashboardCard[]): PlanModeRange[] {
  * @param events - 원본 SSE 이벤트 배열 (시스템/개입 노드 생성용)
  * @returns dagre 레이아웃이 적용된 노드와 엣지
  */
+
+/**
+ * tool 노드의 부모를 결정하는 헬퍼.
+ * parentCardId → currentToolParentId → lastThinkingNodeId → prevMainFlowNodeId 순서로 폴백.
+ */
+function resolveToolParent(
+  card: DashboardCard,
+  nodes: GraphNode[],
+  currentToolParentId: string | null,
+  lastThinkingNodeId: string | null,
+  prevMainFlowNodeId: string | null,
+): string | null {
+  const fallback = currentToolParentId ?? lastThinkingNodeId ?? prevMainFlowNodeId;
+  if (card.parentCardId) {
+    const parentNodeId = `node-${card.parentCardId}`;
+    if (nodes.some((n) => n.id === parentNodeId)) {
+      return parentNodeId;
+    }
+  }
+  return fallback;
+}
+
 export function buildGraph(
   cards: DashboardCard[],
   events: SoulSSEEvent[],
@@ -565,6 +593,48 @@ export function buildGraph(
   // 그룹 노드 생성 (접힌 상태가 아닌 경우에만 내부 노드 표시)
   const createdGroups = new Set<string>();
 
+  // === Phase 2: 도구 그룹핑 전처리 ===
+  // 같은 parentCardId + 같은 toolName인 도구 카드를 그룹으로 묶는다.
+  // 그룹 임계값: 2개 이상이면 그룹화, 1개면 개별 노드 유지.
+  const toolGroupMap = new Map<string, DashboardCard[]>(); // key → cards
+  for (const card of cards) {
+    if (card.type !== "tool") continue;
+    const parentKey = card.parentCardId ?? "__orphan__";
+    const key = `${parentKey}:${card.toolName ?? "unknown"}`;
+    if (!toolGroupMap.has(key)) toolGroupMap.set(key, []);
+    toolGroupMap.get(key)!.push(card);
+  }
+
+  // 그룹화 대상: ≥2개인 도구 카드 그룹
+  const skipCardIds = new Set<string>(); // 개별 노드 생성을 건너뛸 카드
+  const groupRepresentatives = new Map<string, { cards: DashboardCard[]; toolName: string; count: number }>();
+
+  for (const [, groupCards] of toolGroupMap) {
+    if (groupCards.length < 2) continue;
+    // 첫 번째 카드가 대표 카드
+    const representative = groupCards[0];
+    groupRepresentatives.set(representative.cardId, {
+      cards: groupCards,
+      toolName: representative.toolName ?? "unknown",
+      count: groupCards.length,
+    });
+    // 대표 이외의 카드는 skipSet에 등록
+    for (let gi = 1; gi < groupCards.length; gi++) {
+      skipCardIds.add(groupCards[gi].cardId);
+    }
+  }
+
+  // === Phase 4: 가상 thinking 노드 필요 여부 판정 ===
+  // 첫 번째 text 카드 이전에 tool 카드가 있으면 가상 thinking 노드가 필요
+  let needsVirtualThinking = false;
+  for (const card of cards) {
+    if (card.type === "text") break;
+    if (card.type === "tool") {
+      needsVirtualThinking = true;
+      break;
+    }
+  }
+
   // user_message / intervention 이벤트 추적
   const userMessageEvents: Array<{
     event: Extract<SoulSSEEvent, { type: "user_message" }>;
@@ -589,6 +659,9 @@ export function buildGraph(
   // 메인 수직 흐름의 마지막 노드 ID (user, thinking, response, intervention, system)
   // tool 노드는 이 체인에 포함되지 않고 수평으로 분기됩니다.
   let prevMainFlowNodeId: string | null = null;
+
+  // Phase 3: 고아 노드 연결용 — 마지막 thinking/response 노드 ID
+  let lastThinkingNodeId: string | null = null;
 
   // user_message 이벤트가 있으면 맨 앞에 user 노드 추가 (세션 시작 메시지)
   // 현재는 첫 번째 user_message만 표시 (세션 시작 프롬프트).
@@ -624,10 +697,36 @@ export function buildGraph(
   // 현재 tool 체인이 연결된 메인 플로우 노드 ID
   let currentToolParentId: string | null = null;
 
+  // Phase 4: 가상 thinking 노드 삽입
+  if (needsVirtualThinking) {
+    const virtualNode: GraphNode = {
+      id: "node-virtual-init",
+      type: "thinking",
+      position: { x: 0, y: 0 },
+      data: {
+        nodeType: "thinking",
+        label: "Initial Tools",
+        content: "(tools invoked before first thinking)",
+        streaming: false,
+      },
+    };
+    nodes.push(virtualNode);
+
+    if (prevMainFlowNodeId) {
+      edges.push(createEdge(prevMainFlowNodeId, virtualNode.id));
+    }
+    prevMainFlowNodeId = virtualNode.id;
+    lastThinkingNodeId = virtualNode.id;
+    currentToolParentId = virtualNode.id;
+  }
+
   // 카드를 순회하며 노드 생성
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i];
     const group = cardToGroup.get(card.cardId);
+
+    // Phase 2: 그룹핑으로 건너뛸 카드
+    if (skipCardIds.has(card.cardId)) continue;
 
     // 그룹 노드가 필요하고 아직 생성되지 않았으면 추가
     if (group && !createdGroups.has(group.groupId)) {
@@ -701,71 +800,113 @@ export function buildGraph(
       prevMainFlowNodeId = textNode.id;
       prevToolBranchNodeId = null; // 새 text 노드가 나타나면 tool 분기 리셋
       currentToolParentId = textNode.id; // 이후 tool 노드는 이 thinking에 연결
+      lastThinkingNodeId = textNode.id; // Phase 3: 고아 노드 연결용 갱신
     } else if (card.type === "tool") {
-      // 도구 카드 -> tool_call 노드 + tool_result 노드
-      // tool은 메인 흐름에서 수평으로 분기 (prevMainFlowNodeId를 갱신하지 않음)
-      const callNode = createToolCallNode(card, {
-        isPlanMode: planModeCardIds.has(card.cardId),
-        isPlanModeEntry: planModeEntryCardIds.has(card.cardId),
-        isPlanModeExit: planModeExitCardIds.has(card.cardId),
-      });
+      // Phase 2: 그룹 대표 카드인지 확인
+      const toolGroupInfo = groupRepresentatives.get(card.cardId);
 
-      if (group && !group.collapsed) {
-        callNode.parentId = group.groupId;
-        callNode.extent = "parent";
-      }
+      if (toolGroupInfo) {
+        // === 도구 그룹 노드 생성 ===
+        const toolGroupNode: GraphNode = {
+          id: `node-${card.cardId}-group`,
+          type: "tool_group",
+          position: { x: 0, y: 0 },
+          data: {
+            nodeType: "tool_group",
+            cardId: card.cardId,
+            label: `${toolGroupInfo.toolName} ×${toolGroupInfo.count}`,
+            content: `${toolGroupInfo.count} calls`,
+            toolName: toolGroupInfo.toolName,
+            streaming: toolGroupInfo.cards.some((c) => !c.completed),
+            groupedCardIds: toolGroupInfo.cards.map((c) => c.cardId),
+            groupCount: toolGroupInfo.count,
+          },
+        };
 
-      nodes.push(callNode);
-
-        // parentCardId가 있으면 해당 thinking 노드에 연결, 없으면 현재 tool parent 사용
-      const resolvedParentId = (() => {
-        const fallback = currentToolParentId ?? prevMainFlowNodeId;
-        if (card.parentCardId) {
-          const parentNodeId = `node-${card.parentCardId}`;
-          if (nodes.some((n) => n.id === parentNodeId)) {
-            return parentNodeId;
-          }
-        }
-        return fallback;
-      })();
-
-      if (resolvedParentId) {
-        edges.push(
-          createEdge(resolvedParentId, callNode.id, !card.completed && !card.toolResult, "right", "left"),
-        );
-      }
-
-      // tool_result 노드 생성 (결과 대기 중이면 스트리밍 플레이스홀더)
-      const resultNode = createToolResultNode(card);
-
-      // toolBranches에 기록 (레이아웃 엔진에서 수동 배치 시 사용)
-      if (resolvedParentId) {
-        if (!toolBranches.has(resolvedParentId)) {
-          toolBranches.set(resolvedParentId, []);
-        }
-        toolBranches.get(resolvedParentId)!.push({
-          callId: callNode.id,
-          resultId: resultNode?.id,
-        });
-      }
-
-      if (resultNode) {
         if (group && !group.collapsed) {
-          resultNode.parentId = group.groupId;
-          resultNode.extent = "parent";
+          toolGroupNode.parentId = group.groupId;
+          toolGroupNode.extent = "parent";
         }
 
-        nodes.push(resultNode);
+        nodes.push(toolGroupNode);
 
-        // tool_call -> tool_result: 수평 엣지 (스트리밍 중이면 animated)
-        const isResultStreaming = resultNode.data.streaming;
-        edges.push(createEdge(callNode.id, resultNode.id, isResultStreaming, "right", "left"));
+        const resolvedParentId = resolveToolParent(
+          card, nodes, currentToolParentId, lastThinkingNodeId, prevMainFlowNodeId,
+        );
 
-        // 다음 tool은 이 call 노드 이후에 세로 체이닝 (bottom → top)
-        prevToolBranchNodeId = callNode.id;
+        if (resolvedParentId) {
+          edges.push(
+            createEdge(resolvedParentId, toolGroupNode.id, toolGroupNode.data.streaming, "right", "left"),
+          );
+        }
+
+        // toolBranches에 기록 (그룹 노드는 결과 없음)
+        if (resolvedParentId) {
+          if (!toolBranches.has(resolvedParentId)) {
+            toolBranches.set(resolvedParentId, []);
+          }
+          toolBranches.get(resolvedParentId)!.push({
+            callId: toolGroupNode.id,
+            resultId: undefined,
+          });
+        }
+
+        prevToolBranchNodeId = toolGroupNode.id;
       } else {
-        // 결과 노드 없음: call 노드가 분기의 끝
-        prevToolBranchNodeId = callNode.id;
+        // === 개별 도구 노드 (기존 로직) ===
+        const callNode = createToolCallNode(card, {
+          isPlanMode: planModeCardIds.has(card.cardId),
+          isPlanModeEntry: planModeEntryCardIds.has(card.cardId),
+          isPlanModeExit: planModeExitCardIds.has(card.cardId),
+        });
+
+        if (group && !group.collapsed) {
+          callNode.parentId = group.groupId;
+          callNode.extent = "parent";
+        }
+
+        nodes.push(callNode);
+
+        const resolvedParentId = resolveToolParent(
+          card, nodes, currentToolParentId, lastThinkingNodeId, prevMainFlowNodeId,
+        );
+
+        if (resolvedParentId) {
+          edges.push(
+            createEdge(resolvedParentId, callNode.id, !card.completed && !card.toolResult, "right", "left"),
+          );
+        }
+
+        // tool_result 노드 생성 (결과 대기 중이면 스트리밍 플레이스홀더)
+        const resultNode = createToolResultNode(card);
+
+        // toolBranches에 기록 (레이아웃 엔진에서 수동 배치 시 사용)
+        if (resolvedParentId) {
+          if (!toolBranches.has(resolvedParentId)) {
+            toolBranches.set(resolvedParentId, []);
+          }
+          toolBranches.get(resolvedParentId)!.push({
+            callId: callNode.id,
+            resultId: resultNode?.id,
+          });
+        }
+
+        if (resultNode) {
+          if (group && !group.collapsed) {
+            resultNode.parentId = group.groupId;
+            resultNode.extent = "parent";
+          }
+
+          nodes.push(resultNode);
+
+          // tool_call -> tool_result: 수평 엣지 (스트리밍 중이면 animated)
+          const isResultStreaming = resultNode.data.streaming;
+          edges.push(createEdge(callNode.id, resultNode.id, isResultStreaming, "right", "left"));
+
+          prevToolBranchNodeId = callNode.id;
+        } else {
+          prevToolBranchNodeId = callNode.id;
+        }
       }
       // prevMainFlowNodeId는 변경하지 않음 (tool은 메인 흐름에 영향 없음)
     }
@@ -818,7 +959,11 @@ function calcToolChainHeight(chain: ToolChainEntry[]): number {
 
   let totalHeight = 0;
   for (let i = 0; i < chain.length; i++) {
-    const callDims = getNodeDimensions("tool_call");
+    // tool_group 노드인지 확인 (ID에 '-group' 접미사)
+    const isGroupNode = chain[i].callId.endsWith("-group");
+    const callDims = isGroupNode
+      ? getNodeDimensions("tool_group")
+      : getNodeDimensions("tool_call");
     totalHeight += callDims.height;
 
     if (chain[i].resultId) {
@@ -978,9 +1123,13 @@ export function applyDagreLayout(
 
       for (let i = 0; i < chain.length; i++) {
         const entry = chain[i];
-        const callDims = getNodeDimensions("tool_call");
+        // tool_group 노드인지 확인하여 올바른 크기 사용
+        const isGroupNode = entry.callId.endsWith("-group");
+        const callDims = isGroupNode
+          ? getNodeDimensions("tool_group")
+          : getNodeDimensions("tool_call");
 
-        // tool_call: parent의 오른쪽에 배치
+        // tool_call/tool_group: parent의 오른쪽에 배치
         const callX = parentPos.x + parentDims.width + H_GAP;
         const callPos = { x: callX, y: currentY };
 

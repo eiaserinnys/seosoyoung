@@ -28,11 +28,17 @@ export interface DashboardState {
   /** 선택된 카드 (상세 뷰에 표시) */
   selectedCardId: string | null;
 
-  /** 선택된 이벤트 노드 데이터 (user/intervention 노드용, 카드 기반이 아닌 노드) */
+  /** 선택된 이벤트 노드 데이터 (user/intervention/tool_group 노드용, 카드 기반이 아닌 노드) */
   selectedEventNodeData: {
     nodeType: string;
     label: string;
     content: string;
+    /** tool_group 노드: 그룹 내 카드 ID 목록 */
+    groupedCardIds?: string[];
+    /** tool_group 노드: 도구 이름 */
+    toolName?: string;
+    /** tool_group 노드: 그룹 내 도구 개수 */
+    groupCount?: number;
   } | null;
 
   /** 활성 세션의 카드 목록 (SSE 이벤트로 구성) */
@@ -66,8 +72,15 @@ export interface DashboardActions {
   // 카드 선택
   selectCard: (cardId: string | null) => void;
 
-  // 이벤트 노드 선택 (user/intervention 등 카드가 아닌 노드)
-  selectEventNode: (data: { nodeType: string; label: string; content: string } | null) => void;
+  // 이벤트 노드 선택 (user/intervention/tool_group 등 카드가 아닌 노드)
+  selectEventNode: (data: {
+    nodeType: string;
+    label: string;
+    content: string;
+    groupedCardIds?: string[];
+    toolName?: string;
+    groupCount?: number;
+  } | null) => void;
 
   // SSE 이벤트 처리
   processEvent: (event: SoulSSEEvent, eventId: number) => void;
