@@ -15,6 +15,7 @@ import { ThinkingDetail } from "./detail/ThinkingDetail";
 import { ToolDetail } from "./detail/ToolDetail";
 import { SubAgentDetail } from "./detail/SubAgentDetail";
 import { ErrorDetail } from "./detail/ErrorDetail";
+import { ToolGroupDetail, type ToolGroupData } from "./detail/ToolGroupDetail";
 import { SectionLabel, CodeBlock } from "./detail/shared";
 
 // === Detail Router ===
@@ -190,7 +191,10 @@ export function DetailView() {
         )}
 
         {selectedCard && <CardDetail card={selectedCard} />}
-        {selectedEventNodeData && !selectedCard && (
+        {selectedEventNodeData && !selectedCard && selectedEventNodeData.nodeType === "tool_group" && (
+          <ToolGroupDetail data={selectedEventNodeData as ToolGroupData} />
+        )}
+        {selectedEventNodeData && !selectedCard && selectedEventNodeData.nodeType !== "tool_group" && (
           <EventNodeDetail data={selectedEventNodeData} />
         )}
       </div>

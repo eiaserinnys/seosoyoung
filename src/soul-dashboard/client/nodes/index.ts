@@ -11,6 +11,7 @@ import { UserNode } from './UserNode';
 import { ThinkingNode } from './ThinkingNode';
 import { ToolCallNode } from './ToolCallNode';
 import { ToolResultNode } from './ToolResultNode';
+import { ToolGroupNode } from './ToolGroupNode';
 import { ResponseNode } from './ResponseNode';
 import { SystemNode } from './SystemNode';
 import { InterventionNode } from './InterventionNode';
@@ -20,6 +21,7 @@ export const nodeTypes: NodeTypes = {
   thinking: ThinkingNode,
   tool_call: ToolCallNode,
   tool_result: ToolResultNode,
+  tool_group: ToolGroupNode,
   response: ResponseNode,
   system: SystemNode,
   intervention: InterventionNode,
@@ -30,6 +32,7 @@ export {
   ThinkingNode,
   ToolCallNode,
   ToolResultNode,
+  ToolGroupNode,
   ResponseNode,
   SystemNode,
   InterventionNode,

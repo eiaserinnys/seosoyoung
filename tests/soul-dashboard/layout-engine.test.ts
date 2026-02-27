@@ -39,6 +39,7 @@ function toolCard(
     toolResult: opts.toolResult,
     isError: opts.isError,
     completed: opts.completed ?? true,
+    parentCardId: opts.parentCardId,
   };
 }
 
@@ -668,6 +669,152 @@ describe("buildGraph layout: tool nodes positioned to the right of thinking", ()
     // 3 tools * 80px + 2 gaps * 16px = 272px minimum vertical separation
     const minSeparation = 3 * 80 + 2 * 16; // 272
     expect(t2.position.y - t1.position.y).toBeGreaterThanOrEqual(minSeparation);
+  });
+});
+
+// === 도구 그룹핑 / 고아 노드 / 가상 thinking 테스트 ===
+
+describe("tool grouping (Phase 2)", () => {
+  it("같은 parent + 같은 toolName 5개 → 1개 tool_group 노드", () => {
+    const cards: DashboardCard[] = [
+      textCard("t1", "Thinking"),
+      toolCard("r1", "Read", { toolResult: "c1", completed: true, parentCardId: "t1" }),
+      toolCard("r2", "Read", { toolResult: "c2", completed: true, parentCardId: "t1" }),
+      toolCard("r3", "Read", { toolResult: "c3", completed: true, parentCardId: "t1" }),
+      toolCard("r4", "Read", { toolResult: "c4", completed: true, parentCardId: "t1" }),
+      toolCard("r5", "Read", { toolResult: "c5", completed: true, parentCardId: "t1" }),
+    ];
+    const events: SoulSSEEvent[] = [{ type: "session", session_id: "s1" }];
+    const { nodes } = buildGraph(cards, events);
+
+    const groupNodes = nodes.filter((n) => n.type === "tool_group");
+    expect(groupNodes).toHaveLength(1);
+    expect(groupNodes[0].data.label).toContain("Read");
+    expect(groupNodes[0].data.label).toContain("5");
+    expect(groupNodes[0].data.groupedCardIds).toHaveLength(5);
+    expect(groupNodes[0].data.groupCount).toBe(5);
+
+    // 개별 tool_call/tool_result 없음
+    expect(nodes.filter((n) => n.type === "tool_call")).toHaveLength(0);
+    expect(nodes.filter((n) => n.type === "tool_result")).toHaveLength(0);
+  });
+
+  it("1개 도구는 그룹화하지 않음", () => {
+    const cards: DashboardCard[] = [
+      textCard("t1", "Thinking"),
+      toolCard("r1", "Read", { toolResult: "c1", completed: true, parentCardId: "t1" }),
+    ];
+    const events: SoulSSEEvent[] = [{ type: "session", session_id: "s1" }];
+    const { nodes } = buildGraph(cards, events);
+
+    expect(nodes.filter((n) => n.type === "tool_group")).toHaveLength(0);
+    expect(nodes.filter((n) => n.type === "tool_call")).toHaveLength(1);
+  });
+
+  it("다른 toolName은 별도 그룹", () => {
+    const cards: DashboardCard[] = [
+      textCard("t1", "Thinking"),
+      toolCard("r1", "Read", { toolResult: "c1", completed: true, parentCardId: "t1" }),
+      toolCard("r2", "Read", { toolResult: "c2", completed: true, parentCardId: "t1" }),
+      toolCard("b1", "Bash", { toolResult: "c3", completed: true, parentCardId: "t1" }),
+      toolCard("b2", "Bash", { toolResult: "c4", completed: true, parentCardId: "t1" }),
+      toolCard("s1", "Skill", { toolResult: "c5", completed: true, parentCardId: "t1" }),
+    ];
+    const events: SoulSSEEvent[] = [{ type: "session", session_id: "s1" }];
+    const { nodes } = buildGraph(cards, events);
+
+    expect(nodes.filter((n) => n.type === "tool_group")).toHaveLength(2); // Read×2, Bash×2
+    expect(nodes.filter((n) => n.type === "tool_call")).toHaveLength(1); // Skill×1
+  });
+
+  it("groupedCardIds가 원본 카드 ID를 모두 포함", () => {
+    const cards: DashboardCard[] = [
+      textCard("t1", "Thinking"),
+      toolCard("r1", "Read", { toolResult: "c1", completed: true, parentCardId: "t1" }),
+      toolCard("r2", "Read", { toolResult: "c2", completed: true, parentCardId: "t1" }),
+      toolCard("r3", "Read", { toolResult: "c3", completed: true, parentCardId: "t1" }),
+    ];
+    const events: SoulSSEEvent[] = [{ type: "session", session_id: "s1" }];
+    const { nodes } = buildGraph(cards, events);
+
+    const groupNode = nodes.find((n) => n.type === "tool_group");
+    expect(groupNode).toBeDefined();
+    expect(groupNode!.data.groupedCardIds).toEqual(["r1", "r2", "r3"]);
+  });
+});
+
+describe("orphan node connection (Phase 3)", () => {
+  it("parentCardId 없는 도구가 lastThinkingNodeId에 연결", () => {
+    const cards: DashboardCard[] = [
+      textCard("t1", "Thinking"),
+      toolCard("tool1", "Read", { toolResult: "content", completed: true }),
+    ];
+    const events: SoulSSEEvent[] = [{ type: "session", session_id: "s1" }];
+    const { edges } = buildGraph(cards, events);
+
+    const thinkingToTool = edges.find(
+      (e) => e.source === "node-t1" && e.target === "node-tool1-call",
+    );
+    expect(thinkingToTool).toBeDefined();
+  });
+});
+
+describe("virtual thinking node (Phase 4)", () => {
+  it("첫 text 카드 전에 tool 카드가 있으면 가상 thinking 삽입", () => {
+    const cards: DashboardCard[] = [
+      toolCard("tool1", "Read", { toolResult: "c1", completed: true }),
+      toolCard("tool2", "Bash", { toolResult: "c2", completed: true }),
+      textCard("t1", "Now thinking"),
+    ];
+    const events: SoulSSEEvent[] = [{ type: "session", session_id: "s1" }];
+    const { nodes, edges } = buildGraph(cards, events);
+
+    const virtualNode = nodes.find((n) => n.id === "node-virtual-init");
+    expect(virtualNode).toBeDefined();
+    expect(virtualNode!.type).toBe("thinking");
+    expect(virtualNode!.data.label).toBe("Initial Tools");
+
+    // 메인 플로우에 연결
+    const toVirtual = edges.find((e) => e.target === "node-virtual-init");
+    expect(toVirtual).toBeDefined();
+
+    // 도구가 가상 thinking에 연결
+    const fromVirtual = edges.find((e) => e.source === "node-virtual-init");
+    expect(fromVirtual).toBeDefined();
+  });
+
+  it("첫 카드가 text이면 가상 thinking 없음", () => {
+    const cards: DashboardCard[] = [
+      textCard("t1", "First thinking"),
+      toolCard("tool1", "Read", { toolResult: "c1", completed: true }),
+    ];
+    const events: SoulSSEEvent[] = [{ type: "session", session_id: "s1" }];
+    const { nodes } = buildGraph(cards, events);
+
+    expect(nodes.find((n) => n.id === "node-virtual-init")).toBeUndefined();
+  });
+
+  it("고아 도구 그룹이 가상 thinking에 연결", () => {
+    const cards: DashboardCard[] = [
+      toolCard("r1", "Read", { toolResult: "c1", completed: true }),
+      toolCard("r2", "Read", { toolResult: "c2", completed: true }),
+      toolCard("r3", "Read", { toolResult: "c3", completed: true }),
+      textCard("t1", "Thinking after tools"),
+    ];
+    const events: SoulSSEEvent[] = [{ type: "session", session_id: "s1" }];
+    const { nodes, edges } = buildGraph(cards, events);
+
+    const virtualNode = nodes.find((n) => n.id === "node-virtual-init");
+    expect(virtualNode).toBeDefined();
+
+    const groupNode = nodes.find((n) => n.type === "tool_group");
+    expect(groupNode).toBeDefined();
+    expect(groupNode!.data.groupCount).toBe(3);
+
+    const virtualToGroup = edges.find(
+      (e) => e.source === "node-virtual-init" && e.target === groupNode!.id,
+    );
+    expect(virtualToGroup).toBeDefined();
   });
 });
 

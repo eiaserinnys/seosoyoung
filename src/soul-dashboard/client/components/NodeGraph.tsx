@@ -207,6 +207,21 @@ function NodeGraphInner() {
     ({ nodes: selectedNodes }: OnSelectionChangeParams) => {
       if (selectedNodes.length === 1) {
         const nodeData = selectedNodes[0].data;
+        const nodeType = nodeData?.nodeType as string | undefined;
+
+        // tool_group 노드 → groupedCardIds 포함하여 이벤트 노드 데이터로 저장
+        if (nodeType === "tool_group") {
+          selectEventNode({
+            nodeType,
+            label: (nodeData?.label as string) ?? "",
+            content: (nodeData?.content as string) ?? "",
+            groupedCardIds: (nodeData?.groupedCardIds as string[]) ?? [],
+            toolName: (nodeData?.toolName as string) ?? undefined,
+            groupCount: (nodeData?.groupCount as number) ?? undefined,
+          });
+          return;
+        }
+
         const cardId = nodeData?.cardId as string | undefined;
         if (cardId) {
           selectCard(cardId);
@@ -214,7 +229,6 @@ function NodeGraphInner() {
         }
 
         // user/intervention 등 카드 기반이 아닌 노드 → 이벤트 노드 데이터 저장
-        const nodeType = nodeData?.nodeType as string | undefined;
         if (nodeType === "user" || nodeType === "intervention") {
           selectEventNode({
             nodeType,
