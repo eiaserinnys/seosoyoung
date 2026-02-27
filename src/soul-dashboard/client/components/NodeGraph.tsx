@@ -35,8 +35,72 @@ const REBUILD_DEBOUNCE_MS = 100;
 /** 고정 줌 비율 (Complete 상태 기준) */
 const FIXED_ZOOM = 0.75;
 
+/** 최소 줌 비율 (ReactFlow minZoom과 동기화) */
+const MIN_ZOOM = 0.1;
+
 /** 뷰포트 가장자리와 새 노드 사이의 최소 마진 (px) */
 const PAN_MARGIN = 80;
+
+/**
+ * 특정 노드가 뷰포트에 보이도록 하기 위해 필요한 pan(dx, dy)을 계산합니다.
+ * 줌은 절대 변경하지 않습니다. 이미 보이면 { dx: 0, dy: 0 }을 반환합니다.
+ */
+function calcPanToNode(
+  node: GraphNode,
+  viewport: { x: number; y: number; zoom: number },
+  vpW: number,
+  vpH: number,
+): { dx: number; dy: number } {
+  const dims = getNodeDimensions(node.data.nodeType);
+  const { zoom } = viewport;
+  const screenX = node.position.x * zoom + viewport.x;
+  const screenY = node.position.y * zoom + viewport.y;
+  const nodeW = dims.width * zoom;
+  const nodeH = dims.height * zoom;
+
+  // 뷰포트 안에 있는지 체크 (마진 포함)
+  if (
+    screenX + nodeW > PAN_MARGIN &&
+    screenX < vpW - PAN_MARGIN &&
+    screenY + nodeH > PAN_MARGIN &&
+    screenY < vpH - PAN_MARGIN
+  ) {
+    return { dx: 0, dy: 0 };
+  }
+
+  let dx = 0;
+  let dy = 0;
+
+  // X축: 노드가 뷰포트 좌측으로 벗어난 경우
+  // 좌측 가장자리를 마진에 맞춤 (오버사이즈 노드도 동일 처리: 좌측 우선)
+  if (screenX + nodeW <= PAN_MARGIN) {
+    dx = PAN_MARGIN - screenX;
+  }
+  // X축: 노드가 뷰포트 우측으로 벗어난 경우
+  else if (screenX >= vpW - PAN_MARGIN) {
+    dx = vpW - PAN_MARGIN - nodeW - screenX;
+    // 노드가 뷰포트보다 클 때: 좌측 가장자리가 보이도록 클램프
+    if (nodeW > vpW - 2 * PAN_MARGIN) {
+      dx = PAN_MARGIN - screenX;
+    }
+  }
+
+  // Y축: 노드가 뷰포트 상단으로 벗어난 경우
+  // 상단 가장자리를 마진에 맞춤 (오버사이즈 노드도 동일 처리: 상단 우선)
+  if (screenY + nodeH <= PAN_MARGIN) {
+    dy = PAN_MARGIN - screenY;
+  }
+  // Y축: 노드가 뷰포트 하단으로 벗어난 경우
+  else if (screenY >= vpH - PAN_MARGIN) {
+    dy = vpH - PAN_MARGIN - nodeH - screenY;
+    // 노드가 뷰포트보다 클 때: 상단 가장자리가 보이도록 클램프
+    if (nodeH > vpH - 2 * PAN_MARGIN) {
+      dy = PAN_MARGIN - screenY;
+    }
+  }
+
+  return { dx, dy };
+}
 
 // === Inner Graph (needs ReactFlow context) ===
 
@@ -49,7 +113,7 @@ function NodeGraphInner() {
   const selectEventNode = useDashboardStore((s) => s.selectEventNode);
   const activeSessionKey = useDashboardStore((s) => s.activeSessionKey);
 
-  const { fitView, getViewport, setViewport } = useReactFlow();
+  const { getViewport, setViewport } = useReactFlow();
   const store = useStoreApi();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<GraphNode>([]);
@@ -100,84 +164,67 @@ function NodeGraphInner() {
         hasInitializedRef.current = true;
 
         rafId = requestAnimationFrame(() => {
-          if (isFirstLoad) {
-            // 첫 로드: 고정 줌 비율로 중앙 배치
-            fitView({
-              padding: 0.3,
-              duration: 300,
-              maxZoom: FIXED_ZOOM,
-              minZoom: FIXED_ZOOM,
-            });
-            return;
-          }
-
-          // 이후 노드 추가: 줌 유지, 필요 시 최소 pan만 수행
-          const viewport = getViewport();
           const { width: vpW, height: vpH } = store.getState();
           if (vpW === 0 || vpH === 0) return;
 
-          // 추가된 노드 중 가장 아래쪽과 가장 오른쪽 노드를 추적
-          // (tool 노드는 수평 분기되므로 우측 노드도 확인 필요)
-          const zoom = viewport.zoom;
-          let maxBottom = -Infinity;
-          let maxRight = -Infinity;
-          let bottomNode = addedNodes[0];
-          let rightNode = addedNodes[0];
+          if (isFirstLoad) {
+            // === 세션 변경(첫 로드): 줌 허용 1회 ===
+            // 1. 전체 노드의 바운딩 박스 계산
+            let minX = Infinity;
+            let minY = Infinity;
+            let maxX = -Infinity;
+            let maxY = -Infinity;
+            for (const n of nodesWithSelection) {
+              const d = getNodeDimensions(n.data.nodeType);
+              minX = Math.min(minX, n.position.x);
+              minY = Math.min(minY, n.position.y);
+              maxX = Math.max(maxX, n.position.x + d.width);
+              maxY = Math.max(maxY, n.position.y + d.height);
+            }
 
-          for (const n of addedNodes) {
-            const d = getNodeDimensions(n.data.nodeType);
-            const bottom = n.position.y + d.height;
-            const right = n.position.x + d.width;
-            if (bottom > maxBottom) {
-              maxBottom = bottom;
-              bottomNode = n;
+            // 2. 바운딩 박스와 뷰포트 비교하여 적절한 줌 계산
+            const graphW = maxX - minX;
+            const graphH = maxY - minY;
+            const INIT_PADDING = 0.3;
+            let zoom = FIXED_ZOOM;
+            if (graphW > 0 && graphH > 0) {
+              const fitZoomX = vpW / (graphW * (1 + INIT_PADDING));
+              const fitZoomY = vpH / (graphH * (1 + INIT_PADDING));
+              zoom = Math.min(fitZoomX, fitZoomY, FIXED_ZOOM);
+              zoom = Math.max(zoom, MIN_ZOOM);
             }
-            if (right > maxRight) {
-              maxRight = right;
-              rightNode = n;
-            }
+
+            // 3. 가장 최근(마지막) 노드가 화면 중앙에 오도록 viewport 설정
+            // NOTE: 줌은 전체 그래프 기준이지만 center는 마지막 노드 기준이므로,
+            // 그래프가 클 경우 초기 노드들이 뷰포트 밖에 위치할 수 있음 (의도된 동작)
+            const lastNode = nodesWithSelection[nodesWithSelection.length - 1];
+            if (!lastNode) return;
+            const lastDims = getNodeDimensions(lastNode.data.nodeType);
+            const centerX = lastNode.position.x + lastDims.width / 2;
+            const centerY = lastNode.position.y + lastDims.height / 2;
+
+            setViewport(
+              {
+                x: vpW / 2 - centerX * zoom,
+                y: vpH / 2 - centerY * zoom,
+                zoom,
+              },
+              { duration: 300 },
+            );
+            return;
           }
 
-          // 두 타겟 노드의 화면 좌표를 계산하여 dx, dy를 합산
-          let dx = 0;
-          let dy = 0;
-
-          for (const targetNode of [bottomNode, rightNode]) {
-            const dims = getNodeDimensions(targetNode.data.nodeType);
-            const screenX = targetNode.position.x * zoom + viewport.x;
-            const screenY = targetNode.position.y * zoom + viewport.y;
-            const nodeW = dims.width * zoom;
-            const nodeH = dims.height * zoom;
-
-            // 뷰포트 안에 있는지 체크 (마진 포함)
-            const isVisible =
-              screenX + nodeW > PAN_MARGIN &&
-              screenX < vpW - PAN_MARGIN &&
-              screenY + nodeH > PAN_MARGIN &&
-              screenY < vpH - PAN_MARGIN;
-
-            if (isVisible) continue;
-
-            // 최소 pan 계산 (노드가 뷰포트보다 클 때를 방어적으로 클램프)
-            if (screenX + nodeW <= PAN_MARGIN) {
-              dx = Math.max(dx, PAN_MARGIN - screenX);
-            } else if (screenX >= vpW - PAN_MARGIN) {
-              const idealDx = vpW - PAN_MARGIN - nodeW - screenX;
-              dx = Math.min(dx, Math.max(idealDx, PAN_MARGIN - screenX));
-            }
-
-            if (screenY + nodeH <= PAN_MARGIN) {
-              dy = Math.max(dy, PAN_MARGIN - screenY);
-            } else if (screenY >= vpH - PAN_MARGIN) {
-              const idealDy = vpH - PAN_MARGIN - nodeH - screenY;
-              dy = Math.min(dy, Math.max(idealDy, PAN_MARGIN - screenY));
-            }
-          }
+          // === 스트리밍 노드 추가: 줌 절대 변경 금지, pan만 수행 ===
+          const viewport = getViewport();
+          // 가장 최근 추가된 노드를 대상으로 pan 계산
+          const targetNode = addedNodes[addedNodes.length - 1];
+          const { dx, dy } = calcPanToNode(targetNode, viewport, vpW, vpH);
 
           if (dx === 0 && dy === 0) return;
 
+          // zoom은 현재 viewport의 값을 그대로 유지 (방어적 고정)
           setViewport(
-            { x: viewport.x + dx, y: viewport.y + dy, zoom },
+            { x: viewport.x + dx, y: viewport.y + dy, zoom: viewport.zoom },
             { duration: 300 },
           );
         });
@@ -196,7 +243,6 @@ function NodeGraphInner() {
     selectedCardId,
     setNodes,
     setEdges,
-    fitView,
     getViewport,
     setViewport,
     store,
@@ -284,7 +330,7 @@ function NodeGraphInner() {
       onSelectionChange={onSelectionChange}
       nodeTypes={nodeTypes}
       defaultViewport={{ x: 0, y: 0, zoom: FIXED_ZOOM }}
-      minZoom={0.1}
+      minZoom={MIN_ZOOM}
       maxZoom={2}
       proOptions={{ hideAttribution: true }}
       colorMode="dark"
