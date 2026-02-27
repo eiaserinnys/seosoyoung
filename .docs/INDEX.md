@@ -88,11 +88,14 @@
 - [`web/fetcher.py`](modules/web_fetcher.md): Selenium 기반 HTML 페처
 - [`api/attachments.py`](modules/api_attachments.md): Attachments API - 첨부 파일 관리 엔드포인트
 - [`api/auth.py`](modules/api_auth.md): Authentication - Bearer 토큰 인증
+- [`api/credentials.py`](modules/api_credentials.md): Credentials API - 프로필 관리 REST 엔드포인트
 - [`api/tasks.py`](modules/api_tasks.md): Tasks API - 태스크 기반 API 엔드포인트
 - [`soul/config.py`](modules/soul_config.md): Seosoyoung Soul - Configuration
 - [`soul/constants.py`](modules/soul_constants.md): Seosoyoung Soul - 공통 상수 정의
 - [`soul/main.py`](modules/soul_main.md): Seosoyoung Soul - FastAPI Application
 - [`models/schemas.py`](modules/models_schemas.md): Pydantic 모델 - Request/Response 스키마
+- [`service/credential_store.py`](modules/service_credential_store.md): CredentialStore - 프로필별 크레덴셜 저장소
+- [`service/credential_swapper.py`](modules/service_credential_swapper.md): CredentialSwapper - 크레덴셜 파일 교체 모듈
 - [`service/engine_adapter.py`](modules/service_engine_adapter.md): soul 엔진 어댑터
 - [`service/event_store.py`](modules/service_event_store.md): Event Store - JSONL 기반 이벤트 저장소
 - [`service/file_manager.py`](modules/service_file_manager.md): FileManager - 첨부 파일 관리
@@ -246,6 +249,8 @@
 - `ToolStartSSEEvent` (seosoyoung/soul/models/schemas.py:232): 도구 호출 시작 이벤트
 - `ToolResultSSEEvent` (seosoyoung/soul/models/schemas.py:240): 도구 결과 이벤트
 - `ResultSSEEvent` (seosoyoung/soul/models/schemas.py:249): 엔진 최종 결과 이벤트 (dashboard 전용)
+- `CredentialStore` (seosoyoung/soul/service/credential_store.py:27): 프로필별 크레덴셜 저장소.
+- `CredentialSwapper` (seosoyoung/soul/service/credential_swapper.py:20): 크레덴셜 파일 교체기.
 - `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:94): 개입 메시지 데이터
 - `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:141): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
 - `EventStore` (seosoyoung/soul/service/event_store.py:23): JSONL 기반 이벤트 저장소
@@ -424,6 +429,7 @@
 - `async upload_attachment()` (seosoyoung/soul/api/attachments.py:27): 첨부 파일 업로드
 - `async cleanup_attachments()` (seosoyoung/soul/api/attachments.py:83): 스레드의 첨부 파일 정리
 - `async verify_token()` (seosoyoung/soul/api/auth.py:20): Bearer 토큰 검증
+- `create_credentials_router()` (seosoyoung/soul/api/credentials.py:19): Credentials API 라우터 팩토리.
 - `task_to_response()` (seosoyoung/soul/api/tasks.py:40): Task를 TaskResponse로 변환
 - `async execute_task()` (seosoyoung/soul/api/tasks.py:63): Claude Code 실행 (SSE 스트리밍)
 - `async get_tasks()` (seosoyoung/soul/api/tasks.py:159): 클라이언트의 태스크 목록 조회
@@ -434,12 +440,12 @@
 - `async intervene_by_session()` (seosoyoung/soul/api/tasks.py:416): session_id 기반 개입 메시지 전송
 - `get_settings()` (seosoyoung/soul/config.py:160): 설정 싱글톤 반환
 - `setup_logging()` (seosoyoung/soul/config.py:165): 로깅 설정
-- `async periodic_cleanup()` (seosoyoung/soul/main.py:43): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
-- `async lifespan()` (seosoyoung/soul/main.py:59): 애플리케이션 라이프사이클 관리
-- `async shutdown()` (seosoyoung/soul/main.py:179): Graceful shutdown 엔드포인트 (supervisor 전용)
-- `async health_check()` (seosoyoung/soul/main.py:204): 헬스 체크 엔드포인트
-- `async get_status()` (seosoyoung/soul/main.py:215): 서비스 상태 조회
-- `async global_exception_handler()` (seosoyoung/soul/main.py:253): 전역 예외 핸들러
+- `async periodic_cleanup()` (seosoyoung/soul/main.py:46): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
+- `async lifespan()` (seosoyoung/soul/main.py:62): 애플리케이션 라이프사이클 관리
+- `async shutdown()` (seosoyoung/soul/main.py:182): Graceful shutdown 엔드포인트 (supervisor 전용)
+- `async health_check()` (seosoyoung/soul/main.py:207): 헬스 체크 엔드포인트
+- `async get_status()` (seosoyoung/soul/main.py:218): 서비스 상태 조회
+- `async global_exception_handler()` (seosoyoung/soul/main.py:275): 전역 예외 핸들러
 - `init_soul_engine()` (seosoyoung/soul/service/engine_adapter.py:396): soul_engine 싱글톤을 (재)초기화한다.
 - `get_task_manager()` (seosoyoung/soul/service/task_manager.py:588): TaskManager 싱글톤 반환
 - `init_task_manager()` (seosoyoung/soul/service/task_manager.py:596): TaskManager 초기화
