@@ -570,4 +570,147 @@ test.describe("Soul Dashboard 브라우저 UI", () => {
       fullPage: true,
     });
   });
+
+  test("6. 뷰포트 줌 불변 검증 (세션 전환 후 스트리밍 중 zoom 변경 없음)", async ({
+    page,
+    dashboardServer,
+  }) => {
+    await navigateAndSelectSession(page, dashboardServer.baseURL);
+
+    // Thinking 노드가 나타날 때까지 대기 (첫 로드 → zoom 설정 1회 발생)
+    const thinkingNodes = page.locator('[data-testid="thinking-node"]');
+    await expect(thinkingNodes.first()).toBeVisible({ timeout: 10_000 });
+
+    // 첫 로드 후 viewport 안정화 대기 (300ms animation + 여유)
+    await page.waitForTimeout(500);
+
+    // 현재 zoom 값 캡처 (첫 로드 후 설정된 값)
+    const initialZoom = await page.evaluate(() => {
+      const rfInstance = document.querySelector(".react-flow");
+      if (!rfInstance) return null;
+      const transform = rfInstance
+        .querySelector(".react-flow__viewport")
+        ?.getAttribute("style");
+      if (!transform) return null;
+      // transform: translate(Xpx, Ypx) scale(Z) 에서 Z 추출
+      const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+      return scaleMatch ? parseFloat(scaleMatch[1]) : null;
+    });
+
+    expect(initialZoom).not.toBeNull();
+    expect(initialZoom).toBeGreaterThan(0);
+
+    // Tool Call 노드가 렌더링될 때까지 대기 (스트리밍 중 새 노드 추가)
+    const toolNodes = page.locator('[data-testid="tool-call-node"]');
+    await expect(toolNodes.first()).toBeVisible({ timeout: 10_000 });
+
+    // 두 번째 thinking 노드가 나타날 때까지 대기
+    await expect(thinkingNodes).toHaveCount(2, { timeout: 10_000 });
+
+    // 스트리밍 후 viewport 안정화 대기
+    await page.waitForTimeout(500);
+
+    // 스트리밍 후 zoom 값 확인 — 변경되지 않아야 함
+    const afterStreamZoom = await page.evaluate(() => {
+      const rfInstance = document.querySelector(".react-flow");
+      if (!rfInstance) return null;
+      const transform = rfInstance
+        .querySelector(".react-flow__viewport")
+        ?.getAttribute("style");
+      if (!transform) return null;
+      const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+      return scaleMatch ? parseFloat(scaleMatch[1]) : null;
+    });
+
+    expect(afterStreamZoom).not.toBeNull();
+
+    // 줌 불변 검증: 스트리밍 중 zoom이 변경되지 않아야 함 (±0.01 허용)
+    expect(Math.abs(afterStreamZoom! - initialZoom!)).toBeLessThan(0.01);
+
+    // 스크린샷: 줌 불변 검증 후 상태
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}/10-zoom-invariant.png`,
+      fullPage: true,
+    });
+  });
+
+  test("7. 노드 겹침 없음 검증 (바운딩 박스 교차 검사)", async ({
+    page,
+    dashboardServer,
+  }) => {
+    // 멀티 Tool 세션 선택 (더 많은 노드)
+    await navigateAndSelectSession(
+      page,
+      dashboardServer.baseURL,
+      "dashboard:e2e-ui-multi",
+    );
+
+    // Complete 이벤트까지 대기
+    await expect(page.getByText("Idle")).toBeVisible({ timeout: 15_000 });
+
+    // viewport 안정화 대기
+    await page.waitForTimeout(500);
+
+    // 모든 React Flow 노드의 바운딩 박스 수집
+    const allNodeBoxes = await page.evaluate(() => {
+      const nodes = document.querySelectorAll(".react-flow__node");
+      const boxes: Array<{
+        id: string;
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+      }> = [];
+
+      nodes.forEach((node) => {
+        const rect = node.getBoundingClientRect();
+        boxes.push({
+          id: node.getAttribute("data-id") ?? "unknown",
+          x: rect.x,
+          y: rect.y,
+          w: rect.width,
+          h: rect.height,
+        });
+      });
+
+      return boxes;
+    });
+
+    // 노드가 충분히 렌더링되었는지 확인
+    expect(allNodeBoxes.length).toBeGreaterThanOrEqual(10);
+
+    // 바운딩 박스 교차 검사: 어떤 두 노드도 겹치면 안 됨
+    const overlaps: Array<{ a: string; b: string }> = [];
+    for (let i = 0; i < allNodeBoxes.length; i++) {
+      for (let j = i + 1; j < allNodeBoxes.length; j++) {
+        const a = allNodeBoxes[i];
+        const b = allNodeBoxes[j];
+
+        // AABB 교차 검사 (2px 허용 마진)
+        const margin = 2;
+        const overlapX =
+          a.x + margin < b.x + b.w - margin &&
+          a.x + a.w - margin > b.x + margin;
+        const overlapY =
+          a.y + margin < b.y + b.h - margin &&
+          a.y + a.h - margin > b.y + margin;
+
+        if (overlapX && overlapY) {
+          overlaps.push({ a: a.id, b: b.id });
+        }
+      }
+    }
+
+    // 겹치는 노드 쌍이 없어야 함
+    expect(
+      overlaps,
+      `노드 겹침 발견: ${JSON.stringify(overlaps)}`,
+    ).toHaveLength(0);
+
+    // 스크린샷: 겹침 없음 검증 후 상태
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}/11-no-overlap.png`,
+      fullPage: true,
+    });
+  });
 });
