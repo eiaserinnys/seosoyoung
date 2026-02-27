@@ -2258,5 +2258,124 @@ class TestEngineEventCallback:
         assert result.output == "완료"
 
 
+class TestToolResultFromUserMessage:
+    """UserMessage에서 ToolResultBlock → TOOL_RESULT 이벤트 발행 테스트"""
+
+    async def test_tool_result_from_user_message(self):
+        """UserMessage.content의 ToolResultBlock → TOOL_RESULT 이벤트 발행"""
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        @dataclass
+        class MockToolUseBlock:
+            name: str
+            id: str = "toolu_abc123"
+            input: dict = None
+
+        @dataclass
+        class MockToolResultBlock:
+            tool_use_id: str = "toolu_abc123"
+            content: str = ""
+            is_error: bool = False
+
+        @dataclass
+        class MockUserMessage:
+            content: list = None
+            parent_tool_use_id: str = None
+
+        runner = ClaudeRunner()
+        events = []
+
+        async def on_event(event: EngineEvent):
+            events.append(event)
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[
+                MockToolUseBlock(name="Read", id="toolu_abc123", input={"file_path": "/test.py"}),
+            ]),
+            MockUserMessage(content=[
+                MockToolResultBlock(tool_use_id="toolu_abc123", content="파일 내용입니다", is_error=False),
+            ]),
+            MockResultMessage(result="완료", session_id="user-msg-test"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ToolUseBlock", MockToolUseBlock):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.ToolResultBlock", MockToolResultBlock):
+                            with patch("seosoyoung.slackbot.claude.agent_runner.UserMessage", MockUserMessage):
+                                await runner.run("테스트", on_event=on_event)
+
+        # TOOL_START + TOOL_RESULT 모두 발행되어야 함
+        tool_start_events = [e for e in events if e.type == EngineEventType.TOOL_START]
+        tool_result_events = [e for e in events if e.type == EngineEventType.TOOL_RESULT]
+
+        assert len(tool_start_events) == 1
+        assert tool_start_events[0].data["tool_name"] == "Read"
+        assert tool_start_events[0].data["tool_use_id"] == "toolu_abc123"
+
+        assert len(tool_result_events) == 1
+        assert tool_result_events[0].data["tool_name"] == "Read"
+        assert tool_result_events[0].data["result"] == "파일 내용입니다"
+        assert tool_result_events[0].data["is_error"] is False
+        assert tool_result_events[0].data["tool_use_id"] == "toolu_abc123"
+
+    async def test_tool_use_id_name_mapping(self):
+        """여러 도구 호출 시 tool_use_id→tool_name 매핑이 올바르게 동작"""
+        from seosoyoung.slackbot.claude.engine_types import EngineEvent, EngineEventType
+
+        @dataclass
+        class MockToolUseBlock:
+            name: str
+            id: str = ""
+            input: dict = None
+
+        @dataclass
+        class MockToolResultBlock:
+            tool_use_id: str = ""
+            content: str = ""
+            is_error: bool = False
+
+        @dataclass
+        class MockUserMessage:
+            content: list = None
+            parent_tool_use_id: str = None
+
+        runner = ClaudeRunner()
+        events = []
+
+        async def on_event(event: EngineEvent):
+            events.append(event)
+
+        mock_client = _make_mock_client(
+            MockAssistantMessage(content=[
+                MockToolUseBlock(name="Read", id="toolu_read1", input={"file_path": "/a.py"}),
+                MockToolUseBlock(name="Grep", id="toolu_grep1", input={"pattern": "foo"}),
+            ]),
+            MockUserMessage(content=[
+                # 역순으로 결과가 와도 tool_use_id로 올바른 tool_name을 찾아야 함
+                MockToolResultBlock(tool_use_id="toolu_grep1", content="grep 결과", is_error=False),
+                MockToolResultBlock(tool_use_id="toolu_read1", content="read 결과", is_error=False),
+            ]),
+            MockResultMessage(result="완료", session_id="multi-tool-test"),
+        )
+
+        with patch("seosoyoung.slackbot.claude.agent_runner.InstrumentedClaudeClient", return_value=mock_client):
+            with patch("seosoyoung.slackbot.claude.agent_runner.AssistantMessage", MockAssistantMessage):
+                with patch("seosoyoung.slackbot.claude.agent_runner.ResultMessage", MockResultMessage):
+                    with patch("seosoyoung.slackbot.claude.agent_runner.ToolUseBlock", MockToolUseBlock):
+                        with patch("seosoyoung.slackbot.claude.agent_runner.ToolResultBlock", MockToolResultBlock):
+                            with patch("seosoyoung.slackbot.claude.agent_runner.UserMessage", MockUserMessage):
+                                await runner.run("테스트", on_event=on_event)
+
+        tool_result_events = [e for e in events if e.type == EngineEventType.TOOL_RESULT]
+        assert len(tool_result_events) == 2
+
+        # tool_use_id → tool_name 매핑 확인
+        results_by_id = {e.data["tool_use_id"]: e.data for e in tool_result_events}
+        assert results_by_id["toolu_grep1"]["tool_name"] == "Grep"
+        assert results_by_id["toolu_read1"]["tool_name"] == "Read"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

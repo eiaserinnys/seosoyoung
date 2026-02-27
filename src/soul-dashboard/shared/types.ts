@@ -116,6 +116,8 @@ export interface ToolStartEvent {
   card_id?: string;
   tool_name: string;
   tool_input: Record<string, unknown>;
+  /** SDK ToolUseBlock ID (tool_result 매칭용) */
+  tool_use_id?: string;
 }
 
 export interface ToolResultEvent {
@@ -124,6 +126,8 @@ export interface ToolResultEvent {
   tool_name: string;
   result: string;
   is_error: boolean;
+  /** SDK ToolUseBlock ID (tool_start 매칭용) */
+  tool_use_id?: string;
 }
 
 export interface ResultEvent {
@@ -214,6 +218,10 @@ export interface DashboardCard {
   isError?: boolean;
   /** 카드가 완료되었는지 (text_end 수신 또는 tool_result 수신) */
   completed: boolean;
+  /** 도구 카드: SDK ToolUseBlock ID (tool_result 매칭용) */
+  toolUseId?: string;
+  /** 도구 카드: 부모 thinking 카드 ID (레이아웃 그룹핑용) */
+  parentCardId?: string;
 }
 
 // === API Request/Response ===

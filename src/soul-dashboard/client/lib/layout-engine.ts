@@ -283,8 +283,20 @@ function createToolResultNode(card: DashboardCard): GraphNode | null {
   }
 
   if (card.toolResult === undefined) {
-    // 아직 결과가 도착하지 않음
-    return null;
+    // 아직 결과가 도착하지 않음 — 스트리밍 플레이스홀더 반환
+    return {
+      id: `node-${card.cardId}-result`,
+      type: "tool_result",
+      position: { x: 0, y: 0 },
+      data: {
+        nodeType: "tool_result",
+        cardId: card.cardId,
+        label: `${card.toolName ?? "Tool"} Result`,
+        content: "(waiting...)",
+        toolName: card.toolName,
+        streaming: true,
+      },
+    };
   }
 
   const resultPreview =
@@ -705,26 +717,33 @@ export function buildGraph(
 
       nodes.push(callNode);
 
-      {
-        // 트리뷰: 모든 tool_call은 parent(thinking) 노드의 right → tool의 left로 연결
-        const toolParentNodeId = currentToolParentId ?? prevMainFlowNodeId;
-        if (toolParentNodeId) {
-          edges.push(
-            createEdge(toolParentNodeId, callNode.id, !card.completed && !card.toolResult, "right", "left"),
-          );
+        // parentCardId가 있으면 해당 thinking 노드에 연결, 없으면 현재 tool parent 사용
+      const resolvedParentId = (() => {
+        const fallback = currentToolParentId ?? prevMainFlowNodeId;
+        if (card.parentCardId) {
+          const parentNodeId = `node-${card.parentCardId}`;
+          if (nodes.some((n) => n.id === parentNodeId)) {
+            return parentNodeId;
+          }
         }
+        return fallback;
+      })();
+
+      if (resolvedParentId) {
+        edges.push(
+          createEdge(resolvedParentId, callNode.id, !card.completed && !card.toolResult, "right", "left"),
+        );
       }
 
-      // tool_result 노드 생성 (결과가 있으면)
+      // tool_result 노드 생성 (결과 대기 중이면 스트리밍 플레이스홀더)
       const resultNode = createToolResultNode(card);
 
       // toolBranches에 기록 (레이아웃 엔진에서 수동 배치 시 사용)
-      const parentId = currentToolParentId ?? prevMainFlowNodeId;
-      if (parentId) {
-        if (!toolBranches.has(parentId)) {
-          toolBranches.set(parentId, []);
+      if (resolvedParentId) {
+        if (!toolBranches.has(resolvedParentId)) {
+          toolBranches.set(resolvedParentId, []);
         }
-        toolBranches.get(parentId)!.push({
+        toolBranches.get(resolvedParentId)!.push({
           callId: callNode.id,
           resultId: resultNode?.id,
         });
@@ -738,13 +757,14 @@ export function buildGraph(
 
         nodes.push(resultNode);
 
-        // tool_call -> tool_result: 수평 엣지 (오른쪽으로, right → left)
-        edges.push(createEdge(callNode.id, resultNode.id, false, "right", "left"));
+        // tool_call -> tool_result: 수평 엣지 (스트리밍 중이면 animated)
+        const isResultStreaming = resultNode.data.streaming;
+        edges.push(createEdge(callNode.id, resultNode.id, isResultStreaming, "right", "left"));
 
         // 다음 tool은 이 call 노드 이후에 세로 체이닝 (bottom → top)
         prevToolBranchNodeId = callNode.id;
       } else {
-        // 결과 아직 없음: call 노드가 분기의 끝
+        // 결과 노드 없음: call 노드가 분기의 끝
         prevToolBranchNodeId = callNode.id;
       }
       // prevMainFlowNodeId는 변경하지 않음 (tool은 메인 흐름에 영향 없음)

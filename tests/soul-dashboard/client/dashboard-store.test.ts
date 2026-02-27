@@ -144,21 +144,24 @@ describe("dashboard-store", () => {
     it("should create tool card on tool_start", () => {
       const event: ToolStartEvent = {
         type: "tool_start",
-        card_id: "tool-1",
+        card_id: "thinking-1",
         tool_name: "Read",
         tool_input: { file_path: "/test.ts" },
+        tool_use_id: "toolu_abc",
       };
       useDashboardStore.getState().processEvent(event, 10);
 
       const cards = useDashboardStore.getState().cards;
       expect(cards).toHaveLength(1);
       expect(cards[0]).toEqual({
-        cardId: "tool-1",
+        cardId: "tool-10",
         type: "tool",
         content: "",
         toolName: "Read",
         toolInput: { file_path: "/test.ts" },
         completed: false,
+        toolUseId: "toolu_abc",
+        parentCardId: "thinking-1",
       });
     });
 
@@ -368,19 +371,20 @@ describe("dashboard-store", () => {
       processEvent({ type: "text_delta", card_id: "t1", text: "Analyzing..." } as TextDeltaEvent, 2);
       processEvent({ type: "text_end", card_id: "t1" }, 3);
 
-      // Tool card
+      // Tool card (card_id는 부모 thinking의 ID, tool_use_id로 매칭)
       processEvent({
         type: "tool_start",
-        card_id: "tool-1",
+        card_id: "t1",
         tool_name: "Bash",
         tool_input: { command: "ls" },
+        tool_use_id: "toolu_bash1",
       } as ToolStartEvent, 4);
       processEvent({
         type: "tool_result",
-        card_id: "tool-1",
         tool_name: "Bash",
         result: "ok",
         is_error: false,
+        tool_use_id: "toolu_bash1",
       } as ToolResultEvent, 5);
 
       // Text card 2
@@ -391,8 +395,10 @@ describe("dashboard-store", () => {
       expect(cards).toHaveLength(3);
       expect(cards[0].cardId).toBe("t1");
       expect(cards[0].completed).toBe(true);
-      expect(cards[1].cardId).toBe("tool-1");
+      expect(cards[1].cardId).toBe("tool-4"); // eventId=4 → tool-4
       expect(cards[1].completed).toBe(true);
+      expect(cards[1].toolUseId).toBe("toolu_bash1");
+      expect(cards[1].parentCardId).toBe("t1");
       expect(cards[2].cardId).toBe("t2");
       expect(cards[2].completed).toBe(false); // text_end 미수신
     });

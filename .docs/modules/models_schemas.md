@@ -122,11 +122,11 @@ TextBlock의 전체 텍스트 내용. SDK가 청크 스트리밍을 지원하지
 - 설명: 도구 호출 시작 이벤트
 
 ### `ToolResultSSEEvent` (BaseModel)
-- 위치: 줄 240
+- 위치: 줄 241
 - 설명: 도구 결과 이벤트
 
 ### `ResultSSEEvent` (BaseModel)
-- 위치: 줄 249
+- 위치: 줄 251
 - 설명: 엔진 최종 결과 이벤트 (dashboard 전용)
 
 CompleteEvent/ErrorEvent와 병행 발행됩니다.

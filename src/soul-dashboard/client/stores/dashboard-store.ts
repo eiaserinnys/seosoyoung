@@ -187,9 +187,9 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
           break;
         }
 
-        // 도구 카드 시작
+        // 도구 카드 시작 — 항상 고유 cardId 부여, parentCardId로 thinking 연결 보존
         case "tool_start": {
-          const cardId = event.card_id ?? `tool-${eventId}`;
+          const cardId = `tool-${eventId}`;
           cards.push({
             cardId,
             type: "tool",
@@ -197,18 +197,29 @@ export const useDashboardStore = create<DashboardState & DashboardActions>(
             toolName: event.tool_name,
             toolInput: event.tool_input,
             completed: false,
+            toolUseId: event.tool_use_id,
+            parentCardId: event.card_id,
           });
           updated = true;
           break;
         }
 
-        // 도구 카드 결과 — card_id 우선, 실패 시 tool_name으로 폴백 매칭
+        // 도구 카드 결과 — tool_use_id 우선, 실패 시 tool_name으로 폴백 매칭
         case "tool_result": {
           let idx = -1;
-          if (event.card_id) {
-            idx = cards.findIndex((c) => c.cardId === event.card_id);
+          // 1차: tool_use_id로 정확 매칭 (가장 신뢰성 높음)
+          if (event.tool_use_id) {
+            idx = cards.findIndex(
+              (c) => c.type === "tool" && c.toolUseId === event.tool_use_id,
+            );
           }
-          // 폴백: card_id 미제공 또는 매칭 실패 시 tool_name으로 재탐색
+          // 2차: card_id로 미완료 tool 카드 매칭
+          if (idx === -1 && event.card_id) {
+            idx = cards.findIndex(
+              (c) => c.type === "tool" && !c.completed && c.parentCardId === event.card_id && c.toolName === event.tool_name,
+            );
+          }
+          // 3차 폴백: tool_name으로 역순 재탐색
           if (idx === -1) {
             for (let i = cards.length - 1; i >= 0; i--) {
               if (

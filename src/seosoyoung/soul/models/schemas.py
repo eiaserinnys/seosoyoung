@@ -235,6 +235,7 @@ class ToolStartSSEEvent(BaseModel):
     card_id: Optional[str] = Field(None, description="연관된 텍스트 블록의 카드 ID")
     tool_name: str = Field(..., description="도구 이름")
     tool_input: dict = Field(default_factory=dict, description="도구 입력 파라미터")
+    tool_use_id: Optional[str] = Field(None, description="SDK ToolUseBlock ID (tool_result 매칭용)")
 
 
 class ToolResultSSEEvent(BaseModel):
@@ -244,6 +245,7 @@ class ToolResultSSEEvent(BaseModel):
     tool_name: str = Field(..., description="도구 이름")
     result: str = Field(..., description="도구 실행 결과")
     is_error: bool = Field(False, description="오류 여부")
+    tool_use_id: Optional[str] = Field(None, description="SDK ToolUseBlock ID (tool_start 매칭용)")
 
 
 class ResultSSEEvent(BaseModel):

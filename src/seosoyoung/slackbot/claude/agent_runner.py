@@ -22,6 +22,7 @@ try:
         TextBlock,
         ToolResultBlock,
         ToolUseBlock,
+        UserMessage,
     )
     SDK_AVAILABLE = True
 except ImportError:
@@ -52,6 +53,8 @@ except ImportError:
     class ToolResultBlock:
         pass
     class ToolUseBlock:
+        pass
+    class UserMessage:
         pass
 
 from seosoyoung.slackbot.claude.diagnostics import (
@@ -231,6 +234,8 @@ class MessageState:
     collected_messages: list[dict] = field(default_factory=list)
     msg_count: int = 0
     last_tool: str = ""
+    tool_use_id_to_name: dict = field(default_factory=dict)  # tool_use_id → tool_name 매핑
+    emitted_tool_result_ids: set = field(default_factory=set)  # 중복 TOOL_RESULT 방지
 
     @property
     def has_result(self) -> bool:
@@ -430,6 +435,69 @@ class ClaudeRunner:
         except Exception as e:
             logger.warning(f"인터럽트 실패: thread={self.thread_ts}, {e}")
             return False
+
+    async def _process_tool_result_block(
+        self,
+        block,
+        msg_state: "MessageState",
+        on_event,
+        source: str = "",
+    ) -> None:
+        """ToolResultBlock에서 TOOL_RESULT 이벤트 발행 (공통 로직)
+
+        AssistantMessage와 UserMessage 양쪽에서 호출됩니다.
+        emitted_tool_result_ids로 동일 tool_use_id의 중복 발행을 방지합니다.
+
+        Args:
+            block: ToolResultBlock 인스턴스
+            msg_state: 메시지 처리 상태
+            on_event: 이벤트 콜백
+            source: 로그용 출처 ("AssistantMessage" 또는 "UserMessage")
+        """
+        tool_use_id = getattr(block, "tool_use_id", None)
+
+        # 중복 방지: 동일 tool_use_id의 결과가 이미 발행되었으면 건너뜀
+        if tool_use_id and tool_use_id in msg_state.emitted_tool_result_ids:
+            return
+        if tool_use_id:
+            msg_state.emitted_tool_result_ids.add(tool_use_id)
+
+        content = ""
+        if isinstance(block.content, str):
+            content = block.content[:2000]
+        elif block.content:
+            try:
+                content = json.dumps(block.content, ensure_ascii=False)[:2000]
+            except (TypeError, ValueError):
+                content = str(block.content)[:2000]
+
+        tool_name = (
+            msg_state.tool_use_id_to_name.get(tool_use_id, "")
+            if tool_use_id
+            else msg_state.last_tool or ""
+        )
+        is_error = bool(getattr(block, "is_error", False))
+
+        logger.info(f"[TOOL_RESULT:{source}] {tool_name}: {content[:500]}")
+        msg_state.collected_messages.append({
+            "role": "tool",
+            "content": content,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        if on_event:
+            try:
+                await on_event(EngineEvent(
+                    type=EngineEventType.TOOL_RESULT,
+                    data={
+                        "tool_name": tool_name,
+                        "result": content,
+                        "is_error": is_error,
+                        "tool_use_id": tool_use_id,
+                    },
+                ))
+            except Exception as e:
+                logger.warning(f"이벤트 콜백 오류 (TOOL_RESULT:{source}): {e}")
 
     def _debug(self, message: str) -> None:
         """디버그 메시지 전송 (debug_send_fn이 있을 때만)"""
@@ -665,6 +733,10 @@ class ClaudeRunner:
                                 if len(tool_input) > 2000:
                                     tool_input = tool_input[:2000] + "..."
                             msg_state.last_tool = block.name
+                            # tool_use_id → tool_name 매핑 기록
+                            tool_use_id = getattr(block, "id", None)
+                            if tool_use_id:
+                                msg_state.tool_use_id_to_name[tool_use_id] = block.name
                             logger.info(f"[TOOL_USE] {block.name}: {tool_input[:500]}")
                             msg_state.collected_messages.append({
                                 "role": "assistant",
@@ -684,37 +756,31 @@ class ClaudeRunner:
                                         event_tool_input = {"_error": "serialize_failed"}
                                     await on_event(EngineEvent(
                                         type=EngineEventType.TOOL_START,
-                                        data={"tool_name": block.name, "tool_input": event_tool_input},
+                                        data={
+                                            "tool_name": block.name,
+                                            "tool_input": event_tool_input,
+                                            "tool_use_id": tool_use_id,
+                                        },
                                     ))
                                 except Exception as e:
                                     logger.warning(f"이벤트 콜백 오류 (TOOL_START): {e}")
 
                         elif isinstance(block, ToolResultBlock):
-                            content = ""
-                            if isinstance(block.content, str):
-                                content = block.content[:2000]
-                            elif block.content:
-                                content = json.dumps(block.content, ensure_ascii=False)[:2000]
-                            logger.info(f"[TOOL_RESULT] {content[:500]}")
-                            msg_state.collected_messages.append({
-                                "role": "tool",
-                                "content": content,
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            })
+                            await self._process_tool_result_block(
+                                block, msg_state, on_event, source="AssistantMessage",
+                            )
 
-                            if on_event:
-                                try:
-                                    is_error = getattr(block, "is_error", False)
-                                    await on_event(EngineEvent(
-                                        type=EngineEventType.TOOL_RESULT,
-                                        data={
-                                            "tool_name": msg_state.last_tool or "",
-                                            "result": content,
-                                            "is_error": is_error,
-                                        },
-                                    ))
-                                except Exception as e:
-                                    logger.warning(f"이벤트 콜백 오류 (TOOL_RESULT): {e}")
+            # UserMessage에서 ToolResultBlock 추출 → TOOL_RESULT 이벤트 발행
+            # Claude Code SDK는 도구 실행 결과를 UserMessage.content에 ToolResultBlock으로 반환합니다.
+            # AssistantMessage.content에 ToolResultBlock이 포함되는 경우도 대비하여
+            # 양쪽 모두 처리하되, emitted_tool_result_ids로 중복 발행을 방지합니다.
+            elif isinstance(message, UserMessage):
+                if hasattr(message, 'content') and isinstance(message.content, list):
+                    for block in message.content:
+                        if isinstance(block, ToolResultBlock):
+                            await self._process_tool_result_block(
+                                block, msg_state, on_event, source="UserMessage",
+                            )
 
             # ResultMessage에서 최종 결과 추출
             elif isinstance(message, ResultMessage):

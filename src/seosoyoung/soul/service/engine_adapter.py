@@ -65,6 +65,7 @@ class _CardTracker:
     def __init__(self) -> None:
         self._current_card_id: Optional[str] = None
         self._last_tool_name: Optional[str] = None
+        self._tool_use_card_map: dict[str, Optional[str]] = {}  # tool_use_id → card_id
 
     def new_card(self) -> str:
         """새 카드 ID 생성 및 현재 카드로 설정
@@ -88,6 +89,16 @@ class _CardTracker:
     def last_tool(self) -> Optional[str]:
         """마지막으로 호출된 도구 이름"""
         return self._last_tool_name
+
+    def register_tool_call(self, tool_use_id: str, card_id: Optional[str]) -> None:
+        """tool_use_id에 대한 card_id를 기록 (TOOL_RESULT에서 올바른 card_id 조회용)"""
+        self._tool_use_card_map[tool_use_id] = card_id
+
+    def get_tool_card_id(self, tool_use_id: Optional[str]) -> Optional[str]:
+        """tool_use_id로 TOOL_START 시점의 card_id를 조회"""
+        if tool_use_id and tool_use_id in self._tool_use_card_map:
+            return self._tool_use_card_map[tool_use_id]
+        return self._current_card_id
 
 
 @dataclass
@@ -267,6 +278,7 @@ class SoulEngineAdapter:
             elif event.type == EngineEventType.TOOL_START:
                 tool_name = event.data.get("tool_name", "")
                 tool_input = event.data.get("tool_input", {})
+                tool_use_id = event.data.get("tool_use_id")
                 # SSE 페이로드 크기 제한: 대형 tool_input 방지
                 try:
                     import json as _json
@@ -276,22 +288,30 @@ class SoulEngineAdapter:
                 except (TypeError, ValueError):
                     tool_input = {"_error": "serialize_failed"}
                 tracker.set_last_tool(tool_name)
+                # tool_use_id → card_id 매핑 기록 (TOOL_RESULT에서 올바른 card_id 조회용)
+                if tool_use_id:
+                    tracker.register_tool_call(tool_use_id, tracker.current_card_id)
                 await queue.put(ToolStartSSEEvent(
                     card_id=tracker.current_card_id,
                     tool_name=tool_name,
                     tool_input=tool_input,
+                    tool_use_id=tool_use_id,
                 ))
 
             elif event.type == EngineEventType.TOOL_RESULT:
                 result = event.data.get("result", "")
                 is_error = event.data.get("is_error", False)
+                tool_use_id = event.data.get("tool_use_id")
                 # tool_name은 이벤트 페이로드 우선, 없으면 tracker 폴백
                 tool_name = event.data.get("tool_name") or tracker.last_tool or ""
+                # card_id는 tool_use_id로 TOOL_START 시점의 값을 조회
+                card_id = tracker.get_tool_card_id(tool_use_id)
                 await queue.put(ToolResultSSEEvent(
-                    card_id=tracker.current_card_id,
+                    card_id=card_id,
                     tool_name=tool_name,
                     result=result,
                     is_error=is_error,
+                    tool_use_id=tool_use_id,
                 ))
 
             elif event.type == EngineEventType.RESULT:

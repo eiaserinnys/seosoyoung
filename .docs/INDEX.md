@@ -115,10 +115,10 @@
 - `RescueBotApp` (seosoyoung/rescue/main.py:84): rescue-bot 애플리케이션
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
-- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:80): Claude Code 실행 결과 (하위호환 레이어)
-- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:202): Compact retry 외부 루프 상태
-- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:224): 메시지 수신 루프 상태
-- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:254): Claude Code SDK 기반 실행기
+- `ClaudeResult` (seosoyoung/slackbot/claude/agent_runner.py:83): Claude Code 실행 결과 (하위호환 레이어)
+- `CompactRetryState` (seosoyoung/slackbot/claude/agent_runner.py:205): Compact retry 외부 루프 상태
+- `MessageState` (seosoyoung/slackbot/claude/agent_runner.py:227): 메시지 수신 루프 상태
+- `ClaudeRunner` (seosoyoung/slackbot/claude/agent_runner.py:259): Claude Code SDK 기반 실행기
 - `EngineResult` (seosoyoung/slackbot/claude/engine_types.py:15): Claude Code 엔진의 순수 실행 결과
 - `RoleConfig` (seosoyoung/slackbot/claude/engine_types.py:33): 역할별 도구 접근 설정
 - `EngineEventType` (seosoyoung/slackbot/claude/engine_types.py:51): 엔진 이벤트 타입
@@ -244,10 +244,10 @@
 - `TextDeltaSSEEvent` (seosoyoung/soul/models/schemas.py:215): 텍스트 블록 내용 이벤트
 - `TextEndSSEEvent` (seosoyoung/soul/models/schemas.py:226): 텍스트 블록 완료 이벤트
 - `ToolStartSSEEvent` (seosoyoung/soul/models/schemas.py:232): 도구 호출 시작 이벤트
-- `ToolResultSSEEvent` (seosoyoung/soul/models/schemas.py:240): 도구 결과 이벤트
-- `ResultSSEEvent` (seosoyoung/soul/models/schemas.py:249): 엔진 최종 결과 이벤트 (dashboard 전용)
-- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:94): 개입 메시지 데이터
-- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:141): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
+- `ToolResultSSEEvent` (seosoyoung/soul/models/schemas.py:241): 도구 결과 이벤트
+- `ResultSSEEvent` (seosoyoung/soul/models/schemas.py:251): 엔진 최종 결과 이벤트 (dashboard 전용)
+- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:105): 개입 메시지 데이터
+- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:152): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
 - `EventStore` (seosoyoung/soul/service/event_store.py:23): JSONL 기반 이벤트 저장소
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
 - `FileManager` (seosoyoung/soul/service/file_manager.py:28): 첨부 파일 관리자
@@ -287,12 +287,12 @@
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
 - `get_claude_runner()` (seosoyoung/slackbot/claude/__init__.py:25): Claude 실행기 인스턴스를 반환하는 팩토리 함수
-- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:125): 레지스트리에서 러너 조회
-- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:131): 레지스트리에 러너 등록
-- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:137): 레지스트리에서 러너 제거
-- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:143): 모든 등록된 러너의 클라이언트를 종료
-- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:178): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:1055): 
+- `get_runner()` (seosoyoung/slackbot/claude/agent_runner.py:128): 레지스트리에서 러너 조회
+- `register_runner()` (seosoyoung/slackbot/claude/agent_runner.py:134): 레지스트리에 러너 등록
+- `remove_runner()` (seosoyoung/slackbot/claude/agent_runner.py:140): 레지스트리에서 러너 제거
+- `async shutdown_all()` (seosoyoung/slackbot/claude/agent_runner.py:146): 모든 등록된 러너의 클라이언트를 종료
+- `shutdown_all_sync()` (seosoyoung/slackbot/claude/agent_runner.py:181): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
+- `async main()` (seosoyoung/slackbot/claude/agent_runner.py:1121): 
 - `read_stderr_tail()` (seosoyoung/slackbot/claude/diagnostics.py:24): 세션별 cli_stderr 로그의 마지막 N줄 읽기
 - `build_session_dump()` (seosoyoung/slackbot/claude/diagnostics.py:57): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/slackbot/claude/diagnostics.py:102): ProcessError를 사용자 친화적 메시지로 변환.
@@ -440,7 +440,7 @@
 - `async health_check()` (seosoyoung/soul/main.py:204): 헬스 체크 엔드포인트
 - `async get_status()` (seosoyoung/soul/main.py:215): 서비스 상태 조회
 - `async global_exception_handler()` (seosoyoung/soul/main.py:253): 전역 예외 핸들러
-- `init_soul_engine()` (seosoyoung/soul/service/engine_adapter.py:396): soul_engine 싱글톤을 (재)초기화한다.
+- `init_soul_engine()` (seosoyoung/soul/service/engine_adapter.py:416): soul_engine 싱글톤을 (재)초기화한다.
 - `get_task_manager()` (seosoyoung/soul/service/task_manager.py:588): TaskManager 싱글톤 반환
 - `init_task_manager()` (seosoyoung/soul/service/task_manager.py:596): TaskManager 초기화
 - `set_task_manager()` (seosoyoung/soul/service/task_manager.py:606): TaskManager 인스턴스 설정 (테스트용)
