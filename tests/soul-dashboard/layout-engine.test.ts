@@ -12,7 +12,9 @@ import {
   detectSubAgents,
   createEdge,
   getNodeDimensions,
+  calcToolChainBounds,
   type GraphNode,
+  type ToolChainEntry,
 } from "../../src/soul-dashboard/client/lib/layout-engine";
 
 // === Helper: 카드 팩토리 ===
@@ -862,5 +864,124 @@ describe("applyDagreLayout", () => {
     const result = applyDagreLayout([], []);
     expect(result.nodes).toEqual([]);
     expect(result.edges).toEqual([]);
+  });
+});
+
+// === calcToolChainBounds 테스트 ===
+
+describe("calcToolChainBounds", () => {
+  const TOOL_BRANCH_H_GAP = 40; // layout-engine.ts 상수와 동일
+  const callWidth = getNodeDimensions("tool_call").width;   // 260
+  const callHeight = getNodeDimensions("tool_call").height; // 84
+  const resultWidth = getNodeDimensions("tool_result").width;
+  const resultHeight = getNodeDimensions("tool_result").height;
+  const V_GAP = 16;
+
+  it("returns zero for empty chain", () => {
+    expect(calcToolChainBounds([])).toEqual({ width: 0, height: 0 });
+  });
+
+  it("calculates width and height for call + result", () => {
+    const chain: ToolChainEntry[] = [
+      { callId: "node-t1-call", resultId: "node-t1-result" },
+    ];
+    const bounds = calcToolChainBounds(chain);
+
+    // width = gap + callWidth + gap + resultWidth
+    expect(bounds.width).toBe(TOOL_BRANCH_H_GAP + callWidth + TOOL_BRANCH_H_GAP + resultWidth);
+    // height = max(callHeight, resultHeight)
+    expect(bounds.height).toBe(Math.max(callHeight, resultHeight));
+  });
+
+  it("calculates width for call-only (no result)", () => {
+    const chain: ToolChainEntry[] = [
+      { callId: "node-t1-call" },
+    ];
+    const bounds = calcToolChainBounds(chain);
+
+    // width = gap + callWidth
+    expect(bounds.width).toBe(TOOL_BRANCH_H_GAP + callWidth);
+    expect(bounds.height).toBe(callHeight);
+  });
+
+  it("stacks multiple entries vertically with V_GAP", () => {
+    const chain: ToolChainEntry[] = [
+      { callId: "t1-call", resultId: "t1-result" },
+      { callId: "t2-call", resultId: "t2-result" },
+      { callId: "t3-call" },
+    ];
+    const bounds = calcToolChainBounds(chain);
+
+    // height = row1 + gap + row2 + gap + row3
+    const row1Height = Math.max(callHeight, resultHeight);
+    const row2Height = Math.max(callHeight, resultHeight);
+    const row3Height = callHeight;
+    const expectedHeight = row1Height + V_GAP + row2Height + V_GAP + row3Height;
+    expect(bounds.height).toBe(expectedHeight);
+
+    // width = max of all rows (rows with result are wider)
+    const withResult = TOOL_BRANCH_H_GAP + callWidth + TOOL_BRANCH_H_GAP + resultWidth;
+    const withoutResult = TOOL_BRANCH_H_GAP + callWidth;
+    expect(bounds.width).toBe(Math.max(withResult, withoutResult));
+  });
+
+  it("uses tool_group dimensions for group nodes", () => {
+    const groupWidth = getNodeDimensions("tool_group").width;
+    const groupHeight = getNodeDimensions("tool_group").height;
+
+    const chain: ToolChainEntry[] = [
+      { callId: "node-t1-group" }, // '-group' 접미사 → tool_group 크기 사용
+    ];
+    const bounds = calcToolChainBounds(chain);
+
+    expect(bounds.width).toBe(TOOL_BRANCH_H_GAP + groupWidth);
+    expect(bounds.height).toBe(groupHeight);
+  });
+});
+
+// === applyDagreLayout: tool 체인 너비 확장 테스트 ===
+
+describe("applyDagreLayout tool chain width expansion", () => {
+  it("tool nodes are placed to the right of the parent within dagre-allocated space", () => {
+    // thinking + tool_call + tool_result 시나리오
+    const thinkingDims = getNodeDimensions("thinking");
+    const callDims = getNodeDimensions("tool_call");
+
+    const nodes: GraphNode[] = [
+      {
+        id: "n-thinking",
+        type: "default",
+        data: { nodeType: "thinking", label: "thinking", content: "" },
+        position: { x: 0, y: 0 },
+      },
+      {
+        id: "n-tool-call",
+        type: "default",
+        data: { nodeType: "tool_call", label: "call", content: "" },
+        position: { x: 0, y: 0 },
+      },
+      {
+        id: "n-tool-result",
+        type: "default",
+        data: { nodeType: "tool_result", label: "result", content: "" },
+        position: { x: 0, y: 0 },
+      },
+    ];
+
+    const toolBranches = new Map([
+      ["n-thinking", [{ callId: "n-tool-call", resultId: "n-tool-result" }]],
+    ]);
+
+    const result = applyDagreLayout(nodes, [], "TB", toolBranches);
+
+    const thinkingNode = result.nodes.find((n) => n.id === "n-thinking")!;
+    const callNode = result.nodes.find((n) => n.id === "n-tool-call")!;
+    const resultNode = result.nodes.find((n) => n.id === "n-tool-result")!;
+
+    // tool_call은 thinking의 오른쪽에 배치
+    expect(callNode.position.x).toBeGreaterThan(thinkingNode.position.x + thinkingDims.width);
+
+    // tool_result는 tool_call의 오른쪽에 배치
+    expect(resultNode.position.x).toBeGreaterThan(callNode.position.x + callDims.width);
   });
 });
