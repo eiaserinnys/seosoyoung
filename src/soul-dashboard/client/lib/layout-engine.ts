@@ -2,10 +2,9 @@
  * Soul Dashboard - Layout Engine
  *
  * DashboardCard[] 및 SSE 이벤트를 React Flow 노드/엣지로 변환하는 레이아웃 엔진.
- * dagre 라이브러리를 사용하여 자동 레이아웃을 적용합니다.
+ * 원점 기반 고정 열(A/B/C) 배치 + 순차 Y 누적 방식으로 레이아웃을 적용합니다.
  */
 
-import dagre from "dagre";
 import type { Node, Edge } from "@xyflow/react";
 import type { DashboardCard, SoulSSEEvent } from "@shared/types";
 
@@ -81,7 +80,7 @@ export type ToolBranches = Map<string, ToolChainEntry[]>;
 
 // === Node Dimensions ===
 
-/** 노드 타입별 기본 크기 (dagre 레이아웃에 사용) */
+/** 노드 타입별 기본 크기 (그리드 레이아웃에 사용) */
 const NODE_DIMENSIONS: Record<GraphNodeType | "group", { width: number; height: number }> = {
   user: { width: 260, height: 84 },
   thinking: { width: 260, height: 84 },
@@ -513,7 +512,7 @@ export function detectPlanModeRanges(cards: DashboardCard[]): PlanModeRange[] {
  *
  * @param cards - 현재 세션의 DashboardCard 배열
  * @param events - 원본 SSE 이벤트 배열 (시스템/개입 노드 생성용)
- * @returns dagre 레이아웃이 적용된 노드와 엣지
+ * @returns 그리드 레이아웃이 적용된 노드와 엣지
  */
 
 /**
@@ -940,11 +939,11 @@ export function buildGraph(
     prevMainFlowNodeId = sysNode.id;
   }
 
-  // dagre 레이아웃 적용 (tool 분기 정보 전달하여 수동 배치)
+  // 그리드 레이아웃 적용 (tool 분기 정보 전달하여 수동 배치)
   return applyDagreLayout(nodes, edges, "TB", toolBranches);
 }
 
-// === Dagre Layout ===
+// === Grid Layout ===
 
 /** tool 체인이 부모 노드 우측에 배치될 때의 수평 간격 */
 const TOOL_BRANCH_H_GAP = 120;
@@ -952,7 +951,7 @@ const V_GAP = 16;
 
 /**
  * 부모 노드에 연결된 tool 체인이 차지하는 공간(가로+세로)을 계산합니다.
- * dagre에 부모 노드의 크기를 반영할 때 사용합니다.
+ * 부모 노드의 유효 높이를 계산할 때 사용합니다.
  *
  * width: TOOL_BRANCH_H_GAP + tool_call_width (+ TOOL_BRANCH_H_GAP + tool_result_width)
  * height: 각 tool entry를 세로로 쌓은 합
@@ -993,20 +992,20 @@ export function calcToolChainBounds(chain: ToolChainEntry[]): { width: number; h
 }
 
 /**
- * 매트릭스 그리드 기반으로 노드에 자동 레이아웃을 적용합니다.
+ * 원점 기반 고정 열(Grid) 레이아웃을 적용합니다.
  *
- * 3단계 레이아웃:
- * 1. 메인 플로우 노드만 dagre에 등록 (Y 순서 결정용)
- *    - tool 체인이 있는 노드는 height만 확장하여 수직 공간 확보
+ * dagre 없이 순수 그리드 배치:
+ * 1. 메인 플로우 노드는 배열 순서대로 A열에 수직 배치
+ *    - tool 체인이 있는 노드는 유효 높이를 확장하여 수직 공간 확보
  * 2. 고정 열(COL_A/B/C) 방식으로 X 좌표 결정
  *    - A열: 메인 플로우 (user, thinking, response, system, intervention)
  *    - B열: tool_call / tool_group
  *    - C열: tool_result
  * 3. tool 노드를 B/C열 고정 X + 순차 Y로 배치
  *
- * @param nodes - 위치가 미지정인 노드 배열
+ * @param nodes - 위치가 미지정인 노드 배열 (buildGraph가 결정한 순서)
  * @param edges - 엣지 배열
- * @param direction - 레이아웃 방향 (TB: 위→아래, LR: 왼→오른)
+ * @param direction - 레이아웃 방향 (TB: 위→아래) — 현재 TB만 지원
  * @param toolBranches - thinking→tool 분기 매핑 (수동 배치용)
  * @returns 위치가 계산된 노드와 엣지
  */
@@ -1020,7 +1019,7 @@ export function applyDagreLayout(
     return { nodes, edges };
   }
 
-  // tool 노드 ID 집합 (dagre에서 제외)
+  // tool 노드 ID 집합 (메인 플로우에서 제외)
   const toolNodeIds = new Set<string>();
   if (toolBranches) {
     for (const chain of toolBranches.values()) {
@@ -1033,111 +1032,48 @@ export function applyDagreLayout(
     }
   }
 
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-
-  g.setGraph({
-    rankdir: direction,
-    ranksep: 60,
-    nodesep: 30,
-    marginx: 20,
-    marginy: 20,
-  });
-
   // 노드를 분류
   const topLevelNodes = nodes.filter((n) => !n.parentId);
   const childNodes = nodes.filter((n) => n.parentId);
 
-  // dagre에 전달한 확장 높이를 기억 (순차 Y 계산에 사용)
-  const dagreHeights = new Map<string, number>();
+  // 메인 플로우 노드: 배열 순서 유지 (buildGraph가 이미 올바른 순서로 생성)
+  const mainFlowOrder = topLevelNodes.filter((n) => !toolNodeIds.has(n.id));
 
-  // 메인 플로우 노드만 dagre에 등록 (tool 노드 제외)
-  for (const node of topLevelNodes) {
-    if (toolNodeIds.has(node.id)) continue; // tool 노드는 제외
-
+  // 유효 높이 계산: tool 체인이 있는 노드는 높이 확장
+  const effectiveHeights = new Map<string, number>();
+  for (const node of mainFlowOrder) {
     const nodeType = node.data.nodeType;
     const dims =
       node.type === "group"
         ? getNodeDimensions("group")
         : getNodeDimensions(nodeType);
 
-    // tool 체인이 있는 노드: height만 확장 (X는 고정 열 방식이므로 width 확장 불필요)
-    const width = dims.width;
     let height = dims.height;
     if (toolBranches?.has(node.id)) {
       const chainBounds = calcToolChainBounds(toolBranches.get(node.id)!);
       height = Math.max(height, chainBounds.height);
     }
-
-    dagreHeights.set(node.id, height);
-    g.setNode(node.id, { width, height });
+    effectiveHeights.set(node.id, height);
   }
 
-  // 메인 플로우 간 엣지만 dagre에 등록 (tool 노드 관련 엣지 제외)
-  const dagreNodeIds = new Set<string>();
-  for (const node of topLevelNodes) {
-    if (!toolNodeIds.has(node.id)) {
-      dagreNodeIds.add(node.id);
-    }
-  }
-
-  for (const edge of edges) {
-    if (dagreNodeIds.has(edge.source) && dagreNodeIds.has(edge.target)) {
-      g.setEdge(edge.source, edge.target);
-    }
-  }
-
-  dagre.layout(g);
-
-  // === 메인 플로우 노드 Y 좌표 순차 재계산 ===
-  // dagre는 tool 체인 확장 높이를 center 기반으로 배치하므로,
-  // response/complete 등 후속 노드가 이전 노드 위에 겹칠 수 있음.
-  // dagre에서 X와 순서만 사용하고, Y는 직접 순차 계산함.
-  const MAIN_FLOW_V_GAP = 60; // ranksep과 동일
-
-  // dagre Y 기준으로 메인 플로우 노드 순서 결정
-  const mainFlowOrder: { id: string; dagreX: number; dagreY: number }[] = [];
-  for (const nodeId of dagreNodeIds) {
-    const dn = g.node(nodeId);
-    if (dn) {
-      mainFlowOrder.push({ id: nodeId, dagreX: dn.x, dagreY: dn.y });
-    }
-  }
-  mainFlowOrder.sort((a, b) => a.dagreY - b.dagreY);
-
-  // 순차적으로 top-left Y 계산: 이전 노드 Y + effectiveHeight + gap
-  const sequentialTopY = new Map<string, number>();
-  if (mainFlowOrder.length > 0) {
-    const first = mainFlowOrder[0];
-    const firstEffH = dagreHeights.get(first.id) ?? 84;
-    let currentTopY = first.dagreY - firstEffH / 2; // 첫 노드는 dagre 위치 유지
-    sequentialTopY.set(first.id, currentTopY);
-
-    for (let i = 1; i < mainFlowOrder.length; i++) {
-      const prevId = mainFlowOrder[i - 1].id;
-      const prevEffH = dagreHeights.get(prevId) ?? 84;
-      currentTopY = sequentialTopY.get(prevId)! + prevEffH + MAIN_FLOW_V_GAP;
-      sequentialTopY.set(mainFlowOrder[i].id, currentTopY);
-    }
-  }
-
-  // === 그리드 기반 고정 열 X 좌표 계산 ===
-  // dagre의 센터 정렬 대신, 매트릭스 그리드 방식으로 X를 결정
-  // A열: 메인 플로우 (user, thinking, response, system, intervention)
-  // B열: tool_call / tool_group
-  // C열: tool_result
+  // === 고정 열 X 좌표 (원점 기반) ===
   const NODE_WIDTH = getNodeDimensions("thinking").width; // 260
-  let COL_A: number;
-  if (mainFlowOrder.length > 0) {
-    const firstDagreNode = g.node(mainFlowOrder[0].id);
-    COL_A = firstDagreNode ? firstDagreNode.x - NODE_WIDTH / 2 : 20;
-  } else {
-    COL_A = 20;
-  }
+  const MARGIN = 20;
+  const COL_A = MARGIN;
   const COL_B = COL_A + NODE_WIDTH + TOOL_BRANCH_H_GAP;
   const COL_C = COL_B + NODE_WIDTH + TOOL_BRANCH_H_GAP;
 
-  // 노드 위치에 반영
+  // === 순차 Y 좌표 (원점부터 누적) ===
+  const MAIN_FLOW_V_GAP = 60;
+  const sequentialTopY = new Map<string, number>();
+  let currentTopY = MARGIN;
+  for (const node of mainFlowOrder) {
+    sequentialTopY.set(node.id, currentTopY);
+    const effH = effectiveHeights.get(node.id) ?? 84;
+    currentTopY += effH + MAIN_FLOW_V_GAP;
+  }
+
+  // 노드 위치 반영
   const nodePositions = new Map<string, { x: number; y: number }>();
 
   const positionedNodes = nodes.map((node) => {
@@ -1156,14 +1092,10 @@ export function applyDagreLayout(
       return node; // 아직 위치 미지정
     }
 
-    const dagreNode = g.node(node.id);
-    if (!dagreNode) return node;
-
-    // 고정 열 배치: 모든 메인 플로우 노드는 COL_A에 정렬
-    // Y: 순차 계산 결과 사용 (메인 플로우 노드가 항상 이전 노드 아래에 배치)
+    // 메인 플로우 노드: COL_A, 순차 Y
     const pos = {
       x: COL_A,
-      y: sequentialTopY.get(node.id) ?? (dagreNode.y - (dagreHeights.get(node.id) ?? 84) / 2),
+      y: sequentialTopY.get(node.id) ?? MARGIN,
     };
     nodePositions.set(node.id, pos);
     return { ...node, position: pos };
@@ -1175,7 +1107,7 @@ export function applyDagreLayout(
       const parentPos = nodePositions.get(parentId);
       if (!parentPos) continue;
 
-      let currentY = parentPos.y; // tool[0]의 y는 parent의 y와 같음
+      let toolY = parentPos.y; // tool[0]의 y는 parent의 y와 같음
 
       for (let i = 0; i < chain.length; i++) {
         const entry = chain[i];
@@ -1185,7 +1117,7 @@ export function applyDagreLayout(
           : getNodeDimensions("tool_call");
 
         // tool_call/tool_group: 고정 B열에 배치
-        const callPos = { x: COL_B, y: currentY };
+        const callPos = { x: COL_B, y: toolY };
 
         const callIdx = positionedNodes.findIndex((n) => n.id === entry.callId);
         if (callIdx !== -1) {
@@ -1196,7 +1128,7 @@ export function applyDagreLayout(
         // tool_result: 고정 C열에 배치
         if (entry.resultId) {
           const resultDims = getNodeDimensions("tool_result");
-          const resultPos = { x: COL_C, y: currentY };
+          const resultPos = { x: COL_C, y: toolY };
 
           const resultIdx = positionedNodes.findIndex((n) => n.id === entry.resultId);
           if (resultIdx !== -1) {
@@ -1205,12 +1137,12 @@ export function applyDagreLayout(
           }
 
           // 다음 tool의 y: max(call bottom, result bottom) + v_gap
-          const callBottom = currentY + callDims.height;
-          const resultBottom = currentY + resultDims.height;
-          currentY = Math.max(callBottom, resultBottom) + V_GAP;
+          const callBottom = toolY + callDims.height;
+          const resultBottom = toolY + resultDims.height;
+          toolY = Math.max(callBottom, resultBottom) + V_GAP;
         } else {
           // result가 없으면 call 아래에 다음 tool 배치
-          currentY = currentY + callDims.height + V_GAP;
+          toolY = toolY + callDims.height + V_GAP;
         }
       }
     }

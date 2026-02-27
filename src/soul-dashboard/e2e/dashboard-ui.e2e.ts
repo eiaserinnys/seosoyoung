@@ -145,6 +145,111 @@ const SSE_EVENTS = [
   },
 ];
 
+// === Tool 없는 세션 SSE 이벤트 시퀀스 ===
+
+/**
+ * Tool call 없이 thinking → response → complete만 있는 세션.
+ * Bug #10 회귀 테스트: 세로 배치 겹침 검증.
+ */
+const NO_TOOL_SSE_EVENTS = [
+  {
+    delay: 0,
+    data: 'id: 0\nevent: user_message\ndata: {"type":"user_message","user":"dashboard","text":"간단히 설명해주세요."}\n\n',
+  },
+  {
+    delay: 1 * SSE_INTERVAL,
+    data: 'id: 1\nevent: text_start\ndata: {"type":"text_start","card_id":"nt-t1"}\n\n',
+  },
+  {
+    delay: 2 * SSE_INTERVAL,
+    data: 'id: 2\nevent: text_delta\ndata: {"type":"text_delta","card_id":"nt-t1","text":"이것은 도구를 사용하지 않고 바로 답변하는 세션입니다."}\n\n',
+  },
+  {
+    delay: 3 * SSE_INTERVAL,
+    data: 'id: 3\nevent: text_end\ndata: {"type":"text_end","card_id":"nt-t1"}\n\n',
+  },
+  {
+    delay: 5 * SSE_INTERVAL,
+    data: 'id: 4\nevent: complete\ndata: {"type":"complete","result":"답변을 완료했습니다.","attachments":[]}\n\n',
+    end: true,
+  },
+];
+
+// === 25+ 노드 세션 SSE 이벤트 시퀀스 ===
+
+/** 10쌍의 thinking+tool을 생성 → ~25 노드 */
+function generateLargeSSEEvents(pairCount: number): Array<{ delay: number; data: string; end?: boolean }> {
+  const events: Array<{ delay: number; data: string; end?: boolean }> = [];
+  let id = 0;
+  let step = 0;
+
+  // user message
+  events.push({
+    delay: 0,
+    data: `id: ${id++}\nevent: user_message\ndata: {"type":"user_message","user":"dashboard","text":"대규모 작업을 수행해주세요 (${pairCount} 단계)."}\n\n`,
+  });
+
+  for (let i = 0; i < pairCount; i++) {
+    step++;
+    // thinking
+    events.push({
+      delay: step * SSE_INTERVAL,
+      data: `id: ${id++}\nevent: text_start\ndata: {"type":"text_start","card_id":"lg-t${i}"}\n\n`,
+    });
+    step++;
+    events.push({
+      delay: step * SSE_INTERVAL,
+      data: `id: ${id++}\nevent: text_delta\ndata: {"type":"text_delta","card_id":"lg-t${i}","text":"Step ${i}: 분석 중..."}\n\n`,
+    });
+    step++;
+    events.push({
+      delay: step * SSE_INTERVAL,
+      data: `id: ${id++}\nevent: text_end\ndata: {"type":"text_end","card_id":"lg-t${i}"}\n\n`,
+    });
+
+    // tool
+    const toolName = ["Read", "Bash", "Glob", "Grep", "Write"][i % 5];
+    step++;
+    events.push({
+      delay: step * SSE_INTERVAL,
+      data: `id: ${id++}\nevent: tool_start\ndata: {"type":"tool_start","card_id":"lg-tool${i}","tool_name":"${toolName}","tool_input":{"command":"step-${i}"}}\n\n`,
+    });
+    step++;
+    events.push({
+      delay: step * SSE_INTERVAL,
+      data: `id: ${id++}\nevent: tool_result\ndata: {"type":"tool_result","card_id":"lg-tool${i}","tool_name":"${toolName}","result":"Result of step ${i}","is_error":false}\n\n`,
+    });
+  }
+
+  // final thinking + complete
+  step++;
+  events.push({
+    delay: step * SSE_INTERVAL,
+    data: `id: ${id++}\nevent: text_start\ndata: {"type":"text_start","card_id":"lg-final"}\n\n`,
+  });
+  step++;
+  events.push({
+    delay: step * SSE_INTERVAL,
+    data: `id: ${id++}\nevent: text_delta\ndata: {"type":"text_delta","card_id":"lg-final","text":"모든 단계를 완료했습니다."}\n\n`,
+  });
+  step++;
+  events.push({
+    delay: step * SSE_INTERVAL,
+    data: `id: ${id++}\nevent: text_end\ndata: {"type":"text_end","card_id":"lg-final"}\n\n`,
+  });
+  step += 2;
+  events.push({
+    delay: step * SSE_INTERVAL,
+    data: `id: ${id++}\nevent: complete\ndata: {"type":"complete","result":"${pairCount}단계 작업 완료","attachments":[]}\n\n`,
+    end: true,
+  });
+
+  return events;
+}
+
+const LARGE_25_SSE_EVENTS = generateLargeSSEEvents(10);  // ~25 노드
+const LARGE_50_SSE_EVENTS = generateLargeSSEEvents(20);  // ~50 노드
+
 // === Mock Dashboard Server Fixture ===
 
 interface MockDashboardServer {
@@ -193,6 +298,27 @@ const test = base.extend<{ dashboardServer: MockDashboardServer }>({
             eventCount: 14,
             createdAt: new Date(Date.now() - 60000).toISOString(),
           },
+          {
+            clientId: "bot",
+            requestId: "e2e-ui-notool",
+            status: "completed",
+            eventCount: 5,
+            createdAt: new Date(Date.now() - 120000).toISOString(),
+          },
+          {
+            clientId: "bot",
+            requestId: "e2e-ui-large25",
+            status: "completed",
+            eventCount: 55,
+            createdAt: new Date(Date.now() - 180000).toISOString(),
+          },
+          {
+            clientId: "bot",
+            requestId: "e2e-ui-large50",
+            status: "completed",
+            eventCount: 105,
+            createdAt: new Date(Date.now() - 240000).toISOString(),
+          },
         ],
       });
     });
@@ -222,7 +348,18 @@ const test = base.extend<{ dashboardServer: MockDashboardServer }>({
 
       // 세션 ID에 따라 이벤트 시퀀스 선택
       const sessionId = req.params.id;
-      const events = sessionId.includes("multi") ? MULTI_TOOL_SSE_EVENTS : SSE_EVENTS;
+      let events: Array<{ delay: number; data: string; end?: boolean }>;
+      if (sessionId.includes("large50")) {
+        events = LARGE_50_SSE_EVENTS;
+      } else if (sessionId.includes("large25")) {
+        events = LARGE_25_SSE_EVENTS;
+      } else if (sessionId.includes("notool")) {
+        events = NO_TOOL_SSE_EVENTS;
+      } else if (sessionId.includes("multi")) {
+        events = MULTI_TOOL_SSE_EVENTS;
+      } else {
+        events = SSE_EVENTS;
+      }
 
       // SSE 이벤트 스케줄링
       for (const event of events) {
@@ -303,7 +440,7 @@ async function navigateAndSelectSession(
   await page.goto(baseURL);
   await expect(
     page.locator('[data-testid^="session-item-"]'),
-  ).toHaveCount(4, { timeout: 10_000 });
+  ).toHaveCount(7, { timeout: 10_000 });
   await page
     .locator(`[data-testid="session-item-${sessionKey}"]`)
     .click();
@@ -348,11 +485,11 @@ test.describe("Soul Dashboard 브라우저 UI", () => {
     // 세션 항목이 렌더링될 때까지 대기 (mock에서 3개 반환)
     await expect(
       page.locator('[data-testid^="session-item-"]'),
-    ).toHaveCount(4, { timeout: 10_000 });
+    ).toHaveCount(7, { timeout: 10_000 });
 
     // 세션 상태 뱃지 확인
     const statusBadges = page.locator('[data-testid="session-status-badge"]');
-    await expect(statusBadges).toHaveCount(4);
+    await expect(statusBadges).toHaveCount(7);
 
     // 그래프 패널 확인 (세션 미선택 → "Select a session" 안내)
     const graphPanel = page.locator('[data-testid="graph-panel"]');
@@ -707,6 +844,168 @@ test.describe("Soul Dashboard 브라우저 UI", () => {
     // 스크린샷: 겹침 없음 검증 후 상태
     await page.screenshot({
       path: `${SCREENSHOT_DIR}/11-no-overlap.png`,
+      fullPage: true,
+    });
+  });
+
+  test("8. Tool call 없는 세션: 노드 세로 배치 검증 (Bug #10 regression)", async ({
+    page,
+    dashboardServer,
+  }) => {
+    // tool 없는 세션 선택
+    await navigateAndSelectSession(
+      page,
+      dashboardServer.baseURL,
+      "bot:e2e-ui-notool",
+    );
+
+    // Complete까지 대기
+    await expect(page.getByText("Idle")).toBeVisible({ timeout: 10_000 });
+
+    // viewport 안정화
+    await page.waitForTimeout(500);
+
+    // Response 노드 확인 (tool 없는 세션 → 마지막 text가 response)
+    const responseNodes = page.locator('[data-testid="response-node"]');
+    await expect(responseNodes).toHaveCount(1, { timeout: 10_000 });
+
+    // User 노드 확인
+    const userNodes = page.locator('[data-testid="user-node"]');
+    await expect(userNodes).toHaveCount(1, { timeout: 10_000 });
+
+    // Tool 노드 없음
+    const toolCallNodes = page.locator('[data-testid="tool-call-node"]');
+    await expect(toolCallNodes).toHaveCount(0);
+
+    // 전체 노드 수: user(1) + response(1) + system(1, complete) = 3 이상
+    const allNodes = page.locator(".react-flow__node");
+    const nodeCount = await allNodes.count();
+    expect(nodeCount).toBeGreaterThanOrEqual(3);
+
+    // 노드 겹침 없음 검증 (AABB)
+    const allNodeBoxes = await page.evaluate(() => {
+      const nodes = document.querySelectorAll(".react-flow__node");
+      return Array.from(nodes).map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { id: node.getAttribute("data-id") ?? "?", x: rect.x, y: rect.y, w: rect.width, h: rect.height };
+      });
+    });
+
+    const overlaps: Array<{ a: string; b: string }> = [];
+    for (let i = 0; i < allNodeBoxes.length; i++) {
+      for (let j = i + 1; j < allNodeBoxes.length; j++) {
+        const a = allNodeBoxes[i];
+        const b = allNodeBoxes[j];
+        const margin = 2;
+        const overlapX = a.x + margin < b.x + b.w - margin && a.x + a.w - margin > b.x + margin;
+        const overlapY = a.y + margin < b.y + b.h - margin && a.y + a.h - margin > b.y + margin;
+        if (overlapX && overlapY) overlaps.push({ a: a.id, b: b.id });
+      }
+    }
+    expect(overlaps, `노드 겹침: ${JSON.stringify(overlaps)}`).toHaveLength(0);
+
+    // 스크린샷
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}/12-no-tool-session.png`,
+      fullPage: true,
+    });
+  });
+
+  test("9. 25+ 노드 세션: EXECUTION FLOW 정상 렌더링 (Bug #10/#14 regression)", async ({
+    page,
+    dashboardServer,
+  }) => {
+    await navigateAndSelectSession(
+      page,
+      dashboardServer.baseURL,
+      "bot:e2e-ui-large25",
+    );
+
+    // Complete까지 대기 — 25 노드 세션은 시간이 더 걸림
+    await expect(page.getByText("Idle")).toBeVisible({ timeout: 30_000 });
+
+    await page.waitForTimeout(500);
+
+    // 노드가 렌더링되었는지 확인
+    const allNodes = page.locator(".react-flow__node");
+    const nodeCount = await allNodes.count();
+    expect(nodeCount).toBeGreaterThanOrEqual(20);
+
+    // 노드가 뷰포트 내에 표시되는지 확인 (하나 이상)
+    const visibleNodes = await page.evaluate(() => {
+      const vpW = window.innerWidth;
+      const vpH = window.innerHeight;
+      const nodes = document.querySelectorAll(".react-flow__node");
+      let visible = 0;
+      nodes.forEach((node) => {
+        const rect = node.getBoundingClientRect();
+        if (rect.x + rect.width > 0 && rect.x < vpW && rect.y + rect.height > 0 && rect.y < vpH) {
+          visible++;
+        }
+      });
+      return visible;
+    });
+    expect(visibleNodes).toBeGreaterThan(0);
+
+    // 스크린샷
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}/13-large25-session.png`,
+      fullPage: true,
+    });
+  });
+
+  test("10. 50+ 노드 세션: EXECUTION FLOW 비어있지 않음 (Bug #14 regression)", async ({
+    page,
+    dashboardServer,
+  }) => {
+    await navigateAndSelectSession(
+      page,
+      dashboardServer.baseURL,
+      "bot:e2e-ui-large50",
+    );
+
+    // Complete까지 대기 — 50 노드 세션은 시간이 상당히 걸림
+    await expect(page.getByText("Idle")).toBeVisible({ timeout: 60_000 });
+
+    await page.waitForTimeout(500);
+
+    // 노드가 렌더링되었는지 확인
+    const allNodes = page.locator(".react-flow__node");
+    const nodeCount = await allNodes.count();
+    expect(nodeCount).toBeGreaterThanOrEqual(40);
+
+    // 뷰포트 내에 하나 이상의 노드가 보여야 함 (14번 버그: 비어있으면 안됨)
+    const visibleNodes = await page.evaluate(() => {
+      const vpW = window.innerWidth;
+      const vpH = window.innerHeight;
+      const nodes = document.querySelectorAll(".react-flow__node");
+      let visible = 0;
+      nodes.forEach((node) => {
+        const rect = node.getBoundingClientRect();
+        if (rect.x + rect.width > 0 && rect.x < vpW && rect.y + rect.height > 0 && rect.y < vpH) {
+          visible++;
+        }
+      });
+      return visible;
+    });
+    expect(visibleNodes).toBeGreaterThan(0);
+
+    // 모든 노드의 바운딩 박스가 유한한 범위 내에 있는지 확인
+    const allNodeBoxes = await page.evaluate(() => {
+      const nodes = document.querySelectorAll(".react-flow__node");
+      return Array.from(nodes).map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, w: rect.width, h: rect.height };
+      });
+    });
+
+    // 0 크기 노드가 없어야 함 (렌더링 실패 표지)
+    const zeroSizeNodes = allNodeBoxes.filter((b) => b.w === 0 || b.h === 0);
+    expect(zeroSizeNodes).toHaveLength(0);
+
+    // 스크린샷
+    await page.screenshot({
+      path: `${SCREENSHOT_DIR}/14-large50-session.png`,
       fullPage: true,
     });
   });

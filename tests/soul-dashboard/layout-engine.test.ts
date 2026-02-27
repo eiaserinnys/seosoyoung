@@ -942,7 +942,7 @@ describe("calcToolChainBounds", () => {
 // === applyDagreLayout: tool 체인 너비 확장 테스트 ===
 
 describe("applyDagreLayout tool chain width expansion", () => {
-  it("tool nodes are placed to the right of the parent within dagre-allocated space", () => {
+  it("tool nodes are placed to the right of the parent within allocated space", () => {
     // thinking + tool_call + tool_result 시나리오
     const thinkingDims = getNodeDimensions("thinking");
     const callDims = getNodeDimensions("tool_call");
@@ -983,5 +983,201 @@ describe("applyDagreLayout tool chain width expansion", () => {
 
     // tool_result는 tool_call의 오른쪽에 배치
     expect(resultNode.position.x).toBeGreaterThan(callNode.position.x + callDims.width);
+  });
+});
+
+// === Phase 2: tool call 없는 세션 레이아웃 검증 ===
+
+describe("no-tool session layout (Bug #10 regression)", () => {
+  it("tool call 없는 세션에서 THINKING → RESPONSE → COMPLETE 세로 배치", () => {
+    const cards: DashboardCard[] = [
+      textCard("t1", "Thinking about the question..."),
+      textCard("t2", "Here is my response."),
+    ];
+    const events: SoulSSEEvent[] = [
+      { type: "session", session_id: "no-tool-session" },
+      { type: "complete", result: "done", attachments: [] },
+    ];
+
+    const { nodes } = buildGraph(cards, events);
+
+    // 노드: session(system) + thinking + response + complete(system)
+    const sessionNode = nodes.find((n) => n.data.label === "Session Started");
+    const thinkingNode = nodes.find((n) => n.id === "node-t1");
+    const responseNode = nodes.find((n) => n.id === "node-t2");
+    const completeNode = nodes.find((n) => n.data.label === "Complete");
+
+    expect(sessionNode).toBeDefined();
+    expect(thinkingNode).toBeDefined();
+    expect(responseNode).toBeDefined();
+    expect(completeNode).toBeDefined();
+
+    // 순서대로 Y가 증가해야 함 (겹치지 않아야 함)
+    expect(thinkingNode!.position.y).toBeGreaterThan(sessionNode!.position.y);
+    expect(responseNode!.position.y).toBeGreaterThan(thinkingNode!.position.y);
+    expect(completeNode!.position.y).toBeGreaterThan(responseNode!.position.y);
+  });
+
+  it("tool call 없는 세션에서 모든 노드가 양수 좌표", () => {
+    const cards: DashboardCard[] = [
+      textCard("t1", "First thinking"),
+      textCard("t2", "Response"),
+    ];
+    const events: SoulSSEEvent[] = [
+      { type: "session", session_id: "s1" },
+      { type: "complete", result: "ok", attachments: [] },
+    ];
+
+    const { nodes } = buildGraph(cards, events);
+
+    for (const node of nodes) {
+      expect(node.position.x).toBeGreaterThanOrEqual(0);
+      expect(node.position.y).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("인접 노드 간 겹침 없음 (Y 간격 ≥ 노드 높이)", () => {
+    const cards: DashboardCard[] = [
+      textCard("t1", "Thinking"),
+      textCard("t2", "Response"),
+    ];
+    const events: SoulSSEEvent[] = [
+      { type: "session", session_id: "s1" },
+      { type: "complete", result: "ok", attachments: [] },
+    ];
+
+    const { nodes } = buildGraph(cards, events);
+
+    // 메인 플로우 노드를 Y 순으로 정렬
+    const sorted = [...nodes].sort((a, b) => a.position.y - b.position.y);
+
+    for (let i = 1; i < sorted.length; i++) {
+      const prevDims = getNodeDimensions(sorted[i - 1].data.nodeType);
+      const gap = sorted[i].position.y - sorted[i - 1].position.y;
+      expect(gap).toBeGreaterThanOrEqual(prevDims.height);
+    }
+  });
+});
+
+// === Phase 3: 대규모 세션 레이아웃 검증 ===
+
+describe("large session layout (Bug #14 regression)", () => {
+  /** N개 thinking + tool 페어를 생성하는 헬퍼 */
+  function generateLargeSession(pairCount: number): {
+    cards: DashboardCard[];
+    events: SoulSSEEvent[];
+  } {
+    const cards: DashboardCard[] = [];
+    const events: SoulSSEEvent[] = [
+      { type: "session", session_id: `large-${pairCount}` },
+    ];
+
+    for (let i = 0; i < pairCount; i++) {
+      cards.push(textCard(`t${i}`, `Thinking step ${i}`));
+      cards.push(
+        toolCard(`tool${i}`, i % 3 === 0 ? "Bash" : i % 3 === 1 ? "Read" : "Glob", {
+          toolResult: `result ${i}`,
+          completed: true,
+          parentCardId: `t${i}`,
+        }),
+      );
+    }
+
+    // 마지막 response
+    cards.push(textCard(`t-final`, "Final response"));
+    events.push({ type: "complete", result: "done", attachments: [] });
+
+    return { cards, events };
+  }
+
+  it("25+ 노드 세션: 모든 노드가 양수 좌표 (10번 버그 회귀 방지)", () => {
+    const { cards, events } = generateLargeSession(10); // 10 pairs = ~25 nodes
+
+    const { nodes } = buildGraph(cards, events);
+
+    expect(nodes.length).toBeGreaterThanOrEqual(25);
+
+    for (const node of nodes) {
+      expect(node.position.x).toBeGreaterThanOrEqual(0);
+      expect(node.position.y).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("50+ 노드 세션: 모든 노드가 양수 좌표 (14번 버그 회귀 방지)", () => {
+    const { cards, events } = generateLargeSession(20); // 20 pairs = ~45+ nodes
+
+    const { nodes } = buildGraph(cards, events);
+
+    expect(nodes.length).toBeGreaterThanOrEqual(45);
+
+    for (const node of nodes) {
+      expect(node.position.x).toBeGreaterThanOrEqual(0);
+      expect(node.position.y).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("50+ 노드 세션: 메인 플로우 노드 겹침 없음", () => {
+    const { cards, events } = generateLargeSession(20);
+
+    const { nodes } = buildGraph(cards, events);
+
+    // 메인 플로우 노드만 추출 (같은 X 좌표를 가진 노드들)
+    const mainFlowX = nodes.find((n) => n.data.nodeType === "thinking")?.position.x;
+    if (mainFlowX === undefined) return;
+
+    const mainFlowNodes = nodes.filter((n) => n.position.x === mainFlowX);
+    const sorted = [...mainFlowNodes].sort((a, b) => a.position.y - b.position.y);
+
+    for (let i = 1; i < sorted.length; i++) {
+      const prevDims = getNodeDimensions(sorted[i - 1].data.nodeType);
+      const gap = sorted[i].position.y - sorted[i - 1].position.y;
+      expect(gap).toBeGreaterThanOrEqual(prevDims.height);
+    }
+  });
+
+  it("50+ 노드 세션: bounding box가 유한한 범위 내에 있음", () => {
+    const { cards, events } = generateLargeSession(20);
+
+    const { nodes } = buildGraph(cards, events);
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const n of nodes) {
+      const d = getNodeDimensions(n.data.nodeType);
+      minX = Math.min(minX, n.position.x);
+      minY = Math.min(minY, n.position.y);
+      maxX = Math.max(maxX, n.position.x + d.width);
+      maxY = Math.max(maxY, n.position.y + d.height);
+    }
+
+    // bounding box 원점이 음수가 아닌지 확인
+    expect(minX).toBeGreaterThanOrEqual(0);
+    expect(minY).toBeGreaterThanOrEqual(0);
+
+    // bounding box가 합리적인 범위인지 (10만 px 이내)
+    expect(maxX - minX).toBeLessThan(100_000);
+    expect(maxY - minY).toBeLessThan(100_000);
+  });
+
+  it("100+ 노드 세션: 성능 및 좌표 안정성", () => {
+    const { cards, events } = generateLargeSession(50); // 50 pairs = ~105 nodes
+
+    const start = performance.now();
+    const { nodes } = buildGraph(cards, events);
+    const elapsed = performance.now() - start;
+
+    expect(nodes.length).toBeGreaterThanOrEqual(100);
+
+    // 모든 좌표가 양수
+    for (const node of nodes) {
+      expect(node.position.x).toBeGreaterThanOrEqual(0);
+      expect(node.position.y).toBeGreaterThanOrEqual(0);
+    }
+
+    // 성능: 100+ 노드 레이아웃이 500ms 이내
+    expect(elapsed).toBeLessThan(500);
   });
 });
