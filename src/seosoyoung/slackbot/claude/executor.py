@@ -6,9 +6,9 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 
 실행 모드 (execution_mode):
 - local: 기존 방식. ClaudeRunner를 직접 사용하여 로컬에서 실행.
-- remote: seosoyoung-soul 서버에 HTTP/SSE로 위임하여 실행.
-         soul 서버 연결 실패 시 local 모드로 자동 폴백.
-         soul 복구 시 remote 모드로 자동 복귀.
+- remote: Soulstream 서버(독립 soul-server, 기본 포트 4105)에 HTTP/SSE로 위임하여 실행.
+         Soulstream 연결 실패 시 local 모드로 자동 폴백.
+         Soulstream 복구 시 remote 모드로 자동 복귀.
 """
 
 import logging
@@ -36,9 +36,9 @@ _HEALTH_CHECK_TIMEOUT = 3.0  # 초
 
 
 class SoulHealthTracker:
-    """Soul 서버 헬스 상태 추적
+    """Soulstream 서버 헬스 상태 추적
 
-    - remote 모드에서 soul 연결 가능 여부를 추적
+    - remote 모드에서 Soulstream 연결 가능 여부를 추적
     - 실패 시 local 폴백, 복구 시 remote 복귀
     - 쿨다운 기반으로 헬스체크 빈도 제한
     """
@@ -60,7 +60,7 @@ class SoulHealthTracker:
         return self._consecutive_failures
 
     def check_health(self) -> bool:
-        """Soul 서버 헬스체크 (쿨다운 적용)
+        """Soulstream 헬스체크 (쿨다운 적용)
 
         Returns:
             True: healthy (remote 사용 가능)
@@ -79,14 +79,14 @@ class SoulHealthTracker:
         with self._lock:
             if healthy:
                 if not self._is_healthy:
-                    logger.info("[Fallback] Soul 서버 복구 감지 → remote 모드 복귀")
+                    logger.info("[Fallback] Soulstream 복구 감지 → remote 모드 복귀")
                 self._is_healthy = True
                 self._consecutive_failures = 0
             else:
                 self._consecutive_failures += 1
                 if self._is_healthy:
                     logger.warning(
-                        "[Fallback] Soul 서버 연결 실패 → local 모드로 폴백"
+                        "[Fallback] Soulstream 연결 실패 → local 모드로 폴백"
                     )
                 self._is_healthy = False
 
@@ -107,7 +107,7 @@ class SoulHealthTracker:
             self._last_check_time = time.monotonic()
 
     def _do_health_check(self) -> bool:
-        """HTTP GET /health 요청으로 soul 서버 가용성 확인"""
+        """HTTP GET /health 요청으로 Soulstream 서버 가용성 확인"""
         import urllib.request
         import urllib.error
 
@@ -222,7 +222,7 @@ class ClaudeExecutor:
         # Remote 모드: session_id 확보 전 도착한 인터벤션 버퍼
         self._pending_session_interventions: dict[str, list] = {}  # thread_ts -> [(prompt, ...)]
         self._pending_session_lock = threading.Lock()
-        # Remote 모드: Soul 서버 헬스 상태 추적 (폴백 전략)
+        # Remote 모드: Soulstream 서버 헬스 상태 추적 (폴백 전략)
         self._health_tracker: Optional[SoulHealthTracker] = None
         if execution_mode == "remote" and soul_url:
             self._health_tracker = SoulHealthTracker(soul_url)
@@ -400,7 +400,7 @@ class ClaudeExecutor:
         """단일 Claude 실행
 
         execution_mode 판별 + 폴백 전략:
-        1. remote 모드: soul 헬스체크 → 성공 시 remote, 실패 시 local 폴백
+        1. remote 모드: Soulstream 헬스체크 → 성공 시 remote, 실패 시 local 폴백
         2. local 모드: 직접 ClaudeRunner 사용
         """
         effective_role = role or "admin"
@@ -409,7 +409,7 @@ class ClaudeExecutor:
         use_remote = self._should_use_remote()
 
         if use_remote:
-            # === Remote 모드: soul 서버에 위임 ===
+            # === Remote 모드: Soulstream 서버에 위임 ===
             logger.info(f"Claude 실행 (remote): thread={thread_ts}, role={effective_role}")
             self._execute_remote(
                 thread_ts, prompt,
@@ -466,8 +466,8 @@ class ClaudeExecutor:
     def _should_use_remote(self) -> bool:
         """remote 모드 사용 여부 판별 (폴백 전략 포함)
 
-        execution_mode가 'remote'이고 soul 서버가 healthy하면 True.
-        soul 서버에 연결할 수 없으면 False (local 폴백).
+        execution_mode가 'remote'이고 Soulstream 서버가 healthy하면 True.
+        Soulstream에 연결할 수 없으면 False (local 폴백).
         health_tracker가 설정되지 않은 경우 기존 동작 유지 (항상 remote).
         """
         if self.execution_mode != "remote":
@@ -556,7 +556,7 @@ class ClaudeExecutor:
         disallowed_tools: Optional[list] = None,
         use_mcp: bool = True,
     ):
-        """Remote 모드: soul 서버에 실행을 위임"""
+        """Remote 모드: Soulstream 서버에 실행을 위임"""
         adapter = self._get_service_adapter()
         request_id = thread_ts  # thread_ts를 request_id로 사용
 

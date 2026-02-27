@@ -83,7 +83,7 @@ class InterventionManager:
         pending_session_interventions: Optional[dict] = None,
         pending_session_lock: Optional[Any] = None,
     ):
-        """Remote 모드: soul 서버에 HTTP intervene 요청
+        """Remote 모드: Soulstream에 HTTP intervene 요청
 
         session_id가 확보되어 있으면 session_id 기반 인터벤션을 사용합니다.
         session_id가 없으면 (아직 미확보) 버퍼에 보관하거나,

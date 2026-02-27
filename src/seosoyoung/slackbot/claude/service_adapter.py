@@ -1,6 +1,6 @@
-"""Claude Soul Service Adapter
+"""Soulstream Service Adapter
 
-SoulServiceClient를 통해 원격 soul 서버에 Claude Code 실행을 위임하고,
+SoulServiceClient를 통해 Soulstream 서버에 Claude Code 실행을 위임하고,
 결과를 기존 ClaudeResult 포맷으로 변환합니다.
 
 ClaudeExecutor에서 local/remote 분기 시 remote 경로로 사용됩니다.
@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 class ClaudeServiceAdapter:
-    """원격 soul 서버 어댑터
+    """Soulstream 서버 어댑터
 
     executor의 _execute_once에서 remote 모드일 때 사용.
-    SoulServiceClient로 실행하고 ClaudeResult로 변환합니다.
+    SoulServiceClient로 Soulstream에 실행을 위임하고 ClaudeResult로 변환합니다.
     """
 
     def __init__(self, client: SoulServiceClient, client_id: str, *,
@@ -49,7 +49,7 @@ class ClaudeServiceAdapter:
         disallowed_tools: Optional[list[str]] = None,
         use_mcp: bool = True,
     ) -> ClaudeResult:
-        """Claude Code를 soul 서버에서 실행하고 ClaudeResult로 반환
+        """Claude Code를 Soulstream에서 실행하고 ClaudeResult로 반환
 
         Args:
             prompt: 실행할 프롬프트
@@ -122,7 +122,7 @@ class ClaudeServiceAdapter:
             return ClaudeResult(
                 success=False,
                 output="",
-                error=f"소울 서비스 오류: {e}",
+                error=f"Soulstream 오류: {e}",
             )
 
         except Exception as e:
