@@ -993,12 +993,16 @@ export function calcToolChainBounds(chain: ToolChainEntry[]): { width: number; h
 }
 
 /**
- * dagre 라이브러리를 사용하여 노드에 자동 레이아웃을 적용합니다.
+ * 매트릭스 그리드 기반으로 노드에 자동 레이아웃을 적용합니다.
  *
- * 2단계 레이아웃:
- * 1. 메인 플로우 노드(user, thinking, response, system, intervention)만 dagre에 등록
- *    - tool 체인이 있는 노드는 dagre width/height 모두 확장하여 수평 공간 확보
- * 2. dagre 레이아웃 실행 후, tool 노드를 부모 노드 기준으로 수동 배치
+ * 3단계 레이아웃:
+ * 1. 메인 플로우 노드만 dagre에 등록 (Y 순서 결정용)
+ *    - tool 체인이 있는 노드는 height만 확장하여 수직 공간 확보
+ * 2. 고정 열(COL_A/B/C) 방식으로 X 좌표 결정
+ *    - A열: 메인 플로우 (user, thinking, response, system, intervention)
+ *    - B열: tool_call / tool_group
+ *    - C열: tool_result
+ * 3. tool 노드를 B/C열 고정 X + 순차 Y로 배치
  *
  * @param nodes - 위치가 미지정인 노드 배열
  * @param edges - 엣지 배열
@@ -1044,9 +1048,8 @@ export function applyDagreLayout(
   const topLevelNodes = nodes.filter((n) => !n.parentId);
   const childNodes = nodes.filter((n) => n.parentId);
 
-  // dagre에 전달한 확장 크기를 기억 (position 계산에 사용)
+  // dagre에 전달한 확장 높이를 기억 (순차 Y 계산에 사용)
   const dagreHeights = new Map<string, number>();
-  const dagreWidths = new Map<string, number>();
 
   // 메인 플로우 노드만 dagre에 등록 (tool 노드 제외)
   for (const node of topLevelNodes) {
@@ -1058,16 +1061,14 @@ export function applyDagreLayout(
         ? getNodeDimensions("group")
         : getNodeDimensions(nodeType);
 
-    // tool 체인이 있는 노드: width와 height 모두 확장
-    let width = dims.width;
+    // tool 체인이 있는 노드: height만 확장 (X는 고정 열 방식이므로 width 확장 불필요)
+    const width = dims.width;
     let height = dims.height;
     if (toolBranches?.has(node.id)) {
       const chainBounds = calcToolChainBounds(toolBranches.get(node.id)!);
-      width = dims.width + chainBounds.width;
       height = Math.max(height, chainBounds.height);
     }
 
-    dagreWidths.set(node.id, width);
     dagreHeights.set(node.id, height);
     g.setNode(node.id, { width, height });
   }
@@ -1120,7 +1121,23 @@ export function applyDagreLayout(
     }
   }
 
-  // dagre 결과를 노드 위치에 반영
+  // === 그리드 기반 고정 열 X 좌표 계산 ===
+  // dagre의 센터 정렬 대신, 매트릭스 그리드 방식으로 X를 결정
+  // A열: 메인 플로우 (user, thinking, response, system, intervention)
+  // B열: tool_call / tool_group
+  // C열: tool_result
+  const NODE_WIDTH = getNodeDimensions("thinking").width; // 260
+  let COL_A: number;
+  if (mainFlowOrder.length > 0) {
+    const firstDagreNode = g.node(mainFlowOrder[0].id);
+    COL_A = firstDagreNode ? firstDagreNode.x - NODE_WIDTH / 2 : 20;
+  } else {
+    COL_A = 20;
+  }
+  const COL_B = COL_A + NODE_WIDTH + TOOL_BRANCH_H_GAP;
+  const COL_C = COL_B + NODE_WIDTH + TOOL_BRANCH_H_GAP;
+
+  // 노드 위치에 반영
   const nodePositions = new Map<string, { x: number; y: number }>();
 
   const positionedNodes = nodes.map((node) => {
@@ -1142,62 +1159,44 @@ export function applyDagreLayout(
     const dagreNode = g.node(node.id);
     if (!dagreNode) return node;
 
-    // dagre 확장 크기 사용: tool 체인이 있는 노드는 dagre 영역 좌상단에 배치
-    // X: dagre에서 가져옴 (effectiveWidth로 좌측 정렬)
+    // 고정 열 배치: 모든 메인 플로우 노드는 COL_A에 정렬
     // Y: 순차 계산 결과 사용 (메인 플로우 노드가 항상 이전 노드 아래에 배치)
-    const effectiveWidth = dagreWidths.get(node.id) ?? (
-      node.type === "group"
-        ? getNodeDimensions("group").width
-        : getNodeDimensions(node.data.nodeType).width
-    );
-
     const pos = {
-      x: dagreNode.x - effectiveWidth / 2,
+      x: COL_A,
       y: sequentialTopY.get(node.id) ?? (dagreNode.y - (dagreHeights.get(node.id) ?? 84) / 2),
     };
     nodePositions.set(node.id, pos);
     return { ...node, position: pos };
   });
 
-  // tool 노드 수동 배치
+  // tool 노드 수동 배치 (고정 열 B/C 사용)
   if (toolBranches) {
     for (const [parentId, chain] of toolBranches) {
       const parentPos = nodePositions.get(parentId);
       if (!parentPos) continue;
 
-      // 부모 노드의 실제 타입으로 크기 조회 (하드코딩 제거)
-      const parentNode = nodes.find((n) => n.id === parentId);
-      const parentDims = parentNode
-        ? (parentNode.type === "group"
-            ? getNodeDimensions("group")
-            : getNodeDimensions(parentNode.data.nodeType))
-        : getNodeDimensions("thinking"); // 폴백
       let currentY = parentPos.y; // tool[0]의 y는 parent의 y와 같음
 
       for (let i = 0; i < chain.length; i++) {
         const entry = chain[i];
-        // tool_group 노드인지 확인하여 올바른 크기 사용
         const isGroupNode = entry.callId.endsWith("-group");
         const callDims = isGroupNode
           ? getNodeDimensions("tool_group")
           : getNodeDimensions("tool_call");
 
-        // tool_call/tool_group: parent의 오른쪽에 배치
-        const callX = parentPos.x + parentDims.width + TOOL_BRANCH_H_GAP;
-        const callPos = { x: callX, y: currentY };
+        // tool_call/tool_group: 고정 B열에 배치
+        const callPos = { x: COL_B, y: currentY };
 
-        // positionedNodes에서 해당 노드를 찾아 위치 업데이트
         const callIdx = positionedNodes.findIndex((n) => n.id === entry.callId);
         if (callIdx !== -1) {
           positionedNodes[callIdx] = { ...positionedNodes[callIdx], position: callPos };
           nodePositions.set(entry.callId, callPos);
         }
 
-        // tool_result: tool_call의 오른쪽에 배치
+        // tool_result: 고정 C열에 배치
         if (entry.resultId) {
           const resultDims = getNodeDimensions("tool_result");
-          const resultX = callX + callDims.width + TOOL_BRANCH_H_GAP;
-          const resultPos = { x: resultX, y: currentY };
+          const resultPos = { x: COL_C, y: currentY };
 
           const resultIdx = positionedNodes.findIndex((n) => n.id === entry.resultId);
           if (resultIdx !== -1) {
