@@ -20,6 +20,7 @@ from seosoyoung.soul.api.credentials import create_credentials_router
 from seosoyoung.soul.service import resource_manager, file_manager
 from seosoyoung.soul.service.credential_store import CredentialStore
 from seosoyoung.soul.service.credential_swapper import CredentialSwapper
+from seosoyoung.soul.service.rate_limit_tracker import RateLimitTracker
 from seosoyoung.soul.service.engine_adapter import init_soul_engine
 from seosoyoung.soul.service.runner_pool import ClaudeRunnerPool
 from seosoyoung.soul.service.task_manager import init_task_manager, get_task_manager
@@ -80,7 +81,14 @@ async def lifespan(app: FastAPI):
         maintenance_interval=settings.runner_pool_maintenance_interval,
     )
     _runner_pool = pool
-    init_soul_engine(pool=pool)
+
+    logger.info(f"  RateLimitTracker initialized: {_profiles_dir}")
+
+    init_soul_engine(
+        pool=pool,
+        rate_limit_tracker=_rate_limit_tracker,
+        credential_store=_credential_store,
+    )
     logger.info(
         f"  Runner pool initialized: max_size={settings.runner_pool_max_size}, "
         f"idle_ttl={settings.runner_pool_idle_ttl}s, "
@@ -253,6 +261,7 @@ _credential_store = CredentialStore(profiles_dir=_profiles_dir)
 _credential_swapper = CredentialSwapper(
     store=_credential_store, credentials_path=_credentials_path
 )
+_rate_limit_tracker = RateLimitTracker(profiles_dir=_profiles_dir)
 
 # === API Routers ===
 
@@ -264,7 +273,9 @@ app.include_router(attachments_router, prefix="/attachments", tags=["attachments
 
 # Credentials API - 프로필 관리
 credentials_router = create_credentials_router(
-    store=_credential_store, swapper=_credential_swapper
+    store=_credential_store,
+    swapper=_credential_swapper,
+    rate_limit_tracker=_rate_limit_tracker,
 )
 app.include_router(credentials_router, prefix="/profiles", tags=["credentials"])
 

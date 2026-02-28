@@ -4,12 +4,12 @@
 
 ## 개요
 
-재시작 버튼 액션 핸들러
+재시작 버튼 및 크레덴셜 프로필 전환 액션 핸들러
 
 ## 함수
 
 ### `send_restart_confirmation(client, channel, restart_type, running_count, user_id, original_thread_ts)`
-- 위치: 줄 11
+- 위치: 줄 14
 - 설명: 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 
 Args:
@@ -21,7 +21,7 @@ Args:
     original_thread_ts: 원래 요청 메시지의 스레드 ts (있으면)
 
 ### `send_deploy_shutdown_popup(client, channel, running_count, restart_type)`
-- 위치: 줄 79
+- 위치: 줄 82
 - 설명: 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
 
 supervisor에서 graceful shutdown 요청이 왔을 때 활성 세션이 있으면
@@ -34,12 +34,32 @@ Args:
     restart_type: 재시작 유형
 
 ### `register_action_handlers(app, dependencies)`
-- 위치: 줄 142
+- 위치: 줄 145
 - 설명: 액션 핸들러 등록
 
 Args:
     app: Slack Bolt App 인스턴스
     dependencies: 의존성 딕셔너리
+
+### `activate_credential_profile(profile_name, channel, message_ts, client)`
+- 위치: 줄 312
+- 설명: 크레덴셜 프로필 전환 처리
+
+Soul API를 호출하여 프로필을 활성화하고 슬랙 메시지를 업데이트합니다.
+
+Args:
+    profile_name: 활성화할 프로필 이름
+    channel: 슬랙 채널 ID
+    message_ts: 원본 메시지 타임스탬프
+    client: Slack client
+
+### `register_credential_action_handlers(app, dependencies)`
+- 위치: 줄 364
+- 설명: 크레덴셜 프로필 전환 액션 핸들러 등록
+
+Args:
+    app: Slack Bolt App 인스턴스
+    dependencies: 의존성 딕셔너리 (현재 미사용, 확장성을 위해 유지)
 
 ## 내부 의존성
 

@@ -19,10 +19,13 @@ from seosoyoung.soul.config import get_settings
 
 if TYPE_CHECKING:
     from seosoyoung.soul.service.runner_pool import ClaudeRunnerPool
+    from seosoyoung.soul.service.rate_limit_tracker import RateLimitTracker
+    from seosoyoung.soul.service.credential_store import CredentialStore
 from seosoyoung.soul.models import (
     CompactEvent,
     CompleteEvent,
     ContextUsageEvent,
+    CredentialAlertEvent,
     DebugEvent,
     ErrorEvent,
     InterventionSentEvent,
@@ -150,9 +153,13 @@ class SoulEngineAdapter:
         self,
         workspace_dir: Optional[str] = None,
         pool: Optional["ClaudeRunnerPool"] = None,
+        rate_limit_tracker: Optional["RateLimitTracker"] = None,
+        credential_store: Optional["CredentialStore"] = None,
     ):
         self._workspace_dir = workspace_dir or get_settings().workspace_dir
         self._pool = pool
+        self._rate_limit_tracker = rate_limit_tracker
+        self._credential_store = credential_store
 
     def _resolve_mcp_config_path(self) -> Optional[Path]:
         """WORKSPACE_DIR 기준으로 mcp_config.json 경로를 해석"""
@@ -209,6 +216,62 @@ class SoulEngineAdapter:
                 )
             except Exception:
                 pass  # 큐 닫힘 등 무시
+
+        # --- rate limit tracker 연동 ---
+        # ClaudeRunner._observe_rate_limit()의 원본을 래핑하여
+        # RateLimitTracker에 데이터를 전달하고, 95% 알림 시 SSE 이벤트 발행
+        rate_limit_tracker = self._rate_limit_tracker
+        credential_store = self._credential_store
+
+        def _on_rate_limit_with_tracker(
+            original_observer,
+            data: dict,
+        ) -> None:
+            """원본 _observe_rate_limit을 호출한 뒤 tracker에도 기록."""
+            # 원본 로직 (debug 메시지 전송 등)
+            original_observer(data)
+
+            # tracker가 없으면 추가 처리 없음
+            if rate_limit_tracker is None:
+                return
+
+            info = data.get("rate_limit_info", {})
+            rate_limit_type = info.get("rateLimitType", "")
+            utilization = info.get("utilization")
+            resets_at = info.get("resetsAt")
+
+            if not rate_limit_type or utilization is None:
+                return
+
+            # 활성 프로필 조회
+            active_profile = "unknown"
+            if credential_store is not None:
+                try:
+                    active_profile = credential_store.get_active() or "unknown"
+                except Exception:
+                    pass
+
+            try:
+                should_alert = rate_limit_tracker.record(
+                    profile=active_profile,
+                    rate_limit_type=rate_limit_type,
+                    utilization=utilization,
+                    resets_at=resets_at,
+                )
+
+                if should_alert:
+                    alert_data = rate_limit_tracker.build_credential_alert(
+                        active_profile=active_profile
+                    )
+                    try:
+                        loop.call_soon_threadsafe(
+                            queue.put_nowait,
+                            CredentialAlertEvent(**alert_data),
+                        )
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning(f"Rate limit tracker 기록 실패 (무시): {e}")
 
         # --- 콜백 → 큐 어댑터 ---
 
@@ -325,6 +388,14 @@ class SoulEngineAdapter:
                     debug_send_fn=debug_send_fn,
                 )
 
+            # rate limit tracker 래핑: 원본 observer를 보존하고 래핑
+            if rate_limit_tracker is not None:
+                import functools
+                original_observer = runner._observe_rate_limit
+                runner._observe_rate_limit = functools.partial(
+                    _on_rate_limit_with_tracker, original_observer
+                )
+
             success = False
             try:
                 result = await runner.run(
@@ -393,17 +464,27 @@ class SoulEngineAdapter:
 soul_engine = SoulEngineAdapter()
 
 
-def init_soul_engine(pool: Optional["ClaudeRunnerPool"] = None) -> SoulEngineAdapter:
+def init_soul_engine(
+    pool: Optional["ClaudeRunnerPool"] = None,
+    rate_limit_tracker: Optional["RateLimitTracker"] = None,
+    credential_store: Optional["CredentialStore"] = None,
+) -> SoulEngineAdapter:
     """soul_engine 싱글톤을 (재)초기화한다.
 
     lifespan에서 풀 생성 후 호출하여 싱글톤을 교체한다.
 
     Args:
         pool: 주입할 ClaudeRunnerPool. None이면 풀 없이 초기화.
+        rate_limit_tracker: rate limit 추적기. None이면 추적 비활성.
+        credential_store: 활성 프로필 조회용 store. None이면 프로필 "unknown" 처리.
 
     Returns:
         새로 생성된 SoulEngineAdapter 인스턴스
     """
     global soul_engine
-    soul_engine = SoulEngineAdapter(pool=pool)
+    soul_engine = SoulEngineAdapter(
+        pool=pool,
+        rate_limit_tracker=rate_limit_tracker,
+        credential_store=credential_store,
+    )
     return soul_engine

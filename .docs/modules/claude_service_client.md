@@ -80,12 +80,12 @@ Task API를 사용하여 Claude Code를 원격 실행합니다.
 - `async close(self)` (줄 155): 
 - `async __aenter__(self)` (줄 160): 
 - `async __aexit__(self, exc_type, exc_val, exc_tb)` (줄 163): 
-- `async execute(self, client_id, request_id, prompt, resume_session_id, on_progress, on_compact, on_debug, on_session)` (줄 168): Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
-- `async intervene(self, client_id, request_id, text, user)` (줄 267): 실행 중인 태스크에 개입 메시지 전송
-- `async intervene_by_session(self, session_id, text, user)` (줄 295): session_id 기반 개입 메시지 전송
-- `async ack(self, client_id, request_id)` (줄 322): 결과 수신 확인
-- `async reconnect_stream(self, client_id, request_id, on_progress, on_compact, on_debug)` (줄 336): 태스크 SSE 스트림에 재연결
-- `async health_check(self)` (줄 364): 헬스 체크
-- `async _handle_sse_events(self, response, on_progress, on_compact, on_debug, on_session)` (줄 377): SSE 이벤트 스트림 처리
-- `async _parse_sse_stream(self, response)` (줄 450): SSE 스트림 파싱
-- `async _parse_error(self, response)` (줄 510): 에러 응답 파싱
+- `async execute(self, client_id, request_id, prompt, resume_session_id, on_progress, on_compact, on_debug, on_session, on_credential_alert)` (줄 168): Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
+- `async intervene(self, client_id, request_id, text, user)` (줄 271): 실행 중인 태스크에 개입 메시지 전송
+- `async intervene_by_session(self, session_id, text, user)` (줄 299): session_id 기반 개입 메시지 전송
+- `async ack(self, client_id, request_id)` (줄 326): 결과 수신 확인
+- `async reconnect_stream(self, client_id, request_id, on_progress, on_compact, on_debug, on_credential_alert)` (줄 340): 태스크 SSE 스트림에 재연결
+- `async health_check(self)` (줄 370): 헬스 체크
+- `async _handle_sse_events(self, response, on_progress, on_compact, on_debug, on_session, on_credential_alert)` (줄 383): SSE 이벤트 스트림 처리
+- `async _parse_sse_stream(self, response)` (줄 461): SSE 스트림 파싱
+- `async _parse_error(self, response)` (줄 521): 에러 응답 파싱

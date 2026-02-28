@@ -55,11 +55,11 @@
 - 설명: Claude 실행 모드 설정
 
 ### `EmojiConfig`
-- 위치: 줄 229
+- 위치: 줄 230
 - 설명: 이모지 설정
 
 ### `Config`
-- 위치: 줄 257
+- 위치: 줄 258
 - 설명: 애플리케이션 설정
 
 설정 접근 방식:
@@ -68,14 +68,14 @@
 
 #### 메서드
 
-- `get_log_path()` (줄 281): 로그 경로
-- `get_session_path()` (줄 286): 세션 경로
-- `get_glossary_path()` (줄 291): 용어집 경로 (번역 시 고유명사 참조)
-- `get_narrative_path()` (줄 296): 대사 데이터 경로
-- `get_search_index_path()` (줄 301): 검색 인덱스 경로
-- `get_web_cache_path()` (줄 306): 웹 콘텐츠 캐시 경로
-- `get_memory_path()` (줄 311): 관찰 로그 저장 경로
-- `validate(cls)` (줄 319): 필수 환경변수 검증
+- `get_log_path()` (줄 282): 로그 경로
+- `get_session_path()` (줄 287): 세션 경로
+- `get_glossary_path()` (줄 292): 용어집 경로 (번역 시 고유명사 참조)
+- `get_narrative_path()` (줄 297): 대사 데이터 경로
+- `get_search_index_path()` (줄 302): 검색 인덱스 경로
+- `get_web_cache_path()` (줄 307): 웹 콘텐츠 캐시 경로
+- `get_memory_path()` (줄 312): 관찰 로그 저장 경로
+- `validate(cls)` (줄 320): 필수 환경변수 검증
 
 ## 함수
 
