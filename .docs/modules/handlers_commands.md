@@ -79,12 +79,29 @@ mention.py의 try_handle_command에서 분리된 개별 명령어 핸들러들�
 - 위치: 줄 494
 - 설명: compact 명령어 핸들러 - 스레드 세션 컴팩트
 
+### `_run_soul_profile_api(async_fn)`
+- 위치: 줄 525
+- 설명: SoulServiceClient 프로필 API를 동기적으로 호출
+
+slack_bolt sync mode에서 핸들러 스레드에는 이벤트 루프가 없으므로
+asyncio.run()으로 새 루프를 생성하여 호출합니다.
+
+Args:
+    async_fn: SoulServiceClient 인스턴스를 받아 코루틴을 반환하는 함수
+
+Returns:
+    API 응답 딕셔너리
+
+### `_handle_profile_list(say, reply_ts)`
+- 위치: 줄 552
+- 설명: profile list: Soulstream API로 프로필 + rate limit 조회 후 게이지 바 UI 표시
+
 ### `handle_profile()`
-- 위치: 줄 529
-- 설명: profile 명령어 핸들러 - 인증 프로필 관리
+- 위치: 줄 621
+- 설명: profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
 
 ### `handle_resume_list_run()`
-- 위치: 줄 585
+- 위치: 줄 672
 - 설명: 정주행 재개 명령어 핸들러
 
 ## 내부 의존성

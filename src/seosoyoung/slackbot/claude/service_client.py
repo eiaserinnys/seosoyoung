@@ -378,6 +378,90 @@ class SoulServiceClient:
             else:
                 raise SoulServiceError("헬스 체크 실패")
 
+    # === Credential Profile API ===
+
+    async def list_profiles(self) -> dict:
+        """프로필 목록 조회 (GET /profiles)
+
+        Returns:
+            {"profiles": [...], "active": "profile_name" | None}
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles"
+
+        async with session.get(url) as response:
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"프로필 목록 조회 실패: {error}")
+            return await response.json()
+
+    async def get_rate_limits(self) -> dict:
+        """전체 프로필 rate limit 조회 (GET /profiles/rate-limits)
+
+        Returns:
+            {"active_profile": str, "profiles": [...]}
+            Rate limit tracking 비활성 시 빈 profiles 반환
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles/rate-limits"
+
+        async with session.get(url) as response:
+            if response.status == 503:
+                return {"active_profile": None, "profiles": []}
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"Rate limit 조회 실패: {error}")
+            return await response.json()
+
+    async def save_profile(self, name: str) -> dict:
+        """현재 크레덴셜을 프로필로 저장 (POST /profiles/{name})
+
+        Returns:
+            {"name": str, "saved": True}
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles/{name}"
+
+        async with session.post(url) as response:
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"프로필 저장 실패: {error}")
+            return await response.json()
+
+    async def activate_profile(self, name: str) -> dict:
+        """프로필 활성화 (POST /profiles/{name}/activate)
+
+        Returns:
+            {"activated": str}
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles/{name}/activate"
+
+        async with session.post(url) as response:
+            if response.status == 404:
+                raise SoulServiceError(f"프로필을 찾을 수 없습니다: {name}")
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"프로필 활성화 실패: {error}")
+            return await response.json()
+
+    async def delete_profile(self, name: str) -> dict:
+        """프로필 삭제 (DELETE /profiles/{name})
+
+        Returns:
+            {"deleted": True, "name": str}
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles/{name}"
+
+        async with session.delete(url) as response:
+            if response.status == 404:
+                raise SoulServiceError(f"프로필을 찾을 수 없습니다: {name}")
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"프로필 삭제 실패: {error}")
+            return await response.json()
+
     # === 헬퍼 메서드 ===
 
     async def _handle_sse_events(

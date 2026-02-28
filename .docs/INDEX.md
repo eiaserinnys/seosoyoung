@@ -335,8 +335,8 @@
 - `handle_translate()` (seosoyoung/slackbot/handlers/commands.py:418): 번역 명령어 핸들러
 - `handle_update_restart()` (seosoyoung/slackbot/handlers/commands.py:456): update/restart 명령어 핸들러
 - `handle_compact()` (seosoyoung/slackbot/handlers/commands.py:494): compact 명령어 핸들러 - 스레드 세션 컴팩트
-- `handle_profile()` (seosoyoung/slackbot/handlers/commands.py:529): profile 명령어 핸들러 - 인증 프로필 관리
-- `handle_resume_list_run()` (seosoyoung/slackbot/handlers/commands.py:585): 정주행 재개 명령어 핸들러
+- `handle_profile()` (seosoyoung/slackbot/handlers/commands.py:621): profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
+- `handle_resume_list_run()` (seosoyoung/slackbot/handlers/commands.py:672): 정주행 재개 명령어 핸들러
 - `render_gauge()` (seosoyoung/slackbot/handlers/credential_ui.py:32): 사용량을 이모지 게이지 바로 렌더링
 - `format_time_remaining()` (seosoyoung/slackbot/handlers/credential_ui.py:50): 리셋까지 남은 시간을 포맷
 - `render_rate_limit_line()` (seosoyoung/slackbot/handlers/credential_ui.py:94): 단일 rate limit 라인 렌더링

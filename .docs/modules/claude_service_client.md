@@ -86,6 +86,11 @@ Task API를 사용하여 Claude Code를 원격 실행합니다.
 - `async ack(self, client_id, request_id)` (줄 326): 결과 수신 확인
 - `async reconnect_stream(self, client_id, request_id, on_progress, on_compact, on_debug, on_credential_alert)` (줄 340): 태스크 SSE 스트림에 재연결
 - `async health_check(self)` (줄 370): 헬스 체크
-- `async _handle_sse_events(self, response, on_progress, on_compact, on_debug, on_session, on_credential_alert)` (줄 383): SSE 이벤트 스트림 처리
-- `async _parse_sse_stream(self, response)` (줄 461): SSE 스트림 파싱
-- `async _parse_error(self, response)` (줄 521): 에러 응답 파싱
+- `async list_profiles(self)` (줄 383): 프로필 목록 조회 (GET /profiles)
+- `async get_rate_limits(self)` (줄 398): 전체 프로필 rate limit 조회 (GET /profiles/rate-limits)
+- `async save_profile(self, name)` (줄 416): 현재 크레덴셜을 프로필로 저장 (POST /profiles/{name})
+- `async activate_profile(self, name)` (줄 431): 프로필 활성화 (POST /profiles/{name}/activate)
+- `async delete_profile(self, name)` (줄 448): 프로필 삭제 (DELETE /profiles/{name})
+- `async _handle_sse_events(self, response, on_progress, on_compact, on_debug, on_session, on_credential_alert)` (줄 467): SSE 이벤트 스트림 처리
+- `async _parse_sse_stream(self, response)` (줄 545): SSE 스트림 파싱
+- `async _parse_error(self, response)` (줄 605): 에러 응답 파싱

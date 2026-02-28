@@ -519,24 +519,113 @@ def handle_compact(*, say, ts, thread_ts, session_manager, **_):
         say(text=f"컴팩트 중 오류가 발생했습니다: {e}", thread_ts=thread_ts)
 
 
-_PROFILE_ACTIONS = {
-    "save": ("저장할", "✅", lambda mgr, arg: mgr.save_profile(arg, Path.home() / ".claude")),
-    "change": ("전환할", "🔄", lambda mgr, arg: mgr.change_profile(arg)),
-    "delete": ("삭제할", "🗑️", lambda mgr, arg: mgr.delete_profile(arg)),
+_VALID_PROFILE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+
+
+def _run_soul_profile_api(async_fn):
+    """SoulServiceClient 프로필 API를 동기적으로 호출
+
+    slack_bolt sync mode에서 핸들러 스레드에는 이벤트 루프가 없으므로
+    asyncio.run()으로 새 루프를 생성하여 호출합니다.
+
+    Args:
+        async_fn: SoulServiceClient 인스턴스를 받아 코루틴을 반환하는 함수
+
+    Returns:
+        API 응답 딕셔너리
+    """
+    from seosoyoung.slackbot.claude.service_client import SoulServiceClient
+
+    async def _wrapper():
+        soul = SoulServiceClient(
+            base_url=Config.claude.soul_url,
+            token=Config.claude.soul_token,
+        )
+        try:
+            return await async_fn(soul)
+        finally:
+            await soul.close()
+
+    return asyncio.run(_wrapper())
+
+
+def _handle_profile_list(say, reply_ts):
+    """profile list: Soulstream API로 프로필 + rate limit 조회 후 게이지 바 UI 표시"""
+    from seosoyoung.slackbot.handlers.credential_ui import (
+        build_credential_alert_blocks,
+        build_credential_alert_text,
+    )
+
+    async def _fetch(soul):
+        profiles_data = await soul.list_profiles()
+        try:
+            rate_limits = await soul.get_rate_limits()
+        except Exception:
+            rate_limits = {"active_profile": None, "profiles": []}
+        return profiles_data, rate_limits
+
+    profiles_data, rate_limits = _run_soul_profile_api(_fetch)
+
+    active = profiles_data.get("active")
+    profiles = profiles_data.get("profiles", [])
+
+    if not profiles:
+        say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
+        return
+
+    # rate limit 데이터 병합
+    rate_map = {rp["name"]: rp for rp in rate_limits.get("profiles", [])}
+
+    merged_profiles = []
+    for p in profiles:
+        name = p["name"]
+        rate = rate_map.get(name, {})
+        merged_profiles.append({
+            "name": name,
+            "five_hour": rate.get("five_hour", {"utilization": "unknown", "resets_at": None}),
+            "seven_day": rate.get("seven_day", {"utilization": "unknown", "resets_at": None}),
+        })
+
+    blocks = build_credential_alert_blocks(active or "", merged_profiles)
+    fallback_text = build_credential_alert_text(active or "", merged_profiles)
+
+    # 헤더를 "알림" 대신 "프로필 목록"으로 교체
+    if blocks:
+        blocks[0]["text"]["text"] = blocks[0]["text"]["text"].replace(
+            ":warning: *크레덴셜 사용량 알림*", "📋 *크레덴셜 프로필*"
+        )
+    fallback_text = fallback_text.replace("크레덴셜 사용량 알림", "크레덴셜 프로필")
+
+    say(text=fallback_text, blocks=blocks, thread_ts=reply_ts)
+
+
+_PROFILE_SUBCMD_LABELS = {
+    "save": "저장할",
+    "delete": "삭제할",
+    "change": "전환할",
+}
+
+_PROFILE_SUBCMD_API = {
+    "save": lambda soul, name: soul.save_profile(name),
+    "delete": lambda soul, name: soul.delete_profile(name),
+    "change": lambda soul, name: soul.activate_profile(name),
+}
+
+_PROFILE_SUBCMD_RESULT = {
+    "save": lambda name: f"✅ 프로필 '{name}'을(를) 저장했습니다.",
+    "delete": lambda name: f"✅ 프로필 '{name}'을(를) 삭제했습니다.",
+    "change": lambda name: f"✅ 프로필 '{name}'(으)로 전환했습니다.",
 }
 
 
 def handle_profile(*, command, say, thread_ts, client, user_id, check_permission, **_):
-    """profile 명령어 핸들러 - 인증 프로필 관리"""
+    """profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리"""
+    from seosoyoung.slackbot.claude.service_client import SoulServiceError
+
     if not check_permission(user_id, client):
         logger.warning(f"profile 권한 없음: user={user_id}")
         say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts)
         return
-
-    from seosoyoung.slackbot.profile.manager import ProfileManager
-
-    profiles_dir = Path.cwd() / ".local" / "claude_profiles"
-    manager = ProfileManager(profiles_dir=profiles_dir)
 
     parts = command.split()
     subcmd = parts[1] if len(parts) > 1 else None
@@ -544,38 +633,36 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
     reply_ts = thread_ts
 
     try:
-        if subcmd == "list":
-            profiles = manager.list_profiles()
-            if not profiles:
-                say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
-            else:
-                lines = ["*📋 프로필 목록*"]
-                for p in profiles:
-                    marker = "✅ " if p.is_active else "• "
-                    lines.append(f"{marker}`{p.name}`")
-                say(text="\n".join(lines), thread_ts=reply_ts)
-        elif subcmd in _PROFILE_ACTIONS:
-            verb, emoji, action = _PROFILE_ACTIONS[subcmd]
+        if subcmd is None or subcmd == "list":
+            _handle_profile_list(say, reply_ts)
+        elif subcmd in _PROFILE_SUBCMD_API:
+            verb = _PROFILE_SUBCMD_LABELS[subcmd]
             if not arg:
                 say(
                     text=f"{verb} 프로필 이름을 입력해주세요.\n예: `@seosoyoung profile {subcmd} work`",
                     thread_ts=reply_ts,
                 )
-            else:
-                result = action(manager, arg)
-                say(text=f"{emoji} {result}", thread_ts=reply_ts)
+                return
+            if not _VALID_PROFILE_NAME.match(arg):
+                say(
+                    text="프로필 이름은 영문/숫자로 시작하고, 영문/숫자/하이픈/언더스코어만 사용 가능합니다 (최대 64자).",
+                    thread_ts=reply_ts,
+                )
+                return
+            _run_soul_profile_api(lambda soul: _PROFILE_SUBCMD_API[subcmd](soul, arg))
+            say(text=_PROFILE_SUBCMD_RESULT[subcmd](arg), thread_ts=reply_ts)
         else:
             say(
                 text=(
                     "📁 *profile 명령어 사용법*\n"
-                    "• `profile list` - 저장된 프로필 목록\n"
+                    "• `profile` / `profile list` - 프로필 목록 + 사용량\n"
                     "• `profile save <이름>` - 현재 인증을 프로필로 저장\n"
-                    "• `profile change <이름>` - 프로필로 전환 (재시작 후 적용)\n"
+                    "• `profile change <이름>` - 프로필 전환\n"
                     "• `profile delete <이름>` - 프로필 삭제"
                 ),
                 thread_ts=reply_ts,
             )
-    except (ValueError, FileNotFoundError, FileExistsError) as e:
+    except SoulServiceError as e:
         say(text=f"❌ {e}", thread_ts=reply_ts)
     except Exception as e:
         logger.exception(f"profile 명령어 오류: {e}")
