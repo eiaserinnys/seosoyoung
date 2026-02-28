@@ -175,6 +175,7 @@ class SoulServiceClient:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
         *,
         allowed_tools: Optional[List[str]] = None,
         disallowed_tools: Optional[List[str]] = None,
@@ -191,6 +192,7 @@ class SoulServiceClient:
             on_compact: 컴팩션 콜백
             on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
             on_session: 세션 ID 조기 통지 콜백 (session_id: str)
+            on_credential_alert: 크레덴셜 알림 콜백 (data: dict)
             allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
             disallowed_tools: 금지 도구 목록
             use_mcp: MCP 서버 연결 여부
@@ -231,6 +233,7 @@ class SoulServiceClient:
                     on_compact=on_compact,
                     on_debug=on_debug,
                     on_session=on_session,
+                    on_credential_alert=on_credential_alert,
                 )
             except ConnectionLostError:
                 pass  # 재연결 루프로 진입
@@ -248,6 +251,7 @@ class SoulServiceClient:
             try:
                 return await self.reconnect_stream(
                     client_id, request_id, on_progress, on_compact, on_debug,
+                    on_credential_alert,
                 )
             except ConnectionLostError:
                 continue
@@ -340,6 +344,7 @@ class SoulServiceClient:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
     ) -> ExecuteResult:
         """태스크 SSE 스트림에 재연결"""
         session = await self._get_session()
@@ -359,6 +364,7 @@ class SoulServiceClient:
                 on_progress=on_progress,
                 on_compact=on_compact,
                 on_debug=on_debug,
+                on_credential_alert=on_credential_alert,
             )
 
     async def health_check(self) -> dict:
@@ -381,6 +387,7 @@ class SoulServiceClient:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
     ) -> ExecuteResult:
         """SSE 이벤트 스트림 처리
 
@@ -421,6 +428,10 @@ class SoulServiceClient:
 
                 elif event.event == "error":
                     error_message = event.data.get("message", "알 수 없는 오류")
+
+                elif event.event == "credential_alert":
+                    if on_credential_alert:
+                        await on_credential_alert(event.data)
 
                 elif event.event == "reconnected":
                     last_progress = event.data.get("last_progress", "")

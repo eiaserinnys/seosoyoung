@@ -44,6 +44,7 @@ class ClaudeServiceAdapter:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
         *,
         allowed_tools: Optional[list[str]] = None,
         disallowed_tools: Optional[list[str]] = None,
@@ -59,6 +60,7 @@ class ClaudeServiceAdapter:
             on_compact: 컴팩션 콜백
             on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
             on_session: 세션 ID 조기 통지 콜백 (session_id: str)
+            on_credential_alert: 크레덴셜 알림 콜백 (data: dict)
             allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
             disallowed_tools: 금지 도구 목록
             use_mcp: MCP 서버 연결 여부
@@ -76,6 +78,7 @@ class ClaudeServiceAdapter:
                 on_compact=on_compact,
                 on_debug=on_debug,
                 on_session=on_session,
+                on_credential_alert=on_credential_alert,
                 allowed_tools=allowed_tools,
                 disallowed_tools=disallowed_tools,
                 use_mcp=use_mcp,

@@ -1,6 +1,9 @@
-"""재시작 버튼 액션 핸들러"""
+"""재시작 버튼 및 크레덴셜 프로필 전환 액션 핸들러"""
 
 import logging
+import re
+import urllib.request
+import urllib.error
 
 from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.restart import RestartType, RestartRequest
@@ -301,3 +304,79 @@ def register_action_handlers(app, dependencies: dict):
         trello_watcher = trello_watcher_ref()
         if trello_watcher:
             trello_watcher.pause()
+
+
+_VALID_PROFILE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+
+
+def activate_credential_profile(profile_name: str, channel: str, message_ts: str, client) -> None:
+    """크레덴셜 프로필 전환 처리
+
+    Soul API를 호출하여 프로필을 활성화하고 슬랙 메시지를 업데이트합니다.
+
+    Args:
+        profile_name: 활성화할 프로필 이름
+        channel: 슬랙 채널 ID
+        message_ts: 원본 메시지 타임스탬프
+        client: Slack client
+    """
+    if not _VALID_PROFILE_NAME.match(profile_name):
+        logger.error(f"유효하지 않은 프로필 이름 거부: {profile_name!r}")
+        client.chat_update(
+            channel=channel, ts=message_ts, blocks=[],
+            text=f"❌ 유효하지 않은 프로필 이름입니다: {profile_name}",
+        )
+        return
+
+    soul_url = Config.claude.soul_url
+    soul_token = Config.claude.soul_token
+
+    try:
+        url = f"{soul_url}/profiles/{profile_name}/activate"
+        req = urllib.request.Request(url, data=b"", method="POST")
+        req.add_header("Authorization", f"Bearer {soul_token}")
+        req.add_header("Content-Type", "application/json")
+
+        with urllib.request.urlopen(req, timeout=10):
+            pass  # 4xx/5xx는 urlopen이 HTTPError로 자동 처리
+
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            blocks=[],
+            text=f"✅ *{profile_name}* 프로필로 전환했습니다",
+        )
+        logger.info(f"크레덴셜 프로필 전환 성공: {profile_name}")
+
+    except Exception as e:
+        logger.error(f"크레덴셜 프로필 전환 실패: {e}")
+        try:
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=[],
+                text=f"❌ *{profile_name}* 프로필 전환 실패: {e}",
+            )
+        except Exception as update_err:
+            logger.error(f"에러 메시지 업데이트 실패: {update_err}")
+
+
+def register_credential_action_handlers(app, dependencies: dict):
+    """크레덴셜 프로필 전환 액션 핸들러 등록
+
+    Args:
+        app: Slack Bolt App 인스턴스
+        dependencies: 의존성 딕셔너리 (현재 미사용, 확장성을 위해 유지)
+    """
+
+    @app.action(re.compile(r"credential_switch_.+"))
+    def handle_credential_switch(ack, body, client):
+        """프로필 전환 버튼 클릭 핸들러"""
+        ack()
+
+        action = body["actions"][0]
+        profile_name = action["value"]
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        activate_credential_profile(profile_name, channel, message_ts, client)
