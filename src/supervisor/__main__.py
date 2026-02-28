@@ -124,6 +124,17 @@ def main() -> None:
         branch="main",
     )
 
+    # GitPoller: seosoyoung 개발 소스 변경 감지
+    dev_seosoyoung = paths["workspace"] / ".projects" / "seosoyoung"
+    seosoyoung_poller: GitPoller | None = None
+    if dev_seosoyoung.is_dir():
+        seosoyoung_poller = GitPoller(
+            repo_path=dev_seosoyoung,
+            remote="origin",
+            branch="main",
+        )
+        logger.info("seosoyoung 개발소스 git poller 활성화: %s", dev_seosoyoung)
+
     # GitPoller: soulstream 리포 변경 감지
     soulstream_poller: GitPoller | None = None
     if paths["soulstream"].is_dir():
@@ -253,6 +264,8 @@ def main() -> None:
                 last_git_check = now
                 if git_poller.check():
                     deployer.notify_change()
+                if seosoyoung_poller is not None and seosoyoung_poller.check():
+                    deployer.notify_change(source="seosoyoung")
                 if soulstream_poller is not None and soulstream_poller.check():
                     deployer.notify_change(source="soulstream")
 

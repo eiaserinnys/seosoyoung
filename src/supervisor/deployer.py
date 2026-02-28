@@ -298,11 +298,23 @@ class Deployer:
                     pull_result.stderr.strip()[:500],
                 )
                 subprocess.run(["git", "stash"], cwd=str(soulstream_dir))
-                subprocess.run(
+                retry_result = subprocess.run(
                     ["git", "pull", "origin", "main"],
                     cwd=str(soulstream_dir),
+                    capture_output=True,
+                    text=True,
                 )
-                subprocess.run(["git", "stash", "pop"], cwd=str(soulstream_dir))
+                if retry_result.returncode != 0:
+                    # stash로도 해결 안 되면 강제 리셋
+                    logger.warning(
+                        "soulstream stash 후에도 pull 실패, reset --hard 수행"
+                    )
+                    subprocess.run(
+                        ["git", "reset", "--hard", "origin/main"],
+                        cwd=str(soulstream_dir),
+                    )
+                else:
+                    subprocess.run(["git", "stash", "pop"], cwd=str(soulstream_dir))
 
             new_head = self._get_repo_head(soulstream_dir)
 
