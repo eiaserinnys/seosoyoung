@@ -24,17 +24,17 @@ Soulstream 서버(독립 soul-server)에 HTTP/SSE로 위임하여 실행합니�
 #### 메서드
 
 - `__init__(self, session_manager, session_runtime, restart_manager, send_long_message, send_restart_confirmation, update_message_fn)` (줄 63): 
-- `run(self, prompt, thread_ts, msg_ts)` (줄 128): 세션 내에서 Claude Code 실행 (공통 로직)
-- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 190): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
-- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 228): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
-- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 281): 단일 Claude 실행 — Soulstream 서버에 위임
-- `_get_role_config(self, role)` (줄 313): 역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)
-- `_get_service_adapter(self)` (줄 317): Remote 모드용 ClaudeServiceAdapter를 생성하여 반환 (호출마다 새 인스턴스)
-- `_register_session_id(self, thread_ts, session_id)` (줄 337): thread_ts ↔ session_id 매핑 등록 및 버퍼된 인터벤션 flush
-- `_unregister_session_id(self, thread_ts)` (줄 361): thread_ts ↔ session_id 매핑 해제
-- `_get_session_id(self, thread_ts)` (줄 370): thread_ts에 대응하는 session_id 조회
-- `_execute_remote(self, thread_ts, prompt)` (줄 375): Remote 모드: Soulstream 서버에 실행을 위임
-- `_process_result(self, presentation, result, thread_ts)` (줄 447): 실행 결과 처리
+- `run(self, prompt, thread_ts, msg_ts)` (줄 126): 세션 내에서 Claude Code 실행 (공통 로직)
+- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 188): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
+- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 226): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
+- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 279): 단일 Claude 실행 — Soulstream 서버에 위임
+- `_get_role_config(self, role)` (줄 311): 역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)
+- `_get_service_adapter(self)` (줄 315): Remote 모드용 ClaudeServiceAdapter를 생성하여 반환 (호출마다 새 인스턴스)
+- `_register_session_id(self, thread_ts, session_id)` (줄 335): thread_ts ↔ session_id 매핑 등록 및 버퍼된 인터벤션 flush
+- `_unregister_session_id(self, thread_ts)` (줄 359): thread_ts ↔ session_id 매핑 해제
+- `_get_session_id(self, thread_ts)` (줄 368): thread_ts에 대응하는 session_id 조회
+- `_execute_remote(self, thread_ts, prompt)` (줄 373): Remote 모드: Soulstream 서버에 실행을 위임
+- `_process_result(self, presentation, result, thread_ts)` (줄 445): 실행 결과 처리
 
 ## 함수
 

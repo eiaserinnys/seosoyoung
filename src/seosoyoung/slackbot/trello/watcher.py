@@ -1,6 +1,5 @@
 """Trello 워처 - To Go 리스트 감시 및 처리"""
 
-import concurrent.futures
 import json
 import logging
 import threading
@@ -802,56 +801,6 @@ class TrelloWatcher:
                 # 이후 get_active_sessions()에서 PENDING 포함하여 감지 가능)
                 self._start_list_run(list_id, list_name, cards)
 
-    # 선제적 컴팩트 타임아웃 (초)
-    COMPACT_TIMEOUT_SECONDS = 60
-
-    def _preemptive_compact(self, thread_ts: str, channel: str, card_name: str):
-        """카드 완료 후 선제적 컨텍스트 컴팩트
-
-        정주행에서 카드 하나의 처리가 끝난 뒤 다음 카드로 넘어가기 전에
-        세션 컨텍스트를 압축하여 자동 압축으로 인한 흐름 끊김을 방지합니다.
-
-        타임아웃을 적용하여 compact_session이 무기한 block되는 것을 방지합니다.
-
-        Args:
-            thread_ts: 슬랙 스레드 타임스탬프 (세션 조회 키)
-            channel: 슬랙 채널 ID (알림용)
-            card_name: 카드 이름 (로그용)
-        """
-        session = self.session_manager.get(thread_ts)
-        if not session or not session.session_id:
-            logger.warning(f"선제적 컴팩트 스킵: 세션 또는 세션 ID 없음 (card={card_name})")
-            return
-
-        try:
-            from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
-            runner = ClaudeRunner()
-
-            # 타임아웃 적용: compact가 무기한 block되는 것을 방지
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(
-                    runner.run_sync, runner.compact_session(session.session_id)
-                )
-                try:
-                    result = future.result(timeout=self.COMPACT_TIMEOUT_SECONDS)
-                except concurrent.futures.TimeoutError:
-                    logger.warning(
-                        f"선제적 컴팩트 타임아웃 ({self.COMPACT_TIMEOUT_SECONDS}s, 계속 진행): "
-                        f"card={card_name}, session={session.session_id}"
-                    )
-                    return
-
-            if result.success:
-                logger.info(f"선제적 컴팩트 완료: card={card_name}, session={session.session_id}")
-                # 컴팩트 후 새 세션 ID가 반환되면 업데이트
-                if result.session_id and result.session_id != session.session_id:
-                    self.session_manager.update_session_id(thread_ts, result.session_id)
-                    logger.info(f"컴팩트 후 세션 ID 변경: {session.session_id} -> {result.session_id}")
-            else:
-                logger.warning(f"선제적 컴팩트 실패 (계속 진행): card={card_name}, error={result.error}")
-        except Exception as e:
-            logger.warning(f"선제적 컴팩트 예외 (계속 진행): card={card_name}, {e}")
-
     def _start_list_run(
         self,
         list_id: str,
@@ -1074,13 +1023,6 @@ class TrelloWatcher:
             list_runner.mark_card_processed(session_id, card.id, "completed")
             self._remove_spinner_prefix(card.id, f"🌀 {card.name}")
             self._untrack_card(card.id)
-            # _preemptive_compact 실패해도 체인이 끊기지 않도록 격리
-            try:
-                self._preemptive_compact(thread_ts, channel, card.name)
-            except Exception as compact_err:
-                logger.warning(
-                    f"선제적 컴팩트 실패 (체인 계속): card={card.name}, error={compact_err}"
-                )
             # 다음 카드 처리 (별도 스레드로)
             next_thread = threading.Thread(
                 target=self._process_list_run_card,

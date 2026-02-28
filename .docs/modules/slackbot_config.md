@@ -57,11 +57,11 @@
 remote 모드에서 Soulstream 서버(독립 soul-server)에 연결합니다.
 
 ### `EmojiConfig`
-- 위치: 줄 233
+- 위치: 줄 232
 - 설명: 이모지 설정
 
 ### `Config`
-- 위치: 줄 261
+- 위치: 줄 260
 - 설명: 애플리케이션 설정
 
 설정 접근 방식:
@@ -70,14 +70,14 @@ remote 모드에서 Soulstream 서버(독립 soul-server)에 연결합니다.
 
 #### 메서드
 
-- `get_log_path()` (줄 285): 로그 경로
-- `get_session_path()` (줄 290): 세션 경로
-- `get_glossary_path()` (줄 295): 용어집 경로 (번역 시 고유명사 참조)
-- `get_narrative_path()` (줄 300): 대사 데이터 경로
-- `get_search_index_path()` (줄 305): 검색 인덱스 경로
-- `get_web_cache_path()` (줄 310): 웹 콘텐츠 캐시 경로
-- `get_memory_path()` (줄 315): 관찰 로그 저장 경로
-- `validate(cls)` (줄 323): 필수 환경변수 검증
+- `get_log_path()` (줄 284): 로그 경로
+- `get_session_path()` (줄 289): 세션 경로
+- `get_glossary_path()` (줄 294): 용어집 경로 (번역 시 고유명사 참조)
+- `get_narrative_path()` (줄 299): 대사 데이터 경로
+- `get_search_index_path()` (줄 304): 검색 인덱스 경로
+- `get_web_cache_path()` (줄 309): 웹 콘텐츠 캐시 경로
+- `get_memory_path()` (줄 314): 관찰 로그 저장 경로
+- `validate(cls)` (줄 322): 필수 환경변수 검증
 
 ## 함수
 

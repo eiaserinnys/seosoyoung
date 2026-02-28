@@ -119,10 +119,19 @@ class ChannelDigestScheduler:
     def _run_pipeline(self, channel_id: str) -> None:
         """소화/판단 파이프라인을 실행합니다."""
         from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
-        from seosoyoung.slackbot.claude import get_claude_runner
         from seosoyoung.slackbot.config import Config
 
-        runner = get_claude_runner()
+        async def _llm_call(system_prompt: str, user_prompt: str) -> str | None:
+            response = await self.observer.client.chat.completions.create(
+                model=self.observer.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            if not response.choices:
+                return None
+            return response.choices[0].message.content
 
         try:
             asyncio.run(
@@ -139,7 +148,7 @@ class ChannelDigestScheduler:
                     digest_target_tokens=self.digest_target_tokens,
                     debug_channel=self.debug_channel,
                     intervention_threshold=self.intervention_threshold,
-                    claude_runner=runner,
+                    llm_call=_llm_call,
                     bot_user_id=Config.slack.bot_user_id,
                     mention_tracker=self.mention_tracker,
                 )

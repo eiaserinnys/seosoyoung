@@ -69,7 +69,6 @@ class ClaudeExecutor:
         send_restart_confirmation: Callable,
         update_message_fn: UpdateMessageFn,
         *,
-        execution_mode: str = "local",
         role_tools: Optional[dict] = None,
         soul_url: str = "",
         soul_token: str = "",
@@ -86,7 +85,6 @@ class ClaudeExecutor:
         self.send_long_message = send_long_message
         self.send_restart_confirmation = send_restart_confirmation
         self.update_message_fn = update_message_fn
-        self.execution_mode = execution_mode
         self.role_tools = role_tools or {}
         self.soul_url = soul_url
         self.soul_token = soul_token

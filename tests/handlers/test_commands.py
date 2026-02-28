@@ -256,17 +256,16 @@ class TestHandleUpdateRestart:
 
 
 class TestHandleCompact:
-    def test_not_in_thread(self):
+    def test_shows_auto_message(self):
         say = MagicMock()
-        handle_compact(say=say, ts="ts1", thread_ts=None, session_manager=MagicMock())
-        assert "스레드에서 사용해주세요" in say.call_args[1]["text"]
+        handle_compact(say=say, ts="ts1", thread_ts=None)
+        assert "Soulstream" in say.call_args[1]["text"]
 
-    def test_no_session(self):
+    def test_shows_auto_message_in_thread(self):
         say = MagicMock()
-        sm = MagicMock()
-        sm.get.return_value = None
-        handle_compact(say=say, ts="ts1", thread_ts="thread1", session_manager=sm)
-        assert "활성 세션이 없습니다" in say.call_args[1]["text"]
+        handle_compact(say=say, ts="ts1", thread_ts="thread1")
+        assert "Soulstream" in say.call_args[1]["text"]
+        assert say.call_args[1]["thread_ts"] == "thread1"
 
 
 class TestHandleProfile:

@@ -6,7 +6,7 @@ SoulServiceClient를 mock하여 adapter의 ClaudeResult 변환을 검증합니�
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+from seosoyoung.slackbot.claude.engine_types import ClaudeResult
 from seosoyoung.slackbot.claude.service_adapter import ClaudeServiceAdapter
 from seosoyoung.slackbot.claude.service_client import (
     SoulServiceClient,

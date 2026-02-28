@@ -15,7 +15,6 @@ from seosoyoung.slackbot.auth import check_permission, get_user_role
 from pathlib import Path
 from seosoyoung.slackbot.claude.session import SessionManager, SessionRuntime
 from seosoyoung.slackbot.claude.executor import ClaudeExecutor
-from seosoyoung.slackbot.claude.agent_runner import shutdown_all_sync
 from seosoyoung.slackbot.slack.helpers import send_long_message
 from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers
@@ -50,18 +49,7 @@ list_runner: ListRunner | None = None
 
 
 def _perform_restart(restart_type: RestartType) -> None:
-    """실제 재시작 수행
-
-    모든 ClaudeSDKClient를 정리한 후 프로세스를 종료합니다.
-    이로써 고아 프로세스(Claude Code CLI)가 남지 않습니다.
-    """
-    # 모든 활성 클라이언트 종료 (고아 프로세스 방지)
-    try:
-        count = shutdown_all_sync()
-        logger.info(f"재시작 전 {count}개 클라이언트 종료 완료")
-    except Exception as e:
-        logger.warning(f"클라이언트 종료 중 오류 (무시): {e}")
-
+    """재시작 수행"""
     notify_shutdown()
     os._exit(restart_type.value)
 
@@ -175,7 +163,6 @@ executor = ClaudeExecutor(
     send_long_message=send_long_message,
     send_restart_confirmation=send_restart_confirmation,
     update_message_fn=update_message,
-    execution_mode=Config.claude.execution_mode,
     role_tools=Config.auth.role_tools,
     soul_url=Config.claude.soul_url,
     soul_token=Config.claude.soul_token,

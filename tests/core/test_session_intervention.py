@@ -118,7 +118,6 @@ class TestExecutorSessionMapping:
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
             update_message_fn=MagicMock(),
-            execution_mode="remote",
         )
         defaults.update(overrides)
         return ClaudeExecutor(**defaults)
@@ -250,7 +249,6 @@ class TestSessionBufferFlush:
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
             update_message_fn=MagicMock(),
-            execution_mode="remote",
         )
 
         # 버퍼에 인터벤션 추가
@@ -292,7 +290,6 @@ class TestSessionBufferFlush:
             send_long_message=MagicMock(),
             send_restart_confirmation=MagicMock(),
             update_message_fn=MagicMock(),
-            execution_mode="remote",
         )
 
         # adapter는 호출되지 않아야 함

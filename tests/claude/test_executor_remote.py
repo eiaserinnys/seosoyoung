@@ -1,6 +1,6 @@
-"""executor.py의 remote 모드 분기 로직 테스트
+"""executor.py의 remote 실행 로직 테스트
 
-env 분기, remote 실행, 인터벤션 이중화를 검증합니다.
+remote 실행, 인터벤션 이중화를 검증합니다.
 """
 
 import threading
@@ -12,27 +12,6 @@ from seosoyoung.slackbot.claude.executor import ClaudeExecutor
 from seosoyoung.slackbot.claude.intervention import PendingPrompt
 from seosoyoung.slackbot.presentation.types import PresentationContext
 from seosoyoung.slackbot.claude.session import Session, SessionManager, SessionRuntime
-
-
-# === execution_mode 테스트 ===
-
-class TestExecutionMode:
-    """ClaudeExecutor의 execution_mode 분기 테스트"""
-
-    def test_default_is_local(self):
-        """기본값은 local"""
-        executor = _make_executor()
-        assert executor.execution_mode == "local"
-
-    def test_remote_mode(self):
-        """execution_mode=remote"""
-        executor = _make_executor(execution_mode="remote")
-        assert executor.execution_mode == "remote"
-
-    def test_invalid_value_is_not_remote(self):
-        """잘못된 값은 remote가 아님"""
-        executor = _make_executor(execution_mode="unknown")
-        assert executor.execution_mode != "remote"
 
 
 def _make_executor(tmp_path=None, **overrides):
@@ -79,10 +58,10 @@ async def _noop_compact(trigger, message):
     pass
 
 
-# === ClaudeExecutor remote 분기 테스트 ===
+# === ClaudeExecutor remote 실행 테스트 ===
 
 class TestExecutorRemoteBranch:
-    """ClaudeExecutor._execute_once에서 remote/local 분기 테스트"""
+    """ClaudeExecutor._execute_once에서 remote 실행 테스트"""
 
     @pytest.fixture
     def executor(self, tmp_path):
@@ -98,9 +77,8 @@ class TestExecutorRemoteBranch:
         )
 
     def test_remote_mode_uses_adapter(self, executor, session):
-        """remote 모드에서 _execute_remote가 호출되는지 확인"""
+        """_execute_remote가 호출되는지 확인"""
         pctx = _make_pctx()
-        executor.execution_mode = "remote"
 
         with patch.object(executor, "_execute_remote") as mock_execute_remote:
             executor._execute_once(
@@ -116,9 +94,8 @@ class TestExecutorRemoteBranch:
             mock_execute_remote.assert_called_once()
 
     def test_remote_mode_passes_tool_settings(self, executor, session):
-        """remote 모드에서 role → 도구 해석 후 _execute_remote에 전달"""
+        """role → 도구 해석 후 _execute_remote에 전달"""
         pctx = _make_pctx()
-        executor.execution_mode = "remote"
         executor.role_tools = {
             "admin": ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
             "viewer": ["Read", "Glob", "Grep"],
@@ -145,7 +122,6 @@ class TestExecutorRemoteBranch:
     def test_remote_viewer_role_has_disallowed_tools(self, executor, session):
         """viewer role에서 disallowed_tools가 설정됨"""
         pctx = _make_pctx()
-        executor.execution_mode = "remote"
         executor.role_tools = {
             "viewer": ["Read", "Glob", "Grep"],
         }
@@ -176,7 +152,6 @@ class TestExecutorRemoteDebug:
     def executor(self, tmp_path):
         return _make_executor(
             tmp_path,
-            execution_mode="remote",
             soul_url="http://localhost:3105",
             soul_token="test-token",
             soul_client_id="test_bot",
@@ -302,10 +277,9 @@ class TestInterventionDualPath:
         )
 
     def test_remote_intervention_uses_adapter(self, executor, session):
-        """remote 모드 인터벤션: session_id 확보 시 run_in_new_loop으로 adapter.intervene_by_session 호출"""
+        """remote 인터벤션: session_id 확보 시 run_in_new_loop으로 adapter.intervene_by_session 호출"""
         mock_adapter = MagicMock()
         executor._active_remote_requests["1234.5678"] = "1234.5678"
-        executor.execution_mode = "remote"
         # session_id를 등록하여 session 기반 경로로 진입
         executor._register_session_id("1234.5678", "sess-abc")
 
@@ -329,7 +303,6 @@ class TestInterventionDualPath:
     def test_pending_prompt_saved_on_intervention(self, executor, session):
         """인터벤션 시 pending에 프롬프트가 저장되는지 확인"""
         pctx = _make_pctx()
-        executor.execution_mode = "local"
         executor._handle_intervention(
             "1234.5678", "new prompt", "1234.0001",
             on_progress=_noop_progress,
@@ -347,14 +320,6 @@ class TestInterventionDualPath:
 
 class TestConfigEnvVars:
     """Config에 추가된 env 변수 테스트"""
-
-    def test_default_execution_mode(self):
-        """기본 실행 모드는 local"""
-        with patch.dict("os.environ", {}, clear=True):
-            # Config는 모듈 로드 시 평가되므로 직접 확인
-            from seosoyoung.slackbot.config import Config
-            # 환경변수가 없을 때 기본값 확인
-            assert Config.claude.execution_mode in ("local", "remote")
 
     def test_soul_url_default(self):
         from seosoyoung.slackbot.config import Config

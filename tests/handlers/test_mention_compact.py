@@ -1,8 +1,7 @@
 """compact 커맨드 테스트"""
 
-import asyncio
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock
 
 from seosoyoung.slackbot.handlers.mention import register_mention_handlers
 
@@ -44,8 +43,8 @@ def _register_and_get_handler(dependencies):
 class TestCompactCommand:
     """compact 커맨드 테스트"""
 
-    def test_compact_in_channel_shows_thread_message(self):
-        """채널에서 compact 호출 시 '스레드에서 사용해주세요' 안내"""
+    def test_compact_shows_auto_message(self):
+        """compact 호출 시 Soulstream 자동 처리 안내"""
         deps = _make_dependencies()
         handler = _register_and_get_handler(deps)
 
@@ -54,7 +53,6 @@ class TestCompactCommand:
             "text": "<@BOT> compact",
             "channel": "C123",
             "ts": "1234567890.000000",
-            # thread_ts 없음 → 채널에서 호출
         }
         say = MagicMock()
         client = MagicMock()
@@ -63,12 +61,11 @@ class TestCompactCommand:
 
         say.assert_called_once()
         call_kwargs = say.call_args[1]
-        assert "스레드에서 사용해주세요" in call_kwargs["text"]
+        assert "Soulstream" in call_kwargs["text"]
 
-    def test_compact_in_thread_no_session(self):
-        """세션 없는 스레드에서 compact 호출 시 안내 메시지"""
+    def test_compact_in_thread_shows_auto_message(self):
+        """스레드에서 compact 호출해도 동일한 안내"""
         deps = _make_dependencies()
-        deps["session_manager"].get.return_value = None
         handler = _register_and_get_handler(deps)
 
         event = {
@@ -83,160 +80,9 @@ class TestCompactCommand:
 
         handler(event, say, client)
 
-        # "활성 세션이 없습니다" 메시지 확인
-        calls = say.call_args_list
-        assert any("활성 세션이 없습니다" in str(c) for c in calls)
-
-    def test_compact_in_thread_no_session_id(self):
-        """세션은 있지만 session_id가 없는 경우"""
-        deps = _make_dependencies()
-        session = MagicMock()
-        session.session_id = ""
-        deps["session_manager"].get.return_value = session
-        handler = _register_and_get_handler(deps)
-
-        event = {
-            "user": "U123",
-            "text": "<@BOT> compact",
-            "channel": "C123",
-            "ts": "1234567890.000001",
-            "thread_ts": "1234567890.000000",
-        }
-        say = MagicMock()
-        client = MagicMock()
-
-        handler(event, say, client)
-
-        calls = say.call_args_list
-        assert any("활성 세션이 없습니다" in str(c) for c in calls)
-
-    def test_compact_success(self):
-        """compact 성공 테스트"""
-        deps = _make_dependencies()
-        session = MagicMock()
-        session.session_id = "test-session-id"
-        deps["session_manager"].get.return_value = session
-        deps["session_manager"].exists.return_value = True
-        handler = _register_and_get_handler(deps)
-
-        event = {
-            "user": "U123",
-            "text": "<@BOT> compact",
-            "channel": "C123",
-            "ts": "1234567890.000001",
-            "thread_ts": "1234567890.000000",
-        }
-        say = MagicMock()
-        client = MagicMock()
-
-        mock_result = MagicMock()
-        mock_result.success = True
-        mock_result.session_id = "new-session-id"
-
-        mock_runner = MagicMock()
-        mock_runner.compact_session = AsyncMock(return_value=mock_result)
-
-        with patch("seosoyoung.slackbot.claude.get_claude_runner", return_value=mock_runner):
-            with patch("seosoyoung.slackbot.handlers.commands.asyncio") as mock_asyncio:
-                mock_asyncio.run.return_value = mock_result
-                handler(event, say, client)
-
-        calls = say.call_args_list
-        # "컴팩트 중입니다..." 와 "컴팩트가 완료됐습니다." 두 번 호출
-        assert len(calls) == 2
-        assert "컴팩트 중입니다" in str(calls[0])
-        assert "컴팩트가 완료됐습니다" in str(calls[1])
-
-    def test_compact_updates_session_id(self):
-        """compact 성공 시 session_id 업데이트"""
-        deps = _make_dependencies()
-        session = MagicMock()
-        session.session_id = "old-session-id"
-        deps["session_manager"].get.return_value = session
-        deps["session_manager"].exists.return_value = True
-        handler = _register_and_get_handler(deps)
-
-        event = {
-            "user": "U123",
-            "text": "<@BOT> compact",
-            "channel": "C123",
-            "ts": "1234567890.000001",
-            "thread_ts": "1234567890.000000",
-        }
-        say = MagicMock()
-        client = MagicMock()
-
-        mock_result = MagicMock()
-        mock_result.success = True
-        mock_result.session_id = "new-session-id"
-
-        mock_runner = MagicMock()
-        mock_runner.compact_session = MagicMock()
-
-        with patch("seosoyoung.slackbot.claude.get_claude_runner", return_value=mock_runner):
-            with patch("seosoyoung.slackbot.handlers.commands.asyncio") as mock_asyncio:
-                mock_asyncio.run.return_value = mock_result
-                handler(event, say, client)
-
-        deps["session_manager"].update_session_id.assert_called_once_with(
-            "1234567890.000000", "new-session-id"
-        )
-
-    def test_compact_failure(self):
-        """compact 실패 테스트"""
-        deps = _make_dependencies()
-        session = MagicMock()
-        session.session_id = "test-session-id"
-        deps["session_manager"].get.return_value = session
-        deps["session_manager"].exists.return_value = True
-        handler = _register_and_get_handler(deps)
-
-        event = {
-            "user": "U123",
-            "text": "<@BOT> compact",
-            "channel": "C123",
-            "ts": "1234567890.000001",
-            "thread_ts": "1234567890.000000",
-        }
-        say = MagicMock()
-        client = MagicMock()
-
-        mock_result = MagicMock()
-        mock_result.success = False
-        mock_result.error = "세션을 찾을 수 없습니다"
-
-        with patch("seosoyoung.slackbot.claude.get_claude_runner") as mock_get_runner:
-            with patch("seosoyoung.slackbot.handlers.commands.asyncio") as mock_asyncio:
-                mock_asyncio.run.return_value = mock_result
-                handler(event, say, client)
-
-        calls = say.call_args_list
-        assert any("실패" in str(c) for c in calls)
-
-    def test_compact_exception(self):
-        """compact 실행 중 예외 테스트"""
-        deps = _make_dependencies()
-        session = MagicMock()
-        session.session_id = "test-session-id"
-        deps["session_manager"].get.return_value = session
-        deps["session_manager"].exists.return_value = True
-        handler = _register_and_get_handler(deps)
-
-        event = {
-            "user": "U123",
-            "text": "<@BOT> compact",
-            "channel": "C123",
-            "ts": "1234567890.000001",
-            "thread_ts": "1234567890.000000",
-        }
-        say = MagicMock()
-        client = MagicMock()
-
-        with patch("seosoyoung.slackbot.claude.get_claude_runner", side_effect=RuntimeError("connection failed")):
-            handler(event, say, client)
-
-        calls = say.call_args_list
-        assert any("오류" in str(c) for c in calls)
+        say.assert_called_once()
+        call_kwargs = say.call_args[1]
+        assert "Soulstream" in call_kwargs["text"]
 
     def test_compact_in_help_text(self):
         """help 메시지에 compact 포함 확인"""

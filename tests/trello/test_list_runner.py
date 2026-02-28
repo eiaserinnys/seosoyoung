@@ -435,7 +435,7 @@ class TestListRunMarkupParsing:
 
     def test_claude_result_has_list_run_field(self):
         """ClaudeResult에 list_run 필드 존재"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+        from seosoyoung.slackbot.claude.engine_types import ClaudeResult
 
         result = ClaudeResult(
             success=True,

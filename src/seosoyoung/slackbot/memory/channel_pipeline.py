@@ -11,7 +11,7 @@ pending 버퍼에 쌓인 메시지를 기반으로:
 import logging
 import math
 from datetime import datetime, timezone
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Callable, Optional
 
 from seosoyoung.slackbot.memory.channel_intervention import (
     InterventionAction,
@@ -36,9 +36,6 @@ from seosoyoung.slackbot.memory.channel_prompts import (
 )
 from seosoyoung.slackbot.memory.channel_store import ChannelStore
 from seosoyoung.slackbot.memory.token_counter import TokenCounter
-
-if TYPE_CHECKING:
-    from seosoyoung.slackbot.claude.agent_runner import ClaudeAgentRunner
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +277,6 @@ async def run_channel_pipeline(
     debug_channel: str = "",
     intervention_threshold: float = 0.3,
     llm_call: Optional[Callable] = None,
-    claude_runner: Optional["ClaudeAgentRunner"] = None,
     bot_user_id: str | None = None,
     mention_tracker=None,
     **kwargs,
@@ -458,7 +454,6 @@ async def run_channel_pipeline(
                 debug_channel=debug_channel,
                 intervention_threshold=intervention_threshold,
                 llm_call=llm_call,
-                claude_runner=claude_runner,
                 bot_user_id=bot_user_id,
                 session_manager=kwargs.get("session_manager"),
                 thread_buffers=judge_thread_buffers,
@@ -477,7 +472,6 @@ async def run_channel_pipeline(
                 debug_channel=debug_channel,
                 intervention_threshold=intervention_threshold,
                 llm_call=llm_call,
-                claude_runner=claude_runner,
                 bot_user_id=bot_user_id,
                 session_manager=kwargs.get("session_manager"),
                 thread_buffers=judge_thread_buffers,
@@ -499,7 +493,6 @@ async def _handle_multi_judge(
     debug_channel: str,
     intervention_threshold: float,
     llm_call: Optional[Callable],
-    claude_runner: Optional["ClaudeAgentRunner"],
     bot_user_id: str | None = None,
     session_manager=None,
     thread_buffers: dict[str, list[dict]] | None = None,
@@ -576,7 +569,7 @@ async def _handle_multi_judge(
             if intervene_item:
                 action = _parse_judge_item_action(intervene_item)
                 if action:
-                    if claude_runner or llm_call:
+                    if llm_call:
                         await _execute_intervene(
                             store=store,
                             channel_id=channel_id,
@@ -584,7 +577,6 @@ async def _handle_multi_judge(
                             action=action,
                             pending_messages=pending_messages,
                             observer_reason=intervene_item.reaction_content,
-                            claude_runner=claude_runner,
                             llm_call=llm_call,
                             bot_user_id=bot_user_id,
                             session_manager=session_manager,
@@ -622,7 +614,6 @@ async def _handle_single_judge(
     debug_channel: str,
     intervention_threshold: float,
     llm_call: Optional[Callable],
-    claude_runner: Optional["ClaudeAgentRunner"],
     bot_user_id: str | None = None,
     session_manager=None,
     thread_buffers: dict[str, list[dict]] | None = None,
@@ -707,7 +698,7 @@ async def _handle_single_judge(
             )
 
             if passed:
-                if claude_runner or llm_call:
+                if llm_call:
                     for action in message_actions:
                         await _execute_intervene(
                             store=store,
@@ -716,7 +707,6 @@ async def _handle_single_judge(
                             action=action,
                             pending_messages=pending_messages,
                             observer_reason=judge_result.reaction_content,
-                            claude_runner=claude_runner,
                             llm_call=llm_call,
                             bot_user_id=bot_user_id,
                             session_manager=session_manager,
@@ -752,7 +742,6 @@ async def _execute_intervene(
     action: InterventionAction,
     pending_messages: list[dict],
     observer_reason: str | None = None,
-    claude_runner: Optional["ClaudeAgentRunner"] = None,
     llm_call: Optional[Callable] = None,
     bot_user_id: str | None = None,
     session_manager=None,
@@ -833,23 +822,15 @@ async def _execute_intervene(
         thread_buffers=thread_buffers,
     )
 
-    # 4. 응답 생성 (Claude Code SDK 우선, llm_call 폴백)
+    # 4. 응답 생성
     try:
-        if claude_runner:
-            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
-            result = await claude_runner.run(prompt=combined_prompt)
-            response_text = result.output if result.success else None
-            if not result.success:
-                logger.error(f"intervene Claude SDK 실패 ({channel_id}): {result.error}")
-                _remove_thinking_reaction(slack_client, channel_id, reaction_ts)
-                return
-        elif llm_call:
+        if llm_call:
             response_text = await llm_call(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
             )
         else:
-            logger.warning(f"intervene: claude_runner와 llm_call 모두 없음 ({channel_id})")
+            logger.warning(f"intervene: llm_call이 없음 ({channel_id})")
             _remove_thinking_reaction(slack_client, channel_id, reaction_ts)
             return
     except Exception as e:

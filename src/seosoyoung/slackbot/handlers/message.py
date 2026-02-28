@@ -9,7 +9,6 @@ from seosoyoung.utils.async_bridge import run_in_new_loop
 from seosoyoung.slackbot.handlers.translate import process_translate_message
 from seosoyoung.slackbot.slack import download_files_sync, build_file_context
 from seosoyoung.slackbot.slack.message_formatter import format_slack_message
-from seosoyoung.slackbot.claude import get_claude_runner
 from seosoyoung.slackbot.claude.session_context import build_followup_context
 
 logger = logging.getLogger(__name__)
@@ -515,30 +514,6 @@ def register_message_handlers(app, dependencies: dict):
                     return
 
             try:
-                # Compact 처리
-                if session.session_id:
-                    try:
-                        client.chat_update(
-                            channel=item_channel,
-                            ts=start_msg_ts,
-                            text="`🚀 세션 정리 중... (compact)`"
-                        )
-
-                        runner = get_claude_runner()
-                        compact_result = run_in_new_loop(runner.compact_session(session.session_id))
-
-                        if compact_result.success:
-                            logger.info(f"세션 컴팩트 성공: {session.session_id}")
-                        else:
-                            logger.warning(f"세션 컴팩트 실패: {compact_result.error}")
-
-                        # 컴팩트 후 세션 ID가 변경될 수 있음
-                        if compact_result.session_id:
-                            session_manager.update_session_id(item_ts, compact_result.session_id)
-
-                    except Exception as e:
-                        logger.error(f"세션 컴팩트 오류: {e}")
-
                 # say 함수 정의
                 def say(text, thread_ts=None):
                     client.chat_postMessage(
@@ -646,9 +621,18 @@ def _maybe_trigger_digest(
         _digest_running[channel_id] = True
         try:
             from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
-            from seosoyoung.slackbot.claude import get_claude_runner
 
-            runner = get_claude_runner()
+            async def _llm_call(system_prompt: str, user_prompt: str) -> str | None:
+                response = await observer.client.chat.completions.create(
+                    model=observer.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                )
+                if not response.choices:
+                    return None
+                return response.choices[0].message.content
 
             run_in_new_loop(
                 run_channel_pipeline(
@@ -664,7 +648,7 @@ def _maybe_trigger_digest(
                     digest_target_tokens=Config.channel_observer.digest_target_tokens,
                     debug_channel=Config.channel_observer.debug_channel,
                     intervention_threshold=Config.channel_observer.intervention_threshold,
-                    claude_runner=runner,
+                    llm_call=_llm_call,
                     bot_user_id=Config.slack.bot_user_id,
                     mention_tracker=mention_tracker,
                 )

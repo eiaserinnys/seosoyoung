@@ -24,12 +24,10 @@ class TestModuleImports:
         "seosoyoung.slackbot.claude",
         "seosoyoung.slackbot.claude.types",
         "seosoyoung.slackbot.claude.engine_types",
-        "seosoyoung.slackbot.claude.agent_runner",
         "seosoyoung.slackbot.claude.session",
         "seosoyoung.slackbot.claude.session_context",
         "seosoyoung.slackbot.claude.intervention",
         "seosoyoung.slackbot.claude.message_formatter",
-        "seosoyoung.slackbot.claude.diagnostics",
         "seosoyoung.slackbot.claude.result_processor",
         "seosoyoung.slackbot.claude.executor",
         "seosoyoung.slackbot.claude.service_client",
@@ -211,7 +209,6 @@ class TestInstantiation:
             update_message_fn=MagicMock(),
         )
         assert executor is not None
-        assert executor.execution_mode == "local"
 
 
 # === 엔드투엔드 플로우 테스트 ===
@@ -280,19 +277,3 @@ class TestEndToEndFlow:
         quoted = format_as_blockquote("test message")
         assert ">" in quoted
 
-    def test_diagnostics_independence(self):
-        """diagnostics 함수들이 독립적으로 동작한다"""
-        from seosoyoung.slackbot.claude.diagnostics import (
-            classify_process_error,
-            format_rate_limit_warning,
-        )
-
-        # classify_process_error는 ProcessError 객체를 받아 사용자 친화적 메시지를 반환
-        mock_error = MagicMock()
-        mock_error.exit_code = 1
-        mock_error.stderr = "rate limit exceeded"
-        message = classify_process_error(mock_error)
-        assert "사용량 제한" in message
-
-        warning = format_rate_limit_warning({"type": "seven_day"})
-        assert isinstance(warning, str) and len(warning) > 0

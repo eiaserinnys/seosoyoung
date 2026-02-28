@@ -491,32 +491,13 @@ def handle_update_restart(
     restart_manager.force_restart(restart_type)
 
 
-def handle_compact(*, say, ts, thread_ts, session_manager, **_):
-    """compact 명령어 핸들러 - 스레드 세션 컴팩트"""
-    if not thread_ts:
-        say(text="스레드에서 사용해주세요.", thread_ts=ts)
-        return
-
-    session = session_manager.get(thread_ts)
-    if not session or not session.session_id:
-        say(text="활성 세션이 없습니다.", thread_ts=thread_ts)
-        return
-
-    say(text="컴팩트 중입니다...", thread_ts=thread_ts)
-    try:
-        from seosoyoung.slackbot.claude import get_claude_runner
-
-        runner = get_claude_runner()
-        compact_result = asyncio.run(runner.compact_session(session.session_id))
-        if compact_result.success:
-            if compact_result.session_id:
-                session_manager.update_session_id(thread_ts, compact_result.session_id)
-            say(text="컴팩트가 완료됐습니다.", thread_ts=thread_ts)
-        else:
-            say(text=f"컴팩트에 실패했습니다: {compact_result.error}", thread_ts=thread_ts)
-    except Exception as e:
-        logger.exception(f"compact 명령어 오류: {e}")
-        say(text=f"컴팩트 중 오류가 발생했습니다: {e}", thread_ts=thread_ts)
+def handle_compact(*, say, ts, thread_ts, **_):
+    """compact 명령어 핸들러 - 안내 메시지"""
+    reply_ts = thread_ts or ts
+    say(
+        text="compact는 Soulstream 서버에서 실행 중 자동으로 처리됩니다.",
+        thread_ts=reply_ts,
+    )
 
 
 _VALID_PROFILE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")

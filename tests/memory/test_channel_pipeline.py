@@ -1,9 +1,7 @@
 """채널 소화/판단 파이프라인 통합 테스트"""
 
 import tempfile
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -581,138 +579,6 @@ class TestProbabilityBasedIntervention:
         assert any("개입 확률 판단" in t for t in debug_texts)
 
 
-# ── Claude Runner 경로 테스트 ────────────────────────────
-
-@dataclass
-class FakeClaudeResult:
-    """ClaudeResult mock"""
-    success: bool = True
-    output: str = ""
-    session_id: Optional[str] = None
-    error: Optional[str] = None
-
-
-class FakeClaudeRunner:
-    """ClaudeRunner mock for testing"""
-
-    def __init__(self, output: str = "테스트 응답", success: bool = True, error: str = None):
-        self._output = output
-        self._success = success
-        self._error = error
-        self.run_call_count = 0
-        self.last_prompt = None
-
-    async def run(self, prompt: str, **kwargs) -> FakeClaudeResult:
-        self.run_call_count += 1
-        self.last_prompt = prompt
-        return FakeClaudeResult(
-            success=self._success,
-            output=self._output if self._success else "",
-            error=self._error,
-        )
-
-
-class TestIntervenWithClaudeRunner:
-    """Claude Code SDK (claude_runner) 경로 테스트"""
-
-    @pytest.mark.asyncio
-    async def test_intervene_with_claude_runner(self, store, channel_id):
-        """claude_runner가 있으면 Claude SDK로 응답 생성"""
-        _fill_pending(store, channel_id)
-        observer = FakeObserver(judge_result=JudgeResult(
-            importance=8,
-            reaction_type="intervene",
-            reaction_target="1005.000",
-            reaction_content="대화에 참여하고 싶습니다",
-        ))
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        history = InterventionHistory(base_dir=store.base_dir)
-        runner = FakeClaudeRunner(output="Claude SDK 응답입니다.")
-
-        await run_channel_pipeline(
-            store=store,
-            observer=observer,
-            channel_id=channel_id,
-            slack_client=client,
-            cooldown=history,
-            threshold_a=1,
-            intervention_threshold=0.0,
-            claude_runner=runner,
-        )
-
-        # Claude runner가 호출됨
-        assert runner.run_call_count == 1
-        # 프롬프트에 system+user가 합쳐져 있어야 함
-        assert runner.last_prompt is not None
-        # 슬랙에 발송됨
-        client.chat_postMessage.assert_called()
-        call_kwargs = client.chat_postMessage.call_args[1]
-        assert "Claude SDK 응답입니다" in call_kwargs["text"]
-
-    @pytest.mark.asyncio
-    async def test_claude_runner_takes_priority_over_llm_call(self, store, channel_id):
-        """claude_runner와 llm_call 모두 있으면 claude_runner가 우선"""
-        _fill_pending(store, channel_id)
-        observer = FakeObserver(judge_result=JudgeResult(
-            importance=8,
-            reaction_type="intervene",
-            reaction_target="channel",
-            reaction_content="개입",
-        ))
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        history = InterventionHistory(base_dir=store.base_dir)
-        runner = FakeClaudeRunner(output="Claude 응답")
-        mock_llm = AsyncMock(return_value="LLM 응답")
-
-        await run_channel_pipeline(
-            store=store,
-            observer=observer,
-            channel_id=channel_id,
-            slack_client=client,
-            cooldown=history,
-            threshold_a=1,
-            intervention_threshold=0.0,
-            llm_call=mock_llm,
-            claude_runner=runner,
-        )
-
-        # Claude runner가 호출됨
-        assert runner.run_call_count == 1
-        # llm_call은 호출되지 않음
-        mock_llm.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_claude_runner_failure_no_message_sent(self, store, channel_id):
-        """Claude runner 실패 시 메시지 발송 안 됨"""
-        _fill_pending(store, channel_id)
-        observer = FakeObserver(judge_result=JudgeResult(
-            importance=8,
-            reaction_type="intervene",
-            reaction_target="channel",
-            reaction_content="개입",
-        ))
-        client = MagicMock()
-        client.chat_postMessage = MagicMock(return_value={"ok": True})
-        history = InterventionHistory(base_dir=store.base_dir)
-        runner = FakeClaudeRunner(success=False, error="타임아웃")
-
-        await run_channel_pipeline(
-            store=store,
-            observer=observer,
-            channel_id=channel_id,
-            slack_client=client,
-            cooldown=history,
-            threshold_a=1,
-            intervention_threshold=0.0,
-            claude_runner=runner,
-        )
-
-        # 채널에 메시지 발송 안 됨 (디버그 채널이 아닌)
-        calls = [c for c in client.chat_postMessage.call_args_list
-                 if c[1].get("channel") == channel_id]
-        assert len(calls) == 0
 
 
 # ── 복수 판단 파이프라인 테스트 ────────────────────────────

@@ -77,7 +77,6 @@ class TestIntegrationBasicFlow:
     def executor(self, tmp_path):
         return _make_executor(
             tmp_path,
-            execution_mode="remote",
             soul_url="http://localhost:3105",
             soul_token="test-token",
             soul_client_id="test_bot",
@@ -183,7 +182,6 @@ class TestIntegrationIntervention:
     def executor(self, tmp_path):
         return _make_executor(
             tmp_path,
-            execution_mode="remote",
             soul_url="http://localhost:3105",
             soul_token="test-token",
             soul_client_id="test_bot",
@@ -343,7 +341,6 @@ class TestIntegrationRoleTools:
     def executor(self, tmp_path):
         return _make_executor(
             tmp_path,
-            execution_mode="remote",
             soul_url="http://localhost:3105",
             role_tools={
                 "admin": None,
@@ -433,7 +430,6 @@ class TestIntegrationDebugEvents:
     def executor(self, tmp_path):
         return _make_executor(
             tmp_path,
-            execution_mode="remote",
             soul_url="http://localhost:3105",
             soul_token="test-token",
             soul_client_id="test_bot",
@@ -521,7 +517,6 @@ class TestIntegrationCompaction:
     def executor(self, tmp_path):
         return _make_executor(
             tmp_path,
-            execution_mode="remote",
             soul_url="http://localhost:3105",
             soul_token="test-token",
             soul_client_id="test_bot",

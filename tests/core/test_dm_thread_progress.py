@@ -292,7 +292,7 @@ class TestHandleTrelloSuccessWithDm:
         """DM 스레드의 마지막 blockquote가 평문으로 교체됨"""
         from seosoyoung.slackbot.claude.executor import ClaudeExecutor
         from seosoyoung.slackbot.presentation.types import PresentationContext
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+        from seosoyoung.slackbot.claude.engine_types import ClaudeResult
         from seosoyoung.slackbot.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
