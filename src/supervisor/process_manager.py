@@ -181,6 +181,8 @@ class ProcessManager:
 
         shutdown_url이 설정된 경우 HTTP graceful shutdown을 먼저 시도하고,
         실패 시 프로세스 트리 전체를 강제 종료합니다.
+
+        timeout <= 0이면 graceful shutdown 후 무한 대기합니다.
         """
         state = self._ensure_registered(name)
         proc = self._procs.get(name)
@@ -190,16 +192,20 @@ class ProcessManager:
 
         config = state.config
         pid = proc.pid
-        logger.info("%s: 종료 요청 (pid=%s)", name, pid)
+        logger.info("%s: 종료 요청 (pid=%s, timeout=%s)", name, pid, timeout)
 
         exit_code = None
 
         # Phase 1: Graceful shutdown via HTTP
         if config.shutdown_url:
             if self._request_graceful_shutdown(config.shutdown_url):
-                logger.info("%s: graceful shutdown 요청 전송", name)
+                wait_timeout = None if timeout <= 0 else timeout
+                if wait_timeout is None:
+                    logger.info("%s: graceful shutdown 요청 전송 (무한 대기)", name)
+                else:
+                    logger.info("%s: graceful shutdown 요청 전송 (timeout=%s초)", name, wait_timeout)
                 try:
-                    exit_code = proc.wait(timeout=timeout)
+                    exit_code = proc.wait(timeout=wait_timeout)
                 except subprocess.TimeoutExpired:
                     logger.warning("%s: graceful shutdown 타임아웃", name)
 

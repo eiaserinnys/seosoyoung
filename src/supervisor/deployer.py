@@ -41,8 +41,8 @@ _SOULSTREAM_SERVER_PATH_PREFIX = "soul-server/"
 _WAITING_SESSIONS_TIMEOUT = 600  # 10분
 
 # 배포 시 프로세스 stop() 타임아웃 (초)
-# 봇이 사용자 응답(팝업)을 대기할 수 있으므로 충분히 확보
-_DEPLOY_STOP_TIMEOUT = 300.0  # 5분
+# 0 = 무한 대기 (클로드 세션이 자연 종료될 때까지 기다림)
+_DEPLOY_STOP_TIMEOUT = 0
 
 # 재시작 마커 파일명
 _RESTART_MARKER_NAME = "restart_in_progress"
