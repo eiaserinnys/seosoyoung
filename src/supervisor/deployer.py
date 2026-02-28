@@ -293,10 +293,16 @@ class Deployer:
             )
             if pull_result.returncode != 0:
                 logger.warning(
-                    "soulstream git pull 실패 (rc=%d): %s",
+                    "soulstream git pull 실패 (rc=%d): %s, stash 재시도",
                     pull_result.returncode,
                     pull_result.stderr.strip()[:500],
                 )
+                subprocess.run(["git", "stash"], cwd=str(soulstream_dir))
+                subprocess.run(
+                    ["git", "pull", "origin", "main"],
+                    cwd=str(soulstream_dir),
+                )
+                subprocess.run(["git", "stash", "pop"], cwd=str(soulstream_dir))
 
             new_head = self._get_repo_head(soulstream_dir)
 
