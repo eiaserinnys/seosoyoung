@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seosoyoung.slackbot.claude.engine_types import EngineResult
+from seosoyoung.rescue.claude.engine_types import EngineResult
 
 
 class TestRescueConfig:

@@ -22,7 +22,7 @@ import pytest
 from seosoyoung.slackbot.claude.executor import ClaudeExecutor
 from seosoyoung.slackbot.claude.intervention import PendingPrompt
 from seosoyoung.slackbot.presentation.types import PresentationContext
-from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+from seosoyoung.slackbot.claude.engine_types import ClaudeResult
 
 
 def make_executor(**overrides) -> ClaudeExecutor:
@@ -169,46 +169,41 @@ class TestInterventionHandling:
         assert pending.prompt == "새 질문"
         assert pending.msg_ts == "msg_456"
 
-    def test_intervention_fires_interrupt_with_active_runner(self):
-        """인터벤션 시 get_runner가 runner를 반환하면 interrupt 호출 (동기, 인자 없음)"""
-        executor = make_executor()
-
-        mock_runner = MagicMock()
-        mock_runner.interrupt.return_value = True
-
-        pctx = _make_pctx()
-
-        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=mock_runner):
-            executor._handle_intervention(
-                "thread_123", "새 질문", "msg_456",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                role="admin",
-                user_message=None,
-                on_result=None,
-                session_id="session_abc",
-            )
-
-        # interrupt()는 인자 없이 호출됨 (per-instance 모델)
-        mock_runner.interrupt.assert_called_once()
-
-    def test_intervention_no_runner_no_interrupt(self):
-        """get_runner가 None을 반환하면 interrupt 호출 안 함"""
+    def test_intervention_fires_remote_interrupt(self):
+        """인터벤션 시 fire_interrupt_remote가 호출됨"""
         executor = make_executor()
         pctx = _make_pctx()
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=None):
-            executor._handle_intervention(
-                "thread_123", "새 질문", "msg_456",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                role="admin",
-                user_message=None,
-                on_result=None,
-                session_id="session_abc",
-            )
+        with patch.object(executor._intervention, "fire_interrupt_remote") as mock_fire:
+            with patch.object(executor, "_get_service_adapter"):
+                executor._handle_intervention(
+                    "thread_123", "새 질문", "msg_456",
+                    on_progress=_noop_progress,
+                    on_compact=_noop_compact,
+                    presentation=pctx,
+                    role="admin",
+                    user_message=None,
+                    on_result=None,
+                    session_id="session_abc",
+                )
+
+        mock_fire.assert_called_once()
+
+    def test_intervention_saves_pending(self):
+        """인터벤션 시 pending에 저장됨 (remote interrupt 실패해도)"""
+        executor = make_executor()
+        pctx = _make_pctx()
+
+        executor._handle_intervention(
+            "thread_123", "새 질문", "msg_456",
+            on_progress=_noop_progress,
+            on_compact=_noop_compact,
+            presentation=pctx,
+            role="admin",
+            user_message=None,
+            on_result=None,
+            session_id="session_abc",
+        )
 
         # pending에는 저장됨
         assert "thread_123" in executor._pending_prompts
@@ -314,47 +309,60 @@ class TestInterruptedExecution:
 
 
 class TestExecuteOnceWithInterruption:
-    """_execute_once에서 interrupted 결과 처리"""
+    """_execute_once에서 interrupted 결과 처리 (remote 모드)"""
 
-    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
-    def test_interrupted_result_calls_handle_interrupted(self, MockRunnerClass):
-        """result.interrupted=True일 때 _handle_interrupted 호출"""
+    def test_interrupted_result_calls_handle_interrupted(self):
+        """result.interrupted=True일 때 handle_interrupted 호출"""
         interrupted_result = make_claude_result(interrupted=True, success=True)
-        mock_runner = MagicMock()
-        mock_runner.run_sync.return_value = interrupted_result
-        MockRunnerClass.return_value = mock_runner
 
         executor = make_executor()
-        client = MagicMock()
-        pctx = _make_pctx(client=client)
+        pctx = _make_pctx()
 
-        with patch.object(executor._result_processor, "handle_interrupted") as mock_interrupted:
-            executor._execute_once(
-                "thread_123", "test", "msg_456",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                session_id="session_abc",
-                role="admin",
-                user_message=None,
-                on_result=None,
-            )
+        with patch("seosoyoung.slackbot.claude.executor.run_in_new_loop", return_value=interrupted_result):
+            with patch.object(executor, "_get_service_adapter"):
+                with patch.object(executor._result_processor, "handle_interrupted") as mock_interrupted:
+                    executor._execute_once(
+                        "thread_123", "test", "msg_456",
+                        on_progress=_noop_progress,
+                        on_compact=_noop_compact,
+                        presentation=pctx,
+                        session_id="session_abc",
+                        role="admin",
+                        user_message=None,
+                        on_result=None,
+                    )
 
-            mock_interrupted.assert_called_once()
+                    mock_interrupted.assert_called_once()
 
-    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
-    def test_normal_result_calls_handle_success(self, MockRunnerClass):
-        """result.interrupted=False, success=True일 때 _handle_success 호출"""
+    def test_normal_result_calls_handle_success(self):
+        """result.interrupted=False, success=True일 때 handle_success 호출"""
         normal_result = make_claude_result(interrupted=False, success=True)
-        mock_runner = MagicMock()
-        mock_runner.run_sync.return_value = normal_result
-        MockRunnerClass.return_value = mock_runner
 
         executor = make_executor()
-        client = MagicMock()
-        pctx = _make_pctx(client=client)
+        pctx = _make_pctx()
 
-        with patch.object(executor._result_processor, "handle_success") as mock_success:
+        with patch("seosoyoung.slackbot.claude.executor.run_in_new_loop", return_value=normal_result):
+            with patch.object(executor, "_get_service_adapter"):
+                with patch.object(executor._result_processor, "handle_success") as mock_success:
+                    executor._execute_once(
+                        "thread_123", "test", "msg_456",
+                        on_progress=_noop_progress,
+                        on_compact=_noop_compact,
+                        presentation=pctx,
+                        session_id="session_abc",
+                        role="admin",
+                        user_message=None,
+                        on_result=None,
+                    )
+
+                    mock_success.assert_called_once()
+
+    def test_execute_once_calls_execute_remote(self):
+        """_execute_once에서 _execute_remote가 호출됨"""
+        executor = make_executor()
+        pctx = _make_pctx()
+
+        with patch.object(executor, "_execute_remote") as mock_remote:
             executor._execute_once(
                 "thread_123", "test", "msg_456",
                 on_progress=_noop_progress,
@@ -366,52 +374,18 @@ class TestExecuteOnceWithInterruption:
                 on_result=None,
             )
 
-            mock_success.assert_called_once()
-
-    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
-    def test_execute_once_creates_runner(self, MockRunnerClass):
-        """_execute_once에서 ClaudeRunner가 생성됨"""
-        result = make_claude_result()
-        mock_runner = MagicMock()
-        mock_runner.run_sync.return_value = result
-        MockRunnerClass.return_value = mock_runner
-
-        executor = make_executor()
-        client = MagicMock()
-        pctx = _make_pctx(client=client)
-
-        with patch.object(executor._result_processor, "handle_success"):
-            executor._execute_once(
-                "thread_123", "test", "msg_456",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                session_id="session_abc",
-                role="admin",
-                user_message=None,
-                on_result=None,
-            )
-
-        # ClaudeRunner가 생성되었는지 확인
-        MockRunnerClass.assert_called_once()
+        mock_remote.assert_called_once()
 
 
 class TestRunWithLockPendingLoop:
     """_run_with_lock의 while 루프로 pending 처리"""
 
-    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
-    def test_no_pending_single_execution(self, MockRunnerClass):
+    def test_no_pending_single_execution(self):
         """pending 없으면 한 번만 실행"""
-        result = make_claude_result()
-        mock_runner = MagicMock()
-        mock_runner.run_sync.return_value = result
-        MockRunnerClass.return_value = mock_runner
-
         executor = make_executor()
-        client = MagicMock()
-        pctx = _make_pctx(client=client)
+        pctx = _make_pctx()
 
-        with patch.object(executor._result_processor, "handle_success"):
+        with patch.object(executor, "_execute_once") as mock_execute:
             executor._run_with_lock(
                 "thread_123", "first prompt", "msg_456",
                 on_progress=_noop_progress,
@@ -423,20 +397,12 @@ class TestRunWithLockPendingLoop:
                 on_result=None,
             )
 
-        # run_sync이 한 번만 호출됨
-        assert mock_runner.run_sync.call_count == 1
+        assert mock_execute.call_count == 1
 
-    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
-    def test_pending_triggers_second_execution(self, MockRunnerClass):
+    def test_pending_triggers_second_execution(self):
         """pending이 있으면 두 번 실행"""
-        result = make_claude_result()
-        mock_runner = MagicMock()
-        mock_runner.run_sync.return_value = result
-        MockRunnerClass.return_value = mock_runner
-
         executor = make_executor()
-        client = MagicMock()
-        pctx = _make_pctx(client=client)
+        pctx = _make_pctx()
 
         # 첫 실행 후 pending이 있도록 설정
         pending = PendingPrompt(
@@ -444,46 +410,38 @@ class TestRunWithLockPendingLoop:
             msg_ts="msg_2",
             on_progress=_noop_progress,
             on_compact=_noop_compact,
-            presentation=_make_pctx(client=client),
+            presentation=_make_pctx(),
         )
         executor._pending_prompts["thread_123"] = pending
 
-        with patch.object(executor._result_processor, "handle_success"):
-            with patch.object(executor._result_processor, "handle_interrupted"):
-                executor._run_with_lock(
-                    "thread_123", "first prompt", "msg_456",
-                    on_progress=_noop_progress,
-                    on_compact=_noop_compact,
-                    presentation=pctx,
-                    session_id="session_abc",
-                    role="admin",
-                    user_message=None,
-                    on_result=None,
-                )
+        with patch.object(executor, "_execute_once") as mock_execute:
+            executor._run_with_lock(
+                "thread_123", "first prompt", "msg_456",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="session_abc",
+                role="admin",
+                user_message=None,
+                on_result=None,
+            )
 
-        # run_sync이 두 번 호출됨 (첫 번째 + pending)
-        assert mock_runner.run_sync.call_count == 2
+        # _execute_once가 두 번 호출됨 (첫 번째 + pending)
+        assert mock_execute.call_count == 2
         # pending이 비워짐
         assert "thread_123" not in executor._pending_prompts
 
-    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
-    def test_session_running_stopped_called(self, MockRunnerClass):
+    def test_session_running_stopped_called(self):
         """mark_session_running/stopped이 호출됨"""
-        result = make_claude_result()
-        mock_runner = MagicMock()
-        mock_runner.run_sync.return_value = result
-        MockRunnerClass.return_value = mock_runner
-
         mark_running = MagicMock()
         mark_stopped = MagicMock()
         executor = make_executor(
             mark_session_running=mark_running,
             mark_session_stopped=mark_stopped,
         )
-        client = MagicMock()
-        pctx = _make_pctx(client=client)
+        pctx = _make_pctx()
 
-        with patch.object(executor._result_processor, "handle_success"):
+        with patch.object(executor, "_execute_once"):
             executor._run_with_lock(
                 "thread_123", "test", "msg_456",
                 on_progress=_noop_progress,
@@ -506,32 +464,29 @@ class TestConsecutiveInterventions:
         """연속 인터벤션 시 pending은 마지막 것만 유지"""
         executor = make_executor()
 
-        mock_runner = MagicMock()
-        mock_runner.interrupt.return_value = True
-
-        # get_runner가 mock_runner를 반환하도록 패치
-        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=mock_runner):
-            # A → B → C 순서로 인터벤션
-            for i, prompt in enumerate(["A", "B", "C"]):
-                pctx = _make_pctx(msg_ts=f"msg_{i}")
-                executor._handle_intervention(
-                    "thread_123", prompt, f"msg_{i}",
-                    on_progress=_noop_progress,
-                    on_compact=_noop_compact,
-                    presentation=pctx,
-                    role="admin",
-                    user_message=None,
-                    on_result=None,
-                    session_id="session_abc",
-                )
+        with patch.object(executor._intervention, "fire_interrupt_remote") as mock_fire:
+            with patch.object(executor, "_get_service_adapter"):
+                # A → B → C 순서로 인터벤션
+                for i, prompt in enumerate(["A", "B", "C"]):
+                    pctx = _make_pctx(msg_ts=f"msg_{i}")
+                    executor._handle_intervention(
+                        "thread_123", prompt, f"msg_{i}",
+                        on_progress=_noop_progress,
+                        on_compact=_noop_compact,
+                        presentation=pctx,
+                        role="admin",
+                        user_message=None,
+                        on_result=None,
+                        session_id="session_abc",
+                    )
 
         # pending에는 C만 남아있어야 함
         pending = executor._pending_prompts.get("thread_123")
         assert pending is not None
         assert pending.prompt == "C"
 
-        # interrupt도 3번 호출됨
-        assert mock_runner.interrupt.call_count == 3
+        # fire_interrupt_remote도 3번 호출됨
+        assert mock_fire.call_count == 3
 
 
 class TestAgentRunnerInterruptedFlag:
@@ -546,48 +501,44 @@ class TestAgentRunnerInterruptedFlag:
         assert result.interrupted is True
 
 
-class TestModuleLevelRunnerLookup:
-    """모듈 레벨 get_runner를 통한 인터벤션 테스트"""
+class TestRemoteInterruptPath:
+    """remote 인터벤션 경로 테스트"""
 
-    def test_intervention_uses_get_runner_for_interrupt(self):
-        """인터벤션 시 get_runner로 runner를 찾아 interrupt 전송"""
+    def test_intervention_calls_fire_interrupt_remote(self):
+        """인터벤션 시 fire_interrupt_remote가 호출됨"""
         executor = make_executor()
-
-        mock_runner = MagicMock()
-        mock_runner.interrupt.return_value = True
-
         pctx = _make_pctx(thread_ts="thread_abc")
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=mock_runner):
-            executor._handle_intervention(
-                "thread_abc", "interrupt me", "msg_456",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                role="admin",
-                user_message=None,
-                on_result=None,
-                session_id="session_abc",
-            )
+        with patch.object(executor._intervention, "fire_interrupt_remote") as mock_fire:
+            with patch.object(executor, "_get_service_adapter"):
+                executor._handle_intervention(
+                    "thread_abc", "interrupt me", "msg_456",
+                    on_progress=_noop_progress,
+                    on_compact=_noop_compact,
+                    presentation=pctx,
+                    role="admin",
+                    user_message=None,
+                    on_result=None,
+                    session_id="session_abc",
+                )
 
-        mock_runner.interrupt.assert_called_once()
+        mock_fire.assert_called_once()
 
-    def test_intervention_no_runner_found(self):
-        """get_runner가 None이면 interrupt 호출 안 함"""
+    def test_intervention_always_saves_pending(self):
+        """인터벤션 시 pending에 항상 저장됨"""
         executor = make_executor()
         pctx = _make_pctx()
 
-        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=None):
-            executor._handle_intervention(
-                "thread_123", "no runner", "msg_456",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                role="admin",
-                user_message=None,
-                on_result=None,
-                session_id="session_abc",
-            )
+        executor._handle_intervention(
+            "thread_123", "no runner", "msg_456",
+            on_progress=_noop_progress,
+            on_compact=_noop_compact,
+            presentation=pctx,
+            role="admin",
+            user_message=None,
+            on_result=None,
+            session_id="session_abc",
+        )
 
         # pending에는 저장됨
         assert "thread_123" in executor._pending_prompts
@@ -737,19 +688,9 @@ class TestListRunTrelloSuccessNoDelete:
 class TestIntegrationInterventionFinalResponse:
     """인터벤션 후 최종 응답 위치 통합 테스트"""
 
-    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
-    def test_interrupted_then_pending_success(self, MockRunnerClass):
-        """A 중단 → B 실행 → 최종 응답이 올바른 위치에 표시"""
-        # 첫 번째 실행은 interrupted, 두 번째는 성공
-        interrupted_result = make_claude_result(interrupted=True, success=True)
-        success_result = make_claude_result(interrupted=False, success=True, output="B 응답")
-
-        mock_runner = MagicMock()
-        mock_runner.run_sync.side_effect = [interrupted_result, success_result]
-        MockRunnerClass.return_value = mock_runner
-
+    def test_interrupted_then_pending_success(self):
+        """A 중단 → B 실행 → _execute_once가 2번 호출됨"""
         executor = make_executor()
-        client = MagicMock()
 
         # B를 pending에 넣어둠
         pending = PendingPrompt(
@@ -757,42 +698,30 @@ class TestIntegrationInterventionFinalResponse:
             msg_ts="msg_B",
             on_progress=_noop_progress,
             on_compact=_noop_compact,
-            presentation=_make_pctx(client=client),
+            presentation=_make_pctx(),
         )
         executor._pending_prompts["thread_123"] = pending
 
-        pctx = _make_pctx(client=client)
+        pctx = _make_pctx()
 
-        with patch.object(executor._result_processor, "handle_interrupted") as mock_interrupted:
-            with patch.object(executor._result_processor, "handle_success") as mock_success:
-                executor._run_with_lock(
-                    "thread_123", "A 질문", "msg_A",
-                    on_progress=_noop_progress,
-                    on_compact=_noop_compact,
-                    presentation=pctx,
-                    session_id="session_abc",
-                    role="admin",
-                    user_message=None,
-                    on_result=None,
-                )
+        with patch.object(executor, "_execute_once") as mock_execute:
+            executor._run_with_lock(
+                "thread_123", "A 질문", "msg_A",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="session_abc",
+                role="admin",
+                user_message=None,
+                on_result=None,
+            )
 
-        # A는 interrupted로 처리
-        mock_interrupted.assert_called_once()
-        # B는 success로 처리
-        mock_success.assert_called_once()
+        # A + B = 2번 호출
+        assert mock_execute.call_count == 2
 
-    @patch("seosoyoung.slackbot.claude.executor.ClaudeRunner")
-    def test_triple_intervention_only_last_executes(self, MockRunnerClass):
-        """A→B→C 연속 인터벤션: A 중단, B는 덮어씌워지고, C만 실행"""
-        interrupted_result = make_claude_result(interrupted=True, success=True)
-        success_result = make_claude_result(interrupted=False, success=True, output="C 응답")
-
-        mock_runner = MagicMock()
-        mock_runner.run_sync.side_effect = [interrupted_result, success_result]
-        MockRunnerClass.return_value = mock_runner
-
+    def test_triple_intervention_only_last_executes(self):
+        """A→B→C 연속 인터벤션: B는 C에 의해 덮어씌워지므로 A + C = 2번 실행"""
         executor = make_executor()
-        client = MagicMock()
 
         # C를 pending에 (B는 C에 의해 덮어씌워진 상태)
         pending_c = PendingPrompt(
@@ -800,26 +729,25 @@ class TestIntegrationInterventionFinalResponse:
             msg_ts="msg_C",
             on_progress=_noop_progress,
             on_compact=_noop_compact,
-            presentation=_make_pctx(client=client),
+            presentation=_make_pctx(),
         )
         executor._pending_prompts["thread_123"] = pending_c
 
-        pctx = _make_pctx(client=client)
+        pctx = _make_pctx()
 
-        with patch.object(executor._result_processor, "handle_interrupted"):
-            with patch.object(executor._result_processor, "handle_success") as mock_success:
-                executor._run_with_lock(
-                    "thread_123", "A 질문", "msg_A",
-                    on_progress=_noop_progress,
-                    on_compact=_noop_compact,
-                    presentation=pctx,
-                    session_id="session_abc",
-                    role="admin",
-                    user_message=None,
-                    on_result=None,
-                )
+        with patch.object(executor, "_execute_once") as mock_execute:
+            executor._run_with_lock(
+                "thread_123", "A 질문", "msg_A",
+                on_progress=_noop_progress,
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="session_abc",
+                role="admin",
+                user_message=None,
+                on_result=None,
+            )
 
-        # success는 C에 대해서만 한 번 호출됨
-        mock_success.assert_called_once()
+        # A + C = 2번 호출
+        assert mock_execute.call_count == 2
         # pending은 비워짐
         assert "thread_123" not in executor._pending_prompts

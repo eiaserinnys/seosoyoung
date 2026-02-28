@@ -57,18 +57,16 @@ except ImportError:
     class UserMessage:
         pass
 
-from seosoyoung.slackbot.claude.diagnostics import (
+from seosoyoung.rescue.claude.diagnostics import (
     DebugSendFn,
     build_session_dump,
     classify_process_error,
     format_rate_limit_warning,
 )
-from seosoyoung.slackbot.claude.engine_types import (
-    ClaudeResult, EngineResult, InterventionCallback, EngineEvent, EngineEventType, EventCallback,
-)
-from seosoyoung.slackbot.claude.instrumented_client import InstrumentedClaudeClient
-from seosoyoung.slackbot.claude.sdk_compat import ParseAction, classify_parse_error
-from seosoyoung.slackbot.claude.session_validator import validate_session
+from seosoyoung.rescue.claude.engine_types import EngineResult, InterventionCallback, EngineEvent, EngineEventType, EventCallback
+from seosoyoung.rescue.claude.instrumented_client import InstrumentedClaudeClient
+from seosoyoung.rescue.claude.sdk_compat import ParseAction, classify_parse_error
+from seosoyoung.rescue.claude.session_validator import validate_session
 from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
@@ -79,6 +77,45 @@ DEFAULT_DISALLOWED_TOOLS = [
     "WebSearch",
     "Task",
 ]
+
+
+@dataclass
+class ClaudeResult(EngineResult):
+    """Claude Code 실행 결과 (하위호환 레이어)
+
+    EngineResult를 상속하며, 응용 마커 필드를 추가합니다.
+    마커 필드는 executor에서 ParsedMarkers를 통해 설정됩니다.
+    """
+
+    update_requested: bool = False
+    restart_requested: bool = False
+    list_run: Optional[str] = None  # <!-- LIST_RUN: 리스트명 --> 마커로 추출된 리스트 이름
+
+    @classmethod
+    def from_engine_result(
+        cls,
+        result: EngineResult,
+        markers: Any = None,
+    ) -> "ClaudeResult":
+        """EngineResult + markers → ClaudeResult 변환
+
+        Args:
+            result: 엔진 순수 결과
+            markers: 파싱된 응용 마커 (duck-typed, None이면 기본값 사용)
+        """
+        return cls(
+            success=result.success,
+            output=result.output,
+            session_id=result.session_id,
+            error=result.error,
+            is_error=result.is_error,
+            interrupted=result.interrupted,
+            usage=result.usage,
+            collected_messages=result.collected_messages,
+            update_requested=getattr(markers, "update_requested", False),
+            restart_requested=getattr(markers, "restart_requested", False),
+            list_run=getattr(markers, "list_run", None),
+        )
 
 
 # ---------------------------------------------------------------------------

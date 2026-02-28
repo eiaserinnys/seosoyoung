@@ -97,40 +97,6 @@ class TestExecutorRemoteBranch:
             role="admin",
         )
 
-    def test_local_mode_uses_runner(self, executor, session):
-        """local 모드에서 ClaudeRunner가 생성되는지 확인"""
-        pctx = _make_pctx()
-        executor.execution_mode = "local"
-
-        with patch("seosoyoung.slackbot.claude.executor.ClaudeRunner") as MockRunnerClass:
-            mock_runner = MagicMock()
-            mock_result = MagicMock()
-            mock_result.success = True
-            mock_result.output = "hello"
-            mock_result.session_id = "sess-1"
-            mock_result.interrupted = False
-            mock_result.update_requested = False
-            mock_result.restart_requested = False
-            mock_result.list_run = None
-            mock_result.error = None
-            mock_result.usage = None
-
-            mock_runner.run_sync.return_value = mock_result
-            MockRunnerClass.return_value = mock_runner
-
-            executor._execute_once(
-                "1234.5678", "hello", "1234.0001",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                session_id="sess-001",
-                role="admin",
-                user_message=None,
-                on_result=None,
-            )
-
-            MockRunnerClass.assert_called_once()
-
     def test_remote_mode_uses_adapter(self, executor, session):
         """remote 모드에서 _execute_remote가 호출되는지 확인"""
         pctx = _make_pctx()
@@ -227,7 +193,7 @@ class TestExecutorRemoteDebug:
 
     def test_on_debug_passed_to_adapter(self, executor, session):
         """_execute_remote가 on_debug 콜백을 adapter.execute에 전달"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+        from seosoyoung.slackbot.claude.engine_types import ClaudeResult
         pctx = _make_pctx()
 
         mock_adapter = MagicMock()
@@ -261,7 +227,7 @@ class TestExecutorRemoteDebug:
         async def mock_execute(**kwargs):
             nonlocal captured_on_debug
             captured_on_debug = kwargs.get("on_debug")
-            from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+            from seosoyoung.slackbot.claude.engine_types import ClaudeResult
             return ClaudeResult(success=True, output="done", session_id="sess-1")
 
         mock_adapter = MagicMock()
@@ -334,28 +300,6 @@ class TestInterventionDualPath:
             user_id="U123",
             role="admin",
         )
-
-    def test_local_intervention_uses_runner(self, executor, session):
-        """local 모드 인터벤션: runner.interrupt 호출 (동기, 인자 없음)"""
-        mock_runner = MagicMock()
-        mock_runner.interrupt.return_value = True
-
-        pctx = _make_pctx()
-        executor.execution_mode = "local"
-
-        with patch("seosoyoung.slackbot.claude.agent_runner.get_runner", return_value=mock_runner):
-            executor._handle_intervention(
-                "1234.5678", "new prompt", "1234.0001",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                role="admin",
-                user_message=None,
-                on_result=None,
-                session_id="sess-001",
-            )
-
-        mock_runner.interrupt.assert_called_once()
 
     def test_remote_intervention_uses_adapter(self, executor, session):
         """remote 모드 인터벤션: session_id 확보 시 run_in_new_loop으로 adapter.intervene_by_session 호출"""

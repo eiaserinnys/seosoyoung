@@ -9,7 +9,7 @@ ClaudeExecutor에서 local/remote 분기 시 remote 경로로 사용됩니다.
 import logging
 from typing import Awaitable, Callable, Optional
 
-from seosoyoung.slackbot.claude.agent_runner import ClaudeResult
+from seosoyoung.slackbot.claude.engine_types import ClaudeResult
 from seosoyoung.slackbot.claude.service_client import (
     SoulServiceClient,
     SoulServiceError,

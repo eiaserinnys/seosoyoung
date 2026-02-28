@@ -72,6 +72,7 @@ soul 서버를 경유하지 않는 독립 경량 봇입니다.
 
 ## 내부 의존성
 
+- `seosoyoung.rescue.claude.engine_types.EngineResult`
 - `seosoyoung.rescue.config.RescueConfig`
 - `seosoyoung.rescue.engine_adapter.compact_session_sync`
 - `seosoyoung.rescue.engine_adapter.create_runner`
@@ -79,5 +80,4 @@ soul 서버를 경유하지 않는 독립 경량 봇입니다.
 - `seosoyoung.rescue.message_formatter.escape_backticks`
 - `seosoyoung.rescue.session.Session`
 - `seosoyoung.rescue.session.SessionManager`
-- `seosoyoung.slackbot.claude.engine_types.EngineResult`
-- `seosoyoung.slackbot.slack.formatting.update_message`
+- `seosoyoung.rescue.slack_utils.update_message`

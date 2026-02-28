@@ -30,7 +30,7 @@ SoulServiceClient로 Soulstream에 실행을 위임하고 ClaudeResult로 변환
 
 ## 내부 의존성
 
-- `seosoyoung.slackbot.claude.agent_runner.ClaudeResult`
+- `seosoyoung.slackbot.claude.engine_types.ClaudeResult`
 - `seosoyoung.slackbot.claude.service_client.RateLimitError`
 - `seosoyoung.slackbot.claude.service_client.SoulServiceClient`
 - `seosoyoung.slackbot.claude.service_client.SoulServiceError`

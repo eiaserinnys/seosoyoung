@@ -30,6 +30,40 @@ class EngineResult:
 
 
 @dataclass
+class ClaudeResult(EngineResult):
+    """Claude Code 실행 결과 (응용 마커 포함)
+
+    EngineResult를 상속하며, 응용 마커 필드를 추가합니다.
+    마커 필드는 executor에서 ParsedMarkers를 통해 설정됩니다.
+    """
+
+    update_requested: bool = False
+    restart_requested: bool = False
+    list_run: Optional[str] = None
+
+    @classmethod
+    def from_engine_result(
+        cls,
+        result: EngineResult,
+        markers: Any = None,
+    ) -> "ClaudeResult":
+        """EngineResult + markers -> ClaudeResult 변환"""
+        return cls(
+            success=result.success,
+            output=result.output,
+            session_id=result.session_id,
+            error=result.error,
+            is_error=result.is_error,
+            interrupted=result.interrupted,
+            usage=result.usage,
+            collected_messages=result.collected_messages,
+            update_requested=getattr(markers, "update_requested", False),
+            restart_requested=getattr(markers, "restart_requested", False),
+            list_run=getattr(markers, "list_run", None),
+        )
+
+
+@dataclass
 class RoleConfig:
     """역할별 도구 접근 설정
 

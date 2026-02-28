@@ -10,9 +10,9 @@ from seosoyoung.slackbot.claude.types import (
     ProgressCallback,
     CompactCallback,
 )
+from seosoyoung.slackbot.claude.engine_types import ClaudeResult
 from seosoyoung.slackbot.claude.agent_runner import (
     SDK_AVAILABLE,
-    ClaudeResult,
     ClaudeRunner,
     get_runner,
     register_runner,

@@ -1,6 +1,6 @@
 """rescue-bot 엔진 어댑터
 
-slackbot.claude.agent_runner의 ClaudeRunner를 rescue-bot용으로 래핑합니다.
+rescue.claude.agent_runner의 ClaudeRunner를 rescue-bot용으로 래핑합니다.
 rescue-bot 전용 설정(working_dir, 도구 제한)을 적용하여
 ClaudeRunner 인스턴스를 생성하고, interrupt/compact 등의 제어를 위임합니다.
 
@@ -12,17 +12,16 @@ import logging
 from typing import Optional
 
 from seosoyoung.rescue.config import RescueConfig
-from seosoyoung.slackbot.claude.agent_runner import (
+from seosoyoung.rescue.claude.agent_runner import (
     ClaudeRunner,
     get_runner as _get_runner,
 )
-from seosoyoung.slackbot.claude.engine_types import EngineResult
-from seosoyoung.slackbot.config import Config
+from seosoyoung.rescue.claude.engine_types import EngineResult
 from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_TOOLS = Config.auth.role_tools["admin"]  # None = 모든 도구 허용
+ALLOWED_TOOLS = None  # None = 모든 도구 허용
 DISALLOWED_TOOLS = ["WebFetch", "WebSearch", "Task"]
 
 

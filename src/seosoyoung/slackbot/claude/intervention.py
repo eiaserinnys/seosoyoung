@@ -58,20 +58,6 @@ class InterventionManager:
         """pending_prompts dict 직접 접근 (테스트용)"""
         return self._pending_prompts
 
-    def fire_interrupt_local(self, thread_ts: str):
-        """Local 모드: 모듈 레지스트리에서 runner를 찾아 interrupt 전송"""
-        from seosoyoung.slackbot.claude.agent_runner import get_runner
-
-        runner = get_runner(thread_ts)
-        if runner:
-            try:
-                runner.interrupt()
-                logger.info(f"인터럽트 전송 완료: thread={thread_ts}")
-            except Exception as e:
-                logger.warning(f"인터럽트 전송 실패 (무시): thread={thread_ts}, {e}")
-        else:
-            logger.warning(f"인터럽트 전송 불가: 실행 중인 runner 없음 (thread={thread_ts})")
-
     def fire_interrupt_remote(
         self,
         thread_ts: str,

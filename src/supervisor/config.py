@@ -141,29 +141,6 @@ def build_process_configs() -> list[ProcessConfig]:
     else:
         logger.info("mcp-eb-lore 설정 건너뜀: lore_mcp 패키지 없음 (%s)", eb_lore_mcp_pkg)
 
-    # --- 필수: seosoyoung-soul ---
-    # Claude Code 실행 서비스 (FastAPI + uvicorn)
-    # venv_python으로 실행 - seosoyoung 패키지 의존
-    configs.append(ProcessConfig(
-        name="seosoyoung-soul",
-        command=str(paths["venv_python"]),
-        args=[
-            "-X", "utf8", "-m", "uvicorn",
-            "seosoyoung.soul.main:app",
-            "--host", "127.0.0.1",
-            "--port", "3105",
-        ],
-        cwd=str(paths["workspace"].resolve()),
-        restart_policy=RestartPolicy(
-            use_exit_codes=False,
-            auto_restart=True,
-            restart_delay=3.0,
-        ),
-        log_dir=str(paths["logs"]),
-        port=3105,
-        shutdown_url="http://127.0.0.1:3105/shutdown",
-    ))
-
     # --- 필수: rescue-bot (긴급 복구용 경량 슬랙 봇) ---
     # 메인 봇과 독립된 별도 Slack App 사용 (SocketMode, 포트 불필요)
     configs.append(ProcessConfig(

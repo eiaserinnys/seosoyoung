@@ -63,7 +63,7 @@ class TestProgressCallback:
 
     def test_progress_callback_updates(self):
         """on_progress는 ClaudeRunner.run()에 전달 가능"""
-        from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
+        from seosoyoung.rescue.claude.agent_runner import ClaudeRunner
 
         runner = ClaudeRunner()
 
@@ -144,7 +144,7 @@ class TestEmptyResponseHandling:
     def test_empty_response_handling(self):
         """빈 응답은 (중단됨) 메시지로 처리"""
         from seosoyoung.rescue.main import RescueBotApp
-        from seosoyoung.slackbot.claude.engine_types import EngineResult
+        from seosoyoung.rescue.claude.engine_types import EngineResult
         from seosoyoung.rescue.session import SessionManager
 
         app = RescueBotApp.__new__(RescueBotApp)

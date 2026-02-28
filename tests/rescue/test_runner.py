@@ -87,7 +87,7 @@ class TestCompactSessionSync:
 
     def test_compact_session_calls_runner(self):
         """compact_session_sync가 ClaudeRunner를 생성하고 compact를 위임하는지 확인"""
-        from seosoyoung.slackbot.claude.engine_types import EngineResult
+        from seosoyoung.rescue.claude.engine_types import EngineResult
 
         mock_result = EngineResult(
             success=True, output="compacted", session_id="sess_123"
