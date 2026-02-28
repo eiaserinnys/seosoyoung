@@ -78,12 +78,17 @@ Task API를 사용하여 Claude Code를 원격 실행합니다.
 - `async close(self)` (줄 153): 
 - `async __aenter__(self)` (줄 158): 
 - `async __aexit__(self, exc_type, exc_val, exc_tb)` (줄 161): 
-- `async execute(self, client_id, request_id, prompt, resume_session_id, on_progress, on_compact, on_debug, on_session)` (줄 166): Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
-- `async intervene(self, client_id, request_id, text, user)` (줄 265): 실행 중인 태스크에 개입 메시지 전송
-- `async intervene_by_session(self, session_id, text, user)` (줄 293): session_id 기반 개입 메시지 전송
-- `async ack(self, client_id, request_id)` (줄 320): 결과 수신 확인
-- `async reconnect_stream(self, client_id, request_id, on_progress, on_compact, on_debug)` (줄 334): 태스크 SSE 스트림에 재연결
-- `async health_check(self)` (줄 362): 헬스 체크
-- `async _handle_sse_events(self, response, on_progress, on_compact, on_debug, on_session)` (줄 375): SSE 이벤트 스트림 처리
-- `async _parse_sse_stream(self, response)` (줄 448): SSE 스트림 파싱
-- `async _parse_error(self, response)` (줄 508): 에러 응답 파싱
+- `async execute(self, client_id, request_id, prompt, resume_session_id, on_progress, on_compact, on_debug, on_session, on_credential_alert)` (줄 166): Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
+- `async intervene(self, client_id, request_id, text, user)` (줄 269): 실행 중인 태스크에 개입 메시지 전송
+- `async intervene_by_session(self, session_id, text, user)` (줄 297): session_id 기반 개입 메시지 전송
+- `async ack(self, client_id, request_id)` (줄 324): 결과 수신 확인
+- `async reconnect_stream(self, client_id, request_id, on_progress, on_compact, on_debug, on_credential_alert)` (줄 338): 태스크 SSE 스트림에 재연결
+- `async health_check(self)` (줄 368): 헬스 체크
+- `async list_profiles(self)` (줄 381): 프로필 목록 조회 (GET /profiles)
+- `async get_rate_limits(self)` (줄 396): 전체 프로필 rate limit 조회 (GET /profiles/rate-limits)
+- `async save_profile(self, name)` (줄 414): 현재 크레덴셜을 프로필로 저장 (POST /profiles/{name})
+- `async activate_profile(self, name)` (줄 429): 프로필 활성화 (POST /profiles/{name}/activate)
+- `async delete_profile(self, name)` (줄 446): 프로필 삭제 (DELETE /profiles/{name})
+- `async _handle_sse_events(self, response, on_progress, on_compact, on_debug, on_session, on_credential_alert)` (줄 465): SSE 이벤트 스트림 처리
+- `async _parse_sse_stream(self, response)` (줄 543): SSE 스트림 파싱
+- `async _parse_error(self, response)` (줄 603): 에러 응답 파싱

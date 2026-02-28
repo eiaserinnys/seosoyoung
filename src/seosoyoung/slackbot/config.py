@@ -226,6 +226,7 @@ class ClaudeConfig:
     soul_url: str = os.getenv("SEOSOYOUNG_SOUL_URL", "http://localhost:4105")
     soul_token: str = os.getenv("SEOSOYOUNG_SOUL_TOKEN", "")
     soul_client_id: str = os.getenv("SEOSOYOUNG_SOUL_CLIENT_ID", "seosoyoung_bot")
+    credential_alert_channel: str = os.getenv("CREDENTIAL_ALERT_CHANNEL", "")
 
 
 @dataclass

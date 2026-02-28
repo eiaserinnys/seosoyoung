@@ -173,6 +173,7 @@ class SoulServiceClient:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
         *,
         allowed_tools: Optional[List[str]] = None,
         disallowed_tools: Optional[List[str]] = None,
@@ -189,6 +190,7 @@ class SoulServiceClient:
             on_compact: 컴팩션 콜백
             on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
             on_session: 세션 ID 조기 통지 콜백 (session_id: str)
+            on_credential_alert: 크레덴셜 알림 콜백 (data: dict)
             allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
             disallowed_tools: 금지 도구 목록
             use_mcp: MCP 서버 연결 여부
@@ -229,6 +231,7 @@ class SoulServiceClient:
                     on_compact=on_compact,
                     on_debug=on_debug,
                     on_session=on_session,
+                    on_credential_alert=on_credential_alert,
                 )
             except ConnectionLostError:
                 pass  # 재연결 루프로 진입
@@ -246,6 +249,7 @@ class SoulServiceClient:
             try:
                 return await self.reconnect_stream(
                     client_id, request_id, on_progress, on_compact, on_debug,
+                    on_credential_alert,
                 )
             except ConnectionLostError:
                 continue
@@ -338,6 +342,7 @@ class SoulServiceClient:
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
     ) -> ExecuteResult:
         """태스크 SSE 스트림에 재연결"""
         session = await self._get_session()
@@ -357,6 +362,7 @@ class SoulServiceClient:
                 on_progress=on_progress,
                 on_compact=on_compact,
                 on_debug=on_debug,
+                on_credential_alert=on_credential_alert,
             )
 
     async def health_check(self) -> dict:
@@ -370,6 +376,90 @@ class SoulServiceClient:
             else:
                 raise SoulServiceError("헬스 체크 실패")
 
+    # === Credential Profile API ===
+
+    async def list_profiles(self) -> dict:
+        """프로필 목록 조회 (GET /profiles)
+
+        Returns:
+            {"profiles": [...], "active": "profile_name" | None}
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles"
+
+        async with session.get(url) as response:
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"프로필 목록 조회 실패: {error}")
+            return await response.json()
+
+    async def get_rate_limits(self) -> dict:
+        """전체 프로필 rate limit 조회 (GET /profiles/rate-limits)
+
+        Returns:
+            {"active_profile": str, "profiles": [...]}
+            Rate limit tracking 비활성 시 빈 profiles 반환
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles/rate-limits"
+
+        async with session.get(url) as response:
+            if response.status == 503:
+                return {"active_profile": None, "profiles": []}
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"Rate limit 조회 실패: {error}")
+            return await response.json()
+
+    async def save_profile(self, name: str) -> dict:
+        """현재 크레덴셜을 프로필로 저장 (POST /profiles/{name})
+
+        Returns:
+            {"name": str, "saved": True}
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles/{name}"
+
+        async with session.post(url) as response:
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"프로필 저장 실패: {error}")
+            return await response.json()
+
+    async def activate_profile(self, name: str) -> dict:
+        """프로필 활성화 (POST /profiles/{name}/activate)
+
+        Returns:
+            {"activated": str}
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles/{name}/activate"
+
+        async with session.post(url) as response:
+            if response.status == 404:
+                raise SoulServiceError(f"프로필을 찾을 수 없습니다: {name}")
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"프로필 활성화 실패: {error}")
+            return await response.json()
+
+    async def delete_profile(self, name: str) -> dict:
+        """프로필 삭제 (DELETE /profiles/{name})
+
+        Returns:
+            {"deleted": True, "name": str}
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles/{name}"
+
+        async with session.delete(url) as response:
+            if response.status == 404:
+                raise SoulServiceError(f"프로필을 찾을 수 없습니다: {name}")
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"프로필 삭제 실패: {error}")
+            return await response.json()
+
     # === 헬퍼 메서드 ===
 
     async def _handle_sse_events(
@@ -379,6 +469,7 @@ class SoulServiceClient:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
     ) -> ExecuteResult:
         """SSE 이벤트 스트림 처리
 
@@ -419,6 +510,10 @@ class SoulServiceClient:
 
                 elif event.event == "error":
                     error_message = event.data.get("message", "알 수 없는 오류")
+
+                elif event.event == "credential_alert":
+                    if on_credential_alert:
+                        await on_credential_alert(event.data)
 
                 elif event.event == "reconnected":
                     last_progress = event.data.get("last_progress", "")

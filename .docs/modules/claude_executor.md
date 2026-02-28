@@ -57,7 +57,7 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 - `_unregister_session_id(self, thread_ts)` (줄 530): thread_ts ↔ session_id 매핑 해제
 - `_get_session_id(self, thread_ts)` (줄 539): thread_ts에 대응하는 session_id 조회
 - `_execute_remote(self, thread_ts, prompt)` (줄 544): Remote 모드: Soulstream 서버에 실행을 위임
-- `_process_result(self, presentation, result, thread_ts)` (줄 616): 실행 결과 처리
+- `_process_result(self, presentation, result, thread_ts)` (줄 625): 실행 결과 처리
 
 ## 함수
 

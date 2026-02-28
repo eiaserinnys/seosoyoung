@@ -639,6 +639,213 @@ class TestSSEReconnection:
                 pass
 
 
+class TestCredentialProfileAPI:
+    """SoulServiceClient 크레덴셜 프로필 API 테스트"""
+
+    @pytest.fixture
+    def client(self):
+        return SoulServiceClient(base_url="http://localhost:3105", token="test")
+
+    # --- list_profiles ---
+
+    @pytest.mark.asyncio
+    async def test_list_profiles_success(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
+            "profiles": [{"name": "work", "is_active": True}],
+            "active": "work",
+        })
+        client._session = _mock_session(mock_response, method="get")
+
+        result = await client.list_profiles()
+        assert result["active"] == "work"
+        assert len(result["profiles"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_list_profiles_error(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 500
+        mock_response.json = AsyncMock(return_value={"error": {"message": "server error"}})
+        client._session = _mock_session(mock_response, method="get")
+
+        with pytest.raises(SoulServiceError, match="프로필 목록 조회 실패"):
+            await client.list_profiles()
+
+    # --- get_rate_limits ---
+
+    @pytest.mark.asyncio
+    async def test_get_rate_limits_success(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
+            "active_profile": "work",
+            "profiles": [
+                {"name": "work", "five_hour": {"utilization": 0.5, "resets_at": None}},
+            ],
+        })
+        client._session = _mock_session(mock_response, method="get")
+
+        result = await client.get_rate_limits()
+        assert result["active_profile"] == "work"
+        assert len(result["profiles"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_get_rate_limits_503_returns_empty(self, client):
+        """rate limit tracking 비활성 시 빈 결과 반환"""
+        mock_response = AsyncMock()
+        mock_response.status = 503
+        client._session = _mock_session(mock_response, method="get")
+
+        result = await client.get_rate_limits()
+        assert result["active_profile"] is None
+        assert result["profiles"] == []
+
+    @pytest.mark.asyncio
+    async def test_get_rate_limits_error(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 500
+        mock_response.json = AsyncMock(return_value={"error": {"message": "internal"}})
+        client._session = _mock_session(mock_response, method="get")
+
+        with pytest.raises(SoulServiceError, match="Rate limit 조회 실패"):
+            await client.get_rate_limits()
+
+    # --- save_profile ---
+
+    @pytest.mark.asyncio
+    async def test_save_profile_success(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"name": "work", "saved": True})
+        client._session = _mock_session(mock_response)
+
+        result = await client.save_profile("work")
+        assert result["saved"] is True
+
+    @pytest.mark.asyncio
+    async def test_save_profile_error(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 400
+        mock_response.json = AsyncMock(return_value={"detail": "invalid name"})
+        client._session = _mock_session(mock_response)
+
+        with pytest.raises(SoulServiceError, match="프로필 저장 실패"):
+            await client.save_profile("bad name")
+
+    # --- activate_profile ---
+
+    @pytest.mark.asyncio
+    async def test_activate_profile_success(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"activated": "work"})
+        client._session = _mock_session(mock_response)
+
+        result = await client.activate_profile("work")
+        assert result["activated"] == "work"
+
+    @pytest.mark.asyncio
+    async def test_activate_profile_not_found(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 404
+        client._session = _mock_session(mock_response)
+
+        with pytest.raises(SoulServiceError, match="프로필을 찾을 수 없습니다"):
+            await client.activate_profile("nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_activate_profile_error(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 500
+        mock_response.json = AsyncMock(return_value={"error": {"message": "swap failed"}})
+        client._session = _mock_session(mock_response)
+
+        with pytest.raises(SoulServiceError, match="프로필 활성화 실패"):
+            await client.activate_profile("work")
+
+    # --- delete_profile ---
+
+    @pytest.mark.asyncio
+    async def test_delete_profile_success(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"deleted": True, "name": "old"})
+        client._session = _mock_session(mock_response, method="delete")
+
+        result = await client.delete_profile("old")
+        assert result["deleted"] is True
+
+    @pytest.mark.asyncio
+    async def test_delete_profile_not_found(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 404
+        client._session = _mock_session(mock_response, method="delete")
+
+        with pytest.raises(SoulServiceError, match="프로필을 찾을 수 없습니다"):
+            await client.delete_profile("nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_delete_profile_error(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 500
+        mock_response.json = AsyncMock(return_value={"error": {"message": "delete failed"}})
+        client._session = _mock_session(mock_response, method="delete")
+
+        with pytest.raises(SoulServiceError, match="프로필 삭제 실패"):
+            await client.delete_profile("work")
+
+    # --- API URL 확인 ---
+
+    @pytest.mark.asyncio
+    async def test_list_profiles_url(self, client):
+        """list_profiles가 올바른 URL을 호출하는지 확인"""
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"profiles": [], "active": None})
+        session = _mock_session(mock_response, method="get")
+        client._session = session
+
+        await client.list_profiles()
+        session.get.assert_called_once_with("http://localhost:3105/profiles")
+
+    @pytest.mark.asyncio
+    async def test_save_profile_url(self, client):
+        """save_profile이 올바른 URL을 호출하는지 확인"""
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"name": "work", "saved": True})
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.save_profile("work")
+        session.post.assert_called_once_with("http://localhost:3105/profiles/work")
+
+    @pytest.mark.asyncio
+    async def test_activate_profile_url(self, client):
+        """activate_profile이 올바른 URL을 호출하는지 확인"""
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"activated": "work"})
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.activate_profile("work")
+        session.post.assert_called_once_with("http://localhost:3105/profiles/work/activate")
+
+    @pytest.mark.asyncio
+    async def test_delete_profile_url(self, client):
+        """delete_profile이 올바른 URL을 호출하는지 확인"""
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"deleted": True, "name": "old"})
+        session = _mock_session(mock_response, method="delete")
+        client._session = session
+
+        await client.delete_profile("old")
+        session.delete.assert_called_once_with("http://localhost:3105/profiles/old")
+
+
 class TestParseError:
     """_parse_error 테스트"""
 

@@ -38,9 +38,10 @@
 - [`claude/types.py`](modules/claude_types.md): claude/ 모듈 내부 Protocol 정의
 - [`slackbot/config.py`](modules/slackbot_config.md): 설정 관리
 - [`slackbot/formatting.py`](modules/slackbot_formatting.md): 슬랙 메시지 포맷팅 — 공유 리프 모듈
-- [`handlers/actions.py`](modules/handlers_actions.md): 재시작 버튼 액션 핸들러
+- [`handlers/actions.py`](modules/handlers_actions.md): 재시작 버튼 및 크레덴셜 프로필 전환 액션 핸들러
 - [`handlers/channel_collector.py`](modules/handlers_channel_collector.md): 채널 메시지 수집기
 - [`handlers/commands.py`](modules/handlers_commands.md): 명령어 핸들러 모듈
+- [`handlers/credential_ui.py`](modules/handlers_credential_ui.md): 크레덴셜 알림 UI
 - [`handlers/mention.py`](modules/handlers_mention.md): @seosoyoung 멘션 핸들러
 - [`handlers/mention_tracker.py`](modules/handlers_mention_tracker.md): 멘션으로 처리 중인 스레드를 추적
 - [`handlers/message.py`](modules/handlers_message.md): 스레드 메시지 핸들러 + DM 채널 핸들러
@@ -67,7 +68,6 @@
 - [`memory/token_counter.py`](modules/memory_token_counter.md): 토큰 카운터
 - [`presentation/progress.py`](modules/presentation_progress.md): 진행 상태 콜백 팩토리
 - [`presentation/types.py`](modules/presentation_types.md): 프레젠테이션 컨텍스트 타입 정의
-- [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리 (CLAUDE_CONFIG_DIR + Junction 방식)
 - [`slackbot/restart.py`](modules/slackbot_restart.md): 재시작 관리
 - [`slackbot/shutdown.py`](modules/slackbot_shutdown.md): 경량 HTTP Shutdown 서버
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
@@ -88,14 +88,18 @@
 - [`web/fetcher.py`](modules/web_fetcher.md): Selenium 기반 HTML 페처
 - [`api/attachments.py`](modules/api_attachments.md): Attachments API - 첨부 파일 관리 엔드포인트
 - [`api/auth.py`](modules/api_auth.md): Authentication - Bearer 토큰 인증
+- [`api/credentials.py`](modules/api_credentials.md): Credentials API - 프로필 관리 REST 엔드포인트
 - [`api/tasks.py`](modules/api_tasks.md): Tasks API - 태스크 기반 API 엔드포인트
 - [`soul/config.py`](modules/soul_config.md): Seosoyoung Soul - Configuration
 - [`soul/constants.py`](modules/soul_constants.md): Seosoyoung Soul - 공통 상수 정의
 - [`soul/main.py`](modules/soul_main.md): Seosoyoung Soul - FastAPI Application
 - [`models/schemas.py`](modules/models_schemas.md): Pydantic 모델 - Request/Response 스키마
+- [`service/credential_store.py`](modules/service_credential_store.md): CredentialStore - 프로필별 크레덴셜 저장소
+- [`service/credential_swapper.py`](modules/service_credential_swapper.md): CredentialSwapper - 크레덴셜 파일 교체 모듈
 - [`service/engine_adapter.py`](modules/service_engine_adapter.md): soul 엔진 어댑터
 - [`service/event_store.py`](modules/service_event_store.md): Event Store - JSONL 기반 이벤트 저장소
 - [`service/file_manager.py`](modules/service_file_manager.md): FileManager - 첨부 파일 관리
+- [`service/rate_limit_tracker.py`](modules/service_rate_limit_tracker.md): RateLimitTracker - 프로필별 rate limit 상태 추적 모듈
 - [`service/resource_manager.py`](modules/service_resource_manager.md): ResourceManager - 동시 실행 제한 관리
 - [`service/runner_pool.py`](modules/service_runner_pool.md): ClaudeRunner 풀링 시스템
 - [`service/task_executor.py`](modules/service_task_executor.md): Task Executor - 백그라운드 태스크 실행 관리
@@ -156,8 +160,8 @@
 - `OMConfig` (seosoyoung/slackbot/config.py:140): Observational Memory 설정
 - `ChannelObserverConfig` (seosoyoung/slackbot/config.py:166): Channel Observer 설정
 - `ClaudeConfig` (seosoyoung/slackbot/config.py:219): Claude 실행 모드 설정
-- `EmojiConfig` (seosoyoung/slackbot/config.py:232): 이모지 설정
-- `Config` (seosoyoung/slackbot/config.py:260): 애플리케이션 설정
+- `EmojiConfig` (seosoyoung/slackbot/config.py:233): 이모지 설정
+- `Config` (seosoyoung/slackbot/config.py:261): 애플리케이션 설정
 - `ChannelMessageCollector` (seosoyoung/slackbot/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:20): 멘션으로 처리 중인 스레드를 추적 (TTL 기반 자동 만료)
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
@@ -190,8 +194,6 @@
 - `MemoryStore` (seosoyoung/slackbot/memory/store.py:300): 파일 기반 관찰 로그 저장소
 - `TokenCounter` (seosoyoung/slackbot/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
 - `PresentationContext` (seosoyoung/slackbot/presentation/types.py:12): 프레젠테이션 레이어가 관리하는 실행 컨텍스트
-- `ProfileInfo` (seosoyoung/slackbot/profile/manager.py:23): 프로필 정보
-- `ProfileManager` (seosoyoung/slackbot/profile/manager.py:33): Claude Code 인증 프로필 관리자 (CLAUDE_CONFIG_DIR + Junction)
 - `RestartType` (seosoyoung/slackbot/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/slackbot/restart.py:23): 재시작 요청 정보
 - `RestartManager` (seosoyoung/slackbot/restart.py:32): 재시작 관리자
@@ -219,38 +221,44 @@
 - `HtmlFetcher` (seosoyoung/slackbot/web/fetcher.py:14): Selenium을 사용한 동적 웹 페이지 HTML 페처
 - `Settings` (seosoyoung/soul/config.py:57): 애플리케이션 설정
 - `SSEEventType` (seosoyoung/soul/models/schemas.py:13): SSE 이벤트 타입
-- `InterveneRequest` (seosoyoung/soul/models/schemas.py:33): 개입 메시지 요청 (Task API 호환)
-- `InterveneResponse` (seosoyoung/soul/models/schemas.py:42): 개입 메시지 응답
-- `AttachmentUploadResponse` (seosoyoung/soul/models/schemas.py:48): 첨부 파일 업로드 응답
-- `AttachmentCleanupResponse` (seosoyoung/soul/models/schemas.py:56): 첨부 파일 정리 응답
-- `HealthResponse` (seosoyoung/soul/models/schemas.py:62): 헬스 체크 응답
-- `ErrorDetail` (seosoyoung/soul/models/schemas.py:72): 에러 상세 정보
-- `ErrorResponse` (seosoyoung/soul/models/schemas.py:79): 에러 응답
-- `SessionEvent` (seosoyoung/soul/models/schemas.py:86): 세션 ID 조기 통지 이벤트
-- `ProgressEvent` (seosoyoung/soul/models/schemas.py:96): 진행 상황 이벤트
-- `MemoryEvent` (seosoyoung/soul/models/schemas.py:102): 메모리 사용량 이벤트
-- `InterventionSentEvent` (seosoyoung/soul/models/schemas.py:110): 개입 메시지 전송 확인 이벤트
-- `CompleteEvent` (seosoyoung/soul/models/schemas.py:117): 실행 완료 이벤트
-- `ErrorEvent` (seosoyoung/soul/models/schemas.py:125): 오류 이벤트
-- `ContextUsageEvent` (seosoyoung/soul/models/schemas.py:132): 컨텍스트 사용량 이벤트
-- `CompactEvent` (seosoyoung/soul/models/schemas.py:140): 컴팩트 실행 이벤트
-- `DebugEvent` (seosoyoung/soul/models/schemas.py:147): 디버그 정보 이벤트 (rate_limit 경고 등)
-- `TaskStatus` (seosoyoung/soul/models/schemas.py:155): 태스크 상태
-- `ExecuteRequest` (seosoyoung/soul/models/schemas.py:162): 실행 요청
-- `TaskResponse` (seosoyoung/soul/models/schemas.py:174): 태스크 정보 응답
-- `TaskListResponse` (seosoyoung/soul/models/schemas.py:187): 태스크 목록 응답
-- `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:192): 개입 메시지 요청
-- `TextStartSSEEvent` (seosoyoung/soul/models/schemas.py:205): 텍스트 블록 시작 이벤트
-- `TextDeltaSSEEvent` (seosoyoung/soul/models/schemas.py:215): 텍스트 블록 내용 이벤트
-- `TextEndSSEEvent` (seosoyoung/soul/models/schemas.py:226): 텍스트 블록 완료 이벤트
-- `ToolStartSSEEvent` (seosoyoung/soul/models/schemas.py:232): 도구 호출 시작 이벤트
-- `ToolResultSSEEvent` (seosoyoung/soul/models/schemas.py:241): 도구 결과 이벤트
-- `ResultSSEEvent` (seosoyoung/soul/models/schemas.py:251): 엔진 최종 결과 이벤트 (dashboard 전용)
-- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:105): 개입 메시지 데이터
-- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:152): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
+- `InterveneRequest` (seosoyoung/soul/models/schemas.py:35): 개입 메시지 요청 (Task API 호환)
+- `InterveneResponse` (seosoyoung/soul/models/schemas.py:44): 개입 메시지 응답
+- `AttachmentUploadResponse` (seosoyoung/soul/models/schemas.py:50): 첨부 파일 업로드 응답
+- `AttachmentCleanupResponse` (seosoyoung/soul/models/schemas.py:58): 첨부 파일 정리 응답
+- `HealthResponse` (seosoyoung/soul/models/schemas.py:64): 헬스 체크 응답
+- `ErrorDetail` (seosoyoung/soul/models/schemas.py:74): 에러 상세 정보
+- `ErrorResponse` (seosoyoung/soul/models/schemas.py:81): 에러 응답
+- `SessionEvent` (seosoyoung/soul/models/schemas.py:88): 세션 ID 조기 통지 이벤트
+- `ProgressEvent` (seosoyoung/soul/models/schemas.py:98): 진행 상황 이벤트
+- `MemoryEvent` (seosoyoung/soul/models/schemas.py:104): 메모리 사용량 이벤트
+- `InterventionSentEvent` (seosoyoung/soul/models/schemas.py:112): 개입 메시지 전송 확인 이벤트
+- `CompleteEvent` (seosoyoung/soul/models/schemas.py:119): 실행 완료 이벤트
+- `ErrorEvent` (seosoyoung/soul/models/schemas.py:127): 오류 이벤트
+- `ContextUsageEvent` (seosoyoung/soul/models/schemas.py:134): 컨텍스트 사용량 이벤트
+- `CompactEvent` (seosoyoung/soul/models/schemas.py:142): 컴팩트 실행 이벤트
+- `DebugEvent` (seosoyoung/soul/models/schemas.py:149): 디버그 정보 이벤트 (rate_limit 경고 등)
+- `TaskStatus` (seosoyoung/soul/models/schemas.py:157): 태스크 상태
+- `ExecuteRequest` (seosoyoung/soul/models/schemas.py:164): 실행 요청
+- `TaskResponse` (seosoyoung/soul/models/schemas.py:176): 태스크 정보 응답
+- `TaskListResponse` (seosoyoung/soul/models/schemas.py:189): 태스크 목록 응답
+- `TaskInterveneRequest` (seosoyoung/soul/models/schemas.py:194): 개입 메시지 요청
+- `TextStartSSEEvent` (seosoyoung/soul/models/schemas.py:207): 텍스트 블록 시작 이벤트
+- `TextDeltaSSEEvent` (seosoyoung/soul/models/schemas.py:217): 텍스트 블록 내용 이벤트
+- `TextEndSSEEvent` (seosoyoung/soul/models/schemas.py:228): 텍스트 블록 완료 이벤트
+- `ToolStartSSEEvent` (seosoyoung/soul/models/schemas.py:234): 도구 호출 시작 이벤트
+- `ToolResultSSEEvent` (seosoyoung/soul/models/schemas.py:243): 도구 결과 이벤트
+- `ResultSSEEvent` (seosoyoung/soul/models/schemas.py:253): 엔진 최종 결과 이벤트 (dashboard 전용)
+- `RateLimitState` (seosoyoung/soul/models/schemas.py:268): 단일 rate limit 타입의 상태
+- `ProfileRateLimitInfo` (seosoyoung/soul/models/schemas.py:274): 프로필별 rate limit 정보
+- `CredentialAlertEvent` (seosoyoung/soul/models/schemas.py:281): 크레덴셜 rate limit 95% 도달 알림 이벤트
+- `CredentialStore` (seosoyoung/soul/service/credential_store.py:27): 프로필별 크레덴셜 저장소.
+- `CredentialSwapper` (seosoyoung/soul/service/credential_swapper.py:20): 크레덴셜 파일 교체기.
+- `InterventionMessage` (seosoyoung/soul/service/engine_adapter.py:108): 개입 메시지 데이터
+- `SoulEngineAdapter` (seosoyoung/soul/service/engine_adapter.py:155): ClaudeRunner -> AsyncIterator[SSE Event] 어댑터
 - `EventStore` (seosoyoung/soul/service/event_store.py:23): JSONL 기반 이벤트 저장소
 - `AttachmentError` (seosoyoung/soul/service/file_manager.py:23): 첨부 파일 처리 오류
 - `FileManager` (seosoyoung/soul/service/file_manager.py:28): 첨부 파일 관리자
+- `RateLimitTracker` (seosoyoung/soul/service/rate_limit_tracker.py:59): 프로필별 rate limit 상태 추적기.
 - `ResourceManager` (seosoyoung/soul/service/resource_manager.py:17): 동시 실행 제한 관리자
 - `ClaudeRunnerPool` (seosoyoung/soul/service/runner_pool.py:27): ClaudeRunner 인스턴스 LRU 풀
 - `TaskExecutor` (seosoyoung/soul/service/task_executor.py:20): 백그라운드 태스크 실행 관리자
@@ -309,10 +317,12 @@
 - `build_trello_header()` (seosoyoung/slackbot/formatting.py:60): 트렐로 카드용 슬랙 메시지 헤더 생성
 - `format_trello_progress()` (seosoyoung/slackbot/formatting.py:69): 트렐로 모드 채널 진행 상황 포맷
 - `format_dm_progress()` (seosoyoung/slackbot/formatting.py:76): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
-- `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:9): 모든 핸들러를 앱에 등록
-- `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:11): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
-- `send_deploy_shutdown_popup()` (seosoyoung/slackbot/handlers/actions.py:79): 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
-- `register_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:142): 액션 핸들러 등록
+- `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:12): 모든 핸들러를 앱에 등록
+- `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:14): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
+- `send_deploy_shutdown_popup()` (seosoyoung/slackbot/handlers/actions.py:82): 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
+- `register_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:145): 액션 핸들러 등록
+- `activate_credential_profile()` (seosoyoung/slackbot/handlers/actions.py:312): 크레덴셜 프로필 전환 처리
+- `register_credential_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:364): 크레덴셜 프로필 전환 액션 핸들러 등록
 - `get_ancestors()` (seosoyoung/slackbot/handlers/commands.py:24): PID의 조상 체인(ancestor chain)을 반환
 - `format_elapsed()` (seosoyoung/slackbot/handlers/commands.py:38): 경과 시간을 사람이 읽기 쉬운 형태로 포맷
 - `handle_help()` (seosoyoung/slackbot/handlers/commands.py:162): help 명령어 핸들러
@@ -322,8 +332,15 @@
 - `handle_translate()` (seosoyoung/slackbot/handlers/commands.py:418): 번역 명령어 핸들러
 - `handle_update_restart()` (seosoyoung/slackbot/handlers/commands.py:456): update/restart 명령어 핸들러
 - `handle_compact()` (seosoyoung/slackbot/handlers/commands.py:494): compact 명령어 핸들러 - 스레드 세션 컴팩트
-- `handle_profile()` (seosoyoung/slackbot/handlers/commands.py:529): profile 명령어 핸들러 - 인증 프로필 관리
-- `handle_resume_list_run()` (seosoyoung/slackbot/handlers/commands.py:585): 정주행 재개 명령어 핸들러
+- `handle_profile()` (seosoyoung/slackbot/handlers/commands.py:621): profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
+- `handle_resume_list_run()` (seosoyoung/slackbot/handlers/commands.py:672): 정주행 재개 명령어 핸들러
+- `render_gauge()` (seosoyoung/slackbot/handlers/credential_ui.py:32): 사용량을 이모지 게이지 바로 렌더링
+- `format_time_remaining()` (seosoyoung/slackbot/handlers/credential_ui.py:50): 리셋까지 남은 시간을 포맷
+- `render_rate_limit_line()` (seosoyoung/slackbot/handlers/credential_ui.py:94): 단일 rate limit 라인 렌더링
+- `render_profile_section()` (seosoyoung/slackbot/handlers/credential_ui.py:118): 프로필 섹션 렌더링
+- `build_credential_alert_blocks()` (seosoyoung/slackbot/handlers/credential_ui.py:141): 크레덴셜 알림 Block Kit 블록 생성
+- `build_credential_alert_text()` (seosoyoung/slackbot/handlers/credential_ui.py:196): Block Kit의 fallback text
+- `send_credential_alert()` (seosoyoung/slackbot/handlers/credential_ui.py:205): 크레덴셜 알림을 슬랙 채널에 전송
 - `extract_command()` (seosoyoung/slackbot/handlers/mention.py:29): 멘션에서 명령어 추출
 - `build_prompt()` (seosoyoung/slackbot/handlers/mention.py:55): 프롬프트 구성.
 - `get_channel_history()` (seosoyoung/slackbot/handlers/mention.py:110): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
@@ -424,6 +441,7 @@
 - `async upload_attachment()` (seosoyoung/soul/api/attachments.py:27): 첨부 파일 업로드
 - `async cleanup_attachments()` (seosoyoung/soul/api/attachments.py:83): 스레드의 첨부 파일 정리
 - `async verify_token()` (seosoyoung/soul/api/auth.py:20): Bearer 토큰 검증
+- `create_credentials_router()` (seosoyoung/soul/api/credentials.py:21): Credentials API 라우터 팩토리.
 - `task_to_response()` (seosoyoung/soul/api/tasks.py:40): Task를 TaskResponse로 변환
 - `async execute_task()` (seosoyoung/soul/api/tasks.py:63): Claude Code 실행 (SSE 스트리밍)
 - `async get_tasks()` (seosoyoung/soul/api/tasks.py:159): 클라이언트의 태스크 목록 조회
@@ -434,13 +452,13 @@
 - `async intervene_by_session()` (seosoyoung/soul/api/tasks.py:416): session_id 기반 개입 메시지 전송
 - `get_settings()` (seosoyoung/soul/config.py:160): 설정 싱글톤 반환
 - `setup_logging()` (seosoyoung/soul/config.py:165): 로깅 설정
-- `async periodic_cleanup()` (seosoyoung/soul/main.py:43): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
-- `async lifespan()` (seosoyoung/soul/main.py:59): 애플리케이션 라이프사이클 관리
-- `async shutdown()` (seosoyoung/soul/main.py:179): Graceful shutdown 엔드포인트 (supervisor 전용)
-- `async health_check()` (seosoyoung/soul/main.py:204): 헬스 체크 엔드포인트
-- `async get_status()` (seosoyoung/soul/main.py:215): 서비스 상태 조회
-- `async global_exception_handler()` (seosoyoung/soul/main.py:253): 전역 예외 핸들러
-- `init_soul_engine()` (seosoyoung/soul/service/engine_adapter.py:416): soul_engine 싱글톤을 (재)초기화한다.
+- `async periodic_cleanup()` (seosoyoung/soul/main.py:47): 주기적 태스크 정리 (24시간 이상 된 완료 태스크)
+- `async lifespan()` (seosoyoung/soul/main.py:63): 애플리케이션 라이프사이클 관리
+- `async shutdown()` (seosoyoung/soul/main.py:190): Graceful shutdown 엔드포인트 (supervisor 전용)
+- `async health_check()` (seosoyoung/soul/main.py:215): 헬스 체크 엔드포인트
+- `async get_status()` (seosoyoung/soul/main.py:226): 서비스 상태 조회
+- `async global_exception_handler()` (seosoyoung/soul/main.py:286): 전역 예외 핸들러
+- `init_soul_engine()` (seosoyoung/soul/service/engine_adapter.py:487): soul_engine 싱글톤을 (재)초기화한다.
 - `get_task_manager()` (seosoyoung/soul/service/task_manager.py:588): TaskManager 싱글톤 반환
 - `init_task_manager()` (seosoyoung/soul/service/task_manager.py:596): TaskManager 초기화
 - `set_task_manager()` (seosoyoung/soul/service/task_manager.py:606): TaskManager 인스턴스 설정 (테스트용)

@@ -26,6 +26,8 @@ class SSEEventType(str, Enum):
     TOOL_START = "tool_start"
     TOOL_RESULT = "tool_result"
     RESULT = "result"
+    # 크레덴셜 알림
+    CREDENTIAL_ALERT = "credential_alert"
 
 
 # === Request Models ===
@@ -259,3 +261,31 @@ class ResultSSEEvent(BaseModel):
     success: bool = Field(..., description="성공 여부")
     output: str = Field(..., description="출력 텍스트")
     error: Optional[str] = Field(None, description="오류 메시지")
+
+
+# === Credential Alert Event ===
+
+class RateLimitState(BaseModel):
+    """단일 rate limit 타입의 상태"""
+    utilization: float | str = Field(..., description="사용률 (0~1) 또는 'unknown'")
+    resets_at: Optional[str] = Field(None, description="리셋 시간 (ISO 8601)")
+
+
+class ProfileRateLimitInfo(BaseModel):
+    """프로필별 rate limit 정보"""
+    name: str = Field(..., description="프로필 이름")
+    five_hour: RateLimitState
+    seven_day: RateLimitState
+
+
+class CredentialAlertEvent(BaseModel):
+    """크레덴셜 rate limit 95% 도달 알림 이벤트
+
+    특정 프로필의 rate limit utilization이 95%에 도달하면
+    전체 프로필의 rate limit 현황과 함께 발행됩니다.
+    """
+    type: str = "credential_alert"
+    active_profile: str = Field(..., description="현재 활성 프로필")
+    profiles: List[ProfileRateLimitInfo] = Field(
+        ..., description="전체 프로필의 rate limit 현황"
+    )

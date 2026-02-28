@@ -568,6 +568,14 @@ class ClaudeExecutor:
             except Exception as e:
                 logger.warning(f"[Remote] 디버그 메시지 전송 실패: {e}")
 
+        # credential_alert 콜백: 크레덴셜 알림 UI를 슬랙 채널에 전송
+        async def on_credential_alert_callback(data: dict) -> None:
+            from seosoyoung.slackbot.handlers.credential_ui import send_credential_alert
+            from seosoyoung.slackbot.config import Config
+            channel = Config.claude.credential_alert_channel
+            if channel:
+                send_credential_alert(presentation.client, channel, data)
+
         # session_id 조기 통지 콜백
         async def on_session_callback(new_session_id: str) -> None:
             self._register_session_id(thread_ts, new_session_id)
@@ -585,6 +593,7 @@ class ClaudeExecutor:
                     on_compact=on_compact,
                     on_debug=on_debug,
                     on_session=on_session_callback,
+                    on_credential_alert=on_credential_alert_callback,
                     allowed_tools=allowed_tools,
                     disallowed_tools=disallowed_tools,
                     use_mcp=use_mcp,
