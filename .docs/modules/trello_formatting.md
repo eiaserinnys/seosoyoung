@@ -1,6 +1,6 @@
 # trello/formatting.py
 
-> 경로: `seosoyoung/slackbot/trello/formatting.py`
+> 경로: `seosoyoung/slackbot/plugins/trello/formatting.py`
 
 ## 개요
 

@@ -16,7 +16,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.plugins.memory.context_builder import (
     render_observation_items,
     render_persistent_items,
@@ -30,13 +29,16 @@ from seosoyoung.slackbot.plugins.memory.token_counter import TokenCounter
 logger = logging.getLogger(__name__)
 
 
-def _send_debug_log(channel: str, text: str, thread_ts: str = "") -> str:
+def _send_debug_log(
+    channel: str, text: str, thread_ts: str = "", bot_token: str = ""
+) -> str:
     """OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환."""
+    if not bot_token:
+        return ""
     try:
-        from seosoyoung.slackbot.config import Config
         from slack_sdk import WebClient
 
-        client = WebClient(token=Config.slack.bot_token)
+        client = WebClient(token=bot_token)
         kwargs: dict = {"channel": channel, "text": text}
         if thread_ts:
             kwargs["thread_ts"] = thread_ts
@@ -47,15 +49,16 @@ def _send_debug_log(channel: str, text: str, thread_ts: str = "") -> str:
         return ""
 
 
-def _update_debug_log(channel: str, ts: str, text: str) -> None:
+def _update_debug_log(
+    channel: str, ts: str, text: str, bot_token: str = ""
+) -> None:
     """기존 디버그 로그 메시지를 수정"""
-    if not ts:
+    if not ts or not bot_token:
         return
     try:
-        from seosoyoung.slackbot.config import Config
         from slack_sdk import WebClient
 
-        client = WebClient(token=Config.slack.bot_token)
+        client = WebClient(token=bot_token)
         client.chat_update(channel=channel, ts=ts, text=text)
     except Exception as e:
         logger.warning(f"OM 디버그 로그 수정 실패: {e}")
@@ -113,6 +116,8 @@ async def observe_conversation(
     compaction_target: int = 8000,
     debug_channel: str = "",
     anchor_ts: str = "",
+    slack_bot_token: str = "",
+    emoji_obs_complete: str = ":ssy-happy:",
 ) -> bool:
     """매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 
@@ -168,6 +173,7 @@ async def observe_conversation(
                     f":fast_forward: *OM 스킵* `{sid}`\n"
                     f">`누적 {_format_tokens(turn_tokens)} tok < {_format_tokens(min_turn_tokens)} 최소`",
                     thread_ts=anchor_ts,
+                    bot_token=slack_bot_token,
                 )
             return False
 
@@ -181,6 +187,7 @@ async def observe_conversation(
                 debug_channel,
                 f":mag: *OM 관찰 시작* `{sid}`",
                 thread_ts=anchor_ts,
+                bot_token=slack_bot_token,
             )
 
         # 3. Observer 호출 (매턴)
@@ -196,6 +203,7 @@ async def observe_conversation(
                     debug_channel,
                     debug_ts,
                     f":x: *OM 관찰 오류* `{sid}`\n>`Observer returned None`",
+                    bot_token=slack_bot_token,
                 )
             return False
 
@@ -256,6 +264,7 @@ async def observe_conversation(
                         f">`{_format_tokens(pre_tokens)} → {_format_tokens(reflection_result.token_count)} tok`\n"
                         f"{ref_quote}",
                         thread_ts=anchor_ts,
+                        bot_token=slack_bot_token,
                     )
 
         # 7. 새 관찰 diff 계산 및 저장 + pending 버퍼 비우기
@@ -286,8 +295,9 @@ async def observe_conversation(
             _update_debug_log(
                 debug_channel,
                 debug_ts,
-                f"{Config.emoji.text_obs_complete} *OM 관찰 완료* `{sid}`\n"
+                f"{emoji_obs_complete} *OM 관찰 완료* `{sid}`\n"
                 f">`{_format_tokens(turn_tokens)} tok{candidate_part}{new_obs_part}`",
+                bot_token=slack_bot_token,
             )
 
         # 8. Promoter: 후보 버퍼 토큰 합산 → 임계치 초과 시 승격
@@ -302,6 +312,8 @@ async def observe_conversation(
                 debug_channel=debug_channel,
                 token_counter=token_counter,
                 anchor_ts=anchor_ts,
+                slack_bot_token=slack_bot_token,
+                emoji_obs_complete=emoji_obs_complete,
             )
 
         return True
@@ -314,6 +326,7 @@ async def observe_conversation(
                 debug_channel,
                 debug_ts,
                 f":x: *OM 관찰 오류* `{sid}`\n>`{error_msg}`",
+                bot_token=slack_bot_token,
             )
         return False
 
@@ -328,6 +341,8 @@ async def _try_promote(
     debug_channel: str,
     token_counter: TokenCounter,
     anchor_ts: str = "",
+    slack_bot_token: str = "",
+    emoji_obs_complete: str = ":ssy-happy:",
 ) -> None:
     """후보 버퍼 토큰이 임계치를 넘으면 Promoter를 호출하고, 필요 시 Compactor도 호출."""
     try:
@@ -351,6 +366,7 @@ async def _try_promote(
                 f":brain: *LTM 승격 검토 시작*\n"
                 f">`후보 {_format_tokens(candidate_tokens)} tok ({len(all_candidates)}건)`",
                 thread_ts=anchor_ts,
+                bot_token=slack_bot_token,
             )
 
         logger.info(
@@ -395,11 +411,12 @@ async def _try_promote(
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f"{Config.emoji.text_obs_complete} *LTM 승격 완료*\n"
+                    f"{emoji_obs_complete} *LTM 승격 완료*\n"
                     f">`승격 {result.promoted_count}건 ({priority_str}) | "
                     f"기각 {result.rejected_count}건 | "
                     f"장기기억 {_format_tokens(persistent_tokens)} tok`\n"
                     f"{promoted_quote}",
+                    bot_token=slack_bot_token,
                 )
 
             # Compactor 트리거 체크
@@ -411,6 +428,7 @@ async def _try_promote(
                     persistent_tokens=persistent_tokens,
                     debug_channel=debug_channel,
                     anchor_ts=anchor_ts,
+                    slack_bot_token=slack_bot_token,
                 )
         else:
             logger.info(
@@ -422,8 +440,9 @@ async def _try_promote(
                 _update_debug_log(
                     debug_channel,
                     promoter_debug_ts,
-                    f"{Config.emoji.text_obs_complete} *LTM 승격 완료*\n"
+                    f"{emoji_obs_complete} *LTM 승격 완료*\n"
                     f">`승격 0건 | 기각 {result.rejected_count}건`",
+                    bot_token=slack_bot_token,
                 )
 
         # 후보 버퍼 비우기
@@ -440,6 +459,7 @@ async def _try_compact(
     persistent_tokens: int,
     debug_channel: str,
     anchor_ts: str = "",
+    slack_bot_token: str = "",
 ) -> None:
     """장기 기억 토큰이 임계치를 넘으면 archive 후 Compactor를 호출."""
     try:
@@ -484,6 +504,7 @@ async def _try_compact(
                 f"{archive_info}\n"
                 f"{compact_quote}",
                 thread_ts=anchor_ts,
+                bot_token=slack_bot_token,
             )
 
     except Exception as e:

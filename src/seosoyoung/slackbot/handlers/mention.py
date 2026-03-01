@@ -19,6 +19,7 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_update_restart,
     handle_compact,
     handle_profile,
+    handle_plugins,
     handle_resume_list_run,
 )
 from seosoyoung.slackbot.claude.session_context import build_initial_context, format_hybrid_context
@@ -113,7 +114,7 @@ def get_channel_history(client, channel: str, limit: int = 20) -> str:
 
 
 _ADMIN_COMMANDS = frozenset({
-    "help", "status", "update", "restart", "compact", "profile", "cleanup", "log",
+    "help", "status", "update", "restart", "compact", "profile", "cleanup", "log", "plugins",
 })
 
 _COMMAND_DISPATCH = {
@@ -125,6 +126,7 @@ _COMMAND_DISPATCH = {
     "update": handle_update_restart,
     "restart": handle_update_restart,
     "compact": handle_compact,
+    "plugins": handle_plugins,
 }
 
 
@@ -216,6 +218,10 @@ def try_handle_command(
 
     if command.startswith("profile"):
         handle_profile(**kwargs)
+        return True
+
+    if command.startswith("plugins"):
+        handle_plugins(**kwargs)
         return True
 
     return False

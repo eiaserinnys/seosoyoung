@@ -18,30 +18,30 @@
 
 ## 함수
 
-### `_send_debug_log(channel, text, thread_ts)`
-- 위치: 줄 33
+### `_send_debug_log(channel, text, thread_ts, bot_token)`
+- 위치: 줄 32
 - 설명: OM 디버그 로그를 슬랙 채널에 발송. 메시지 ts를 반환.
 
-### `_update_debug_log(channel, ts, text)`
-- 위치: 줄 50
+### `_update_debug_log(channel, ts, text, bot_token)`
+- 위치: 줄 52
 - 설명: 기존 디버그 로그 메시지를 수정
 
 ### `_format_tokens(n)`
-- 위치: 줄 64
+- 위치: 줄 67
 - 설명: 토큰 수를 천 단위 콤마 포맷
 
 ### `_blockquote(text, max_chars)`
-- 위치: 줄 69
+- 위치: 줄 72
 - 설명: 텍스트를 슬랙 blockquote 형식으로 변환. 길면 잘라서 표시.
 
 ### `_extract_new_observations(existing, updated)`
-- 위치: 줄 80
+- 위치: 줄 83
 - 설명: 기존 관찰과 갱신된 관찰을 비교하여 새로 추가된 항목만 추출합니다.
 
 ID 기반: 기존에 없는 ID를 가진 항목을 새 항목으로 간주합니다.
 
-### `async observe_conversation(store, observer, thread_ts, user_id, messages, min_turn_tokens, reflector, reflection_threshold, promoter, promotion_threshold, compactor, compaction_threshold, compaction_target, debug_channel, anchor_ts)`
-- 위치: 줄 100
+### `async observe_conversation(store, observer, thread_ts, user_id, messages, min_turn_tokens, reflector, reflection_threshold, promoter, promotion_threshold, compactor, compaction_threshold, compaction_target, debug_channel, anchor_ts, slack_bot_token, emoji_obs_complete)`
+- 위치: 줄 103
 - 설명: 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
 
 Args:
@@ -63,17 +63,16 @@ Args:
 Returns:
     True: 관찰 수행됨, False: 스킵 또는 실패
 
-### `async _try_promote(store, promoter, promotion_threshold, compactor, compaction_threshold, compaction_target, debug_channel, token_counter, anchor_ts)`
-- 위치: 줄 321
+### `async _try_promote(store, promoter, promotion_threshold, compactor, compaction_threshold, compaction_target, debug_channel, token_counter, anchor_ts, slack_bot_token, emoji_obs_complete)`
+- 위치: 줄 334
 - 설명: 후보 버퍼 토큰이 임계치를 넘으면 Promoter를 호출하고, 필요 시 Compactor도 호출.
 
-### `async _try_compact(store, compactor, compaction_target, persistent_tokens, debug_channel, anchor_ts)`
-- 위치: 줄 436
+### `async _try_compact(store, compactor, compaction_target, persistent_tokens, debug_channel, anchor_ts, slack_bot_token)`
+- 위치: 줄 455
 - 설명: 장기 기억 토큰이 임계치를 넘으면 archive 후 Compactor를 호출.
 
 ## 내부 의존성
 
-- `seosoyoung.slackbot.config.Config`
 - `seosoyoung.slackbot.plugins.memory.context_builder.render_observation_items`
 - `seosoyoung.slackbot.plugins.memory.context_builder.render_persistent_items`
 - `seosoyoung.slackbot.plugins.memory.observer.Observer`

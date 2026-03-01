@@ -69,6 +69,38 @@ class TranslatePlugin(Plugin):
 
         return {"on_message": on_message}
 
+    # -- public API --
+
+    def translate_text(
+        self, text: str
+    ) -> tuple[str, float, list[tuple[str, str]], Language]:
+        """텍스트를 번역합니다 (플러그인 설정 사용).
+
+        명령어 핸들러 등 외부에서 직접 번역을 요청할 때 사용합니다.
+
+        Args:
+            text: 번역할 텍스트
+
+        Returns:
+            (번역된 텍스트, 비용 USD, 용어 목록, 원본 언어)
+        """
+        source_lang = detect_language(text)
+
+        if self._backend == "openai":
+            model, api_key = self._openai_model, self._openai_api_key
+        else:
+            model, api_key = self._model, self._api_key
+
+        translated, cost, glossary_terms, _ = translate(
+            text,
+            source_lang,
+            backend=self._backend,
+            model=model,
+            api_key=api_key,
+            glossary_path=self._glossary_path,
+        )
+        return translated, cost, glossary_terms, source_lang
+
     # -- internal helpers (sync, mirrors old handlers/translate.py) --
 
     def _get_user_display_name(self, client, user_id: str) -> str:

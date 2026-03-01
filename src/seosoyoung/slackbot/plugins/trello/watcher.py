@@ -623,7 +623,7 @@ class TrelloWatcher:
             return
 
         try:
-            from seosoyoung.slackbot.claude.agent_runner import ClaudeRunner
+            from seosoyoung.rescue.claude.agent_runner import ClaudeRunner
             runner = ClaudeRunner()
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:

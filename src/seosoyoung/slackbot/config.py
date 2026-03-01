@@ -42,20 +42,6 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
     return value.lower() == "true"
 
 
-def _parse_int(value: str | None, default: int) -> int:
-    """문자열을 int로 변환"""
-    if value is None or value == "":
-        return default
-    return int(value)
-
-
-def _parse_float(value: str | None, default: float) -> float:
-    """문자열을 float로 변환"""
-    if value is None or value == "":
-        return default
-    return float(value)
-
-
 @dataclass
 class SlackConfig:
     """Slack 연결 설정"""
@@ -87,132 +73,11 @@ class AuthConfig:
 
 
 @dataclass
-class TrelloConfig:
-    """Trello 설정"""
-
-    api_key: str = os.getenv("TRELLO_API_KEY", "")
-    token: str = os.getenv("TRELLO_TOKEN", "")
-    board_id: str = os.getenv("TRELLO_BOARD_ID", "")
-    notify_channel: str = os.getenv("TRELLO_NOTIFY_CHANNEL", "")
-    watch_lists: dict = field(
-        default_factory=lambda: {"to_go": os.getenv("TRELLO_TO_GO_LIST_ID", "")}
-    )
-    draft_list_id: str = os.getenv("TRELLO_DRAFT_LIST_ID", "")
-    backlog_list_id: str = os.getenv("TRELLO_BACKLOG_LIST_ID", "")
-    blocked_list_id: str = os.getenv("TRELLO_BLOCKED_LIST_ID", "")
-    in_progress_list_id: str = os.getenv("TRELLO_IN_PROGRESS_LIST_ID", "")
-    review_list_id: str = os.getenv("TRELLO_REVIEW_LIST_ID", "")
-    done_list_id: str = os.getenv("TRELLO_DONE_LIST_ID", "")
-    dm_target_user_id: str = os.getenv("TRELLO_DM_TARGET_USER_ID", "")
-    polling_debug: bool = _parse_bool(os.getenv("TRELLO_POLLING_DEBUG"), False)
-
-
-@dataclass
-class TranslateConfig:
-    """번역 설정"""
-
-    channels: list[str] = field(
-        default_factory=lambda: [
-            ch.strip()
-            for ch in os.getenv("TRANSLATE_CHANNELS", "").split(",")
-            if ch.strip()
-        ]
-    )
-    backend: str = os.getenv("TRANSLATE_BACKEND", "anthropic")
-    model: str = os.getenv("TRANSLATE_MODEL", "")
-    openai_model: str = os.getenv("TRANSLATE_OPENAI_MODEL", "gpt-5-mini")
-    api_key: str | None = os.getenv("TRANSLATE_API_KEY")
-    context_count: int = _parse_int(os.getenv("TRANSLATE_CONTEXT_COUNT"), 0)
-    show_glossary: bool = _parse_bool(os.getenv("TRANSLATE_SHOW_GLOSSARY"), False)
-    show_cost: bool = _parse_bool(os.getenv("TRANSLATE_SHOW_COST"), False)
-    debug_channel: str = os.getenv("TRANSLATE_DEBUG_CHANNEL", "")
-
-
-@dataclass
 class GeminiConfig:
     """Gemini 설정 (이미지 생성)"""
 
     api_key: str | None = os.getenv("GEMINI_API_KEY")
     model: str = os.getenv("GEMINI_MODEL", "gemini-3-pro-image-preview")
-
-
-@dataclass
-class OMConfig:
-    """Observational Memory 설정"""
-
-    openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
-    model: str = os.getenv("OM_MODEL", "gpt-4.1-mini")
-    enabled: bool = _parse_bool(os.getenv("OM_ENABLED"), True)
-    debug_channel: str = os.getenv("OM_DEBUG_CHANNEL", "")
-    reflection_threshold: int = _parse_int(os.getenv("OM_REFLECTION_THRESHOLD"), 20000)
-    observation_threshold: int = _parse_int(
-        os.getenv("OM_OBSERVATION_THRESHOLD"), 30000
-    )  # deprecated: 매턴 호출로 변경됨. agent_runner 하위 호환용으로 유지.
-    max_observation_tokens: int = _parse_int(
-        os.getenv("OM_MAX_OBSERVATION_TOKENS"), 30000
-    )
-    min_turn_tokens: int = _parse_int(os.getenv("OM_MIN_TURN_TOKENS"), 200)
-    promoter_model: str = os.getenv("OM_PROMOTER_MODEL", "gpt-5.2")
-    promotion_threshold: int = _parse_int(os.getenv("OM_PROMOTION_THRESHOLD"), 5000)
-    persistent_compaction_threshold: int = _parse_int(
-        os.getenv("OM_PERSISTENT_COMPACTION_THRESHOLD"), 15000
-    )
-    persistent_compaction_target: int = _parse_int(
-        os.getenv("OM_PERSISTENT_COMPACTION_TARGET"), 8000
-    )
-
-
-@dataclass
-class ChannelObserverConfig:
-    """Channel Observer 설정"""
-
-    enabled: bool = _parse_bool(os.getenv("CHANNEL_OBSERVER_ENABLED"), False)
-    channels: list[str] = field(
-        default_factory=lambda: [
-            ch.strip()
-            for ch in os.getenv("CHANNEL_OBSERVER_CHANNELS", "").split(",")
-            if ch.strip()
-        ]
-    )
-    api_key: str | None = (
-        os.getenv("CHANNEL_OBSERVER_API_KEY") or os.getenv("OPENAI_API_KEY")
-    )
-    model: str = os.getenv("CHANNEL_OBSERVER_MODEL", "gpt-5-mini")
-    compressor_model: str = os.getenv(
-        "CHANNEL_OBSERVER_COMPRESSOR_MODEL", "gpt-5.2"
-    )
-    threshold_a: int = _parse_int(
-        os.getenv("CHANNEL_OBSERVER_THRESHOLD_A"), 150
-    )
-    threshold_b: int = _parse_int(
-        os.getenv("CHANNEL_OBSERVER_THRESHOLD_B"), 5000
-    )
-    # deprecated: threshold_a로 대체
-    buffer_threshold: int = _parse_int(
-        os.getenv("CHANNEL_OBSERVER_BUFFER_THRESHOLD"), 150
-    )
-    digest_max_tokens: int = _parse_int(
-        os.getenv("CHANNEL_OBSERVER_DIGEST_MAX_TOKENS"), 10000
-    )
-    digest_target_tokens: int = _parse_int(
-        os.getenv("CHANNEL_OBSERVER_DIGEST_TARGET_TOKENS"), 5000
-    )
-    intervention_threshold: float = _parse_float(
-        os.getenv("CHANNEL_OBSERVER_INTERVENTION_THRESHOLD"), 0.18
-    )
-    periodic_sec: int = _parse_int(
-        os.getenv("CHANNEL_OBSERVER_PERIODIC_SEC"), 300
-    )
-    trigger_words: list[str] = field(
-        default_factory=lambda: [
-            w.strip()
-            for w in os.getenv("CHANNEL_OBSERVER_TRIGGER_WORDS", "").split(",")
-            if w.strip()
-        ]
-    )
-    debug_channel: str = os.getenv(
-        "CHANNEL_OBSERVER_DEBUG_CHANNEL", os.getenv("OM_DEBUG_CHANNEL", "")
-    )
 
 
 @dataclass
@@ -269,11 +134,7 @@ class Config:
 
     slack = SlackConfig()
     auth = AuthConfig()
-    trello = TrelloConfig()
-    translate = TranslateConfig()
     gemini = GeminiConfig()
-    om = OMConfig()
-    channel_observer = ChannelObserverConfig()
     claude = ClaudeConfig()
     emoji = EmojiConfig()
 

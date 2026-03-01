@@ -71,37 +71,26 @@ mention.py의 try_handle_command에서 분리된 개별 명령어 핸들러들�
 - 위치: 줄 418
 - 설명: 번역 명령어 핸들러
 
+TranslatePlugin의 설정과 translate_text() 메서드를 사용합니다.
+
 ### `handle_update_restart()`
-- 위치: 줄 456
+- 위치: 줄 461
 - 설명: update/restart 명령어 핸들러
 
 ### `handle_compact()`
-- 위치: 줄 494
-- 설명: compact 명령어 핸들러 - 안내 메시지
-
-### `_run_soul_profile_api(async_fn)`
-- 위치: 줄 506
-- 설명: SoulServiceClient 프로필 API를 동기적으로 호출
-
-slack_bolt sync mode에서 핸들러 스레드에는 이벤트 루프가 없으므로
-asyncio.run()으로 새 루프를 생성하여 호출합니다.
-
-Args:
-    async_fn: SoulServiceClient 인스턴스를 받아 코루틴을 반환하는 함수
-
-Returns:
-    API 응답 딕셔너리
-
-### `_handle_profile_list(say, reply_ts)`
-- 위치: 줄 533
-- 설명: profile list: Soulstream API로 프로필 + rate limit 조회 후 게이지 바 UI 표시
+- 위치: 줄 499
+- 설명: compact 명령어 핸들러 - 스레드 세션 컴팩트
 
 ### `handle_profile()`
-- 위치: 줄 602
-- 설명: profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
+- 위치: 줄 534
+- 설명: profile 명령어 핸들러 - 인증 프로필 관리
+
+### `handle_plugins()`
+- 위치: 줄 590
+- 설명: plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드
 
 ### `handle_resume_list_run()`
-- 위치: 줄 653
+- 위치: 줄 661
 - 설명: 정주행 재개 명령어 핸들러
 
 ## 내부 의존성

@@ -142,24 +142,6 @@ class TestConfigBoolParsing:
         assert config_module.Config.debug is False
 
 
-class TestConfigListParsing:
-    """리스트 설정 파싱 테스트"""
-
-    def test_translate_channels_empty(self):
-        """TRANSLATE_CHANNELS 미설정 시 빈 리스트"""
-        config_module = reload_config_with_env({})
-        assert config_module.Config.translate.channels == []
-
-    def test_translate_channels_with_values(self):
-        """TRANSLATE_CHANNELS 설정 시 쉼표로 구분된 리스트"""
-        config_module = reload_config_with_env({
-            "TRANSLATE_CHANNELS": "C123,C456,C789"
-        })
-        assert config_module.Config.translate.channels == ["C123", "C456", "C789"]
-
-    def test_translate_channels_trims_whitespace(self):
-        """TRANSLATE_CHANNELS 값의 공백 제거"""
-        config_module = reload_config_with_env({
-            "TRANSLATE_CHANNELS": "C123 , C456 , C789"
-        })
-        assert config_module.Config.translate.channels == ["C123", "C456", "C789"]
+# NOTE: TestConfigListParsing (translate.channels) 제거됨
+# Config.translate는 플러그인 아키텍처로 이동하여 Config에서 제거됨
+# 채널 리스트 파싱은 이제 plugins/translate/plugin.py에서 YAML config로 처리

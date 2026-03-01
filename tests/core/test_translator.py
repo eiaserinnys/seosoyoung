@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from seosoyoung.slackbot.translator.translator import (
+from seosoyoung.slackbot.plugins.translate.translator import (
     translate,
     _build_context_text,
     _build_prompt,
@@ -12,8 +12,8 @@ from seosoyoung.slackbot.translator.translator import (
     _translate_openai,
     _translate_anthropic,
 )
-from seosoyoung.slackbot.translator.detector import Language
-from seosoyoung.slackbot.translator.glossary import GlossaryMatchResult
+from seosoyoung.slackbot.plugins.translate.detector import Language
+from seosoyoung.slackbot.plugins.translate.glossary import GlossaryMatchResult
 from seosoyoung.slackbot.plugins.translate.detector import Language as PluginLanguage
 from seosoyoung.slackbot.plugins.translate.plugin import TranslatePlugin
 
@@ -49,24 +49,24 @@ class TestBuildPrompt:
 
     def test_korean_to_english(self):
         """한국어 -> 영어 프롬프트"""
-        prompt, terms, match_result = _build_prompt("안녕하세요", Language.KOREAN)
+        prompt, terms, match_result = _build_prompt("안녕하세요", Language.KOREAN, "")
         assert "English" in prompt
         assert "안녕하세요" in prompt
 
     def test_english_to_korean(self):
         """영어 -> 한국어 프롬프트"""
-        prompt, terms, match_result = _build_prompt("Hello", Language.ENGLISH)
+        prompt, terms, match_result = _build_prompt("Hello", Language.ENGLISH, "")
         assert "Korean" in prompt
         assert "Hello" in prompt
 
     def test_with_context(self):
         """컨텍스트 포함"""
         context = [{"user": "Alice", "text": "Previous message"}]
-        prompt, terms, match_result = _build_prompt("Hello", Language.ENGLISH, context)
+        prompt, terms, match_result = _build_prompt("Hello", Language.ENGLISH, "", context)
         assert "<previous_messages>" in prompt
         assert "[Alice]: Previous message" in prompt
 
-    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.plugins.translate.translator.find_relevant_terms_v2")
     def test_with_glossary(self, mock_find_terms_v2):
         """용어집 포함"""
         mock_result = GlossaryMatchResult(
@@ -75,17 +75,17 @@ class TestBuildPrompt:
             debug_info={}
         )
         mock_find_terms_v2.return_value = mock_result
-        prompt, terms, match_result = _build_prompt("펜릭스가 말했다.", Language.KOREAN)
+        prompt, terms, match_result = _build_prompt("펜릭스가 말했다.", Language.KOREAN, "")
         assert "<glossary>" in prompt
         assert "펜릭스 → Fenrix" in prompt
         assert terms == [("펜릭스", "Fenrix")]
 
-    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.plugins.translate.translator.find_relevant_terms_v2")
     def test_without_glossary(self, mock_find_terms_v2):
         """관련 용어 없을 때 용어집 섹션 없음"""
         mock_result = GlossaryMatchResult(matched_terms=[], extracted_words=[], debug_info={})
         mock_find_terms_v2.return_value = mock_result
-        prompt, terms, match_result = _build_prompt("Hello", Language.ENGLISH)
+        prompt, terms, match_result = _build_prompt("Hello", Language.ENGLISH, "")
         assert "<glossary>" not in prompt
         assert terms == []
 
@@ -93,7 +93,7 @@ class TestBuildPrompt:
 class TestBuildGlossarySection:
     """용어집 섹션 생성 테스트"""
 
-    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.plugins.translate.translator.find_relevant_terms_v2")
     def test_builds_glossary_section(self, mock_find_terms_v2):
         """용어집 섹션 생성"""
         mock_result = GlossaryMatchResult(
@@ -102,19 +102,19 @@ class TestBuildGlossarySection:
             debug_info={}
         )
         mock_find_terms_v2.return_value = mock_result
-        section, terms, match_result = _build_glossary_section("펜릭스와 아리엘라", Language.KOREAN)
+        section, terms, match_result = _build_glossary_section("펜릭스와 아리엘라", Language.KOREAN, "")
         assert "<glossary>" in section
         assert "</glossary>" in section
         assert "펜릭스 → Fenrix" in section
         assert "아리엘라 → Ariella" in section
         assert terms == [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
 
-    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.plugins.translate.translator.find_relevant_terms_v2")
     def test_empty_when_no_terms(self, mock_find_terms_v2):
         """관련 용어 없으면 빈 튜플"""
         mock_result = GlossaryMatchResult(matched_terms=[], extracted_words=[], debug_info={})
         mock_find_terms_v2.return_value = mock_result
-        section, terms, match_result = _build_glossary_section("Hello world", Language.ENGLISH)
+        section, terms, match_result = _build_glossary_section("Hello world", Language.ENGLISH, "")
         assert section == ""
         assert terms == []
 
@@ -124,10 +124,6 @@ class TestCalculateCost:
 
     def test_calculate_cost_basic(self):
         """기본 비용 계산 (Haiku 모델)"""
-        # 1000 input tokens, 100 output tokens (Haiku 가격 기준)
-        # input: 1000 / 1M * $0.80 = $0.0008
-        # output: 100 / 1M * $4.00 = $0.0004
-        # total: $0.0012
         cost = _calculate_cost(1000, 100, "claude-3-5-haiku-latest")
         assert abs(cost - 0.0012) < 0.0001
 
@@ -138,24 +134,16 @@ class TestCalculateCost:
 
     def test_calculate_cost_sonnet(self):
         """Sonnet 모델 비용 계산"""
-        # 1000 input tokens, 100 output tokens (Sonnet 가격 기준)
-        # input: 1000 / 1M * $3.00 = $0.003
-        # output: 100 / 1M * $15.00 = $0.0015
-        # total: $0.0045
         cost = _calculate_cost(1000, 100, "claude-sonnet-4-20250514")
         assert abs(cost - 0.0045) < 0.0001
 
     def test_calculate_cost_unknown_model(self):
         """알 수 없는 모델은 기본 가격 사용"""
-        # 기본 가격: input $3.00, output $15.00
         cost = _calculate_cost(1000, 100, "unknown-model")
         assert abs(cost - 0.0045) < 0.0001
 
     def test_calculate_cost_openai_gpt5_mini(self):
         """OpenAI gpt-5-mini 비용 계산"""
-        # input: 1000 / 1M * $0.40 = $0.0004
-        # output: 100 / 1M * $1.60 = $0.00016
-        # total: $0.00056
         cost = _calculate_cost(1000, 100, "gpt-5-mini")
         assert abs(cost - 0.00056) < 0.00001
 
@@ -168,15 +156,9 @@ class TestCalculateCost:
 class TestTranslate:
     """번역 함수 테스트"""
 
-    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_korean_to_english(self, mock_config, mock_anthropic_class):
+    @patch("seosoyoung.slackbot.plugins.translate.translator.anthropic.Anthropic")
+    def test_translate_korean_to_english(self, mock_anthropic_class):
         """한국어 -> 영어 번역"""
-        # Config mock
-        mock_config.translate.api_key = "test-key"
-        mock_config.translate.model = "claude-3-5-haiku-latest"
-
-        # Anthropic client mock
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
 
@@ -186,20 +168,22 @@ class TestTranslate:
         mock_response.usage.output_tokens = 10
         mock_client.messages.create.return_value = mock_response
 
-        text, cost, terms, match_result = translate("안녕하세요", Language.KOREAN)
+        text, cost, terms, match_result = translate(
+            "안녕하세요", Language.KOREAN,
+            backend="anthropic",
+            model="claude-3-5-haiku-latest",
+            api_key="test-key",
+            glossary_path="",
+        )
 
         assert text == "Hello"
         assert cost > 0
         assert isinstance(terms, list)
         mock_client.messages.create.assert_called_once()
 
-    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_english_to_korean(self, mock_config, mock_anthropic_class):
+    @patch("seosoyoung.slackbot.plugins.translate.translator.anthropic.Anthropic")
+    def test_translate_english_to_korean(self, mock_anthropic_class):
         """영어 -> 한국어 번역"""
-        mock_config.translate.api_key = "test-key"
-        mock_config.translate.model = "claude-3-5-haiku-latest"
-
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
 
@@ -209,27 +193,32 @@ class TestTranslate:
         mock_response.usage.output_tokens = 10
         mock_client.messages.create.return_value = mock_response
 
-        text, cost, terms, match_result = translate("Hello", Language.ENGLISH)
+        text, cost, terms, match_result = translate(
+            "Hello", Language.ENGLISH,
+            backend="anthropic",
+            model="claude-3-5-haiku-latest",
+            api_key="test-key",
+            glossary_path="",
+        )
 
         assert text == "안녕하세요"
         assert cost > 0
         assert isinstance(terms, list)
 
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_without_api_key(self, mock_config):
-        """API 키 없이 호출 시 에러"""
-        mock_config.translate.api_key = None
+    def test_translate_invalid_backend(self):
+        """잘못된 backend 호출 시 에러"""
+        with pytest.raises(ValueError, match="Unknown backend"):
+            translate(
+                "Hello", Language.ENGLISH,
+                backend="invalid",
+                model="test-model",
+                api_key="test-key",
+                glossary_path="",
+            )
 
-        with pytest.raises(ValueError, match="TRANSLATE_API_KEY"):
-            translate("Hello", Language.ENGLISH)
-
-    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_with_custom_model(self, mock_config, mock_anthropic_class):
+    @patch("seosoyoung.slackbot.plugins.translate.translator.anthropic.Anthropic")
+    def test_translate_with_custom_model(self, mock_anthropic_class):
         """커스텀 모델 사용"""
-        mock_config.translate.api_key = "test-key"
-        mock_config.translate.model = "default-model"
-
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
 
@@ -239,19 +228,21 @@ class TestTranslate:
         mock_response.usage.output_tokens = 10
         mock_client.messages.create.return_value = mock_response
 
-        translate("Test", Language.ENGLISH, model="custom-model")
+        translate(
+            "Test", Language.ENGLISH,
+            backend="anthropic",
+            model="custom-model",
+            api_key="test-key",
+            glossary_path="",
+        )
 
         call_args = mock_client.messages.create.call_args
         assert call_args.kwargs["model"] == "custom-model"
 
-    @patch("seosoyoung.slackbot.translator.translator.find_relevant_terms_v2")
-    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_returns_glossary_terms(self, mock_config, mock_anthropic_class, mock_find_terms_v2):
+    @patch("seosoyoung.slackbot.plugins.translate.translator.find_relevant_terms_v2")
+    @patch("seosoyoung.slackbot.plugins.translate.translator.anthropic.Anthropic")
+    def test_translate_returns_glossary_terms(self, mock_anthropic_class, mock_find_terms_v2):
         """번역 시 참고한 용어 목록 반환"""
-        mock_config.translate.api_key = "test-key"
-        mock_config.translate.model = "claude-3-5-haiku-latest"
-
         mock_result = GlossaryMatchResult(
             matched_terms=[("펜릭스", "Fenrix"), ("아리엘라", "Ariella")],
             extracted_words=["펜릭스", "아리엘라"],
@@ -268,7 +259,13 @@ class TestTranslate:
         mock_response.usage.output_tokens = 10
         mock_client.messages.create.return_value = mock_response
 
-        text, cost, terms, match_result = translate("펜릭스와 아리엘라", Language.KOREAN)
+        text, cost, terms, match_result = translate(
+            "펜릭스와 아리엘라", Language.KOREAN,
+            backend="anthropic",
+            model="claude-3-5-haiku-latest",
+            api_key="test-key",
+            glossary_path="",
+        )
 
         assert text == "Fenrix and Ariella"
         assert terms == [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
@@ -277,14 +274,9 @@ class TestTranslate:
 class TestTranslateOpenAI:
     """OpenAI 번역 테스트"""
 
-    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_openai_korean_to_english(self, mock_config, mock_openai_class):
+    @patch("seosoyoung.slackbot.plugins.translate.translator.openai.OpenAI")
+    def test_translate_openai_korean_to_english(self, mock_openai_class):
         """OpenAI backend로 한국어 -> 영어 번역"""
-        mock_config.translate.backend = "openai"
-        mock_config.om.openai_api_key = "test-openai-key"
-        mock_config.translate.openai_model = "gpt-5-mini"
-
         mock_client = MagicMock()
         mock_openai_class.return_value = mock_client
 
@@ -294,7 +286,13 @@ class TestTranslateOpenAI:
         mock_response.usage.completion_tokens = 10
         mock_client.chat.completions.create.return_value = mock_response
 
-        text, cost, terms, match_result = translate("안녕하세요", Language.KOREAN, backend="openai")
+        text, cost, terms, match_result = translate(
+            "안녕하세요", Language.KOREAN,
+            backend="openai",
+            model="gpt-5-mini",
+            api_key="test-openai-key",
+            glossary_path="",
+        )
 
         assert text == "Hello"
         assert cost > 0
@@ -302,46 +300,9 @@ class TestTranslateOpenAI:
         call_args = mock_client.chat.completions.create.call_args
         assert call_args.kwargs["model"] == "gpt-5-mini"
 
-    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_openai_without_api_key(self, mock_config, mock_openai_class):
-        """OpenAI API 키 없이 호출 시 에러"""
-        mock_config.translate.backend = "openai"
-        mock_config.om.openai_api_key = None
-
-        with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-            translate("Hello", Language.ENGLISH, backend="openai")
-
-    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_openai_default_backend(self, mock_config, mock_openai_class):
-        """Config.TRANSLATE_BACKEND=openai일 때 자동으로 OpenAI 사용"""
-        mock_config.translate.backend = "openai"
-        mock_config.om.openai_api_key = "test-openai-key"
-        mock_config.translate.openai_model = "gpt-5-mini"
-
-        mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
-
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock(message=MagicMock(content="Hello"))]
-        mock_response.usage.prompt_tokens = 50
-        mock_response.usage.completion_tokens = 5
-        mock_client.chat.completions.create.return_value = mock_response
-
-        text, cost, terms, match_result = translate("안녕하세요", Language.KOREAN)
-
-        assert text == "Hello"
-        mock_client.chat.completions.create.assert_called_once()
-
-    @patch("seosoyoung.slackbot.translator.translator.anthropic.Anthropic")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_backend_switch_to_anthropic(self, mock_config, mock_anthropic_class):
+    @patch("seosoyoung.slackbot.plugins.translate.translator.anthropic.Anthropic")
+    def test_translate_backend_switch_to_anthropic(self, mock_anthropic_class):
         """backend 파라미터로 anthropic 명시적 지정"""
-        mock_config.translate.backend = "openai"  # 기본은 openai지만
-        mock_config.translate.api_key = "test-anthropic-key"
-        mock_config.translate.model = "claude-3-5-haiku-latest"
-
         mock_client = MagicMock()
         mock_anthropic_class.return_value = mock_client
 
@@ -352,20 +313,19 @@ class TestTranslateOpenAI:
         mock_client.messages.create.return_value = mock_response
 
         text, cost, terms, match_result = translate(
-            "Hello", Language.ENGLISH, backend="anthropic"
+            "Hello", Language.ENGLISH,
+            backend="anthropic",
+            model="claude-3-5-haiku-latest",
+            api_key="test-anthropic-key",
+            glossary_path="",
         )
 
         assert text == "안녕하세요"
         mock_client.messages.create.assert_called_once()
 
-    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_openai_uses_max_completion_tokens(self, mock_config, mock_openai_class):
+    @patch("seosoyoung.slackbot.plugins.translate.translator.openai.OpenAI")
+    def test_translate_openai_uses_max_completion_tokens(self, mock_openai_class):
         """OpenAI API 호출 시 max_completion_tokens 사용 (max_tokens 아님)"""
-        mock_config.translate.backend = "openai"
-        mock_config.om.openai_api_key = "test-key"
-        mock_config.translate.openai_model = "gpt-5-mini"
-
         mock_client = MagicMock()
         mock_openai_class.return_value = mock_client
 
@@ -375,21 +335,22 @@ class TestTranslateOpenAI:
         mock_response.usage.completion_tokens = 10
         mock_client.chat.completions.create.return_value = mock_response
 
-        translate("안녕하세요", Language.KOREAN, backend="openai")
+        translate(
+            "안녕하세요", Language.KOREAN,
+            backend="openai",
+            model="gpt-5-mini",
+            api_key="test-key",
+            glossary_path="",
+        )
 
         call_args = mock_client.chat.completions.create.call_args
         assert "max_completion_tokens" in call_args.kwargs
         assert "max_tokens" not in call_args.kwargs
         assert call_args.kwargs["max_completion_tokens"] == 2048
 
-    @patch("seosoyoung.slackbot.translator.translator.openai.OpenAI")
-    @patch("seosoyoung.slackbot.translator.translator.Config")
-    def test_translate_openai_custom_model(self, mock_config, mock_openai_class):
+    @patch("seosoyoung.slackbot.plugins.translate.translator.openai.OpenAI")
+    def test_translate_openai_custom_model(self, mock_openai_class):
         """OpenAI에서 커스텀 모델 사용"""
-        mock_config.translate.backend = "openai"
-        mock_config.om.openai_api_key = "test-key"
-        mock_config.translate.openai_model = "gpt-5-mini"
-
         mock_client = MagicMock()
         mock_openai_class.return_value = mock_client
 
@@ -399,7 +360,13 @@ class TestTranslateOpenAI:
         mock_response.usage.completion_tokens = 10
         mock_client.chat.completions.create.return_value = mock_response
 
-        translate("Test", Language.ENGLISH, model="gpt-4o", backend="openai")
+        translate(
+            "Test", Language.ENGLISH,
+            backend="openai",
+            model="gpt-4o",
+            api_key="test-key",
+            glossary_path="",
+        )
 
         call_args = mock_client.chat.completions.create.call_args
         assert call_args.kwargs["model"] == "gpt-4o"

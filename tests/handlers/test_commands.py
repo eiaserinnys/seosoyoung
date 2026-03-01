@@ -148,14 +148,14 @@ class TestTryHandleCommandDispatch:
         """'번역 ' 프리픽스 매치"""
         say = MagicMock()
         client = MagicMock()
-        deps = _make_deps()
-        with patch("seosoyoung.slackbot.translator.detect_language") as mock_detect, \
-             patch("seosoyoung.slackbot.translator.translate") as mock_translate:
-            mock_detect.return_value = MagicMock(value="ko")
-            mock_translate.return_value = ("Hello", 0.001, [], None)
-            result = try_handle_command(
-                "번역 안녕", "번역 안녕", "C1", "ts1", None, "U1", say, client, deps
-            )
+        mock_plugin = MagicMock()
+        mock_plugin.translate_text.return_value = ("Hello", 0.001, [], MagicMock(value="ko"))
+        mock_pm = MagicMock()
+        mock_pm.plugins = {"translate": mock_plugin}
+        deps = _make_deps(plugin_manager=mock_pm)
+        result = try_handle_command(
+            "번역 안녕", "번역 안녕", "C1", "ts1", None, "U1", say, client, deps
+        )
         assert result is True
 
     def test_profile_prefix_match(self):
@@ -170,7 +170,7 @@ class TestTryHandleCommandDispatch:
 
     def test_dispatch_table_contains_expected_commands(self):
         """디스패치 테이블에 예상된 명령어가 모두 있는지 확인"""
-        expected = {"help", "status", "cleanup", "cleanup confirm", "log", "update", "restart", "compact"}
+        expected = {"help", "status", "cleanup", "cleanup confirm", "log", "update", "restart", "compact", "plugins"}
         assert set(_COMMAND_DISPATCH.keys()) == expected
 
 

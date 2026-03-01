@@ -57,9 +57,7 @@ def setup_logging() -> logging.Logger:
         ]
     )
 
-    # urllib3 HTTP 요청 로그 제어
-    # TRELLO_POLLING_DEBUG=true일 때만 DEBUG 로그 출력
-    if not Config.trello.polling_debug:
-        logging.getLogger("urllib3").setLevel(logging.WARNING)
+    # urllib3 HTTP 요청 로그 억제 (폴링 등에서 과도한 DEBUG 로그 방지)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     return logging.getLogger(__name__)

@@ -415,9 +415,15 @@ def handle_log(*, say, ts, thread_ts, channel, client, user_id, check_permission
         say(text="수집 가능한 로그 파일이 없습니다.", thread_ts=target_ts)
 
 
-def handle_translate(*, text, say, ts, channel, client, **_):
-    """번역 명령어 핸들러"""
-    from seosoyoung.slackbot.translator import detect_language, translate
+def handle_translate(*, text, say, ts, channel, client, plugin_manager=None, **_):
+    """번역 명령어 핸들러
+
+    TranslatePlugin의 설정과 translate_text() 메서드를 사용합니다.
+    """
+    tp = plugin_manager.plugins.get("translate") if plugin_manager else None
+    if not tp:
+        say(text="번역 플러그인이 로드되지 않았습니다.", thread_ts=ts)
+        return
 
     translate_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
     translate_text = re.sub(r"^번역[\s\n]+", "", translate_text, flags=re.IGNORECASE).strip()
@@ -428,8 +434,7 @@ def handle_translate(*, text, say, ts, channel, client, **_):
 
     try:
         client.reactions_add(channel=channel, timestamp=ts, name="hourglass_flowing_sand")
-        source_lang = detect_language(translate_text)
-        translated, cost, glossary_terms, _ = translate(translate_text, source_lang)
+        translated, cost, glossary_terms, source_lang = tp.translate_text(translate_text)
         target_lang = "영어" if source_lang.value == "ko" else "한국어"
         lines = [
             f"*번역 결과* ({source_lang.value} → {target_lang})",
@@ -478,7 +483,7 @@ def handle_update_restart(
     if running_count > 0:
         send_restart_confirmation(
             client=client,
-            channel=Config.trello.notify_channel,
+            channel=Config.slack.notify_channel,
             restart_type=restart_type,
             running_count=running_count,
             user_id=user_id,
@@ -648,6 +653,77 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
     except Exception as e:
         logger.exception(f"profile 명령어 오류: {e}")
         say(text=f"❌ 오류가 발생했습니다: {e}", thread_ts=reply_ts)
+
+
+def handle_plugins(*, command, say, ts, user_id, client, check_permission, plugin_manager=None, **_):
+    """plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드"""
+    if not check_permission(user_id, client):
+        logger.warning(f"plugins 권한 없음: user={user_id}")
+        say(text="관리자 권한이 필요합니다.", thread_ts=ts)
+        return
+
+    if not plugin_manager:
+        say(text="플러그인 매니저가 초기화되지 않았습니다.", thread_ts=ts)
+        return
+
+    parts = command.split()
+    subcmd = parts[1] if len(parts) > 1 else "list"
+    target = parts[2] if len(parts) > 2 else None
+
+    if subcmd == "list":
+        plugins = plugin_manager.plugins
+        if not plugins:
+            say(text="로드된 플러그인이 없습니다.", thread_ts=ts)
+            return
+
+        lines = ["🔌 *로드된 플러그인*"]
+        for name, plugin in plugins.items():
+            meta = plugin.meta
+            priority = plugin_manager._priorities.get(name, 0)
+            lines.append(
+                f"• `{meta.name}` v{meta.version} (priority: {priority})"
+            )
+            if meta.description:
+                lines.append(f"  _{meta.description}_")
+        say(text="\n".join(lines), thread_ts=ts)
+
+    elif subcmd == "reload" and target:
+        from seosoyoung.utils.async_bridge import run_in_new_loop
+
+        try:
+            run_in_new_loop(plugin_manager.reload(target))
+            say(text=f"✅ 플러그인 `{target}` 리로드 완료", thread_ts=ts)
+        except Exception as e:
+            say(text=f"❌ 리로드 실패 (`{target}`): {e}", thread_ts=ts)
+
+    elif subcmd == "unload" and target:
+        from seosoyoung.utils.async_bridge import run_in_new_loop
+
+        try:
+            run_in_new_loop(plugin_manager.unload(target))
+            say(text=f"✅ 플러그인 `{target}` 언로드 완료", thread_ts=ts)
+        except Exception as e:
+            say(text=f"❌ 언로드 실패 (`{target}`): {e}", thread_ts=ts)
+
+    elif subcmd == "load" and target:
+        say(
+            text=(
+                "플러그인 로드는 `plugins.yaml` 레지스트리 기반으로 동작합니다.\n"
+                "봇 재시작 시 자동으로 로드됩니다."
+            ),
+            thread_ts=ts,
+        )
+
+    else:
+        say(
+            text=(
+                "🔌 *plugins 명령어 사용법*\n"
+                "• `plugins list` - 로드된 플러그인 목록\n"
+                "• `plugins reload <이름>` - 플러그인 리로드\n"
+                "• `plugins unload <이름>` - 플러그인 언로드"
+            ),
+            thread_ts=ts,
+        )
 
 
 def handle_resume_list_run(*, say, ts, list_runner_ref=None, **_):

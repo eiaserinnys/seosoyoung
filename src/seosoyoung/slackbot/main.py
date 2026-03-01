@@ -98,7 +98,7 @@ def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
     logger.info(
         f"[{source}] 활성 세션 {running_count}개, 사용자 확인 팝업 전송"
     )
-    channel = Config.trello.notify_channel
+    channel = Config.slack.notify_channel
     if channel:
         from seosoyoung.slackbot.handlers.actions import send_deploy_shutdown_popup
         send_deploy_shutdown_popup(
@@ -172,7 +172,7 @@ _mention_tracker = MentionTracker()
 
 async def _slack_notifier(message: str) -> None:
     """PluginManager 알림을 Slack에 전송."""
-    channel = Config.trello.notify_channel
+    channel = Config.slack.notify_channel
     if channel:
         try:
             app.client.chat_postMessage(channel=channel, text=message)
@@ -261,7 +261,7 @@ register_all_handlers(app, _build_dependencies())
 
 def notify_startup():
     """봇 시작 알림"""
-    channel = Config.trello.notify_channel
+    channel = Config.slack.notify_channel
     if channel:
         try:
             app.client.chat_postMessage(channel=channel, text="안녕하세요, 서소영입니다.")
@@ -272,7 +272,7 @@ def notify_startup():
 
 def notify_shutdown():
     """봇 종료 알림"""
-    channel = Config.trello.notify_channel
+    channel = Config.slack.notify_channel
     if channel:
         try:
             app.client.chat_postMessage(channel=channel, text="다음에 또 뵙겠습니다, 안녕히 계세요.")

@@ -1,20 +1,17 @@
 # trello/prompt_builder.py
 
-> 경로: `seosoyoung/slackbot/trello/prompt_builder.py`
+> 경로: `seosoyoung/slackbot/plugins/trello/prompt_builder.py`
 
 ## 개요
 
 트렐로 카드 프롬프트 빌더
 
-TrelloWatcher가 Claude에 전달할 프롬프트를 생성하는 로직을 담당합니다.
-- To Go 카드 프롬프트 (실행/계획 모드)
-- 리액션 기반 실행 프롬프트
-- 리스트 정주행 프롬프트
+Config 의존성 없이, list_ids를 생성자에서 직접 받습니다.
 
 ## 클래스
 
 ### `PromptBuilder`
-- 위치: 줄 14
+- 위치: 줄 10
 - 설명: 트렐로 카드용 프롬프트 빌더
 
 TrelloClient를 통해 카드의 체크리스트, 코멘트 등을 조회하고
@@ -22,26 +19,22 @@ Claude에 전달할 프롬프트 문자열을 생성합니다.
 
 #### 메서드
 
-- `__init__(self, trello)` (줄 21): 
-- `build_card_context(self, card_id, desc)` (줄 24): 카드의 체크리스트, 코멘트, 리스트 ID 컨텍스트를 조합
-- `build_to_go(self, card, has_execute)` (줄 53): To Go 카드용 프롬프트 생성
-- `build_reaction_execute(self, info)` (줄 93): 리액션 기반 실행용 프롬프트 생성
-- `build_list_run(self, card, session_id, current, total)` (줄 121): 리스트 정주행용 프롬프트 생성
+- `__init__(self, trello)` (줄 17): Args:
+- `build_card_context(self, card_id, desc)` (줄 27): 카드의 체크리스트, 코멘트, 리스트 ID 컨텍스트를 조합
+- `build_to_go(self, card, has_execute)` (줄 48): To Go 카드용 프롬프트 생성
+- `build_reaction_execute(self, info)` (줄 78): 리액션 기반 실행용 프롬프트 생성
+- `build_list_run(self, card, session_id, current, total)` (줄 97): 리스트 정주행용 프롬프트 생성
+- `_build_list_ids_context(self)` (줄 118): 자주 사용하는 리스트 ID 컨텍스트 생성
 
 ## 함수
 
 ### `_build_task_context_hint()`
-- 위치: 줄 153
+- 위치: 줄 135
 - 설명: 태스크 컨텍스트 힌트 생성
-
-### `_build_list_ids_context()`
-- 위치: 줄 161
-- 설명: 자주 사용하는 리스트 ID 컨텍스트 생성 (Config에서 동적으로 조회)
 
 ## 내부 의존성
 
-- `seosoyoung.slackbot.config.Config`
-- `seosoyoung.slackbot.trello.client.TrelloCard`
-- `seosoyoung.slackbot.trello.client.TrelloClient`
-- `seosoyoung.slackbot.trello.formatting.format_checklists`
-- `seosoyoung.slackbot.trello.formatting.format_comments`
+- `seosoyoung.slackbot.plugins.trello.client.TrelloCard`
+- `seosoyoung.slackbot.plugins.trello.client.TrelloClient`
+- `seosoyoung.slackbot.plugins.trello.formatting.format_checklists`
+- `seosoyoung.slackbot.plugins.trello.formatting.format_comments`

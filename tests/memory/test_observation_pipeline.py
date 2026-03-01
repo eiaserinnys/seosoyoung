@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import seosoyoung.slackbot.config as _cfg_mod
 import seosoyoung.slackbot.plugins.memory.observation_pipeline as _op_mod
 from seosoyoung.slackbot.plugins.memory.observation_pipeline import (
     _extract_new_observations,
@@ -531,122 +530,6 @@ class TestReflector:
         assert record.reflection_count == 1
 
 
-class TestTriggerObservation:
-    """memory.injector.trigger_observation 테스트"""
-
-    @pytest.mark.asyncio
-    async def test_trigger_creates_thread(self):
-        """trigger_observation이 별도 스레드를 생성하는지 확인"""
-        from seosoyoung.slackbot.plugins.memory.injector import trigger_observation
-
-        messages = [{"role": "assistant", "content": "응답"}]
-
-        with patch("seosoyoung.slackbot.plugins.memory.injector.threading.Thread") as mock_thread:
-            mock_thread.return_value.start = MagicMock()
-            with patch.object(_cfg_mod.Config.om, 'enabled', True):
-                trigger_observation("ts_1234", "U12345", "프롬프트", messages)
-
-        mock_thread.assert_called_once()
-        mock_thread.return_value.start.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_trigger_disabled_when_om_off(self):
-        """OM이 비활성화되면 트리거하지 않음"""
-        from seosoyoung.slackbot.plugins.memory.injector import trigger_observation
-
-        with patch("seosoyoung.slackbot.plugins.memory.injector.threading.Thread") as mock_thread:
-            with patch.object(_cfg_mod.Config.om, 'enabled', False):
-                trigger_observation("ts_1234", "U12345", "프롬프트", [])
-
-        mock_thread.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_trigger_error_does_not_propagate(self):
-        """트리거 오류가 전파되지 않음"""
-        from seosoyoung.slackbot.plugins.memory.injector import trigger_observation
-
-        with patch.object(
-            type(_cfg_mod.Config.om), 'enabled',
-            new_callable=lambda: property(lambda self: (_ for _ in ()).throw(RuntimeError("설정 오류"))),
-        ):
-            trigger_observation("ts_1234", "U12345", "프롬프트", [])
-
-    def test_trigger_passes_min_turn_tokens(self):
-        """트리거 시 min_turn_tokens가 전달되는지 확인"""
-        from seosoyoung.slackbot.plugins.memory.injector import trigger_observation
-
-        collected = [{"role": "assistant", "content": "응답"}]
-
-        def run_thread_target_directly(target, daemon=True):
-            mock_t = MagicMock()
-            mock_t.start = lambda: target()
-            return mock_t
-
-        with patch.object(_cfg_mod.Config.om, 'enabled', True):
-            with patch.object(_cfg_mod.Config.om, 'openai_api_key', "test-key"):
-                with patch.object(_cfg_mod.Config.om, 'model', "gpt-4.1-mini"):
-                    with patch("seosoyoung.slackbot.config.Config.get_memory_path", return_value="/tmp/test"):
-                        with patch.object(_cfg_mod.Config.om, 'min_turn_tokens', 200):
-                            with patch(
-                                "seosoyoung.slackbot.plugins.memory.observation_pipeline.observe_conversation",
-                                new_callable=AsyncMock,
-                            ) as mock_obs:
-                                with patch(
-                                    "seosoyoung.slackbot.plugins.memory.injector.threading.Thread",
-                                    side_effect=run_thread_target_directly,
-                                ):
-                                    trigger_observation("ts_1234", "U12345", "테스트 프롬프트", collected)
-
-        mock_obs.assert_called_once()
-        call_kwargs = mock_obs.call_args.kwargs
-        assert call_kwargs["thread_ts"] == "ts_1234"
-        assert call_kwargs["user_id"] == "U12345"
-        assert call_kwargs["min_turn_tokens"] == 200
-        assert call_kwargs["messages"][0] == {"role": "user", "content": "테스트 프롬프트"}
-        assert call_kwargs["messages"][1] == {"role": "assistant", "content": "응답"}
-
-
-    def test_trigger_passes_promoter_and_compactor(self):
-        """트리거 시 Promoter와 Compactor가 생성되어 전달되는지 확인"""
-        from seosoyoung.slackbot.plugins.memory.injector import trigger_observation
-
-        collected = [{"role": "assistant", "content": "응답"}]
-
-        def run_thread_target_directly(target, daemon=True):
-            mock_t = MagicMock()
-            mock_t.start = lambda: target()
-            return mock_t
-
-        with patch.object(_cfg_mod.Config.om, 'enabled', True):
-            with patch.object(_cfg_mod.Config.om, 'openai_api_key', "test-key"):
-                with patch.object(_cfg_mod.Config.om, 'model', "gpt-4.1-mini"):
-                    with patch.object(_cfg_mod.Config.om, 'promoter_model', "gpt-5.2"):
-                        with patch.object(_cfg_mod.Config.om, 'promotion_threshold', 5000):
-                            with patch.object(_cfg_mod.Config.om, 'persistent_compaction_threshold', 15000):
-                                with patch.object(_cfg_mod.Config.om, 'persistent_compaction_target', 8000):
-                                    with patch("seosoyoung.slackbot.config.Config.get_memory_path", return_value="/tmp/test"):
-                                        with patch.object(_cfg_mod.Config.om, 'min_turn_tokens', 200):
-                                            with patch(
-                                                "seosoyoung.slackbot.plugins.memory.observation_pipeline.observe_conversation",
-                                                new_callable=AsyncMock,
-                                            ) as mock_obs:
-                                                with patch(
-                                                    "seosoyoung.slackbot.plugins.memory.injector.threading.Thread",
-                                                    side_effect=run_thread_target_directly,
-                                                ):
-                                                    trigger_observation("ts_1234", "U12345", "테스트", collected)
-
-        mock_obs.assert_called_once()
-        call_kwargs = mock_obs.call_args.kwargs
-        # Promoter와 Compactor 인스턴스가 전달되었는지 확인
-        from seosoyoung.slackbot.plugins.memory.promoter import Compactor, Promoter
-        assert isinstance(call_kwargs["promoter"], Promoter)
-        assert isinstance(call_kwargs["compactor"], Compactor)
-        assert call_kwargs["promotion_threshold"] == 5000
-        assert call_kwargs["compaction_threshold"] == 15000
-        assert call_kwargs["compaction_target"] == 8000
-
-
 class TestSendDebugLogThreadTs:
     """_send_debug_log에 thread_ts가 올바르게 전달되는지 테스트"""
 
@@ -659,12 +542,11 @@ class TestSendDebugLogThreadTs:
             mock_instance.chat_postMessage.return_value = {"ts": "1234.5678"}
             MockClient.return_value = mock_instance
 
-            with patch.object(_cfg_mod.Config.slack, 'bot_token', "xoxb-test"):
-                result = _send_debug_log("C_DEBUG", "테스트 메시지")
+            result = _send_debug_log("C_DEBUG", "테스트 메시지", bot_token="xoxb-test")
 
-            assert result == "1234.5678"
-            call_kwargs = mock_instance.chat_postMessage.call_args
-            assert "thread_ts" not in call_kwargs.kwargs
+        assert result == "1234.5678"
+        call_kwargs = mock_instance.chat_postMessage.call_args
+        assert "thread_ts" not in call_kwargs.kwargs
 
     def test_send_debug_log_with_thread_ts(self):
         """thread_ts가 있으면 kwargs에 포함됨"""
@@ -675,12 +557,11 @@ class TestSendDebugLogThreadTs:
             mock_instance.chat_postMessage.return_value = {"ts": "9999.0001"}
             MockClient.return_value = mock_instance
 
-            with patch.object(_cfg_mod.Config.slack, 'bot_token', "xoxb-test"):
-                result = _send_debug_log("C_DEBUG", "스레드 메시지", thread_ts="1234.5678")
+            result = _send_debug_log("C_DEBUG", "스레드 메시지", thread_ts="1234.5678", bot_token="xoxb-test")
 
-            assert result == "9999.0001"
-            call_kwargs = mock_instance.chat_postMessage.call_args.kwargs
-            assert call_kwargs["thread_ts"] == "1234.5678"
+        assert result == "9999.0001"
+        call_kwargs = mock_instance.chat_postMessage.call_args.kwargs
+        assert call_kwargs["thread_ts"] == "1234.5678"
 
     def test_send_debug_log_empty_thread_ts_not_included(self):
         """thread_ts가 빈 문자열이면 kwargs에 포함되지 않음"""
@@ -691,11 +572,17 @@ class TestSendDebugLogThreadTs:
             mock_instance.chat_postMessage.return_value = {"ts": "1234.5678"}
             MockClient.return_value = mock_instance
 
-            with patch.object(_cfg_mod.Config.slack, 'bot_token', "xoxb-test"):
-                _send_debug_log("C_DEBUG", "메시지", thread_ts="")
+            _send_debug_log("C_DEBUG", "메시지", thread_ts="", bot_token="xoxb-test")
 
-            call_kwargs = mock_instance.chat_postMessage.call_args.kwargs
-            assert "thread_ts" not in call_kwargs
+        call_kwargs = mock_instance.chat_postMessage.call_args.kwargs
+        assert "thread_ts" not in call_kwargs
+
+    def test_send_debug_log_without_bot_token_returns_empty(self):
+        """bot_token 없으면 빈 문자열 반환 (Slack API 미호출)"""
+        from seosoyoung.slackbot.plugins.memory.observation_pipeline import _send_debug_log
+
+        result = _send_debug_log("C_DEBUG", "테스트 메시지")
+        assert result == ""
 
 
 class TestObserveConversationAnchorTs:
@@ -720,6 +607,7 @@ class TestObserveConversationAnchorTs:
                     min_turn_tokens=0,
                     debug_channel="C_DEBUG",
                     anchor_ts="anchor_123",
+                    slack_bot_token="xoxb-test",
                 )
 
         # _send_debug_log 호출 시 thread_ts=anchor_123이 전달되었는지 확인
@@ -744,6 +632,7 @@ class TestObserveConversationAnchorTs:
                     messages=sample_messages,
                     min_turn_tokens=0,
                     debug_channel="C_DEBUG",
+                    slack_bot_token="xoxb-test",
                 )
 
         for call in mock_send.call_args_list:
@@ -763,46 +652,11 @@ class TestObserveConversationAnchorTs:
                 min_turn_tokens=999999,
                 debug_channel="C_DEBUG",
                 anchor_ts="anchor_skip",
+                slack_bot_token="xoxb-test",
             )
 
         mock_send.assert_called_once()
         assert mock_send.call_args.kwargs.get("thread_ts") == "anchor_skip"
-
-
-class TestTriggerObservationAnchorTs:
-    """trigger_observation에서 anchor_ts가 observe_conversation에 전달되는지 테스트"""
-
-    def test_trigger_passes_anchor_ts(self):
-        """anchor_ts가 observe_conversation에 전달됨"""
-        from seosoyoung.slackbot.plugins.memory.injector import trigger_observation
-
-        collected = [{"role": "assistant", "content": "응답"}]
-
-        def run_thread_target_directly(target, daemon=True):
-            mock_t = MagicMock()
-            mock_t.start = lambda: target()
-            return mock_t
-
-        with patch.object(_cfg_mod.Config.om, 'enabled', True):
-            with patch.object(_cfg_mod.Config.om, 'openai_api_key', "test-key"):
-                with patch.object(_cfg_mod.Config.om, 'model', "gpt-4.1-mini"):
-                    with patch("seosoyoung.slackbot.config.Config.get_memory_path", return_value="/tmp/test"):
-                        with patch.object(_cfg_mod.Config.om, 'min_turn_tokens', 200):
-                            with patch(
-                                "seosoyoung.slackbot.plugins.memory.observation_pipeline.observe_conversation",
-                                new_callable=AsyncMock,
-                            ) as mock_obs:
-                                with patch(
-                                    "seosoyoung.slackbot.plugins.memory.injector.threading.Thread",
-                                    side_effect=run_thread_target_directly,
-                                ):
-                                    trigger_observation(
-                                        "ts_1234", "U12345", "테스트", collected,
-                                        anchor_ts="anchor_abc",
-                                    )
-
-        mock_obs.assert_called_once()
-        assert mock_obs.call_args.kwargs["anchor_ts"] == "anchor_abc"
 
 
 class TestObserveConversationSkipsDebugWithoutAnchor:
