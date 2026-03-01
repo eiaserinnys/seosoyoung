@@ -1,6 +1,12 @@
 # Plugin registry
 # Each entry: name, module, priority, config, enabled (all required)
 
+- name: trello
+  module: seosoyoung.slackbot.plugins.trello.plugin
+  priority: 100
+  config: plugins/trello.yaml
+  enabled: true
+
 - name: translate
   module: seosoyoung.slackbot.plugins.translate.plugin
   priority: 50

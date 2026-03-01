@@ -71,7 +71,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `create_session_and_run_claude(event, clean_text, channel, ts, thread_ts, user_id, say, client, deps)`
-- 위치: 줄 203
+- 위치: 줄 224
 - 설명: 세션 생성 + 컨텍스트 빌드 + Claude 실행.
 
 handle_mention과 DM 핸들러에서 공유합니다.
@@ -88,7 +88,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 398
+- 위치: 줄 419
 - 설명: 멘션 핸들러 등록
 
 Args:

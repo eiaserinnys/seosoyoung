@@ -73,6 +73,12 @@
 - [`translate/glossary.py`](modules/translate_glossary.md): 용어집 로더 모듈
 - [`translate/plugin.py`](modules/translate_plugin.md): Translate plugin.
 - [`translate/translator.py`](modules/translate_translator.md): 번역 모듈
+- [`trello/client.py`](modules/trello_client.md): Trello API 클라이언트
+- [`trello/formatting.py`](modules/trello_formatting.md): 트렐로 카드 포맷팅 유틸리티
+- [`trello/list_runner.py`](modules/trello_list_runner.md): ListRunner - 리스트 정주행 기능
+- [`trello/plugin.py`](modules/trello_plugin.md): Trello plugin.
+- [`trello/prompt_builder.py`](modules/trello_prompt_builder.md): 트렐로 카드 프롬프트 빌더
+- [`trello/watcher.py`](modules/trello_watcher.md): Trello 워처 - To Go 리스트 감시 및 처리
 - [`presentation/progress.py`](modules/presentation_progress.md): 진행 상태 콜백 팩토리
 - [`presentation/types.py`](modules/presentation_types.md): 프레젠테이션 컨텍스트 타입 정의
 - [`profile/manager.py`](modules/profile_manager.md): Claude Code 인증 프로필 관리 (CLAUDE_CONFIG_DIR + Junction 방식)
@@ -206,6 +212,22 @@
 - `Language` (seosoyoung/slackbot/plugins/translate/detector.py:9): 
 - `GlossaryMatchResult` (seosoyoung/slackbot/plugins/translate/glossary.py:49): 용어 매칭 결과
 - `TranslatePlugin` (seosoyoung/slackbot/plugins/translate/plugin.py:22): 자동 번역 플러그인.
+- `TrelloCard` (seosoyoung/slackbot/plugins/trello/client.py:17): 트렐로 카드 정보
+- `TrelloClient` (seosoyoung/slackbot/plugins/trello/client.py:29): Trello API 클라이언트
+- `ListNotFoundError` (seosoyoung/slackbot/plugins/trello/list_runner.py:20): 리스트를 찾을 수 없을 때 발생하는 예외
+- `EmptyListError` (seosoyoung/slackbot/plugins/trello/list_runner.py:25): 리스트에 카드가 없을 때 발생하는 예외
+- `ValidationStatus` (seosoyoung/slackbot/plugins/trello/list_runner.py:30): 검증 결과 상태
+- `SessionStatus` (seosoyoung/slackbot/plugins/trello/list_runner.py:37): 리스트 정주행 세션 상태
+- `CardExecutionResult` (seosoyoung/slackbot/plugins/trello/list_runner.py:48): 카드 실행 결과
+- `ValidationResult` (seosoyoung/slackbot/plugins/trello/list_runner.py:58): 검증 결과
+- `CardRunResult` (seosoyoung/slackbot/plugins/trello/list_runner.py:67): 카드 실행 및 검증 전체 결과
+- `ListRunSession` (seosoyoung/slackbot/plugins/trello/list_runner.py:78): 리스트 정주행 세션 정보
+- `ListRunner` (seosoyoung/slackbot/plugins/trello/list_runner.py:123): 리스트 정주행 관리자
+- `TrelloPlugin` (seosoyoung/slackbot/plugins/trello/plugin.py:31): Trello watcher and card management plugin.
+- `PromptBuilder` (seosoyoung/slackbot/plugins/trello/prompt_builder.py:10): 트렐로 카드용 프롬프트 빌더
+- `TrackedCard` (seosoyoung/slackbot/plugins/trello/watcher.py:22): 추적 중인 카드 정보 (To Go 리스트 감시용)
+- `ThreadCardInfo` (seosoyoung/slackbot/plugins/trello/watcher.py:38): 스레드 ↔ 카드 매핑 정보 (리액션 처리용)
+- `TrelloWatcher` (seosoyoung/slackbot/plugins/trello/watcher.py:50): Trello 리스트 감시자
 - `PresentationContext` (seosoyoung/slackbot/presentation/types.py:12): 프레젠테이션 레이어가 관리하는 실행 컨텍스트
 - `ProfileInfo` (seosoyoung/slackbot/profile/manager.py:23): 프로필 정보
 - `ProfileManager` (seosoyoung/slackbot/profile/manager.py:33): Claude Code 인증 프로필 관리자 (CLAUDE_CONFIG_DIR + Junction)
@@ -348,18 +370,16 @@
 - `build_prompt()` (seosoyoung/slackbot/handlers/mention.py:55): 프롬프트 구성.
 - `get_channel_history()` (seosoyoung/slackbot/handlers/mention.py:110): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 - `try_handle_command()` (seosoyoung/slackbot/handlers/mention.py:140): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
-- `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:203): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
-- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:398): 멘션 핸들러 등록
+- `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:224): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
+- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:419): 멘션 핸들러 등록
 - `build_slack_context()` (seosoyoung/slackbot/handlers/message.py:21): 슬랙 컨텍스트 블록 문자열을 생성합니다.
 - `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:47): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 - `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:304): 메시지 핸들러 등록
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/slackbot/main.py:353): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/slackbot/main.py:364): 봇 종료 알림
-- `start_trello_watcher()` (seosoyoung/slackbot/main.py:375): Trello 워처 시작
-- `start_list_runner()` (seosoyoung/slackbot/main.py:395): 리스트 러너 초기화
-- `init_bot_user_id()` (seosoyoung/slackbot/main.py:405): 봇 사용자 ID 초기화
-- `main()` (seosoyoung/slackbot/main.py:415): 봇 메인 진입점
+- `notify_startup()` (seosoyoung/slackbot/main.py:348): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/slackbot/main.py:359): 봇 종료 알림
+- `init_bot_user_id()` (seosoyoung/slackbot/main.py:401): 봇 사용자 ID 초기화
+- `main()` (seosoyoung/slackbot/main.py:411): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `parse_intervention_markup()` (seosoyoung/slackbot/memory/channel_intervention.py:39): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
 - `async execute_interventions()` (seosoyoung/slackbot/memory/channel_intervention.py:80): InterventionAction 리스트를 슬랙 API로 발송합니다.
@@ -418,6 +438,8 @@
 - `find_relevant_terms_v2()` (seosoyoung/slackbot/plugins/translate/glossary.py:321): 텍스트에서 관련 용어 추출 (개선된 버전, 디버그 정보 포함)
 - `clear_cache()` (seosoyoung/slackbot/plugins/translate/glossary.py:437): 캐시 초기화 (테스트 또는 용어집 갱신 시 사용)
 - `translate()` (seosoyoung/slackbot/plugins/translate/translator.py:180): 텍스트를 번역
+- `format_checklists()` (seosoyoung/slackbot/plugins/trello/formatting.py:7): 체크리스트를 프롬프트용 문자열로 포맷
+- `format_comments()` (seosoyoung/slackbot/plugins/trello/formatting.py:28): 코멘트를 프롬프트용 문자열로 포맷
 - `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:29): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류

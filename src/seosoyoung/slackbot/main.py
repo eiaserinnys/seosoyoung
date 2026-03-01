@@ -24,8 +24,6 @@ from seosoyoung.core.plugin_config import load_plugin_registry, load_plugin_conf
 from seosoyoung.slackbot.restart import RestartManager, RestartType
 from seosoyoung.slackbot.marker_parser import parse_markers
 from seosoyoung.slackbot.memory.injector import prepare_memory_injection, trigger_observation
-from seosoyoung.slackbot.trello.watcher import TrelloWatcher
-from seosoyoung.slackbot.trello.list_runner import ListRunner
 from seosoyoung.slackbot.handlers.channel_collector import ChannelMessageCollector
 from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
 from seosoyoung.slackbot.memory.channel_store import ChannelStore
@@ -43,11 +41,8 @@ app = App(token=Config.slack.bot_token, logger=logger)
 session_manager = SessionManager(session_dir=Path(Config.get_session_path()))
 session_runtime = SessionRuntime()
 
-# Trello 워처 (나중에 초기화)
-trello_watcher: TrelloWatcher | None = None
-
-# 리스트 러너 (리스트 정주행 기능)
-list_runner: ListRunner | None = None
+# Plugin-managed Trello references (populated via on_startup hook)
+_trello_refs: dict = {"watcher": None, "list_runner": None}
 
 
 def _perform_restart(restart_type: RestartType) -> None:
@@ -171,8 +166,8 @@ executor = ClaudeExecutor(
     soul_client_id=Config.claude.soul_client_id,
     restart_type_update=RestartType.UPDATE,
     restart_type_restart=RestartType.RESTART,
-    trello_watcher_ref=lambda: trello_watcher,
-    list_runner_ref=lambda: list_runner,
+    trello_watcher_ref=lambda: _trello_refs["watcher"],
+    list_runner_ref=lambda: _trello_refs["list_runner"],
     parse_markers_fn=parse_markers,
 )
 
@@ -316,8 +311,8 @@ def _build_dependencies():
         "check_permission": check_permission,
         "get_user_role": get_user_role,
         "send_restart_confirmation": send_restart_confirmation,
-        "trello_watcher_ref": lambda: trello_watcher,
-        "list_runner_ref": lambda: list_runner,
+        "trello_watcher_ref": lambda: _trello_refs["watcher"],
+        "list_runner_ref": lambda: _trello_refs["list_runner"],
         "channel_collector": _channel_collector,
         "channel_store": _channel_store,
         "channel_observer": _channel_observer,
@@ -359,34 +354,35 @@ def notify_shutdown():
             logger.error(f"종료 알림 실패: {e}")
 
 
-def start_trello_watcher():
-    """Trello 워처 시작"""
-    global trello_watcher
+def _dispatch_plugin_startup():
+    """Dispatch on_startup hook to all loaded plugins.
 
-    if not Config.trello.api_key or not Config.trello.token:
-        logger.info("Trello API 키가 설정되지 않아 워처를 시작하지 않습니다.")
-        return
+    Plugins return runtime references (e.g. watcher, list_runner)
+    which are stored in _trello_refs for handler access.
+    """
+    from seosoyoung.utils.async_bridge import run_in_new_loop
+    from seosoyoung.core.context import create_hook_context
 
-    trello_watcher = TrelloWatcher(
+    ctx = create_hook_context(
+        "on_startup",
         slack_client=app.client,
         session_manager=session_manager,
+        session_runtime=session_runtime,
         claude_runner_factory=executor.run,
         get_session_lock=session_runtime.get_session_lock,
-        poll_interval=15,
-        list_runner_ref=lambda: list_runner,
+        restart_manager=restart_manager,
+        update_message_fn=update_message,
+        data_dir=Path(Config.get_session_path()).parent / "data",
     )
-    trello_watcher.start()
-    logger.info("Trello 워처 시작됨")
+    ctx = run_in_new_loop(plugin_manager.dispatch("on_startup", ctx))
 
-
-def start_list_runner():
-    """리스트 러너 초기화"""
-    global list_runner
-
-    from pathlib import Path
-    data_dir = Path(Config.get_session_path()).parent / "data"
-    list_runner = ListRunner(data_dir=data_dir)
-    logger.info("리스트 러너 초기화 완료")
+    # Update refs from plugin results
+    for result in ctx.results:
+        if isinstance(result, dict):
+            if "watcher" in result:
+                _trello_refs["watcher"] = result["watcher"]
+            if "list_runner" in result:
+                _trello_refs["list_runner"] = result["list_runner"]
 
 
 def init_bot_user_id():
@@ -424,9 +420,8 @@ def main():
     logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")
     init_bot_user_id()
     _load_plugins()
+    _dispatch_plugin_startup()  # on_startup hooks (trello watcher, etc.)
     notify_startup()
-    start_trello_watcher()
-    start_list_runner()
     if _channel_scheduler:
         _channel_scheduler.start()
     handler = SocketModeHandler(app, Config.slack.app_token)

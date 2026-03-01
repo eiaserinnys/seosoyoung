@@ -417,169 +417,25 @@ def register_message_handlers(app, dependencies: dict):
     def handle_reaction(event, client):
         """이모지 리액션 처리
 
-        트렐로 워처가 계획 수립 후 Backlog로 이동한 카드의 슬랙 메시지에
-        사용자가 실행 리액션(rocket)을 달면, 해당 스레드에서 세션을 이어서 실행합니다.
-
-        워크플로우:
-        1. 리액션이 EXECUTE_EMOJI인지 확인
-        2. 리액션된 메시지가 트렐로 워처의 결과인지 TrackedCard로 확인
-        3. 기존 세션 조회 및 compact 처리
-        4. Execute 레이블이 있는 것과 동일한 프롬프트로 실행
-        5. 원본 메시지의 스레드에 응답
+        채널 리액션 수집 후, 플러그인 on_reaction 훅으로 디스패치합니다.
+        Execute emoji 처리 등은 TrelloPlugin에서 담당합니다.
         """
-        # 채널 리액션 수집 (EXECUTE_EMOJI 처리보다 먼저)
+        # 채널 리액션 수집
         if channel_collector:
             try:
                 channel_collector.collect_reaction(event, action="added")
             except Exception as e:
                 logger.error(f"채널 리액션 수집 실패 (added): {e}")
 
-        reaction = event.get("reaction", "")
-        item = event.get("item", {})
-        item_ts = item.get("ts", "")
-        item_channel = item.get("channel", "")
-        user_id = event.get("user", "")
-
-        # 1. 실행 리액션인지 확인
-        if reaction != Config.emoji.execute:
-            return
-
-        logger.info(f"실행 리액션 감지: {reaction} on {item_ts} by {user_id}")
-
-        # 2. 트렐로 워처 참조 가져오기
-        trello_watcher = dependencies.get("trello_watcher_ref", lambda: None)()
-        if not trello_watcher:
-            logger.debug("트렐로 워처가 없습니다.")
-            return
-
-        # 3. ThreadCardInfo 조회 (해당 메시지가 트렐로 워처 결과인지 확인)
-        tracked = trello_watcher.get_tracked_by_thread_ts(item_ts)
-        if not tracked:
-            logger.debug(f"ThreadCardInfo를 찾을 수 없습니다: {item_ts}")
-            return
-
-        logger.info(f"ThreadCardInfo 발견: {tracked.card_name} (card_id={tracked.card_id})")
-
-        # 4. 기존 세션 조회
-        session = session_manager.get(item_ts)
-        if not session:
-            logger.warning(f"세션을 찾을 수 없습니다: {item_ts}")
-            # 세션이 없으면 새로 생성
-            session = session_manager.create(
-                thread_ts=item_ts,
-                channel_id=item_channel,
-                user_id=user_id,
-                username="reaction_executor",
-                role="admin"
-            )
-
-        # 5. 재시작 대기 중이면 무시
-        if restart_manager.is_pending:
+        # Plugin hook dispatch: on_reaction
+        if pm and pm.plugins:
             try:
-                client.chat_postMessage(
-                    channel=item_channel,
-                    thread_ts=item_ts,
-                    text="재시작을 대기하는 중입니다. 재시작이 완료되면 다시 시도해주세요."
-                )
-            except Exception as e:
-                logger.error(f"리액션 실행 거부 메시지 전송 실패: {e}")
-            return
-
-        # 6. 스레드에 실행 시작 알림 (원본 메시지의 스레드에)
-        try:
-            start_msg = client.chat_postMessage(
-                channel=item_channel,
-                thread_ts=item_ts,
-                text="`🚀 리액션으로 실행을 시작합니다. 세션을 정리하는 중...`"
-            )
-            start_msg_ts = start_msg["ts"]
-        except Exception as e:
-            logger.error(f"실행 시작 알림 전송 실패: {e}")
-            return
-
-        # 7. 실행 프롬프트 생성
-        prompt = trello_watcher.build_reaction_execute_prompt(tracked)
-
-        # 8. 실행을 위해 TrackedCard에 has_execute 플래그 설정
-        tracked.has_execute = True
-
-        # 9. 별도 스레드에서 compact + 실행
-        def run_with_compact():
-            lock = None
-            get_session_lock = dependencies.get("get_session_lock")
-            if get_session_lock:
-                lock = get_session_lock(item_ts)
-                if not lock.acquire(blocking=False):
-                    try:
-                        client.chat_update(
-                            channel=item_channel,
-                            ts=start_msg_ts,
-                            text="이전 요청을 처리 중이에요. 잠시 후 다시 시도해주세요."
-                        )
-                    except Exception:
-                        pass
+                ctx = create_hook_context("on_reaction", event=event, client=client)
+                ctx = run_in_new_loop(pm.dispatch("on_reaction", ctx))
+                if ctx.stopped:
                     return
-
-            try:
-                # say 함수 정의
-                def say(text, thread_ts=None):
-                    client.chat_postMessage(
-                        channel=item_channel,
-                        thread_ts=thread_ts or item_ts,
-                        text=text
-                    )
-
-                # PresentationContext 구성 (트렐로 모드)
-                from seosoyoung.slackbot.presentation.types import PresentationContext
-                from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
-
-                pctx = PresentationContext(
-                    channel=item_channel,
-                    thread_ts=item_ts,
-                    msg_ts=start_msg_ts,
-                    say=say,
-                    client=client,
-                    effective_role="admin",
-                    session_id=session.session_id,
-                    user_id=user_id,
-                    last_msg_ts=start_msg_ts,
-                    main_msg_ts=start_msg_ts,
-                    trello_card=tracked,
-                    is_trello_mode=True,
-                )
-
-                update_message_fn = dependencies.get("update_message_fn")
-                on_progress, on_compact = build_progress_callbacks(pctx, update_message_fn)
-
-                # Claude 실행 (trello_card 정보 전달)
-                run_claude_in_session(
-                    prompt=prompt,
-                    thread_ts=item_ts,
-                    msg_ts=start_msg_ts,
-                    on_progress=on_progress,
-                    on_compact=on_compact,
-                    presentation=pctx,
-                    session_id=session.session_id,
-                    role="admin",
-                )
-
             except Exception as e:
-                logger.exception(f"리액션 기반 실행 오류: {e}")
-                try:
-                    client.chat_update(
-                        channel=item_channel,
-                        ts=start_msg_ts,
-                        text=f"❌ 실행 오류: {str(e)}"
-                    )
-                except Exception:
-                    pass
-            finally:
-                if lock:
-                    lock.release()
-
-        # 백그라운드 스레드에서 실행
-        execute_thread = threading.Thread(target=run_with_compact, daemon=True)
-        execute_thread.start()
+                logger.error(f"Plugin on_reaction dispatch 실패: {e}")
 
 
     @app.event("reaction_removed")

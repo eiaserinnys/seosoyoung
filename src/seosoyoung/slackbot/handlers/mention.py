@@ -163,6 +163,25 @@ def try_handle_command(
         client: Slack 클라이언트
         deps: 의존성 딕셔너리
     """
+    # Plugin hook dispatch: on_command (최우선)
+    pm = deps.get("plugin_manager")
+    if pm and pm.plugins:
+        try:
+            from seosoyoung.utils.async_bridge import run_in_new_loop
+            from seosoyoung.core.context import create_hook_context
+
+            ctx = create_hook_context(
+                "on_command",
+                command=command, text=text, channel=channel,
+                ts=ts, thread_ts=thread_ts,
+                user_id=user_id, say=say, client=client,
+            )
+            ctx = run_in_new_loop(pm.dispatch("on_command", ctx))
+            if ctx.stopped:
+                return True
+        except Exception as e:
+            logger.error(f"Plugin on_command dispatch 실패: {e}")
+
     kwargs = dict(
         command=command, text=text, channel=channel, ts=ts, thread_ts=thread_ts,
         user_id=user_id, say=say, client=client,
@@ -170,6 +189,8 @@ def try_handle_command(
     kwargs.update(deps)
 
     # 정주행 재개 명령어
+    # NOTE: Plugin on_command에서도 이 패턴을 처리하지만,
+    # 플러그인이 비활성화되었을 때를 위한 폴백 경로로 유지합니다.
     if _is_resume_list_run_command(command):
         handle_resume_list_run(**kwargs)
         return True

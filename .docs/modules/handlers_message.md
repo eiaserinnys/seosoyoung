@@ -48,17 +48,17 @@ Args:
     dependencies: 의존성 딕셔너리
 
 ### `_contains_trigger_word(text)`
-- 위치: 줄 623
+- 위치: 줄 455
 - 설명: 텍스트에 트리거 워드가 포함되어 있는지 확인합니다.
 
 ### `_maybe_trigger_digest(channel_id, client, store, observer, compressor, cooldown)`
-- 위치: 줄 631
+- 위치: 줄 463
 - 설명: pending 토큰이 threshold_A 이상이면 별도 스레드에서 파이프라인을 실행합니다.
 
 force=True이면 임계치와 무관하게 즉시 트리거합니다.
 
 ### `_send_collect_log(client, channel_id, store, event)`
-- 위치: 줄 688
+- 위치: 줄 520
 - 설명: 수집 디버그 로그를 전송합니다.
 
 ## 내부 의존성
