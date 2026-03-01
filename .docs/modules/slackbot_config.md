@@ -38,12 +38,14 @@
 - 위치: 줄 84
 - 설명: Claude 실행 모드 설정
 
+remote 모드에서 Soulstream 서버(독립 soul-server)에 연결합니다.
+
 ### `EmojiConfig`
-- 위치: 줄 94
+- 위치: 줄 97
 - 설명: 이모지 설정
 
 ### `Config`
-- 위치: 줄 122
+- 위치: 줄 125
 - 설명: 애플리케이션 설정
 
 설정 접근 방식:
@@ -52,14 +54,14 @@
 
 #### 메서드
 
-- `get_log_path()` (줄 142): 로그 경로
-- `get_session_path()` (줄 147): 세션 경로
-- `get_glossary_path()` (줄 152): 용어집 경로 (번역 시 고유명사 참조)
-- `get_narrative_path()` (줄 157): 대사 데이터 경로
-- `get_search_index_path()` (줄 162): 검색 인덱스 경로
-- `get_web_cache_path()` (줄 167): 웹 콘텐츠 캐시 경로
-- `get_memory_path()` (줄 172): 관찰 로그 저장 경로
-- `validate(cls)` (줄 180): 필수 환경변수 검증
+- `get_log_path()` (줄 145): 로그 경로
+- `get_session_path()` (줄 150): 세션 경로
+- `get_glossary_path()` (줄 155): 용어집 경로 (번역 시 고유명사 참조)
+- `get_narrative_path()` (줄 160): 대사 데이터 경로
+- `get_search_index_path()` (줄 165): 검색 인덱스 경로
+- `get_web_cache_path()` (줄 170): 웹 콘텐츠 캐시 경로
+- `get_memory_path()` (줄 175): 관찰 로그 저장 경로
+- `validate(cls)` (줄 183): 필수 환경변수 검증
 
 ## 함수
 

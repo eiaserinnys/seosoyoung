@@ -10,6 +10,12 @@ from seosoyoung.slackbot.claude.types import (
 from seosoyoung.slackbot.claude.engine_types import ClaudeResult
 
 
+def get_claude_runner():
+    """rescue 모듈의 ClaudeRunner 인스턴스를 생성하여 반환합니다."""
+    from seosoyoung.rescue.claude.agent_runner import ClaudeRunner
+    return ClaudeRunner()
+
+
 __all__ = [
     "ClaudeResult",
     "CardInfo",
@@ -17,4 +23,5 @@ __all__ = [
     "SayFunction",
     "ProgressCallback",
     "CompactCallback",
+    "get_claude_runner",
 ]
