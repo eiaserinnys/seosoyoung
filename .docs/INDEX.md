@@ -5,6 +5,11 @@
 
 ## 모듈 목록
 
+- [`core/context.py`](modules/core_context.md): Hook context factory.
+- [`core/hooks.py`](modules/core_hooks.md): Hook system primitives for the plugin architecture.
+- [`core/plugin.py`](modules/core_plugin.md): Plugin base class and metadata.
+- [`core/plugin_config.py`](modules/core_plugin_config.md): Plugin configuration and registry loading.
+- [`core/plugin_manager.py`](modules/core_plugin_manager.md): Plugin lifecycle manager.
 - [`mcp/__main__.py`](modules/mcp___main__.md): MCP 서버 실행 진입점
 - [`mcp/config.py`](modules/mcp_config.md): MCP 서버 설정
 - [`mcp/server.py`](modules/mcp_server.md): seosoyoung MCP 서버 정의
@@ -95,6 +100,12 @@
 
 ### 주요 클래스
 
+- `HookPriority` (seosoyoung/core/hooks.py:14): Execution priority for hook handlers. Higher values execute first.
+- `HookResult` (seosoyoung/core/hooks.py:23): Result of a hook handler, controlling chain behavior.
+- `HookContext` (seosoyoung/core/hooks.py:37): Mutable context passed through a hook handler chain.
+- `PluginMeta` (seosoyoung/core/plugin.py:22): Immutable plugin identity.
+- `Plugin` (seosoyoung/core/plugin.py:37): Base class for all plugins.
+- `PluginManager` (seosoyoung/core/plugin_manager.py:25): Manages plugin lifecycle and hook dispatch.
 - `GeneratedImage` (seosoyoung/mcp/tools/image_gen.py:32): 생성된 이미지 결과
 - `ClaudeResult` (seosoyoung/rescue/claude/agent_runner.py:83): Claude Code 실행 결과 (하위호환 레이어)
 - `CompactRetryState` (seosoyoung/rescue/claude/agent_runner.py:205): Compact retry 외부 루프 상태
@@ -208,6 +219,9 @@
 
 ### 주요 함수
 
+- `create_hook_context()` (seosoyoung/core/context.py:13): Create a HookContext with the given hook name and keyword arguments.
+- `load_plugin_config()` (seosoyoung/core/plugin_config.py:24): Load a single plugin's configuration YAML.
+- `load_plugin_registry()` (seosoyoung/core/plugin_config.py:51): Load the plugin registry (plugins.yaml).
 - `slack_attach_file()` (seosoyoung/mcp/server.py:20): 슬랙에 파일을 첨부합니다.
 - `slack_post_message()` (seosoyoung/mcp/server.py:36): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
 - `async slack_generate_image()` (seosoyoung/mcp/server.py:57): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
