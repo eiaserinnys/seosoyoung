@@ -2,7 +2,7 @@
 
 import pytest
 
-from seosoyoung.slackbot.memory.channel_observer import (
+from seosoyoung.slackbot.plugins.channel_observer.observer import (
     ChannelObserver,
     ChannelObserverResult,
     DigestCompressor,
@@ -831,7 +831,7 @@ class TestChannelPrompts:
     """channel_prompts 빌더 함수 테스트"""
 
     def test_build_user_prompt_no_existing(self):
-        from seosoyoung.slackbot.memory.channel_prompts import build_channel_observer_user_prompt
+        from seosoyoung.slackbot.plugins.channel_observer.prompts import build_channel_observer_user_prompt
         from datetime import datetime, timezone
 
         prompt = build_channel_observer_user_prompt(
@@ -847,7 +847,7 @@ class TestChannelPrompts:
         assert "[1.1] U1: hello" in prompt
 
     def test_build_user_prompt_with_existing(self):
-        from seosoyoung.slackbot.memory.channel_prompts import build_channel_observer_user_prompt
+        from seosoyoung.slackbot.plugins.channel_observer.prompts import build_channel_observer_user_prompt
 
         prompt = build_channel_observer_user_prompt(
             channel_id="C456",
@@ -861,7 +861,7 @@ class TestChannelPrompts:
         assert "[999.001] U2: reply" in prompt
 
     def test_build_compressor_prompts(self):
-        from seosoyoung.slackbot.memory.channel_prompts import (
+        from seosoyoung.slackbot.plugins.channel_observer.prompts import (
             build_digest_compressor_system_prompt,
             build_digest_compressor_retry_prompt,
         )
@@ -874,7 +874,7 @@ class TestChannelPrompts:
         assert "5000" in retry
 
     def test_build_digest_only_prompts(self):
-        from seosoyoung.slackbot.memory.channel_prompts import (
+        from seosoyoung.slackbot.plugins.channel_observer.prompts import (
             build_digest_only_system_prompt,
             build_digest_only_user_prompt,
         )
@@ -895,7 +895,7 @@ class TestChannelPrompts:
         assert "[1.1] U1: hello" in user_prompt
 
     def test_build_judge_prompts(self):
-        from seosoyoung.slackbot.memory.channel_prompts import (
+        from seosoyoung.slackbot.plugins.channel_observer.prompts import (
             build_judge_system_prompt,
             build_judge_user_prompt,
         )

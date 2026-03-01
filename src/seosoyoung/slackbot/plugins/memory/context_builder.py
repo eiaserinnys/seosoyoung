@@ -18,12 +18,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
-from seosoyoung.slackbot.memory.store import MemoryStore
-from seosoyoung.slackbot.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.plugins.memory.store import MemoryStore
+from seosoyoung.slackbot.plugins.memory.token_counter import TokenCounter
 from seosoyoung.slackbot.slack.message_formatter import format_slack_message
 
 if TYPE_CHECKING:
-    from seosoyoung.slackbot.memory.channel_store import ChannelStore
+    from seosoyoung.slackbot.plugins.memory.channel_store import ChannelStore
 
 logger = logging.getLogger(__name__)
 

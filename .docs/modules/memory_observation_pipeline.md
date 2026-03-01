@@ -1,6 +1,6 @@
 # memory/observation_pipeline.py
 
-> 경로: `seosoyoung/slackbot/memory/observation_pipeline.py`
+> 경로: `seosoyoung/slackbot/plugins/memory/observation_pipeline.py`
 
 ## 개요
 
@@ -74,12 +74,12 @@ Returns:
 ## 내부 의존성
 
 - `seosoyoung.slackbot.config.Config`
-- `seosoyoung.slackbot.memory.context_builder.render_observation_items`
-- `seosoyoung.slackbot.memory.context_builder.render_persistent_items`
-- `seosoyoung.slackbot.memory.observer.Observer`
-- `seosoyoung.slackbot.memory.promoter.Compactor`
-- `seosoyoung.slackbot.memory.promoter.Promoter`
-- `seosoyoung.slackbot.memory.reflector.Reflector`
-- `seosoyoung.slackbot.memory.store.MemoryRecord`
-- `seosoyoung.slackbot.memory.store.MemoryStore`
-- `seosoyoung.slackbot.memory.token_counter.TokenCounter`
+- `seosoyoung.slackbot.plugins.memory.context_builder.render_observation_items`
+- `seosoyoung.slackbot.plugins.memory.context_builder.render_persistent_items`
+- `seosoyoung.slackbot.plugins.memory.observer.Observer`
+- `seosoyoung.slackbot.plugins.memory.promoter.Compactor`
+- `seosoyoung.slackbot.plugins.memory.promoter.Promoter`
+- `seosoyoung.slackbot.plugins.memory.reflector.Reflector`
+- `seosoyoung.slackbot.plugins.memory.store.MemoryRecord`
+- `seosoyoung.slackbot.plugins.memory.store.MemoryStore`
+- `seosoyoung.slackbot.plugins.memory.token_counter.TokenCounter`

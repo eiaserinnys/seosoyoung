@@ -2,7 +2,7 @@
 
 import pytest
 
-from seosoyoung.slackbot.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.plugins.memory.token_counter import TokenCounter
 
 
 @pytest.fixture

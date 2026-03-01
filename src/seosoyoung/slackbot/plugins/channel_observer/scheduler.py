@@ -8,9 +8,9 @@ import asyncio
 import logging
 import threading
 
-from seosoyoung.slackbot.memory.channel_intervention import InterventionHistory
-from seosoyoung.slackbot.memory.channel_observer import ChannelObserver, DigestCompressor
-from seosoyoung.slackbot.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.plugins.channel_observer.intervention import InterventionHistory
+from seosoyoung.slackbot.plugins.channel_observer.observer import ChannelObserver, DigestCompressor
+from seosoyoung.slackbot.plugins.channel_observer.store import ChannelStore
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ class ChannelDigestScheduler:
         debug_channel: str = "",
         intervention_threshold: float = 0.3,
         mention_tracker=None,
+        bot_user_id: str = "",
         **kwargs,
     ):
         self.store = store
@@ -54,6 +55,7 @@ class ChannelDigestScheduler:
         self.debug_channel = debug_channel
         self.intervention_threshold = intervention_threshold
         self.mention_tracker = mention_tracker
+        self.bot_user_id = bot_user_id
 
         self._timer: threading.Timer | None = None
         self._running = False
@@ -118,20 +120,10 @@ class ChannelDigestScheduler:
 
     def _run_pipeline(self, channel_id: str) -> None:
         """소화/판단 파이프라인을 실행합니다."""
-        from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
-        from seosoyoung.slackbot.config import Config
+        from seosoyoung.slackbot.plugins.channel_observer.pipeline import run_channel_pipeline
+        from seosoyoung.slackbot.claude import get_claude_runner
 
-        async def _llm_call(system_prompt: str, user_prompt: str) -> str | None:
-            response = await self.observer.client.chat.completions.create(
-                model=self.observer.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            if not response.choices:
-                return None
-            return response.choices[0].message.content
+        runner = get_claude_runner()
 
         try:
             asyncio.run(
@@ -148,8 +140,8 @@ class ChannelDigestScheduler:
                     digest_target_tokens=self.digest_target_tokens,
                     debug_channel=self.debug_channel,
                     intervention_threshold=self.intervention_threshold,
-                    llm_call=_llm_call,
-                    bot_user_id=Config.slack.bot_user_id,
+                    claude_runner=runner,
+                    bot_user_id=self.bot_user_id,
                     mention_tracker=self.mention_tracker,
                 )
             )

@@ -15,7 +15,7 @@ from pathlib import Path
 # seosoyoung 패키지가 PYTHONPATH에 있어야 합니다
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from seosoyoung.slackbot.memory.migration import migrate_memory_dir  # noqa: E402
+from seosoyoung.slackbot.plugins.memory.migration import migrate_memory_dir  # noqa: E402
 
 
 def main() -> int:

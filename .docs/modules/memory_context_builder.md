@@ -1,6 +1,6 @@
 # memory/context_builder.py
 
-> 경로: `seosoyoung/slackbot/memory/context_builder.py`
+> 경로: `seosoyoung/slackbot/plugins/memory/context_builder.py`
 
 ## 개요
 
@@ -62,6 +62,6 @@ OM의 processInputStep에 해당하는 부분입니다.
 
 ## 내부 의존성
 
-- `seosoyoung.slackbot.memory.store.MemoryStore`
-- `seosoyoung.slackbot.memory.token_counter.TokenCounter`
+- `seosoyoung.slackbot.plugins.memory.store.MemoryStore`
+- `seosoyoung.slackbot.plugins.memory.token_counter.TokenCounter`
 - `seosoyoung.slackbot.slack.message_formatter.format_slack_message`

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from seosoyoung.slackbot.memory.channel_store import ChannelStore
+from seosoyoung.slackbot.plugins.channel_observer.store import ChannelStore
 
 if TYPE_CHECKING:
     from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
@@ -44,15 +44,8 @@ class ChannelMessageCollector:
 
     @property
     def bot_user_id(self) -> str | None:
-        """봇 사용자 ID (런타임에 설정될 수 있으므로 프로퍼티로 제공)"""
-        if self._bot_user_id:
-            return self._bot_user_id
-        # Config에서 런타임에 설정된 BOT_USER_ID를 참조
-        try:
-            from seosoyoung.slackbot.config import Config
-            return Config.slack.bot_user_id
-        except Exception:
-            return None
+        """봇 사용자 ID."""
+        return self._bot_user_id
 
     def _detect_and_mark_mention(self, text: str, ts: str, thread_ts: str | None) -> bool:
         """메시지 텍스트에 봇 멘션이 포함되어 있으면 mention_tracker에 마킹.

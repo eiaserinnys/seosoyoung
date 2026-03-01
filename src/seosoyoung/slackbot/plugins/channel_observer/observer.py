@@ -11,7 +11,7 @@ from typing import Optional
 
 import openai
 
-from seosoyoung.slackbot.memory.channel_prompts import (
+from seosoyoung.slackbot.plugins.channel_observer.prompts import (
     build_channel_observer_system_prompt,
     build_channel_observer_user_prompt,
     build_digest_compressor_retry_prompt,
@@ -21,7 +21,7 @@ from seosoyoung.slackbot.memory.channel_prompts import (
     build_judge_system_prompt,
     build_judge_user_prompt,
 )
-from seosoyoung.slackbot.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.plugins.memory.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
 

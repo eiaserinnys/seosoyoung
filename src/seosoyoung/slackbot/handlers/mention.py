@@ -253,12 +253,9 @@ def create_session_and_run_claude(
     session_manager = deps["session_manager"]
     run_claude_in_session = deps["run_claude_in_session"]
     get_user_role = deps["get_user_role"]
-    channel_store = deps.get("channel_store")
     mention_tracker = deps.get("mention_tracker")
     update_message_fn = deps.get("update_message_fn")
-    prepare_memory_fn = deps.get("prepare_memory_fn")
-    trigger_observation_fn = deps.get("trigger_observation_fn")
-    on_compact_om_flag = deps.get("on_compact_om_flag")
+    pm = deps.get("plugin_manager")
 
     user_info = get_user_role(user_id, client)
     if not user_info:
@@ -269,11 +266,17 @@ def create_session_and_run_claude(
     is_existing_thread = thread_ts is not None
 
     # 채널 컨텍스트 구성
+    from seosoyoung.slackbot.handlers.message import _get_plugin_instance
+
+    co_plugin = _get_plugin_instance(pm, "channel_observer")
+    channel_store = co_plugin.store if co_plugin else None
+    channel_observer_channels = co_plugin.channels if co_plugin else []
+
     slack_messages = _get_channel_messages(client, channel, limit=20)
     initial_ctx = build_initial_context(
         channel_id=channel,
         slack_messages=slack_messages,
-        monitored_channels=Config.channel_observer.channels,
+        monitored_channels=channel_observer_channels,
         channel_store=channel_store,
     )
 
@@ -361,45 +364,68 @@ def create_session_and_run_claude(
         slack_context=slack_ctx,
     )
 
-    # OM: 메모리 주입
+    # Plugin: before_execute hook — memory injection
     effective_prompt = prompt
-    if prepare_memory_fn:
-        memory_prompt, anchor_ts = prepare_memory_fn(
-            session_thread_ts, channel, session.session_id, prompt,
-        )
-        pctx.om_anchor_ts = anchor_ts or None
-        if memory_prompt:
-            effective_prompt = (
-                f"{memory_prompt}\n\n"
-                f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
-                f"사용자의 질문: {prompt}"
-            )
+    if pm:
+        try:
+            from seosoyoung.utils.async_bridge import run_in_new_loop
+            from seosoyoung.core.context import create_hook_context
 
-    # OM: on_compact에 OM 플래그 래핑
-    if on_compact_om_flag:
+            ctx = create_hook_context(
+                "before_execute",
+                thread_ts=session_thread_ts,
+                channel=channel,
+                session_id=session.session_id,
+                prompt=prompt,
+                channel_observer_channels=channel_observer_channels,
+            )
+            ctx = run_in_new_loop(pm.dispatch("before_execute", ctx))
+            for result in ctx.results:
+                if isinstance(result, dict):
+                    if "prompt" in result:
+                        effective_prompt = result["prompt"]
+                    if "anchor_ts" in result:
+                        pctx.om_anchor_ts = result["anchor_ts"]
+        except Exception as e:
+            logger.warning(f"before_execute hook 실패 (무시): {e}")
+
+    # Plugin: on_compact에 MemoryPlugin compact 플래그 래핑
+    memory_plugin = _get_plugin_instance(pm, "memory")
+    if memory_plugin:
         original_on_compact = on_compact
 
         async def on_compact_with_om(trigger, message):
             try:
-                on_compact_om_flag(session_thread_ts)
+                memory_plugin.on_compact_flag(session_thread_ts)
             except Exception as e:
                 logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
             await original_on_compact(trigger, message)
 
         on_compact = on_compact_with_om
 
-    # OM: 결과 핸들러 (observation 트리거)
+    # Plugin: after_execute hook — observation trigger
     def on_result(result, thread_ts_arg, user_message_arg):
-        if (trigger_observation_fn
+        if (pm
                 and result.success
                 and session.user_id
                 and thread_ts_arg
                 and result.collected_messages):
             observation_input = user_message_arg if user_message_arg is not None else prompt
-            trigger_observation_fn(
-                thread_ts_arg, session.user_id, observation_input,
-                result.collected_messages, anchor_ts=pctx.om_anchor_ts or "",
-            )
+            try:
+                from seosoyoung.utils.async_bridge import run_in_new_loop
+                from seosoyoung.core.context import create_hook_context
+
+                ctx = create_hook_context(
+                    "after_execute",
+                    thread_ts=thread_ts_arg,
+                    user_id=session.user_id,
+                    prompt=observation_input,
+                    collected_messages=result.collected_messages,
+                    anchor_ts=pctx.om_anchor_ts or "",
+                )
+                run_in_new_loop(pm.dispatch("after_execute", ctx))
+            except Exception as e:
+                logger.warning(f"after_execute hook 실패 (무시): {e}")
 
     # Claude 실행
     run_claude_in_session(
@@ -431,8 +457,8 @@ def register_mention_handlers(app, dependencies: dict):
     get_user_role = dependencies["get_user_role"]
     send_restart_confirmation = dependencies["send_restart_confirmation"]
     list_runner_ref = dependencies.get("list_runner_ref", lambda: None)
-    channel_store = dependencies.get("channel_store")
     mention_tracker = dependencies.get("mention_tracker")
+    pm = dependencies.get("plugin_manager")
 
     @app.event("app_mention")
     def handle_mention(event, say, client):
@@ -493,11 +519,9 @@ def register_mention_handlers(app, dependencies: dict):
                 process_thread_message(
                     event, text, thread_ts, ts, channel, session, say, client,
                     get_user_role, run_claude_in_session, log_prefix="스레드 멘션",
-                    channel_store=channel_store, session_manager=session_manager,
+                    session_manager=session_manager,
                     update_message_fn=dependencies.get("update_message_fn"),
-                    prepare_memory_fn=dependencies.get("prepare_memory_fn"),
-                    trigger_observation_fn=dependencies.get("trigger_observation_fn"),
-                    on_compact_om_flag=dependencies.get("on_compact_om_flag"),
+                    plugin_manager=pm,
                 )
                 return
             logger.debug("스레드에서 멘션됨 (세션 없음) - 원샷 답변")

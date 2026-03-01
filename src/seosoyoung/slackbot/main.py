@@ -23,13 +23,7 @@ from seosoyoung.core.plugin_manager import PluginManager
 from seosoyoung.core.plugin_config import load_plugin_registry, load_plugin_config
 from seosoyoung.slackbot.restart import RestartManager, RestartType
 from seosoyoung.slackbot.marker_parser import parse_markers
-from seosoyoung.slackbot.memory.injector import prepare_memory_injection, trigger_observation
-from seosoyoung.slackbot.handlers.channel_collector import ChannelMessageCollector
 from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
-from seosoyoung.slackbot.memory.channel_store import ChannelStore
-from seosoyoung.slackbot.memory.channel_intervention import InterventionHistory
-from seosoyoung.slackbot.memory.channel_observer import ChannelObserver, DigestCompressor
-from seosoyoung.slackbot.memory.channel_scheduler import ChannelDigestScheduler
 
 # 로깅 설정
 logger = setup_logging()
@@ -41,8 +35,16 @@ app = App(token=Config.slack.bot_token, logger=logger)
 session_manager = SessionManager(session_dir=Path(Config.get_session_path()))
 session_runtime = SessionRuntime()
 
-# Plugin-managed Trello references (populated via on_startup hook)
+# Plugin-managed runtime references (populated via on_startup hook)
 _trello_refs: dict = {"watcher": None, "list_runner": None}
+_channel_refs: dict = {
+    "channel_collector": None,
+    "channel_store": None,
+    "channel_observer": None,
+    "channel_compressor": None,
+    "channel_cooldown": None,
+    "channel_observer_channels": [],
+}
 
 
 def _perform_restart(restart_type: RestartType) -> None:
@@ -142,15 +144,6 @@ signal.signal(signal.SIGINT, _signal_handler)
 if hasattr(signal, 'SIGTERM'):
     signal.signal(signal.SIGTERM, _signal_handler)
 
-def _on_compact_om_flag(thread_ts: str) -> None:
-    """PreCompact 훅에서 OM inject 플래그 설정"""
-    if Config.om.enabled:
-        from seosoyoung.slackbot.memory.store import MemoryStore
-        store = MemoryStore(Config.get_memory_path())
-        record = store.get_record(thread_ts)
-        if record and record.observations.strip():
-            store.set_inject_flag(thread_ts)
-
 
 # Claude 실행기
 executor = ClaudeExecutor(
@@ -173,73 +166,6 @@ executor = ClaudeExecutor(
 
 # 멘션 트래커 (채널 관찰자-멘션 핸들러 통합용)
 _mention_tracker = MentionTracker()
-
-
-def _init_channel_observer(slack_client, mention_tracker):
-    """채널 관찰 시스템 초기화
-
-    Returns:
-        tuple: (store, collector, cooldown, observer, compressor, scheduler)
-               비활성화 시 모두 None.
-    """
-    nones = (None, None, None, None, None, None)
-    if not (Config.channel_observer.enabled and Config.channel_observer.channels):
-        return nones
-
-    store = ChannelStore(base_dir=Config.get_memory_path())
-    collector = ChannelMessageCollector(
-        store=store,
-        target_channels=Config.channel_observer.channels,
-        mention_tracker=mention_tracker,
-    )
-    cooldown = InterventionHistory(base_dir=Config.get_memory_path())
-
-    observer = None
-    compressor = None
-    if Config.channel_observer.api_key:
-        observer = ChannelObserver(
-            api_key=Config.channel_observer.api_key,
-            model=Config.channel_observer.model,
-        )
-        compressor = DigestCompressor(
-            api_key=Config.channel_observer.api_key,
-            model=Config.channel_observer.compressor_model,
-        )
-
-    scheduler = None
-    if observer and Config.channel_observer.periodic_sec > 0:
-        scheduler = ChannelDigestScheduler(
-            store=store,
-            observer=observer,
-            compressor=compressor,
-            cooldown=cooldown,
-            slack_client=slack_client,
-            channels=Config.channel_observer.channels,
-            interval_sec=Config.channel_observer.periodic_sec,
-            buffer_threshold=Config.channel_observer.buffer_threshold,
-            digest_max_tokens=Config.channel_observer.digest_max_tokens,
-            digest_target_tokens=Config.channel_observer.digest_target_tokens,
-            debug_channel=Config.channel_observer.debug_channel,
-            intervention_threshold=Config.channel_observer.intervention_threshold,
-            mention_tracker=mention_tracker,
-        )
-
-    logger.info(
-        f"채널 관찰 시스템 초기화: channels={Config.channel_observer.channels}, "
-        f"threshold={Config.channel_observer.intervention_threshold}, "
-        f"periodic={Config.channel_observer.periodic_sec}s"
-    )
-    return store, collector, cooldown, observer, compressor, scheduler
-
-
-(
-    _channel_store,
-    _channel_collector,
-    _channel_cooldown,
-    _channel_observer,
-    _channel_compressor,
-    _channel_scheduler,
-) = _init_channel_observer(app.client, _mention_tracker)
 
 
 # -- Plugin system -----------------------------------------------------------
@@ -300,6 +226,11 @@ def _load_plugins() -> None:
     run_in_new_loop(_load_all())
 
 
+def _get_memory_plugin():
+    """MemoryPlugin 인스턴스를 반환합니다."""
+    return plugin_manager.plugins.get("memory")
+
+
 def _build_dependencies():
     """핸들러 의존성 딕셔너리 빌드"""
     return {
@@ -313,17 +244,13 @@ def _build_dependencies():
         "send_restart_confirmation": send_restart_confirmation,
         "trello_watcher_ref": lambda: _trello_refs["watcher"],
         "list_runner_ref": lambda: _trello_refs["list_runner"],
-        "channel_collector": _channel_collector,
-        "channel_store": _channel_store,
-        "channel_observer": _channel_observer,
-        "channel_compressor": _channel_compressor,
-        "channel_cooldown": _channel_cooldown,
+        # Channel observer refs (populated by plugin on_startup)
+        "channel_collector": lambda: _channel_refs["channel_collector"],
+        "channel_store": lambda: _channel_refs["channel_store"],
+        "channel_observer_channels": lambda: _channel_refs["channel_observer_channels"],
         "mention_tracker": _mention_tracker,
         # 프레젠테이션 레이어 콜백 (호출부에서 사용)
         "update_message_fn": update_message,
-        "prepare_memory_fn": prepare_memory_injection,
-        "trigger_observation_fn": trigger_observation,
-        "on_compact_om_flag": _on_compact_om_flag,
         "plugin_manager": plugin_manager,
     }
 
@@ -357,8 +284,8 @@ def notify_shutdown():
 def _dispatch_plugin_startup():
     """Dispatch on_startup hook to all loaded plugins.
 
-    Plugins return runtime references (e.g. watcher, list_runner)
-    which are stored in _trello_refs for handler access.
+    Plugins return runtime references (e.g. watcher, list_runner,
+    channel_store, channel_collector) which are stored for handler access.
     """
     from seosoyoung.utils.async_bridge import run_in_new_loop
     from seosoyoung.core.context import create_hook_context
@@ -373,16 +300,23 @@ def _dispatch_plugin_startup():
         restart_manager=restart_manager,
         update_message_fn=update_message,
         data_dir=Path(Config.get_session_path()).parent / "data",
+        mention_tracker=_mention_tracker,
+        bot_user_id=Config.slack.bot_user_id or "",
     )
     ctx = run_in_new_loop(plugin_manager.dispatch("on_startup", ctx))
 
     # Update refs from plugin results
     for result in ctx.results:
         if isinstance(result, dict):
+            # Trello plugin refs
             if "watcher" in result:
                 _trello_refs["watcher"] = result["watcher"]
             if "list_runner" in result:
                 _trello_refs["list_runner"] = result["list_runner"]
+            # Channel observer plugin refs
+            for key in _channel_refs:
+                if key in result:
+                    _channel_refs[key] = result[key]
 
 
 def init_bot_user_id():
@@ -420,10 +354,8 @@ def main():
     logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")
     init_bot_user_id()
     _load_plugins()
-    _dispatch_plugin_startup()  # on_startup hooks (trello watcher, etc.)
+    _dispatch_plugin_startup()  # on_startup hooks (trello watcher, channel observer, etc.)
     notify_startup()
-    if _channel_scheduler:
-        _channel_scheduler.start()
     handler = SocketModeHandler(app, Config.slack.app_token)
     handler.start()
 

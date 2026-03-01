@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from seosoyoung.slackbot.memory.promoter import (
+from seosoyoung.slackbot.plugins.memory.promoter import (
     Compactor,
     CompactorResult,
     Promoter,
@@ -14,14 +14,14 @@ from seosoyoung.slackbot.memory.promoter import (
     parse_compactor_output,
     parse_promoter_output,
 )
-from seosoyoung.slackbot.memory.observation_pipeline import (
+from seosoyoung.slackbot.plugins.memory.observation_pipeline import (
     _try_compact,
     _try_promote,
     observe_conversation,
 )
-from seosoyoung.slackbot.memory.observer import ObserverResult
-from seosoyoung.slackbot.memory.store import MemoryStore
-from seosoyoung.slackbot.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.plugins.memory.observer import ObserverResult
+from seosoyoung.slackbot.plugins.memory.store import MemoryStore
+from seosoyoung.slackbot.plugins.memory.token_counter import TokenCounter
 
 
 def _make_ltm_item(**overrides):
@@ -561,10 +561,10 @@ class TestDebugLogs:
         token_counter = TokenCounter()
 
         with patch(
-            "seosoyoung.slackbot.memory.observation_pipeline._send_debug_log",
+            "seosoyoung.slackbot.plugins.memory.observation_pipeline._send_debug_log",
             return_value="debug_ts_1",
         ) as mock_send, patch(
-            "seosoyoung.slackbot.memory.observation_pipeline._update_debug_log",
+            "seosoyoung.slackbot.plugins.memory.observation_pipeline._update_debug_log",
         ) as mock_update:
             await _try_promote(
                 store=store,
@@ -602,7 +602,7 @@ class TestDebugLogs:
         ))
 
         with patch(
-            "seosoyoung.slackbot.memory.observation_pipeline._send_debug_log",
+            "seosoyoung.slackbot.plugins.memory.observation_pipeline._send_debug_log",
             return_value="debug_ts_2",
         ) as mock_send:
             await _try_compact(

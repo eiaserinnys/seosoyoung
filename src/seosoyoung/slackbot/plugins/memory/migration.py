@@ -3,7 +3,7 @@
 런타임 memory/ 디렉토리의 .md 파일들을 .json으로 일괄 변환합니다.
 
 사용:
-    from seosoyoung.slackbot.memory.migration import migrate_memory_dir
+    from seosoyoung.slackbot.plugins.memory.migration import migrate_memory_dir
     report = migrate_memory_dir("/path/to/memory", dry_run=True)
 """
 
@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from seosoyoung.slackbot.memory.store import parse_md_observations, parse_md_persistent
+from seosoyoung.slackbot.plugins.memory.store import parse_md_observations, parse_md_persistent
 
 logger = logging.getLogger(__name__)
 

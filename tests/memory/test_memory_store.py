@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from seosoyoung.slackbot.memory.store import MemoryRecord, MemoryStore
+from seosoyoung.slackbot.plugins.memory.store import MemoryRecord, MemoryStore
 
 
 def _make_obs_items(items_data, session_date="2026-02-10"):

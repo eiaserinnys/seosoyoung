@@ -20,9 +20,8 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-from seosoyoung.slackbot.config import Config
-from seosoyoung.slackbot.memory.channel_observer import ChannelObserverResult, JudgeItem
-from seosoyoung.slackbot.memory.channel_prompts import DisplayNameResolver
+from seosoyoung.slackbot.plugins.channel_observer.observer import ChannelObserverResult, JudgeItem
+from seosoyoung.slackbot.plugins.channel_observer.prompts import DisplayNameResolver
 
 logger = logging.getLogger(__name__)
 

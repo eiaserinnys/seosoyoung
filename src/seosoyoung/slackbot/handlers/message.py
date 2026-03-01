@@ -2,7 +2,6 @@
 
 import re
 import logging
-import threading
 
 from seosoyoung.slackbot.config import Config
 from seosoyoung.utils.async_bridge import run_in_new_loop
@@ -12,9 +11,6 @@ from seosoyoung.slackbot.slack.message_formatter import format_slack_message
 from seosoyoung.slackbot.claude.session_context import build_followup_context
 
 logger = logging.getLogger(__name__)
-
-# 채널별 소화 파이프라인 실행 중 여부 (중복 실행 방지)
-_digest_running: dict[str, bool] = {}
 
 
 def build_slack_context(
@@ -43,16 +39,23 @@ def build_slack_context(
     return "\n".join(lines)
 
 
+def _get_plugin_instance(pm, name):
+    """PluginManager에서 플러그인 인스턴스를 가져옵니다."""
+    if not pm or not pm.plugins:
+        return None
+    return pm.plugins.get(name)
+
+
 def process_thread_message(
     event, text, thread_ts, ts, channel, session, say, client,
     get_user_role, run_claude_in_session, log_prefix="메시지",
-    channel_store=None, session_manager=None,
-    update_message_fn=None, prepare_memory_fn=None,
-    trigger_observation_fn=None, on_compact_om_flag=None,
+    session_manager=None, update_message_fn=None,
+    plugin_manager=None,
 ):
     """세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 
     mention.py와 message.py에서 공유합니다.
+    Memory injection과 observation은 plugin hooks로 처리합니다.
 
     Returns:
         True if processed, False if skipped (empty message)
@@ -60,6 +63,7 @@ def process_thread_message(
     from seosoyoung.slackbot.presentation.types import PresentationContext
     from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
 
+    pm = plugin_manager
     user_id = event["user"]
 
     clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
@@ -89,14 +93,22 @@ def process_thread_message(
         parent_thread_ts=thread_ts,
     )
 
-    # 후속 채널 컨텍스트 주입 (hybrid 세션이고 channel_store가 있는 경우)
+    # 후속 채널 컨텍스트 주입 (hybrid 세션)
     followup_context = ""
-    if session.source_type == "hybrid" and channel_store and session.last_seen_ts:
+    co_plugin = _get_plugin_instance(pm, "channel_observer")
+    channel_store = co_plugin.store if co_plugin else None
+    channel_observer_channels = co_plugin.channels if co_plugin else []
+
+    if (
+        session.source_type == "hybrid"
+        and channel_store
+        and session.last_seen_ts
+    ):
         followup = build_followup_context(
             channel_id=channel,
             last_seen_ts=session.last_seen_ts,
             channel_store=channel_store,
-            monitored_channels=Config.channel_observer.channels,
+            monitored_channels=channel_observer_channels,
         )
         if followup["messages"]:
             lines = [
@@ -110,7 +122,9 @@ def process_thread_message(
 
             # last_seen_ts 업데이트
             if session_manager:
-                session_manager.update_last_seen_ts(thread_ts, followup["last_seen_ts"])
+                session_manager.update_last_seen_ts(
+                    thread_ts, followup["last_seen_ts"]
+                )
 
     prompt_parts = [slack_context]
     if followup_context:
@@ -159,45 +173,70 @@ def process_thread_message(
     # 콜백 팩토리
     on_progress, on_compact = build_progress_callbacks(pctx, update_message_fn)
 
-    # OM: 메모리 주입
+    # Plugin: before_execute hook — memory injection
     effective_prompt = prompt
-    if prepare_memory_fn:
-        memory_prompt, anchor_ts = prepare_memory_fn(
-            thread_ts, channel, session.session_id, prompt,
-        )
-        pctx.om_anchor_ts = anchor_ts or None
-        if memory_prompt:
-            effective_prompt = (
-                f"{memory_prompt}\n\n"
-                f"위 컨텍스트를 참고하여 질문에 답변해주세요.\n\n"
-                f"사용자의 질문: {prompt}"
+    if pm:
+        try:
+            ctx = create_hook_context(
+                "before_execute",
+                thread_ts=thread_ts,
+                channel=channel,
+                session_id=session.session_id,
+                prompt=prompt,
+                channel_observer_channels=channel_observer_channels,
             )
+            ctx = run_in_new_loop(pm.dispatch("before_execute", ctx))
+            for result in ctx.results:
+                if isinstance(result, dict):
+                    if "prompt" in result:
+                        effective_prompt = result["prompt"]
+                    if "anchor_ts" in result:
+                        pctx.om_anchor_ts = result["anchor_ts"]
+        except Exception as e:
+            logger.warning(f"before_execute hook 실패 (무시): {e}")
 
-    # OM: on_compact에 OM 플래그 래핑
-    if on_compact_om_flag:
+    # Plugin: on_compact에 MemoryPlugin compact 플래그 래핑
+    memory_plugin = _get_plugin_instance(pm, "memory")
+    if memory_plugin:
         original_on_compact = on_compact
 
         async def on_compact_with_om(trigger, message):
             try:
-                on_compact_om_flag(thread_ts)
+                memory_plugin.on_compact_flag(thread_ts)
             except Exception as e:
-                logger.warning(f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}")
+                logger.warning(
+                    f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}"
+                )
             await original_on_compact(trigger, message)
 
         on_compact = on_compact_with_om
 
-    # OM: 결과 핸들러
+    # Plugin: after_execute hook — observation trigger
     def on_result(result, thread_ts_arg, user_message_arg):
-        if (trigger_observation_fn
-                and result.success
-                and session.user_id
-                and thread_ts_arg
-                and result.collected_messages):
-            observation_input = user_message_arg if user_message_arg is not None else prompt
-            trigger_observation_fn(
-                thread_ts_arg, session.user_id, observation_input,
-                result.collected_messages, anchor_ts=pctx.om_anchor_ts or "",
+        if (
+            pm
+            and result.success
+            and session.user_id
+            and thread_ts_arg
+            and result.collected_messages
+        ):
+            observation_input = (
+                user_message_arg
+                if user_message_arg is not None
+                else prompt
             )
+            try:
+                ctx = create_hook_context(
+                    "after_execute",
+                    thread_ts=thread_ts_arg,
+                    user_id=session.user_id,
+                    prompt=observation_input,
+                    collected_messages=result.collected_messages,
+                    anchor_ts=pctx.om_anchor_ts or "",
+                )
+                run_in_new_loop(pm.dispatch("after_execute", ctx))
+            except Exception as e:
+                logger.warning(f"after_execute hook 실패 (무시): {e}")
 
     run_claude_in_session(
         prompt=effective_prompt,
@@ -239,7 +278,7 @@ def _handle_dm_message(event, say, client, dependencies):
     restart_manager = dependencies["restart_manager"]
     run_claude_in_session = dependencies["run_claude_in_session"]
     get_user_role = dependencies["get_user_role"]
-    channel_store = dependencies.get("channel_store")
+    pm = dependencies.get("plugin_manager")
 
     # subtype이 있으면 무시 (message_changed, message_deleted 등)
     if event.get("subtype"):
@@ -269,11 +308,9 @@ def _handle_dm_message(event, say, client, dependencies):
         process_thread_message(
             event, text, thread_ts, ts, channel, session, say, client,
             get_user_role, run_claude_in_session, log_prefix="DM 메시지",
-            channel_store=channel_store, session_manager=session_manager,
+            session_manager=session_manager,
             update_message_fn=dependencies.get("update_message_fn"),
-            prepare_memory_fn=dependencies.get("prepare_memory_fn"),
-            trigger_observation_fn=dependencies.get("trigger_observation_fn"),
-            on_compact_om_flag=dependencies.get("on_compact_om_flag"),
+            plugin_manager=pm,
         )
         return
 
@@ -311,12 +348,6 @@ def register_message_handlers(app, dependencies: dict):
     restart_manager = dependencies["restart_manager"]
     run_claude_in_session = dependencies["run_claude_in_session"]
     get_user_role = dependencies["get_user_role"]
-    channel_collector = dependencies.get("channel_collector")
-    channel_store = dependencies.get("channel_store")
-    channel_observer = dependencies.get("channel_observer")
-    channel_compressor = dependencies.get("channel_compressor")
-    channel_cooldown = dependencies.get("channel_cooldown")
-    mention_tracker = dependencies.get("mention_tracker")
     pm = dependencies.get("plugin_manager")
 
     @app.event("message")
@@ -326,26 +357,20 @@ def register_message_handlers(app, dependencies: dict):
         - 채널 스레드: 세션이 있는 스레드 내 일반 메시지를 처리
         - DM 채널: 앱 DM에서 보낸 메시지를 멘션과 동일하게 처리
         """
-        # 채널 관찰 수집 (봇 메시지 포함이므로 bot_id 체크보다 먼저)
-        if channel_collector:
+        # Plugin hook dispatch: on_message (collection phase)
+        # 봇 메시지 포함 모든 메시지를 플러그인에 전달합니다.
+        # ChannelObserverPlugin이 수집+소화 트리거를 처리합니다.
+        # TranslatePlugin은 자체 bot_id 가드를 가집니다.
+        if pm and pm.plugins:
             try:
-                ch = event.get("channel", "")
-                collected = channel_collector.collect(event)
-                if collected:
-                    # 수집 디버그 로그
-                    _send_collect_log(
-                        client, ch, channel_store, event,
-                    )
-                    force = _contains_trigger_word(event.get("text", ""))
-                    _maybe_trigger_digest(
-                        ch, client,
-                        channel_store, channel_observer,
-                        channel_compressor, channel_cooldown,
-                        force=force,
-                        mention_tracker=mention_tracker,
-                    )
+                ctx = create_hook_context(
+                    "on_message", event=event, client=client,
+                )
+                ctx = run_in_new_loop(pm.dispatch("on_message", ctx))
+                if ctx.stopped:
+                    return
             except Exception as e:
-                logger.error(f"채널 메시지 수집 실패: {e}")
+                logger.error(f"Plugin on_message dispatch 실패: {e}")
 
         # 봇 자신의 메시지는 무시
         if event.get("bot_id"):
@@ -363,18 +388,6 @@ def register_message_handlers(app, dependencies: dict):
         # DM 채널인데 channel_type이 없는 경우 감지 (Slack API 불일치 디버깅)
         if channel and channel.startswith("D") and channel_type != "im":
             logger.warning(f"DM 채널인데 channel_type 불일치: channel={channel}, channel_type={channel_type!r}, thread_ts={event.get('thread_ts')}, user={event.get('user')}")
-
-        # Plugin hook dispatch: on_message
-        # 번역 등 플러그인이 처리할 메시지를 디스패치합니다.
-        # 플러그인이 STOP을 반환하면 핸들러 체인을 중단합니다.
-        if pm and pm.plugins and "<@" not in text:
-            try:
-                ctx = create_hook_context("on_message", event=event, client=client)
-                ctx = run_in_new_loop(pm.dispatch("on_message", ctx))
-                if ctx.stopped:
-                    return
-            except Exception as e:
-                logger.error(f"Plugin dispatch 실패: {e}")
 
         # 스레드 메시지인 경우만 처리
         thread_ts = event.get("thread_ts")
@@ -406,11 +419,9 @@ def register_message_handlers(app, dependencies: dict):
         process_thread_message(
             event, text, thread_ts, ts, channel, session, say, client,
             get_user_role, run_claude_in_session, log_prefix="메시지",
-            channel_store=channel_store, session_manager=session_manager,
+            session_manager=session_manager,
             update_message_fn=dependencies.get("update_message_fn"),
-            prepare_memory_fn=dependencies.get("prepare_memory_fn"),
-            trigger_observation_fn=dependencies.get("trigger_observation_fn"),
-            on_compact_om_flag=dependencies.get("on_compact_om_flag"),
+            plugin_manager=pm,
         )
 
     @app.event("reaction_added")
@@ -420,10 +431,11 @@ def register_message_handlers(app, dependencies: dict):
         채널 리액션 수집 후, 플러그인 on_reaction 훅으로 디스패치합니다.
         Execute emoji 처리 등은 TrelloPlugin에서 담당합니다.
         """
-        # 채널 리액션 수집
-        if channel_collector:
+        # 채널 리액션 수집 (ChannelObserverPlugin)
+        co_plugin = _get_plugin_instance(pm, "channel_observer")
+        if co_plugin:
             try:
-                channel_collector.collect_reaction(event, action="added")
+                co_plugin.collect_reaction(event, action="added")
             except Exception as e:
                 logger.error(f"채널 리액션 수집 실패 (added): {e}")
 
@@ -444,111 +456,9 @@ def register_message_handlers(app, dependencies: dict):
 
         채널 모니터링 대상의 리액션 제거를 수집합니다.
         """
-        if channel_collector:
+        co_plugin = _get_plugin_instance(pm, "channel_observer")
+        if co_plugin:
             try:
-                channel_collector.collect_reaction(event, action="removed")
+                co_plugin.collect_reaction(event, action="removed")
             except Exception as e:
                 logger.error(f"채널 리액션 수집 실패 (removed): {e}")
-
-
-def _contains_trigger_word(text: str) -> bool:
-    """텍스트에 트리거 워드가 포함되어 있는지 확인합니다."""
-    if not Config.channel_observer.trigger_words:
-        return False
-    text_lower = text.lower()
-    return any(word.lower() in text_lower for word in Config.channel_observer.trigger_words)
-
-
-def _maybe_trigger_digest(
-    channel_id, client, store, observer, compressor, cooldown,
-    *, force=False, mention_tracker=None,
-):
-    """pending 토큰이 threshold_A 이상이면 별도 스레드에서 파이프라인을 실행합니다.
-
-    force=True이면 임계치와 무관하게 즉시 트리거합니다.
-    """
-    if not all([store, observer, cooldown]):
-        return
-
-    pending_tokens = store.count_pending_tokens(channel_id)
-    if not force and pending_tokens < Config.channel_observer.threshold_a:
-        return
-
-    # 이미 실행 중이면 스킵
-    if _digest_running.get(channel_id):
-        return
-
-    threshold_a = 1 if force else Config.channel_observer.threshold_a
-
-    def run():
-        _digest_running[channel_id] = True
-        try:
-            from seosoyoung.slackbot.memory.channel_pipeline import run_channel_pipeline
-
-            async def _llm_call(system_prompt: str, user_prompt: str) -> str | None:
-                response = await observer.client.chat.completions.create(
-                    model=observer.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                )
-                if not response.choices:
-                    return None
-                return response.choices[0].message.content
-
-            run_in_new_loop(
-                run_channel_pipeline(
-                    store=store,
-                    observer=observer,
-                    channel_id=channel_id,
-                    slack_client=client,
-                    cooldown=cooldown,
-                    threshold_a=threshold_a,
-                    threshold_b=Config.channel_observer.threshold_b,
-                    compressor=compressor,
-                    digest_max_tokens=Config.channel_observer.digest_max_tokens,
-                    digest_target_tokens=Config.channel_observer.digest_target_tokens,
-                    debug_channel=Config.channel_observer.debug_channel,
-                    intervention_threshold=Config.channel_observer.intervention_threshold,
-                    llm_call=_llm_call,
-                    bot_user_id=Config.slack.bot_user_id,
-                    mention_tracker=mention_tracker,
-                )
-            )
-        except Exception as e:
-            logger.error(f"채널 파이프라인 실행 실패 ({channel_id}): {e}")
-        finally:
-            _digest_running[channel_id] = False
-
-    digest_thread = threading.Thread(target=run, daemon=True)
-    digest_thread.start()
-
-
-def _send_collect_log(client, channel_id, store, event):
-    """수집 디버그 로그를 전송합니다."""
-    debug_channel = Config.channel_observer.debug_channel
-    if not debug_channel:
-        return
-    try:
-        from seosoyoung.slackbot.memory.channel_intervention import send_collect_debug_log
-
-        # message_changed subtype: 실제 내용은 event["message"] 안에 있음
-        if event.get("subtype") == "message_changed":
-            source = event.get("message", {})
-        else:
-            source = event
-
-        buffer_tokens = store.count_pending_tokens(channel_id) if store else 0
-        send_collect_debug_log(
-            client=client,
-            debug_channel=debug_channel,
-            source_channel=channel_id,
-            buffer_tokens=buffer_tokens,
-            threshold=Config.channel_observer.threshold_a,
-            message_text=source.get("text", ""),
-            user=source.get("user", ""),
-            is_thread=bool(source.get("thread_ts") or event.get("thread_ts")),
-        )
-    except Exception as e:
-        logger.error(f"수집 디버그 로그 전송 실패: {e}")

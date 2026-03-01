@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 
-from seosoyoung.slackbot.memory.channel_scheduler import ChannelDigestScheduler
+from seosoyoung.slackbot.plugins.channel_observer.scheduler import ChannelDigestScheduler
 
 
 @pytest.fixture
@@ -152,11 +152,11 @@ class TestRunDigest:
         )
 
         with patch(
-            "seosoyoung.slackbot.memory.channel_pipeline.run_channel_pipeline",
+            "seosoyoung.slackbot.plugins.channel_observer.pipeline.run_channel_pipeline",
             new_callable=MagicMock,
         ):
             with patch(
-                "seosoyoung.slackbot.memory.channel_scheduler.asyncio.run"
+                "seosoyoung.slackbot.plugins.channel_observer.scheduler.asyncio.run"
             ) as mock_asyncio_run:
                 scheduler._run_pipeline("C001")
                 mock_asyncio_run.assert_called_once()
@@ -166,7 +166,7 @@ class TestRunDigest:
         scheduler = make_scheduler(mock_deps, channels=["C001"])
 
         with patch(
-            "seosoyoung.slackbot.memory.channel_scheduler.asyncio.run",
+            "seosoyoung.slackbot.plugins.channel_observer.scheduler.asyncio.run",
             side_effect=Exception("pipeline error"),
         ):
             # 예외가 전파되지 않아야 함

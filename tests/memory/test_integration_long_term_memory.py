@@ -13,13 +13,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from seosoyoung.slackbot.memory.context_builder import ContextBuilder
-from seosoyoung.slackbot.memory.observation_pipeline import observe_conversation
-from seosoyoung.slackbot.memory.observer import ObserverResult
-from seosoyoung.slackbot.memory.promoter import Compactor, CompactorResult, Promoter, PromoterResult
-from seosoyoung.slackbot.memory.reflector import Reflector, ReflectorResult
-from seosoyoung.slackbot.memory.store import MemoryRecord, MemoryStore
-from seosoyoung.slackbot.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.plugins.memory.context_builder import ContextBuilder
+from seosoyoung.slackbot.plugins.memory.observation_pipeline import observe_conversation
+from seosoyoung.slackbot.plugins.memory.observer import ObserverResult
+from seosoyoung.slackbot.plugins.memory.promoter import Compactor, CompactorResult, Promoter, PromoterResult
+from seosoyoung.slackbot.plugins.memory.reflector import Reflector, ReflectorResult
+from seosoyoung.slackbot.plugins.memory.store import MemoryRecord, MemoryStore
+from seosoyoung.slackbot.plugins.memory.token_counter import TokenCounter
 
 
 def _make_obs_items(items_data):
@@ -923,7 +923,7 @@ class TestMigrationE2E:
         self, store, mock_observer, long_messages
     ):
         """일괄 마이그레이션 모듈 실행 후 파이프라인이 정상 동작"""
-        from seosoyoung.slackbot.memory.migration import migrate_memory_dir
+        from seosoyoung.slackbot.plugins.memory.migration import migrate_memory_dir
 
         store._ensure_dirs()
 

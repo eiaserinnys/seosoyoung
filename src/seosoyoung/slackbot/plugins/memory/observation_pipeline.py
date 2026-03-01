@@ -17,15 +17,15 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from seosoyoung.slackbot.config import Config
-from seosoyoung.slackbot.memory.context_builder import (
+from seosoyoung.slackbot.plugins.memory.context_builder import (
     render_observation_items,
     render_persistent_items,
 )
-from seosoyoung.slackbot.memory.observer import Observer
-from seosoyoung.slackbot.memory.promoter import Compactor, Promoter
-from seosoyoung.slackbot.memory.reflector import Reflector
-from seosoyoung.slackbot.memory.store import MemoryRecord, MemoryStore
-from seosoyoung.slackbot.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.plugins.memory.observer import Observer
+from seosoyoung.slackbot.plugins.memory.promoter import Compactor, Promoter
+from seosoyoung.slackbot.plugins.memory.reflector import Reflector
+from seosoyoung.slackbot.plugins.memory.store import MemoryRecord, MemoryStore
+from seosoyoung.slackbot.plugins.memory.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
 

@@ -1,115 +1,75 @@
-"""트리거 워드 감지 테스트"""
+"""트리거 워드 감지 테스트
 
-from unittest.mock import patch, MagicMock
+_contains_trigger_word는 ChannelObserverPlugin의 내부 메서드로 이동되었습니다.
+이 테스트는 플러그인 인스턴스를 직접 생성하여 검증합니다.
+"""
 
 import pytest
 
-from seosoyoung.slackbot.handlers.message import _contains_trigger_word
+from seosoyoung.slackbot.plugins.channel_observer.plugin import (
+    ChannelObserverPlugin,
+)
+
+
+@pytest.fixture()
+async def plugin_with_triggers():
+    """트리거 워드가 설정된 ChannelObserverPlugin 인스턴스."""
+    p = ChannelObserverPlugin()
+    await p.on_load({
+        "memory_path": "/tmp/test",
+        "trigger_words": ["소영", "서소영", "soyoung", "SeoSoyoung"],
+    })
+    return p
+
+
+@pytest.fixture()
+async def plugin_no_triggers():
+    """트리거 워드가 없는 ChannelObserverPlugin 인스턴스."""
+    p = ChannelObserverPlugin()
+    await p.on_load({
+        "memory_path": "/tmp/test",
+        "trigger_words": [],
+    })
+    return p
 
 
 class TestContainsTriggerWord:
-    """_contains_trigger_word 함수 테스트"""
+    """ChannelObserverPlugin._contains_trigger_word 메서드 테스트"""
 
-    def test_no_trigger_words_configured(self):
+    @pytest.mark.asyncio
+    async def test_no_trigger_words_configured(self, plugin_no_triggers):
         """트리거 워드가 설정되지 않으면 항상 False"""
-        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
-            mock_config.channel_observer.trigger_words = []
-            assert _contains_trigger_word("소영아 안녕") is False
+        assert plugin_no_triggers._contains_trigger_word("소영아 안녕") is False
 
-    def test_match_exact(self):
+    @pytest.mark.asyncio
+    async def test_match_exact(self, plugin_with_triggers):
         """정확히 일치하는 트리거 워드 감지"""
-        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
-            mock_config.channel_observer.trigger_words = ["소영"]
-            assert _contains_trigger_word("소영") is True
+        assert plugin_with_triggers._contains_trigger_word("소영") is True
 
-    def test_match_substring(self):
+    @pytest.mark.asyncio
+    async def test_match_substring(self, plugin_with_triggers):
         """문장 내에 포함된 트리거 워드 감지"""
-        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
-            mock_config.channel_observer.trigger_words = ["소영"]
-            assert _contains_trigger_word("소영아 이것 좀 봐줘") is True
+        assert plugin_with_triggers._contains_trigger_word("소영아 이것 좀 봐줘") is True
 
-    def test_no_match(self):
+    @pytest.mark.asyncio
+    async def test_no_match(self, plugin_with_triggers):
         """트리거 워드가 없는 텍스트"""
-        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
-            mock_config.channel_observer.trigger_words = ["소영"]
-            assert _contains_trigger_word("오늘 날씨가 좋다") is False
+        assert plugin_with_triggers._contains_trigger_word("오늘 날씨가 좋다") is False
 
-    def test_case_insensitive(self):
+    @pytest.mark.asyncio
+    async def test_case_insensitive(self, plugin_with_triggers):
         """대소문자 무시 매칭"""
-        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
-            mock_config.channel_observer.trigger_words = ["SeoSoyoung"]
-            assert _contains_trigger_word("seosoyoung is here") is True
+        assert plugin_with_triggers._contains_trigger_word("seosoyoung is here") is True
 
-    def test_multiple_trigger_words(self):
+    @pytest.mark.asyncio
+    async def test_multiple_trigger_words(self, plugin_with_triggers):
         """여러 트리거 워드 중 하나라도 매칭"""
-        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
-            mock_config.channel_observer.trigger_words = ["소영", "서소영", "soyoung"]
-            assert _contains_trigger_word("서소영 봇") is True
-            assert _contains_trigger_word("안녕 소영") is True
-            assert _contains_trigger_word("hey soyoung") is True
-            assert _contains_trigger_word("아무 관련 없는 말") is False
+        assert plugin_with_triggers._contains_trigger_word("서소영 봇") is True
+        assert plugin_with_triggers._contains_trigger_word("안녕 소영") is True
+        assert plugin_with_triggers._contains_trigger_word("hey soyoung") is True
+        assert plugin_with_triggers._contains_trigger_word("아무 관련 없는 말") is False
 
-    def test_empty_text(self):
+    @pytest.mark.asyncio
+    async def test_empty_text(self, plugin_with_triggers):
         """빈 텍스트"""
-        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config:
-            mock_config.channel_observer.trigger_words = ["소영"]
-            assert _contains_trigger_word("") is False
-
-
-class TestMaybeTriggerDigestForce:
-    """_maybe_trigger_digest의 force 파라미터 테스트"""
-
-    def test_force_bypasses_threshold(self):
-        """force=True이면 임계치 미만이어도 파이프라인 트리거"""
-        from seosoyoung.slackbot.handlers.message import _maybe_trigger_digest
-
-        store = MagicMock()
-        observer = MagicMock()
-        cooldown = MagicMock()
-        compressor = MagicMock()
-        client = MagicMock()
-
-        store.count_pending_tokens.return_value = 10  # threshold_A(150)보다 작음
-
-        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config, \
-             patch("seosoyoung.slackbot.handlers.message._digest_running", {}), \
-             patch("seosoyoung.slackbot.handlers.message.threading") as mock_threading:
-            mock_config.channel_observer.threshold_a = 150
-            mock_config.channel_observer.threshold_b = 5000
-            mock_config.channel_observer.digest_max_tokens = 10000
-            mock_config.channel_observer.digest_target_tokens = 5000
-            mock_config.channel_observer.debug_channel = ""
-            mock_config.channel_observer.intervention_threshold = 0.3
-
-            _maybe_trigger_digest(
-                "C001", client, store, observer, compressor, cooldown,
-                force=True,
-            )
-
-            # 스레드가 시작되어야 함
-            mock_threading.Thread.assert_called_once()
-            mock_threading.Thread.return_value.start.assert_called_once()
-
-    def test_no_force_respects_threshold(self):
-        """force=False이면 threshold_A 미만일 때 파이프라인 실행 안 함"""
-        from seosoyoung.slackbot.handlers.message import _maybe_trigger_digest
-
-        store = MagicMock()
-        observer = MagicMock()
-        cooldown = MagicMock()
-        compressor = MagicMock()
-        client = MagicMock()
-
-        store.count_pending_tokens.return_value = 10
-
-        with patch("seosoyoung.slackbot.handlers.message.Config") as mock_config, \
-             patch("seosoyoung.slackbot.handlers.message._digest_running", {}), \
-             patch("seosoyoung.slackbot.handlers.message.threading") as mock_threading:
-            mock_config.channel_observer.threshold_a = 150
-
-            _maybe_trigger_digest(
-                "C001", client, store, observer, compressor, cooldown,
-                force=False,
-            )
-
-            mock_threading.Thread.assert_not_called()
+        assert plugin_with_triggers._contains_trigger_word("") is False

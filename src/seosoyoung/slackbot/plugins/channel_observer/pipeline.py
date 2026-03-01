@@ -13,7 +13,7 @@ import math
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
-from seosoyoung.slackbot.memory.channel_intervention import (
+from seosoyoung.slackbot.plugins.channel_observer.intervention import (
     InterventionAction,
     InterventionHistory,
     burst_intervention_probability,
@@ -23,19 +23,19 @@ from seosoyoung.slackbot.memory.channel_intervention import (
     send_intervention_probability_debug_log,
     send_multi_judge_debug_log,
 )
-from seosoyoung.slackbot.memory.channel_observer import (
+from seosoyoung.slackbot.plugins.channel_observer.observer import (
     ChannelObserver,
     ChannelObserverResult,
     DigestCompressor,
     JudgeItem,
     JudgeResult,
 )
-from seosoyoung.slackbot.memory.channel_prompts import (
+from seosoyoung.slackbot.plugins.channel_observer.prompts import (
     build_channel_intervene_user_prompt,
     get_channel_intervene_system_prompt,
 )
-from seosoyoung.slackbot.memory.channel_store import ChannelStore
-from seosoyoung.slackbot.memory.token_counter import TokenCounter
+from seosoyoung.slackbot.plugins.channel_observer.store import ChannelStore
+from seosoyoung.slackbot.plugins.memory.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
 

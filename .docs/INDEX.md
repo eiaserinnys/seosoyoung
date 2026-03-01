@@ -44,7 +44,6 @@
 - [`slackbot/config.py`](modules/slackbot_config.md): 설정 관리
 - [`slackbot/formatting.py`](modules/slackbot_formatting.md): 슬랙 메시지 포맷팅 — 공유 리프 모듈
 - [`handlers/actions.py`](modules/handlers_actions.md): 재시작 버튼 액션 핸들러
-- [`handlers/channel_collector.py`](modules/handlers_channel_collector.md): 채널 메시지 수집기
 - [`handlers/commands.py`](modules/handlers_commands.md): 명령어 핸들러 모듈
 - [`handlers/mention.py`](modules/handlers_mention.md): @seosoyoung 멘션 핸들러
 - [`handlers/mention_tracker.py`](modules/handlers_mention_tracker.md): 멘션으로 처리 중인 스레드를 추적
@@ -52,17 +51,20 @@
 - [`slackbot/logging_config.py`](modules/slackbot_logging_config.md): 로깅 설정 모듈
 - [`slackbot/main.py`](modules/slackbot_main.md): SeoSoyoung 슬랙 봇 메인
 - [`slackbot/marker_parser.py`](modules/slackbot_marker_parser.md): 응용 마커 파서
-- [`memory/channel_intervention.py`](modules/memory_channel_intervention.md): 채널 개입(intervention) 모듈
-- [`memory/channel_observer.py`](modules/memory_channel_observer.md): 채널 관찰 엔진
-- [`memory/channel_pipeline.py`](modules/memory_channel_pipeline.md): 채널 소화/판단 파이프라인
-- [`memory/channel_prompts.py`](modules/memory_channel_prompts.md): 채널 관찰 프롬프트
-- [`memory/channel_scheduler.py`](modules/memory_channel_scheduler.md): 채널 소화 주기적 스케줄러
-- [`memory/channel_store.py`](modules/memory_channel_store.md): 채널 관찰 데이터 저장소
+- [`channel_observer/collector.py`](modules/channel_observer_collector.md): 채널 메시지 수집기
+- [`channel_observer/intervention.py`](modules/channel_observer_intervention.md): 채널 개입(intervention) 모듈
+- [`channel_observer/observer.py`](modules/channel_observer_observer.md): 채널 관찰 엔진
+- [`channel_observer/pipeline.py`](modules/channel_observer_pipeline.md): 채널 소화/판단 파이프라인
+- [`channel_observer/plugin.py`](modules/channel_observer_plugin.md): Channel Observer plugin.
+- [`channel_observer/prompts.py`](modules/channel_observer_prompts.md): 채널 관찰 프롬프트
+- [`channel_observer/scheduler.py`](modules/channel_observer_scheduler.md): 채널 소화 주기적 스케줄러
+- [`channel_observer/store.py`](modules/channel_observer_store.md): 채널 관찰 데이터 저장소
 - [`memory/context_builder.py`](modules/memory_context_builder.md): 컨텍스트 빌더
 - [`memory/injector.py`](modules/memory_injector.md): OM(Observational Memory) 주입 및 관찰 트리거 로직
 - [`memory/migration.py`](modules/memory_migration.md): OM 마크다운 → JSON 마이그레이션
 - [`memory/observation_pipeline.py`](modules/memory_observation_pipeline.md): 관찰 파이프라인
 - [`memory/observer.py`](modules/memory_observer.md): Observer 모듈
+- [`memory/plugin.py`](modules/memory_plugin.md): Memory plugin.
 - [`memory/promoter.py`](modules/memory_promoter.md): Promoter / Compactor 모듈
 - [`memory/prompt_loader.py`](modules/memory_prompt_loader.md): 프롬프트 파일 로더
 - [`memory/prompts.py`](modules/memory_prompts.md): Observer/Reflector 프롬프트
@@ -178,37 +180,39 @@
 - `ClaudeConfig` (seosoyoung/slackbot/config.py:219): Claude 실행 모드 설정
 - `EmojiConfig` (seosoyoung/slackbot/config.py:229): 이모지 설정
 - `Config` (seosoyoung/slackbot/config.py:257): 애플리케이션 설정
-- `ChannelMessageCollector` (seosoyoung/slackbot/handlers/channel_collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:20): 멘션으로 처리 중인 스레드를 추적 (TTL 기반 자동 만료)
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
-- `InterventionAction` (seosoyoung/slackbot/memory/channel_intervention.py:31): 개입 액션
-- `InterventionHistory` (seosoyoung/slackbot/memory/channel_intervention.py:224): 개입 이력 관리
-- `ChannelObserverResult` (seosoyoung/slackbot/memory/channel_observer.py:30): 채널 관찰 결과 (하위호환 유지)
-- `DigestResult` (seosoyoung/slackbot/memory/channel_observer.py:41): 소화 전용 결과
-- `JudgeItem` (seosoyoung/slackbot/memory/channel_observer.py:49): 개별 메시지에 대한 리액션 판단 결과
-- `JudgeResult` (seosoyoung/slackbot/memory/channel_observer.py:71): 복수 메시지에 대한 리액션 판단 결과
-- `DigestCompressorResult` (seosoyoung/slackbot/memory/channel_observer.py:97): digest 압축 결과
-- `ChannelObserver` (seosoyoung/slackbot/memory/channel_observer.py:277): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
-- `DigestCompressor` (seosoyoung/slackbot/memory/channel_observer.py:427): digest가 임계치를 초과할 때 압축
-- `DisplayNameResolver` (seosoyoung/slackbot/memory/channel_prompts.py:18): Slack user ID → 디스플레이네임 캐시 기반 변환기.
-- `ChannelDigestScheduler` (seosoyoung/slackbot/memory/channel_scheduler.py:18): 주기적으로 채널 버퍼를 체크하여 소화를 트리거하는 스케줄러
-- `ChannelStore` (seosoyoung/slackbot/memory/channel_store.py:24): 파일 기반 채널 관찰 데이터 저장소
-- `InjectionResult` (seosoyoung/slackbot/memory/context_builder.py:32): 주입 결과 — 디버그 로그용 정보를 포함
-- `ContextBuilder` (seosoyoung/slackbot/memory/context_builder.py:222): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
-- `MigrationReport` (seosoyoung/slackbot/memory/migration.py:21): 마이그레이션 결과 보고서
-- `ObserverResult` (seosoyoung/slackbot/memory/observer.py:24): Observer 출력 결과
-- `Observer` (seosoyoung/slackbot/memory/observer.py:145): 대화를 관찰하여 구조화된 관찰 로그를 생성
-- `PromoterResult` (seosoyoung/slackbot/memory/promoter.py:22): Promoter 출력 결과
-- `CompactorResult` (seosoyoung/slackbot/memory/promoter.py:37): Compactor 출력 결과
-- `Promoter` (seosoyoung/slackbot/memory/promoter.py:181): 장기 기억 후보를 검토하여 승격
-- `Compactor` (seosoyoung/slackbot/memory/promoter.py:233): 장기 기억을 압축
-- `ReflectorResult` (seosoyoung/slackbot/memory/reflector.py:25): Reflector 출력 결과
-- `Reflector` (seosoyoung/slackbot/memory/reflector.py:93): 관찰 로그를 압축하고 재구조화
-- `ObservationItem` (seosoyoung/slackbot/memory/store.py:40): 세션 관찰 항목
-- `PersistentItem` (seosoyoung/slackbot/memory/store.py:73): 장기 기억 항목
-- `MemoryRecord` (seosoyoung/slackbot/memory/store.py:238): 세션별 관찰 로그 레코드
-- `MemoryStore` (seosoyoung/slackbot/memory/store.py:300): 파일 기반 관찰 로그 저장소
-- `TokenCounter` (seosoyoung/slackbot/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
+- `ChannelMessageCollector` (seosoyoung/slackbot/plugins/channel_observer/collector.py:19): 관찰 대상 채널의 메시지를 수집하여 버퍼에 저장
+- `InterventionAction` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:30): 개입 액션
+- `InterventionHistory` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:223): 개입 이력 관리
+- `ChannelObserverResult` (seosoyoung/slackbot/plugins/channel_observer/observer.py:30): 채널 관찰 결과 (하위호환 유지)
+- `DigestResult` (seosoyoung/slackbot/plugins/channel_observer/observer.py:41): 소화 전용 결과
+- `JudgeItem` (seosoyoung/slackbot/plugins/channel_observer/observer.py:49): 개별 메시지에 대한 리액션 판단 결과
+- `JudgeResult` (seosoyoung/slackbot/plugins/channel_observer/observer.py:71): 복수 메시지에 대한 리액션 판단 결과
+- `DigestCompressorResult` (seosoyoung/slackbot/plugins/channel_observer/observer.py:97): digest 압축 결과
+- `ChannelObserver` (seosoyoung/slackbot/plugins/channel_observer/observer.py:277): 채널 대화를 관찰하여 digest를 갱신하고 반응을 판단
+- `DigestCompressor` (seosoyoung/slackbot/plugins/channel_observer/observer.py:427): digest가 임계치를 초과할 때 압축
+- `ChannelObserverPlugin` (seosoyoung/slackbot/plugins/channel_observer/plugin.py:25): Channel observation and digest management plugin.
+- `DisplayNameResolver` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:18): Slack user ID → 디스플레이네임 캐시 기반 변환기.
+- `ChannelDigestScheduler` (seosoyoung/slackbot/plugins/channel_observer/scheduler.py:18): 주기적으로 채널 버퍼를 체크하여 소화를 트리거하는 스케줄러
+- `ChannelStore` (seosoyoung/slackbot/plugins/channel_observer/store.py:24): 파일 기반 채널 관찰 데이터 저장소
+- `InjectionResult` (seosoyoung/slackbot/plugins/memory/context_builder.py:32): 주입 결과 — 디버그 로그용 정보를 포함
+- `ContextBuilder` (seosoyoung/slackbot/plugins/memory/context_builder.py:222): 장기 기억 + 세션 관찰 로그 + 채널 관찰을 시스템 프롬프트로 변환
+- `MigrationReport` (seosoyoung/slackbot/plugins/memory/migration.py:21): 마이그레이션 결과 보고서
+- `ObserverResult` (seosoyoung/slackbot/plugins/memory/observer.py:24): Observer 출력 결과
+- `Observer` (seosoyoung/slackbot/plugins/memory/observer.py:145): 대화를 관찰하여 구조화된 관찰 로그를 생성
+- `MemoryPlugin` (seosoyoung/slackbot/plugins/memory/plugin.py:22): Observational Memory plugin.
+- `PromoterResult` (seosoyoung/slackbot/plugins/memory/promoter.py:22): Promoter 출력 결과
+- `CompactorResult` (seosoyoung/slackbot/plugins/memory/promoter.py:37): Compactor 출력 결과
+- `Promoter` (seosoyoung/slackbot/plugins/memory/promoter.py:181): 장기 기억 후보를 검토하여 승격
+- `Compactor` (seosoyoung/slackbot/plugins/memory/promoter.py:233): 장기 기억을 압축
+- `ReflectorResult` (seosoyoung/slackbot/plugins/memory/reflector.py:25): Reflector 출력 결과
+- `Reflector` (seosoyoung/slackbot/plugins/memory/reflector.py:93): 관찰 로그를 압축하고 재구조화
+- `ObservationItem` (seosoyoung/slackbot/plugins/memory/store.py:40): 세션 관찰 항목
+- `PersistentItem` (seosoyoung/slackbot/plugins/memory/store.py:73): 장기 기억 항목
+- `MemoryRecord` (seosoyoung/slackbot/plugins/memory/store.py:238): 세션별 관찰 로그 레코드
+- `MemoryStore` (seosoyoung/slackbot/plugins/memory/store.py:300): 파일 기반 관찰 로그 저장소
+- `TokenCounter` (seosoyoung/slackbot/plugins/memory/token_counter.py:9): o200k_base 인코딩 기반 토큰 카운터
 - `Language` (seosoyoung/slackbot/plugins/translate/detector.py:9): 
 - `GlossaryMatchResult` (seosoyoung/slackbot/plugins/translate/glossary.py:49): 용어 매칭 결과
 - `TranslatePlugin` (seosoyoung/slackbot/plugins/translate/plugin.py:22): 자동 번역 플러그인.
@@ -371,66 +375,66 @@
 - `get_channel_history()` (seosoyoung/slackbot/handlers/mention.py:110): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 - `try_handle_command()` (seosoyoung/slackbot/handlers/mention.py:140): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
 - `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:224): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
-- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:419): 멘션 핸들러 등록
-- `build_slack_context()` (seosoyoung/slackbot/handlers/message.py:21): 슬랙 컨텍스트 블록 문자열을 생성합니다.
-- `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:47): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
-- `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:304): 메시지 핸들러 등록
+- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:445): 멘션 핸들러 등록
+- `build_slack_context()` (seosoyoung/slackbot/handlers/message.py:17): 슬랙 컨텍스트 블록 문자열을 생성합니다.
+- `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:50): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
+- `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:341): 메시지 핸들러 등록
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/slackbot/main.py:348): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/slackbot/main.py:359): 봇 종료 알림
-- `init_bot_user_id()` (seosoyoung/slackbot/main.py:401): 봇 사용자 ID 초기화
-- `main()` (seosoyoung/slackbot/main.py:411): 봇 메인 진입점
+- `notify_startup()` (seosoyoung/slackbot/main.py:275): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/slackbot/main.py:286): 봇 종료 알림
+- `init_bot_user_id()` (seosoyoung/slackbot/main.py:335): 봇 사용자 ID 초기화
+- `main()` (seosoyoung/slackbot/main.py:345): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
-- `parse_intervention_markup()` (seosoyoung/slackbot/memory/channel_intervention.py:39): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
-- `async execute_interventions()` (seosoyoung/slackbot/memory/channel_intervention.py:80): InterventionAction 리스트를 슬랙 API로 발송합니다.
-- `intervention_probability()` (seosoyoung/slackbot/memory/channel_intervention.py:132): 시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.
-- `burst_intervention_probability()` (seosoyoung/slackbot/memory/channel_intervention.py:154): 버스트 인식 개입 확률을 계산합니다.
-- `async send_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:361): 디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식).
-- `send_collect_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:423): 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
-- `send_digest_skip_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:468): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
-- `send_intervention_probability_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:499): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
-- `send_multi_judge_debug_log()` (seosoyoung/slackbot/memory/channel_intervention.py:544): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
-- `parse_channel_observer_output()` (seosoyoung/slackbot/memory/channel_observer.py:104): Observer 응답에서 XML 태그를 파싱합니다.
-- `parse_judge_output()` (seosoyoung/slackbot/memory/channel_observer.py:130): Judge 응답에서 XML 태그를 파싱합니다.
-- `async run_channel_pipeline()` (seosoyoung/slackbot/memory/channel_pipeline.py:269): 소화/판단 분리 파이프라인을 실행합니다.
-- `build_channel_observer_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:65): 채널 관찰 시스템 프롬프트를 반환합니다.
-- `build_channel_observer_user_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:70): 채널 관찰 사용자 프롬프트를 구성합니다.
-- `build_digest_compressor_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:104): digest 압축 시스템 프롬프트를 반환합니다.
-- `build_digest_compressor_retry_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:109): digest 압축 재시도 프롬프트를 반환합니다.
-- `get_channel_intervene_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:118): 채널 개입 응답 생성 시스템 프롬프트를 반환합니다.
-- `build_channel_intervene_user_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:123): 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
-- `build_digest_only_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:162): 소화 전용 시스템 프롬프트를 반환합니다.
-- `build_digest_only_user_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:167): 소화 전용 사용자 프롬프트를 구성합니다.
-- `build_judge_system_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:198): 리액션 판단 전용 시스템 프롬프트를 반환합니다.
-- `build_judge_user_prompt()` (seosoyoung/slackbot/memory/channel_prompts.py:203): 리액션 판단 전용 사용자 프롬프트를 구성합니다.
-- `render_observation_items()` (seosoyoung/slackbot/memory/context_builder.py:49): 관찰 항목 리스트를 사람이 읽을 수 있는 텍스트로 렌더링합니다.
-- `render_persistent_items()` (seosoyoung/slackbot/memory/context_builder.py:82): 장기 기억 항목 리스트를 텍스트로 렌더링합니다.
-- `optimize_items_for_context()` (seosoyoung/slackbot/memory/context_builder.py:122): 관찰 항목을 컨텍스트 주입에 최적화합니다.
-- `add_relative_time()` (seosoyoung/slackbot/memory/context_builder.py:162): [하위 호환] 텍스트 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
-- `optimize_for_context()` (seosoyoung/slackbot/memory/context_builder.py:182): [하위 호환] 텍스트 관찰 로그를 컨텍스트 주입에 최적화합니다.
-- `prepare_memory_injection()` (seosoyoung/slackbot/memory/injector.py:15): OM 메모리 주입을 준비합니다.
-- `create_or_load_debug_anchor()` (seosoyoung/slackbot/memory/injector.py:101): 디버그 앵커 메시지를 생성하거나 기존 앵커를 로드합니다.
-- `send_injection_debug_log()` (seosoyoung/slackbot/memory/injector.py:157): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
-- `trigger_observation()` (seosoyoung/slackbot/memory/injector.py:241): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
-- `migrate_observations()` (seosoyoung/slackbot/memory/migration.py:53): observations/ 디렉토리의 .md 파일을 .json으로 변환합니다.
-- `migrate_persistent()` (seosoyoung/slackbot/memory/migration.py:105): persistent/recent.md → recent.json 변환.
-- `migrate_memory_dir()` (seosoyoung/slackbot/memory/migration.py:145): memory/ 디렉토리 전체를 마이그레이션합니다.
-- `async observe_conversation()` (seosoyoung/slackbot/memory/observation_pipeline.py:100): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
-- `parse_observer_output()` (seosoyoung/slackbot/memory/observer.py:33): Observer 응답 JSON을 파싱합니다.
-- `parse_promoter_output()` (seosoyoung/slackbot/memory/promoter.py:119): Promoter 응답 JSON에서 promoted와 rejected를 파싱합니다.
-- `parse_compactor_output()` (seosoyoung/slackbot/memory/promoter.py:159): Compactor 응답에서 JSON 배열을 파싱합니다.
-- `load_prompt()` (seosoyoung/slackbot/memory/prompt_loader.py:71): 프롬프트 파일을 로드합니다.
-- `load_prompt_cached()` (seosoyoung/slackbot/memory/prompt_loader.py:90): 프롬프트 파일을 캐시하여 로드합니다.
-- `build_observer_system_prompt()` (seosoyoung/slackbot/memory/prompts.py:19): Observer 시스템 프롬프트를 반환합니다.
-- `build_observer_user_prompt()` (seosoyoung/slackbot/memory/prompts.py:24): Observer 사용자 프롬프트를 구성합니다.
-- `build_reflector_system_prompt()` (seosoyoung/slackbot/memory/prompts.py:67): Reflector 시스템 프롬프트를 반환합니다.
-- `build_reflector_retry_prompt()` (seosoyoung/slackbot/memory/prompts.py:72): Reflector 재시도 프롬프트를 반환합니다.
-- `build_promoter_prompt()` (seosoyoung/slackbot/memory/prompts.py:79): Promoter 프롬프트를 구성합니다.
-- `build_compactor_prompt()` (seosoyoung/slackbot/memory/prompts.py:100): Compactor 프롬프트를 구성합니다.
-- `generate_obs_id()` (seosoyoung/slackbot/memory/store.py:123): 관찰 항목 ID를 생성합니다.
-- `generate_ltm_id()` (seosoyoung/slackbot/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
-- `parse_md_observations()` (seosoyoung/slackbot/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.
-- `parse_md_persistent()` (seosoyoung/slackbot/memory/store.py:192): 마크다운 장기 기억을 항목 리스트로 파싱합니다.
+- `parse_intervention_markup()` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:38): ChannelObserverResult를 InterventionAction 리스트로 변환합니다.
+- `async execute_interventions()` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:79): InterventionAction 리스트를 슬랙 API로 발송합니다.
+- `intervention_probability()` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:131): 시간 감쇠와 빈도 감쇠를 기반으로 개입 확률을 계산합니다.
+- `burst_intervention_probability()` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:153): 버스트 인식 개입 확률을 계산합니다.
+- `async send_debug_log()` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:360): 디버그 채널에 관찰 결과 로그를 전송합니다 (Block Kit 형식).
+- `send_collect_debug_log()` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:422): 메시지 수집 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
+- `send_digest_skip_debug_log()` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:467): 소화 스킵(임계치 미달) 시 디버그 채널에 로그를 전송합니다 (Block Kit 형식).
+- `send_intervention_probability_debug_log()` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:498): 확률 기반 개입 판단 결과를 디버그 채널에 기록합니다 (Block Kit 형식).
+- `send_multi_judge_debug_log()` (seosoyoung/slackbot/plugins/channel_observer/intervention.py:543): 복수 판단 결과를 메시지별 독립 블록으로 디버그 채널에 전송합니다.
+- `parse_channel_observer_output()` (seosoyoung/slackbot/plugins/channel_observer/observer.py:104): Observer 응답에서 XML 태그를 파싱합니다.
+- `parse_judge_output()` (seosoyoung/slackbot/plugins/channel_observer/observer.py:130): Judge 응답에서 XML 태그를 파싱합니다.
+- `async run_channel_pipeline()` (seosoyoung/slackbot/plugins/channel_observer/pipeline.py:269): 소화/판단 분리 파이프라인을 실행합니다.
+- `build_channel_observer_system_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:65): 채널 관찰 시스템 프롬프트를 반환합니다.
+- `build_channel_observer_user_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:70): 채널 관찰 사용자 프롬프트를 구성합니다.
+- `build_digest_compressor_system_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:104): digest 압축 시스템 프롬프트를 반환합니다.
+- `build_digest_compressor_retry_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:109): digest 압축 재시도 프롬프트를 반환합니다.
+- `get_channel_intervene_system_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:118): 채널 개입 응답 생성 시스템 프롬프트를 반환합니다.
+- `build_channel_intervene_user_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:123): 채널 개입 응답 생성 사용자 프롬프트를 구성합니다.
+- `build_digest_only_system_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:162): 소화 전용 시스템 프롬프트를 반환합니다.
+- `build_digest_only_user_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:167): 소화 전용 사용자 프롬프트를 구성합니다.
+- `build_judge_system_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:198): 리액션 판단 전용 시스템 프롬프트를 반환합니다.
+- `build_judge_user_prompt()` (seosoyoung/slackbot/plugins/channel_observer/prompts.py:203): 리액션 판단 전용 사용자 프롬프트를 구성합니다.
+- `render_observation_items()` (seosoyoung/slackbot/plugins/memory/context_builder.py:49): 관찰 항목 리스트를 사람이 읽을 수 있는 텍스트로 렌더링합니다.
+- `render_persistent_items()` (seosoyoung/slackbot/plugins/memory/context_builder.py:82): 장기 기억 항목 리스트를 텍스트로 렌더링합니다.
+- `optimize_items_for_context()` (seosoyoung/slackbot/plugins/memory/context_builder.py:122): 관찰 항목을 컨텍스트 주입에 최적화합니다.
+- `add_relative_time()` (seosoyoung/slackbot/plugins/memory/context_builder.py:162): [하위 호환] 텍스트 관찰 로그의 날짜 헤더에 상대 시간 주석을 추가합니다.
+- `optimize_for_context()` (seosoyoung/slackbot/plugins/memory/context_builder.py:182): [하위 호환] 텍스트 관찰 로그를 컨텍스트 주입에 최적화합니다.
+- `prepare_memory_injection()` (seosoyoung/slackbot/plugins/memory/injector.py:15): OM 메모리 주입을 준비합니다.
+- `create_or_load_debug_anchor()` (seosoyoung/slackbot/plugins/memory/injector.py:101): 디버그 앵커 메시지를 생성하거나 기존 앵커를 로드합니다.
+- `send_injection_debug_log()` (seosoyoung/slackbot/plugins/memory/injector.py:157): 디버그 이벤트 #7, #8: 주입 정보를 슬랙에 발송
+- `trigger_observation()` (seosoyoung/slackbot/plugins/memory/injector.py:241): 관찰 파이프라인을 별도 스레드에서 비동기로 트리거 (봇 응답 블로킹 없음)
+- `migrate_observations()` (seosoyoung/slackbot/plugins/memory/migration.py:53): observations/ 디렉토리의 .md 파일을 .json으로 변환합니다.
+- `migrate_persistent()` (seosoyoung/slackbot/plugins/memory/migration.py:105): persistent/recent.md → recent.json 변환.
+- `migrate_memory_dir()` (seosoyoung/slackbot/plugins/memory/migration.py:145): memory/ 디렉토리 전체를 마이그레이션합니다.
+- `async observe_conversation()` (seosoyoung/slackbot/plugins/memory/observation_pipeline.py:100): 매턴 Observer를 호출하여 세션 관찰 로그를 갱신하고 후보를 수집합니다.
+- `parse_observer_output()` (seosoyoung/slackbot/plugins/memory/observer.py:33): Observer 응답 JSON을 파싱합니다.
+- `parse_promoter_output()` (seosoyoung/slackbot/plugins/memory/promoter.py:119): Promoter 응답 JSON에서 promoted와 rejected를 파싱합니다.
+- `parse_compactor_output()` (seosoyoung/slackbot/plugins/memory/promoter.py:159): Compactor 응답에서 JSON 배열을 파싱합니다.
+- `load_prompt()` (seosoyoung/slackbot/plugins/memory/prompt_loader.py:71): 프롬프트 파일을 로드합니다.
+- `load_prompt_cached()` (seosoyoung/slackbot/plugins/memory/prompt_loader.py:90): 프롬프트 파일을 캐시하여 로드합니다.
+- `build_observer_system_prompt()` (seosoyoung/slackbot/plugins/memory/prompts.py:19): Observer 시스템 프롬프트를 반환합니다.
+- `build_observer_user_prompt()` (seosoyoung/slackbot/plugins/memory/prompts.py:24): Observer 사용자 프롬프트를 구성합니다.
+- `build_reflector_system_prompt()` (seosoyoung/slackbot/plugins/memory/prompts.py:67): Reflector 시스템 프롬프트를 반환합니다.
+- `build_reflector_retry_prompt()` (seosoyoung/slackbot/plugins/memory/prompts.py:72): Reflector 재시도 프롬프트를 반환합니다.
+- `build_promoter_prompt()` (seosoyoung/slackbot/plugins/memory/prompts.py:79): Promoter 프롬프트를 구성합니다.
+- `build_compactor_prompt()` (seosoyoung/slackbot/plugins/memory/prompts.py:100): Compactor 프롬프트를 구성합니다.
+- `generate_obs_id()` (seosoyoung/slackbot/plugins/memory/store.py:123): 관찰 항목 ID를 생성합니다.
+- `generate_ltm_id()` (seosoyoung/slackbot/plugins/memory/store.py:132): 장기 기억 항목 ID를 생성합니다.
+- `parse_md_observations()` (seosoyoung/slackbot/plugins/memory/store.py:144): 마크다운 관찰 로그를 항목 리스트로 파싱합니다.
+- `parse_md_persistent()` (seosoyoung/slackbot/plugins/memory/store.py:192): 마크다운 장기 기억을 항목 리스트로 파싱합니다.
 - `is_korean_char()` (seosoyoung/slackbot/plugins/translate/detector.py:14): 한글 문자인지 확인 (한글 자모, 음절 모두 포함)
 - `detect_language()` (seosoyoung/slackbot/plugins/translate/detector.py:27): 텍스트의 언어를 감지
 - `get_glossary_entries()` (seosoyoung/slackbot/plugins/translate/glossary.py:149): 용어집 항목들을 (한국어, 영어) 쌍으로 반환 (캐싱)

@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from seosoyoung.slackbot.memory.prompt_loader import load_prompt_cached
+from seosoyoung.slackbot.plugins.memory.prompt_loader import load_prompt_cached
 
 logger = logging.getLogger(__name__)
 

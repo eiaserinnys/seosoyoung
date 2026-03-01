@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from seosoyoung.slackbot.memory.store import (
+from seosoyoung.slackbot.plugins.memory.store import (
     MemoryRecord,
     MemoryStore,
     generate_ltm_id,
@@ -473,7 +473,7 @@ class TestMigrateMemoryDir:
     """migrate_memory_dir 일괄 마이그레이션 테스트"""
 
     def test_migrate_observations(self, tmp_path):
-        from seosoyoung.slackbot.memory.migration import migrate_memory_dir
+        from seosoyoung.slackbot.plugins.memory.migration import migrate_memory_dir
 
         obs_dir = tmp_path / "observations"
         obs_dir.mkdir()
@@ -510,7 +510,7 @@ class TestMigrateMemoryDir:
         assert items[0]["content"] == "관찰 1"
 
     def test_migrate_persistent(self, tmp_path):
-        from seosoyoung.slackbot.memory.migration import migrate_memory_dir
+        from seosoyoung.slackbot.plugins.memory.migration import migrate_memory_dir
 
         persistent_dir = tmp_path / "persistent"
         persistent_dir.mkdir()
@@ -533,7 +533,7 @@ class TestMigrateMemoryDir:
         assert len(items) == 2
 
     def test_dry_run_no_changes(self, tmp_path):
-        from seosoyoung.slackbot.memory.migration import migrate_memory_dir
+        from seosoyoung.slackbot.plugins.memory.migration import migrate_memory_dir
 
         obs_dir = tmp_path / "observations"
         obs_dir.mkdir()
@@ -551,7 +551,7 @@ class TestMigrateMemoryDir:
         assert not (obs_dir / "ts_001.md.bak").exists()
 
     def test_skip_when_json_exists(self, tmp_path):
-        from seosoyoung.slackbot.memory.migration import migrate_memory_dir
+        from seosoyoung.slackbot.plugins.memory.migration import migrate_memory_dir
 
         obs_dir = tmp_path / "observations"
         obs_dir.mkdir()
@@ -564,14 +564,14 @@ class TestMigrateMemoryDir:
         assert len(report.skipped) == 1
 
     def test_empty_directory(self, tmp_path):
-        from seosoyoung.slackbot.memory.migration import migrate_memory_dir
+        from seosoyoung.slackbot.plugins.memory.migration import migrate_memory_dir
 
         report = migrate_memory_dir(tmp_path)
         assert report.total_converted == 0
         assert report.errors == []
 
     def test_nonexistent_directory(self, tmp_path):
-        from seosoyoung.slackbot.memory.migration import migrate_memory_dir
+        from seosoyoung.slackbot.plugins.memory.migration import migrate_memory_dir
 
         report = migrate_memory_dir(tmp_path / "nonexistent")
         assert report.total_converted == 0
