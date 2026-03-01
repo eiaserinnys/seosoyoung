@@ -1,0 +1,19 @@
+# Translate plugin configuration
+# Copy to translate.yaml and fill in actual values.
+# translate.yaml is gitignored — it contains secrets.
+
+api_key: YOUR_ANTHROPIC_API_KEY
+openai_api_key: YOUR_OPENAI_API_KEY
+glossary_path: .projects/eb_lore/content/glossary.yaml
+
+channels:
+  - C09JQTDCV4G
+  - C09HFD13UTH
+
+backend: openai
+model: claude-sonnet-4-20250514
+openai_model: gpt-5-mini
+context_count: 10
+show_glossary: false
+show_cost: false
+debug_channel: C0A9H2JJ4AX

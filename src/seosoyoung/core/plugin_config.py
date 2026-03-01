@@ -55,6 +55,7 @@ def load_plugin_registry(path: str | Path) -> list[dict[str, Any]]:
     - Root not a list  -> empty list + warning.
     - Entry not a dict -> skip + warning.
     - Required fields missing -> skip + warning.
+    - ``enabled`` is False -> skip (disabled plugin).
 
     Required fields per entry: ``module``, ``name``.
     """
@@ -83,6 +84,10 @@ def load_plugin_registry(path: str | Path) -> list[dict[str, Any]]:
                 missing,
                 entry,
             )
+            continue
+
+        if "enabled" in entry and not entry["enabled"]:
+            logger.info("plugins.yaml entry %d disabled, skipping: %s", i, entry["name"])
             continue
 
         valid.append(entry)

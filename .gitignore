@@ -39,6 +39,10 @@ blob-report/
 .DS_Store
 Thumbs.db
 
+# Plugin configs (environment-specific, contain secrets)
+plugins/*.yaml
+!plugins/plugins.yaml
+
 # Runtime data
 data/*.json
 

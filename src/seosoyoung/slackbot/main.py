@@ -19,6 +19,8 @@ from seosoyoung.slackbot.slack.helpers import send_long_message
 from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers
 from seosoyoung.slackbot.handlers.actions import send_restart_confirmation
+from seosoyoung.core.plugin_manager import PluginManager
+from seosoyoung.core.plugin_config import load_plugin_registry, load_plugin_config
 from seosoyoung.slackbot.restart import RestartManager, RestartType
 from seosoyoung.slackbot.marker_parser import parse_markers
 from seosoyoung.slackbot.memory.injector import prepare_memory_injection, trigger_observation
@@ -245,6 +247,64 @@ def _init_channel_observer(slack_client, mention_tracker):
 ) = _init_channel_observer(app.client, _mention_tracker)
 
 
+# -- Plugin system -----------------------------------------------------------
+
+async def _slack_notifier(message: str) -> None:
+    """PluginManager 알림을 Slack에 전송."""
+    channel = Config.trello.notify_channel
+    if channel:
+        try:
+            app.client.chat_postMessage(channel=channel, text=message)
+        except Exception as e:
+            logger.warning(f"플러그인 알림 전송 실패: {e}")
+
+
+plugin_manager = PluginManager(notifier=_slack_notifier)
+
+
+def _load_plugins() -> None:
+    """plugins.yaml 레지스트리에서 플러그인을 로드합니다."""
+    from seosoyoung.utils.async_bridge import run_in_new_loop
+
+    base_dir = Path(__file__).resolve().parent.parent.parent.parent  # project root
+    registry_path = base_dir / "plugins" / "plugins.yaml"
+    registry = load_plugin_registry(registry_path)
+
+    if not registry:
+        logger.info("플러그인 레지스트리가 비어있습니다.")
+        return
+
+    _ENTRY_REQUIRED = ("config", "priority")
+
+    async def _load_all():
+        for entry in registry:
+            name = entry["name"]
+            missing = [f for f in _ENTRY_REQUIRED if f not in entry]
+            if missing:
+                logger.error(
+                    "플러그인 로드 스킵 (%s): plugins.yaml에 필수 필드 누락 %s",
+                    name, missing,
+                )
+                continue
+
+            try:
+                config_path = base_dir / entry["config"]
+                config = load_plugin_config(config_path)
+
+                await plugin_manager.load(
+                    module=entry["module"],
+                    config=config,
+                    priority=entry["priority"],
+                    depends_on=entry.get("depends_on", []),
+                )
+            except Exception as e:
+                logger.error(f"플러그인 로드 실패 ({name}): {e}")
+
+        await plugin_manager.notify_startup_summary()
+
+    run_in_new_loop(_load_all())
+
+
 def _build_dependencies():
     """핸들러 의존성 딕셔너리 빌드"""
     return {
@@ -269,6 +329,7 @@ def _build_dependencies():
         "prepare_memory_fn": prepare_memory_injection,
         "trigger_observation_fn": trigger_observation,
         "on_compact_om_flag": _on_compact_om_flag,
+        "plugin_manager": plugin_manager,
     }
 
 
@@ -362,6 +423,7 @@ def main():
     start_shutdown_server(_SHUTDOWN_PORT, _on_shutdown_request)
     logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")
     init_bot_user_id()
+    _load_plugins()
     notify_startup()
     start_trello_watcher()
     start_list_runner()

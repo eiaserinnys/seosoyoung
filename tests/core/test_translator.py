@@ -14,7 +14,8 @@ from seosoyoung.slackbot.translator.translator import (
 )
 from seosoyoung.slackbot.translator.detector import Language
 from seosoyoung.slackbot.translator.glossary import GlossaryMatchResult
-from seosoyoung.slackbot.handlers.translate import _format_response
+from seosoyoung.slackbot.plugins.translate.detector import Language as PluginLanguage
+from seosoyoung.slackbot.plugins.translate.plugin import TranslatePlugin
 
 
 class TestBuildContextText:
@@ -405,82 +406,73 @@ class TestTranslateOpenAI:
 
 
 class TestFormatResponse:
-    """응답 포맷팅 테스트"""
+    """응답 포맷팅 테스트 (TranslatePlugin._format_response)"""
 
-    @patch("seosoyoung.slackbot.handlers.translate.Config")
-    def test_korean_to_english_without_glossary(self, mock_config):
+    @pytest.fixture(autouse=True)
+    def _setup_plugin(self):
+        """테스트 전 기본 show_glossary=False, show_cost=True 플러그인 설정"""
+        self.plugin = TranslatePlugin()
+        # on_load 없이 필요한 필드만 직접 설정 (테스트 전용)
+        self.plugin._show_glossary = False
+        self.plugin._show_cost = True
+
+    def test_korean_to_english_without_glossary(self):
         """한국어 -> 영어 (용어집 없음)"""
-        mock_config.translate.show_glossary = False
-        mock_config.translate.show_cost = True
-        result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012)
+        result = self.plugin._format_response("홍길동", "Hello", PluginLanguage.KOREAN, 0.0012)
         assert "`홍길동 said,`" in result
         assert '"Hello"' in result
         assert "`~💵$0.0012`" in result
         assert "📖" not in result
 
-    @patch("seosoyoung.slackbot.handlers.translate.Config")
-    def test_english_to_korean_without_glossary(self, mock_config):
+    def test_english_to_korean_without_glossary(self):
         """영어 -> 한국어 (용어집 없음)"""
-        mock_config.translate.show_glossary = False
-        mock_config.translate.show_cost = True
-        result = _format_response("John", "안녕하세요", Language.ENGLISH, 0.0012)
+        result = self.plugin._format_response("John", "안녕하세요", PluginLanguage.ENGLISH, 0.0012)
         assert "`John님이`" in result
         assert '"안녕하세요"' in result
         assert "`라고 하셨습니다.`" in result
         assert "`~💵$0.0012`" in result
         assert "📖" not in result
 
-    @patch("seosoyoung.slackbot.handlers.translate.Config")
-    def test_korean_to_english_with_glossary(self, mock_config):
+    def test_korean_to_english_with_glossary(self):
         """한국어 -> 영어 (용어집 있음, 표시 켜짐)"""
-        mock_config.translate.show_glossary = True
-        mock_config.translate.show_cost = True
+        self.plugin._show_glossary = True
         terms = [("펜릭스", "Fenrix"), ("아리엘라", "Ariella")]
-        result = _format_response("홍길동", "Fenrix and Ariella", Language.KOREAN, 0.0012, terms)
+        result = self.plugin._format_response("홍길동", "Fenrix and Ariella", PluginLanguage.KOREAN, 0.0012, terms)
         assert "`홍길동 said,`" in result
         assert "`📖 펜릭스 (Fenrix), 아리엘라 (Ariella)`" in result
         assert "`~💵$0.0012`" in result
 
-    @patch("seosoyoung.slackbot.handlers.translate.Config")
-    def test_english_to_korean_with_glossary(self, mock_config):
+    def test_english_to_korean_with_glossary(self):
         """영어 -> 한국어 (용어집 있음, 표시 켜짐)"""
-        mock_config.translate.show_glossary = True
-        mock_config.translate.show_cost = True
+        self.plugin._show_glossary = True
         terms = [("Fenrix", "펜릭스")]
-        result = _format_response("John", "펜릭스가 말했다", Language.ENGLISH, 0.0012, terms)
+        result = self.plugin._format_response("John", "펜릭스가 말했다", PluginLanguage.ENGLISH, 0.0012, terms)
         assert "`John님이`" in result
         assert "`📖 Fenrix (펜릭스)`" in result
         assert "`~💵$0.0012`" in result
 
-    @patch("seosoyoung.slackbot.handlers.translate.Config")
-    def test_with_empty_glossary(self, mock_config):
+    def test_with_empty_glossary(self):
         """빈 용어집"""
-        mock_config.translate.show_glossary = True
-        mock_config.translate.show_cost = True
-        result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012, [])
+        self.plugin._show_glossary = True
+        result = self.plugin._format_response("홍길동", "Hello", PluginLanguage.KOREAN, 0.0012, [])
         assert "📖" not in result
 
-    @patch("seosoyoung.slackbot.handlers.translate.Config")
-    def test_with_none_glossary(self, mock_config):
+    def test_with_none_glossary(self):
         """None 용어집"""
-        mock_config.translate.show_glossary = True
-        mock_config.translate.show_cost = True
-        result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012, None)
+        self.plugin._show_glossary = True
+        result = self.plugin._format_response("홍길동", "Hello", PluginLanguage.KOREAN, 0.0012, None)
         assert "📖" not in result
 
-    @patch("seosoyoung.slackbot.handlers.translate.Config")
-    def test_glossary_hidden_when_option_off(self, mock_config):
+    def test_glossary_hidden_when_option_off(self):
         """용어집 표시 옵션 꺼짐"""
-        mock_config.translate.show_glossary = False
-        mock_config.translate.show_cost = True
+        self.plugin._show_glossary = False
         terms = [("펜릭스", "Fenrix")]
-        result = _format_response("홍길동", "Fenrix", Language.KOREAN, 0.0012, terms)
+        result = self.plugin._format_response("홍길동", "Fenrix", PluginLanguage.KOREAN, 0.0012, terms)
         assert "📖" not in result
 
-    @patch("seosoyoung.slackbot.handlers.translate.Config")
-    def test_cost_hidden_when_option_off(self, mock_config):
+    def test_cost_hidden_when_option_off(self):
         """비용 표시 옵션 꺼짐"""
-        mock_config.translate.show_glossary = False
-        mock_config.translate.show_cost = False
-        result = _format_response("홍길동", "Hello", Language.KOREAN, 0.0012)
+        self.plugin._show_glossary = False
+        self.plugin._show_cost = False
+        result = self.plugin._format_response("홍길동", "Hello", PluginLanguage.KOREAN, 0.0012)
         assert "💵" not in result

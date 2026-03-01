@@ -6,7 +6,6 @@ from seosoyoung.slackbot.handlers.actions import (
     register_action_handlers,
     register_credential_action_handlers,
 )
-from seosoyoung.slackbot.handlers.translate import register_translate_handler
 
 
 def register_all_handlers(app, dependencies: dict):
@@ -21,12 +20,12 @@ def register_all_handlers(app, dependencies: dict):
             - get_running_session_count: callable
             - run_claude_in_session: callable
             - trello_watcher_ref: callable (lambda: trello_watcher)
+            - plugin_manager: PluginManager (플러그인 디스패치용)
     """
     register_mention_handlers(app, dependencies)
     register_message_handlers(app, dependencies)
     register_action_handlers(app, dependencies)
     register_credential_action_handlers(app, dependencies)
-    register_translate_handler(app, dependencies)
 
 
 __all__ = [
@@ -35,5 +34,4 @@ __all__ = [
     "register_message_handlers",
     "register_action_handlers",
     "register_credential_action_handlers",
-    "register_translate_handler",
 ]

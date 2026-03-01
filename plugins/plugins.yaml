@@ -1,0 +1,8 @@
+# Plugin registry
+# Each entry: name, module, priority, config, enabled (all required)
+
+- name: translate
+  module: seosoyoung.slackbot.plugins.translate.plugin
+  priority: 50
+  config: plugins/translate.yaml
+  enabled: true

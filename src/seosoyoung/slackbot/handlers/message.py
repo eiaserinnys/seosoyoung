@@ -6,7 +6,7 @@ import threading
 
 from seosoyoung.slackbot.config import Config
 from seosoyoung.utils.async_bridge import run_in_new_loop
-from seosoyoung.slackbot.handlers.translate import process_translate_message
+from seosoyoung.core.context import create_hook_context
 from seosoyoung.slackbot.slack import download_files_sync, build_file_context
 from seosoyoung.slackbot.slack.message_formatter import format_slack_message
 from seosoyoung.slackbot.claude.session_context import build_followup_context
@@ -317,6 +317,7 @@ def register_message_handlers(app, dependencies: dict):
     channel_compressor = dependencies.get("channel_compressor")
     channel_cooldown = dependencies.get("channel_cooldown")
     mention_tracker = dependencies.get("mention_tracker")
+    pm = dependencies.get("plugin_manager")
 
     @app.event("message")
     def handle_message(event, say, client):
@@ -363,11 +364,17 @@ def register_message_handlers(app, dependencies: dict):
         if channel and channel.startswith("D") and channel_type != "im":
             logger.warning(f"DM 채널인데 channel_type 불일치: channel={channel}, channel_type={channel_type!r}, thread_ts={event.get('thread_ts')}, user={event.get('user')}")
 
-        # 번역 채널인 경우: 멘션이 없으면 번역, 멘션이 있으면 기존 로직 (handle_mention에서 처리)
-        if channel in Config.translate.channels:
-            if "<@" not in text:
-                process_translate_message(event, client)
-            return
+        # Plugin hook dispatch: on_message
+        # 번역 등 플러그인이 처리할 메시지를 디스패치합니다.
+        # 플러그인이 STOP을 반환하면 핸들러 체인을 중단합니다.
+        if pm and pm.plugins and "<@" not in text:
+            try:
+                ctx = create_hook_context("on_message", event=event, client=client)
+                ctx = run_in_new_loop(pm.dispatch("on_message", ctx))
+                if ctx.stopped:
+                    return
+            except Exception as e:
+                logger.error(f"Plugin dispatch 실패: {e}")
 
         # 스레드 메시지인 경우만 처리
         thread_ts = event.get("thread_ts")

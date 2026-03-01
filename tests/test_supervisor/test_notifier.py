@@ -94,53 +94,16 @@ class TestGetPendingCommits:
 
 
 class TestFormatDeployStartMessage:
-    def test_with_both_repos(self):
-        runtime_commits = ["a1b2c3d feat: runtime change"]
-        seosoyoung_commits = ["e4f5g6h fix: bot fix"]
-        msg = format_deploy_start_message(runtime_commits, seosoyoung_commits)
+    """format_deploy_start_message() takes no arguments and returns a simple
+    deploy-start banner.  Commit details are now in format_change_detected_message."""
+
+    def test_returns_string(self):
+        msg = format_deploy_start_message()
+        assert isinstance(msg, str)
+
+    def test_contains_emoji(self):
+        msg = format_deploy_start_message()
         assert ":arrows_counterclockwise:" in msg
-        assert "*runtime*" in msg
-        assert "`a1b2c3d`" in msg
-        assert "runtime change" in msg
-        assert "*seosoyoung*" in msg
-        assert "`e4f5g6h`" in msg
-        assert "bot fix" in msg
-
-    def test_with_only_runtime(self):
-        msg = format_deploy_start_message(
-            ["a1b2c3d feat: change"], []
-        )
-        assert "*runtime*" in msg
-        assert "*seosoyoung*" not in msg
-
-    def test_with_only_seosoyoung(self):
-        msg = format_deploy_start_message(
-            [], ["e4f5g6h fix: fix"]
-        )
-        assert "*seosoyoung*" in msg
-        assert "*runtime*" not in msg
-
-    def test_with_no_commits(self):
-        msg = format_deploy_start_message([], [])
-        assert ":arrows_counterclockwise:" in msg
-
-    def test_truncates_at_10_commits(self):
-        commits = [f"{i:07x} commit {i}" for i in range(15)]
-        msg = format_deploy_start_message(commits, [])
-        assert "... 외 5건" in msg
-
-    def test_exactly_10_commits_no_truncation(self):
-        commits = [f"{i:07x} commit {i}" for i in range(10)]
-        msg = format_deploy_start_message(commits, [])
-        assert "외" not in msg
-
-    def test_commit_hash_format(self):
-        """Hash is first 7 chars wrapped in backticks"""
-        msg = format_deploy_start_message(
-            ["abcdef1234567 long commit message"], []
-        )
-        assert "`abcdef1`" in msg
-        assert "long commit message" in msg
 
 
 class TestFormatDeploySuccessMessage:

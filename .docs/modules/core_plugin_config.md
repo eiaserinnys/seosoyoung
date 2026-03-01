@@ -34,5 +34,6 @@ Raises:
 - Root not a list  -> empty list + warning.
 - Entry not a dict -> skip + warning.
 - Required fields missing -> skip + warning.
+- ``enabled`` is False -> skip (disabled plugin).
 
 Required fields per entry: ``module``, ``name``.
