@@ -2,13 +2,13 @@
 # Each entry: name, module, priority, config, enabled (all required)
 
 - name: trello
-  module: seosoyoung.slackbot.plugins.trello.plugin
+  module: seosoyoung_plugins.trello.plugin
   priority: 100
   config: plugins/trello.yaml
   enabled: true
 
 - name: translate
-  module: seosoyoung.slackbot.plugins.translate.plugin
+  module: seosoyoung_plugins.translate.plugin
   priority: 50
   config: plugins/translate.yaml
   enabled: true
