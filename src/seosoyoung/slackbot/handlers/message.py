@@ -442,7 +442,7 @@ def register_message_handlers(app, dependencies: dict):
         # Plugin hook dispatch: on_reaction
         if pm and pm.plugins:
             try:
-                ctx = create_hook_context("on_reaction", event=event, client=client)
+                ctx = create_hook_context("on_reaction", event=event)
                 ctx = run_in_new_loop(pm.dispatch("on_reaction", ctx))
                 if ctx.stopped:
                     return

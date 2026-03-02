@@ -362,17 +362,19 @@ class TestTrelloOnCommand:
     @pytest.mark.asyncio
     async def test_stop_resume_no_paused(self, plugin_with_runner):
         plugin_with_runner._list_runner.get_paused_sessions.return_value = []
-        mock_say = MagicMock()
 
         ctx = HookContext(
             hook_name="on_command",
-            args={"command": "정주행 재개", "say": mock_say, "ts": "ts", "thread_ts": None},
+            args={"command": "정주행 재개", "channel": "C123", "ts": "ts", "thread_ts": None},
         )
         hooks = plugin_with_runner.register_hooks()
-        result, value = await hooks["on_command"](ctx)
+        with patch("seosoyoung.plugin_sdk.slack.send_message") as mock_send:
+            result, value = await hooks["on_command"](ctx)
+
         assert result == HookResult.STOP
-        mock_say.assert_called_once()
-        assert "없습니다" in mock_say.call_args[1]["text"]
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        assert "없습니다" in call_args[1]["text"]
 
     @pytest.mark.asyncio
     async def test_stop_resume_success(self, plugin_with_runner):
@@ -383,19 +385,19 @@ class TestTrelloOnCommand:
         mock_session.card_ids = ["a", "b", "c"]
         plugin_with_runner._list_runner.get_paused_sessions.return_value = [mock_session]
         plugin_with_runner._list_runner.resume_run.return_value = True
-        mock_say = MagicMock()
 
         ctx = HookContext(
             hook_name="on_command",
             args={
                 "command": "resume list run",
-                "say": mock_say,
+                "channel": "C123",
                 "ts": "ts",
                 "thread_ts": None,
             },
         )
         hooks = plugin_with_runner.register_hooks()
-        with patch("seosoyoung.slackbot.plugins.trello.plugin.threading"):
+        with patch("seosoyoung.slackbot.plugins.trello.plugin.threading"), \
+             patch("seosoyoung.plugin_sdk.slack.send_message"):
             result, value = await hooks["on_command"](ctx)
 
         assert result == HookResult.STOP

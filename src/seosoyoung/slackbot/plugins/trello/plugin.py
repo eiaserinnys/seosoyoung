@@ -324,6 +324,8 @@ class TrelloPlugin(Plugin):
 
     async def _on_command(self, ctx: HookContext) -> tuple[HookResult, Any]:
         """Handle resume list-run command."""
+        from seosoyoung.plugin_sdk import slack
+
         command = ctx.args.get("command", "")
 
         if not _is_resume_command(command):
@@ -332,14 +334,15 @@ class TrelloPlugin(Plugin):
         if not self._list_runner:
             return HookResult.SKIP, None
 
-        say = ctx.args.get("say")
+        channel = ctx.args.get("channel")
         ts = ctx.args.get("ts")
         thread_ts = ctx.args.get("thread_ts")
 
         paused = self._list_runner.get_paused_sessions()
         if not paused:
-            if say:
-                say(
+            if channel:
+                await slack.send_message(
+                    channel=channel,
                     text="현재 중단된 정주행 세션이 없습니다.",
                     thread_ts=thread_ts or ts,
                 )
@@ -348,8 +351,9 @@ class TrelloPlugin(Plugin):
         # Resume the most recent paused session
         session = paused[-1]
         if self._list_runner.resume_run(session.session_id):
-            if say:
-                say(
+            if channel:
+                await slack.send_message(
+                    channel=channel,
                     text=(
                         f"\u25b6\ufe0f 정주행 재개: "
                         f"`{session.session_id}` ({session.list_name})\n"
@@ -367,8 +371,9 @@ class TrelloPlugin(Plugin):
                 )
                 t.start()
         else:
-            if say:
-                say(
+            if channel:
+                await slack.send_message(
+                    channel=channel,
                     text="정주행 재개에 실패했습니다.",
                     thread_ts=thread_ts or ts,
                 )

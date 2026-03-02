@@ -176,7 +176,7 @@ def try_handle_command(
                 "on_command",
                 command=command, text=text, channel=channel,
                 ts=ts, thread_ts=thread_ts,
-                user_id=user_id, say=say, client=client,
+                user_id=user_id,
             )
             ctx = run_in_new_loop(pm.dispatch("on_command", ctx))
             if ctx.stopped:
