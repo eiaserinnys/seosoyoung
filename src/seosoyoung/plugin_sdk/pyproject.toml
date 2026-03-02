@@ -1,13 +1,13 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "seosoyoung-plugin-sdk"
 version = "0.1.0"
 description = "Plugin SDK for seosoyoung slackbot - interface definitions and backend abstractions"
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
 requires-python = ">=3.11"
 authors = [
     { name = "Dorothy", email = "dorothy@eiaserinnys.dev" }
@@ -29,5 +29,6 @@ dependencies = []
 Homepage = "https://github.com/eiaserinnys/seosoyoung"
 Repository = "https://github.com/eiaserinnys/seosoyoung.git"
 
-[tool.hatch.build.targets.wheel]
-packages = ["."]
+[tool.setuptools.packages.find]
+where = ["../../.."]
+include = ["seosoyoung.plugin_sdk*"]
