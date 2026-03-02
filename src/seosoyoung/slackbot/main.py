@@ -24,6 +24,7 @@ from seosoyoung.core.plugin_config import load_plugin_registry, load_plugin_conf
 from seosoyoung.slackbot.restart import RestartManager, RestartType
 from seosoyoung.slackbot.marker_parser import parse_markers
 from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
+from seosoyoung.slackbot.plugin_backends import init_plugin_backends
 
 # 로깅 설정
 logger = setup_logging()
@@ -353,6 +354,14 @@ def main():
     start_shutdown_server(_SHUTDOWN_PORT, _on_shutdown_request)
     logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")
     init_bot_user_id()
+
+    # Initialize plugin SDK backends (must be before plugin load)
+    init_plugin_backends(
+        slack_client=app.client,
+        executor=executor.run,
+        session_manager=session_manager,
+    )
+
     _load_plugins()
     _dispatch_plugin_startup()  # on_startup hooks (trello watcher, channel observer, etc.)
     notify_startup()
