@@ -293,14 +293,9 @@ def _dispatch_plugin_startup():
 
     ctx = create_hook_context(
         "on_startup",
-        # Runtime dependencies needed by plugins
-        slack_client=app.client,
-        session_manager=session_manager,
-        claude_runner_factory=executor.run,
-        get_session_lock=session_runtime.get_session_lock,
-        restart_manager=restart_manager,
+        # Runtime dependencies needed by plugins (legacy)
+        # Most of these should be accessed via plugin_sdk APIs now
         update_message_fn=update_message,
-        data_dir=Path(Config.get_session_path()).parent / "data",
         mention_tracker=_mention_tracker,
         bot_user_id=Config.slack.bot_user_id or "",
     )
@@ -360,6 +355,8 @@ def main():
         slack_client=app.client,
         executor=executor.run,
         session_manager=session_manager,
+        restart_manager=restart_manager,
+        data_dir=Path(Config.get_session_path()).parent / "data",
     )
 
     _load_plugins()

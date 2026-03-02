@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from seosoyoung.plugin_sdk import slack, soulstream
@@ -235,15 +236,21 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         self,
         executor,
         session_manager: "SessionManager",
+        restart_manager,
+        data_dir: Path,
     ):
         """Initialize with Claude executor and session manager.
 
         Args:
             executor: ClaudeExecutor instance
             session_manager: SessionManager instance
+            restart_manager: RestartManager instance
+            data_dir: Data directory for plugin storage
         """
         self._executor = executor
         self._session_manager = session_manager
+        self._restart_manager = restart_manager
+        self._data_dir = data_dir
 
     async def run(
         self,
@@ -320,6 +327,14 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         session = self._session_manager.get(thread_ts)
         return session.session_id if session else None
 
+    def is_restart_pending(self) -> bool:
+        """Check if a restart is pending."""
+        return self._restart_manager.is_pending
+
+    def get_data_dir(self) -> Path:
+        """Get the data directory for plugin storage."""
+        return self._data_dir
+
 
 # ============================================================================
 # Initialization
@@ -330,6 +345,8 @@ def init_plugin_backends(
     slack_client,
     executor,
     session_manager: "SessionManager",
+    restart_manager,
+    data_dir: Path,
 ) -> None:
     """Initialize plugin SDK backends.
 
@@ -339,6 +356,8 @@ def init_plugin_backends(
         slack_client: Slack WebClient instance
         executor: ClaudeExecutor instance
         session_manager: SessionManager instance
+        restart_manager: RestartManager instance
+        data_dir: Data directory for plugin storage
     """
     # Initialize Slack backend
     slack_backend = SlackBackendImpl(slack_client)
@@ -346,6 +365,8 @@ def init_plugin_backends(
     logger.info("plugin_sdk.slack backend initialized")
 
     # Initialize Soulstream backend
-    soulstream_backend = SoulstreamBackendImpl(executor, session_manager)
+    soulstream_backend = SoulstreamBackendImpl(
+        executor, session_manager, restart_manager, data_dir
+    )
     soulstream.set_backend(soulstream_backend)
     logger.info("plugin_sdk.soulstream backend initialized")

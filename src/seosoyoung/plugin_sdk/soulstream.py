@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Protocol
 
 
@@ -138,6 +139,22 @@ class SoulstreamBackend(Protocol):
 
         Returns:
             Session ID or None if no session exists
+        """
+        ...
+
+    def is_restart_pending(self) -> bool:
+        """Check if a restart is pending.
+
+        Returns:
+            True if restart is pending, False otherwise
+        """
+        ...
+
+    def get_data_dir(self) -> Path:
+        """Get the data directory for plugin storage.
+
+        Returns:
+            Path to data directory
         """
         ...
 
@@ -264,6 +281,41 @@ def get_session_id(thread_ts: str) -> str | None:
     """
     backend = _require_backend()
     return backend.get_session_id(thread_ts)
+
+
+def is_restart_pending() -> bool:
+    """Check if a system restart is pending.
+
+    When a restart is pending, plugins should avoid starting new tasks.
+
+    Returns:
+        True if restart is pending, False otherwise
+
+    Example:
+        if soulstream.is_restart_pending():
+            await slack.send_message(
+                channel=channel,
+                text="재시작을 대기하는 중입니다."
+            )
+            return
+    """
+    backend = _require_backend()
+    return backend.is_restart_pending()
+
+
+def get_data_dir() -> Path:
+    """Get the data directory for plugin storage.
+
+    Returns:
+        Path to data directory where plugins can store state files
+
+    Example:
+        data_dir = soulstream.get_data_dir()
+        plugin_dir = data_dir / "my_plugin"
+        plugin_dir.mkdir(exist_ok=True)
+    """
+    backend = _require_backend()
+    return backend.get_data_dir()
 
 
 # ============================================================================
