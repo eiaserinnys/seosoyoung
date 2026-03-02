@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from seosoyoung.core.hooks import HookContext
+from seosoyoung.plugin_sdk.hooks import HookContext
 
 
 def create_hook_context(hook_name: str, **kwargs: Any) -> HookContext:

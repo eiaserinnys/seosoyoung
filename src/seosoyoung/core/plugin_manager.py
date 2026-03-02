@@ -14,8 +14,8 @@ import logging
 import sys
 from typing import Any, Awaitable, Callable
 
-from seosoyoung.core.hooks import HookContext, HookPriority, HookResult
-from seosoyoung.core.plugin import Plugin
+from seosoyoung.plugin_sdk.hooks import HookContext, HookPriority, HookResult
+from seosoyoung.plugin_sdk.plugin import Plugin
 
 logger = logging.getLogger(__name__)
 

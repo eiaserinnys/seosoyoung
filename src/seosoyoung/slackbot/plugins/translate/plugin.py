@@ -9,8 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from seosoyoung.core.hooks import HookContext, HookResult
-from seosoyoung.core.plugin import Plugin, PluginMeta
+from seosoyoung.plugin_sdk import HookContext, HookResult, Plugin, PluginMeta
 
 from seosoyoung.slackbot.plugins.translate.detector import detect_language, Language
 from seosoyoung.slackbot.plugins.translate.translator import translate

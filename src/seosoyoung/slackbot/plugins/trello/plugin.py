@@ -13,8 +13,7 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
-from seosoyoung.core.hooks import HookContext, HookResult
-from seosoyoung.core.plugin import Plugin, PluginMeta
+from seosoyoung.plugin_sdk import HookContext, HookResult, Plugin, PluginMeta
 
 from seosoyoung.slackbot.plugins.trello.client import TrelloClient
 from seosoyoung.slackbot.plugins.trello.prompt_builder import PromptBuilder

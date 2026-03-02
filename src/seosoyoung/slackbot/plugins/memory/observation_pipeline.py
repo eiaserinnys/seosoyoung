@@ -16,10 +16,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from seosoyoung.slackbot.plugins.memory.context_builder import (
-    render_observation_items,
-    render_persistent_items,
-)
 from seosoyoung.slackbot.plugins.memory.observer import Observer
 from seosoyoung.slackbot.plugins.memory.promoter import Compactor, Promoter
 from seosoyoung.slackbot.plugins.memory.reflector import Reflector
@@ -27,6 +23,78 @@ from seosoyoung.slackbot.plugins.memory.store import MemoryRecord, MemoryStore
 from seosoyoung.slackbot.plugins.memory.token_counter import TokenCounter
 
 logger = logging.getLogger(__name__)
+
+
+def _relative_time_str(date_str: str, now: datetime) -> str:
+    """날짜 문자열에 대한 상대 시간 문자열을 반환합니다."""
+    try:
+        obs_date = datetime.strptime(date_str, "%Y-%m-%d").replace(
+            tzinfo=timezone.utc
+        )
+        delta = now - obs_date
+        days = delta.days
+
+        if days == 0:
+            return "오늘"
+        elif days == 1:
+            return "어제"
+        elif days < 7:
+            return f"{days}일 전"
+        elif days < 30:
+            return f"{days // 7}주 전"
+        elif days < 365:
+            return f"{days // 30}개월 전"
+        else:
+            return f"{days // 365}년 전"
+    except ValueError:
+        return ""
+
+
+def render_observation_items(
+    items: list[dict], now: datetime | None = None
+) -> str:
+    """관찰 항목 리스트를 사람이 읽을 수 있는 텍스트로 렌더링합니다."""
+    if not items:
+        return ""
+
+    if now is None:
+        now = datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+
+    lines: list[str] = []
+    current_date = None
+
+    for item in items:
+        session_date = item.get("session_date", "")
+        if session_date != current_date:
+            current_date = session_date
+            relative = _relative_time_str(session_date, now) if session_date else ""
+            if lines:
+                lines.append("")  # 섹션 사이 빈 줄
+            if relative:
+                lines.append(f"## [{session_date}] ({relative})")
+            elif session_date:
+                lines.append(f"## [{session_date}]")
+            lines.append("")
+
+        priority = item.get("priority", "🟢")
+        content = item.get("content", "")
+        lines.append(f"{priority} {content}")
+
+    return "\n".join(lines)
+
+
+def render_persistent_items(items: list[dict]) -> str:
+    """장기 기억 항목 리스트를 텍스트로 렌더링합니다."""
+    if not items:
+        return ""
+    lines = []
+    for item in items:
+        priority = item.get("priority", "🟢")
+        content = item.get("content", "")
+        lines.append(f"{priority} {content}")
+    return "\n".join(lines)
 
 
 def _send_debug_log(

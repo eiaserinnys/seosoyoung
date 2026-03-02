@@ -458,6 +458,7 @@ async def run_channel_pipeline(
                 session_manager=kwargs.get("session_manager"),
                 thread_buffers=judge_thread_buffers,
                 mention_handled_ts=mention_handled_ts,
+                dispatch=kwargs.get("dispatch"),
             )
         else:
             # 하위호환: 단일 판단 경로
@@ -476,6 +477,7 @@ async def run_channel_pipeline(
                 session_manager=kwargs.get("session_manager"),
                 thread_buffers=judge_thread_buffers,
                 mention_handled_ts=mention_handled_ts,
+                dispatch=kwargs.get("dispatch"),
             )
     finally:
         # 스냅샷에 포함된 메시지만 judged로 이동 (파이프라인 중 새로 도착한 메시지는 pending에 잔류)
@@ -497,6 +499,7 @@ async def _handle_multi_judge(
     session_manager=None,
     thread_buffers: dict[str, list[dict]] | None = None,
     mention_handled_ts: set[str] | None = None,
+    **kwargs,
 ) -> None:
     """복수 JudgeItem 처리: 이모지 일괄 + 개입 확률 판단"""
     actions = _parse_judge_actions(judge_result)
@@ -581,6 +584,7 @@ async def _handle_multi_judge(
                             bot_user_id=bot_user_id,
                             session_manager=session_manager,
                             thread_buffers=thread_buffers,
+                            dispatch=kwargs.get("dispatch"),
                         )
                     else:
                         await execute_interventions(
@@ -618,6 +622,7 @@ async def _handle_single_judge(
     session_manager=None,
     thread_buffers: dict[str, list[dict]] | None = None,
     mention_handled_ts: set[str] | None = None,
+    **kwargs,
 ) -> None:
     """하위호환: 단일 JudgeResult 처리"""
     logger.info(
@@ -711,6 +716,7 @@ async def _handle_single_judge(
                             bot_user_id=bot_user_id,
                             session_manager=session_manager,
                             thread_buffers=thread_buffers,
+                            dispatch=kwargs.get("dispatch"),
                         )
                 else:
                     await execute_interventions(
@@ -746,6 +752,7 @@ async def _execute_intervene(
     bot_user_id: str | None = None,
     session_manager=None,
     thread_buffers: dict[str, list[dict]] | None = None,
+    **kwargs,
 ) -> None:
     """서소영의 개입 응답을 생성하고 발송합니다."""
     # 0. 트리거 메시지에 :ssy-thinking: 이모지 추가 (응답 생성 중 피드백)
@@ -874,16 +881,36 @@ async def _execute_intervene(
             logger.info(f"봇 응답 judged 기록 ({channel_id}): ts={resp_ts}")
 
             # 스레드 대상 개입이면 세션 생성 (후속 멘션 대화 대비)
-            if session_manager and action.target != "channel":
-                try:
-                    session_manager.create(
-                        thread_ts=resp_ts,
-                        channel_id=channel_id,
-                        source_type="hybrid",
-                    )
-                    logger.info(f"개입 세션 생성 ({channel_id}): ts={resp_ts}")
-                except Exception as e:
-                    logger.error(f"개입 세션 생성 실패 ({channel_id}): {e}")
+            # dispatch 콜백이 전달된 경우 훅으로 요청, 아니면 session_manager 직접 호출
+            if action.target != "channel":
+                dispatch = kwargs.get("dispatch")
+                if dispatch:
+                    try:
+                        from seosoyoung.plugin_sdk import HookContext
+                        await dispatch(
+                            "on_soulstream_session_request",
+                            HookContext(
+                                hook_name="on_soulstream_session_request",
+                                args={
+                                    "thread_ts": resp_ts,
+                                    "channel_id": channel_id,
+                                    "source_type": "hybrid",
+                                },
+                            ),
+                        )
+                        logger.info(f"세션 생성 훅 디스패치 ({channel_id}): ts={resp_ts}")
+                    except Exception as e:
+                        logger.error(f"세션 생성 훅 디스패치 실패 ({channel_id}): {e}")
+                elif session_manager:
+                    try:
+                        session_manager.create(
+                            thread_ts=resp_ts,
+                            channel_id=channel_id,
+                            source_type="hybrid",
+                        )
+                        logger.info(f"개입 세션 생성 ({channel_id}): ts={resp_ts}")
+                    except Exception as e:
+                        logger.error(f"개입 세션 생성 실패 ({channel_id}): {e}")
 
         # 발송 성공: :ssy-thinking: → :ssy-happy: 교체
         _swap_thinking_to_happy(slack_client, channel_id, reaction_ts)

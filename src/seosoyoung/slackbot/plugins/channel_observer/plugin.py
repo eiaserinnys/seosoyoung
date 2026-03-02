@@ -12,8 +12,7 @@ import logging
 import threading
 from typing import Any
 
-from seosoyoung.core.hooks import HookContext, HookResult
-from seosoyoung.core.plugin import Plugin, PluginMeta
+from seosoyoung.plugin_sdk import HookContext, HookResult, Plugin, PluginMeta
 
 logger = logging.getLogger(__name__)
 
