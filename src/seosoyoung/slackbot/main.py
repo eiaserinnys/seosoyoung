@@ -293,13 +293,8 @@ def _dispatch_plugin_startup():
 
     ctx = create_hook_context(
         "on_startup",
-        slack_client=app.client,
-        session_manager=session_manager,
-        session_runtime=session_runtime,
-        claude_runner_factory=executor.run,
         get_session_lock=session_runtime.get_session_lock,
         restart_manager=restart_manager,
-        update_message_fn=update_message,
         data_dir=Path(Config.get_session_path()).parent / "data",
         mention_tracker=_mention_tracker,
         bot_user_id=Config.slack.bot_user_id or "",

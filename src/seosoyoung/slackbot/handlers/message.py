@@ -364,7 +364,7 @@ def register_message_handlers(app, dependencies: dict):
         if pm and pm.plugins:
             try:
                 ctx = create_hook_context(
-                    "on_message", event=event, client=client,
+                    "on_message", event=event,
                 )
                 ctx = run_in_new_loop(pm.dispatch("on_message", ctx))
                 if ctx.stopped:
