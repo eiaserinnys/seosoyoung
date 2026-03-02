@@ -130,7 +130,7 @@ class TrelloPlugin(Plugin):
     async def _on_reaction(self, ctx: HookContext) -> tuple[HookResult, Any]:
         """Handle execute emoji reaction on trello watcher threads."""
         from seosoyoung.utils.async_bridge import run_in_new_loop
-        from seosoyoung.slackbot.claude import get_claude_runner
+        from seosoyoung.slackbot.soulstream import get_claude_runner
 
         event = ctx.args["event"]
         client = ctx.args["client"]

@@ -13,8 +13,8 @@ from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.logging_config import setup_logging
 from seosoyoung.slackbot.auth import check_permission, get_user_role
 from pathlib import Path
-from seosoyoung.slackbot.claude.session import SessionManager, SessionRuntime
-from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+from seosoyoung.slackbot.soulstream.session import SessionManager, SessionRuntime
+from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
 from seosoyoung.slackbot.slack.helpers import send_long_message
 from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers

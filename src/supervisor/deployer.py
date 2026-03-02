@@ -28,10 +28,6 @@ logger = logging.getLogger("supervisor")
 # supervisor 코드가 포함된 경로 접두사
 _SUPERVISOR_PATH_PREFIX = "src/supervisor/"
 
-# soul-dashboard 관련 경로 접두사
-_SOUL_DASHBOARD_PATH_PREFIX = "src/soul-dashboard/"
-_SOUL_DASHBOARD_PACKAGE_LOCK = "src/soul-dashboard/package-lock.json"
-
 # soulstream 관련 경로 접두사
 _SOULSTREAM_DASHBOARD_PATH_PREFIX = "soul-dashboard/"
 _SOULSTREAM_DASHBOARD_PACKAGE_LOCK = "soul-dashboard/package-lock.json"
@@ -259,25 +255,6 @@ class Deployer:
 
             new_head = self._get_repo_head(dev_seosoyoung)
 
-            # soul-dashboard 빌드 (변경 감지 시)
-            if old_head and new_head and old_head != new_head:
-                changed = self._get_changed_files_between(
-                    dev_seosoyoung, old_head, new_head,
-                )
-                if self._has_soul_dashboard_changes(changed):
-                    needs_install = any(
-                        f == _SOUL_DASHBOARD_PACKAGE_LOCK for f in changed
-                    )
-                    dashboard_dir = dev_seosoyoung / "src" / "soul-dashboard"
-                    build_ok = self._build_soul_dashboard(
-                        dashboard_dir, npm_install=needs_install,
-                    )
-                    if not build_ok:
-                        logger.warning(
-                            "soul-dashboard 빌드 실패, "
-                            "이전 빌드 결과물로 프로세스 재시작 진행",
-                        )
-
         # soulstream 리포 동기화
         soulstream_dir = workspace / ".projects" / "soulstream"
         soulstream_runtime = self._paths.get("soulstream_runtime")
@@ -394,13 +371,6 @@ class Deployer:
         except (subprocess.SubprocessError, OSError) as exc:
             logger.warning("git diff 실패 (%s): %s", repo_path, exc)
         return []
-
-    @staticmethod
-    def _has_soul_dashboard_changes(changed_files: list[str]) -> bool:
-        """변경 파일 중 soul-dashboard 코드가 포함되어 있는지 확인."""
-        return any(
-            f.startswith(_SOUL_DASHBOARD_PATH_PREFIX) for f in changed_files
-        )
 
     @staticmethod
     def _build_soul_dashboard(

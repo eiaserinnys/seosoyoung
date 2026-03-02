@@ -18,7 +18,7 @@ class TestGetRoleConfigMCP:
 
     def test_admin_config_has_mcp_config(self):
         """admin 역할 config에 mcp_config_path가 설정됨"""
-        from seosoyoung.slackbot.claude.executor import _get_role_config
+        from seosoyoung.slackbot.soulstream.executor import _get_role_config
         from seosoyoung.slackbot.config import Config
 
         config = _get_role_config("admin", Config.auth.role_tools)
@@ -27,7 +27,7 @@ class TestGetRoleConfigMCP:
 
     def test_viewer_config_no_mcp_config(self):
         """viewer 역할은 MCP 도구를 사용하지 않음"""
-        from seosoyoung.slackbot.claude.executor import _get_role_config
+        from seosoyoung.slackbot.soulstream.executor import _get_role_config
         from seosoyoung.slackbot.config import Config
 
         config = _get_role_config("viewer", Config.auth.role_tools)

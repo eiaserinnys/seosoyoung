@@ -227,8 +227,8 @@ class TestOnProgressDmThread:
 
     def test_dm_thread_blockquote_new_reply(self):
         """DM 스레드에 새 blockquote 답글 추가"""
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
-        from seosoyoung.slackbot.claude.message_formatter import escape_backticks
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.message_formatter import escape_backticks
 
         mock_client = MagicMock()
         mock_client.chat_postMessage.return_value = {"ts": "dm_reply_1"}
@@ -285,9 +285,9 @@ class TestHandleTrelloSuccessWithDm:
 
     def test_dm_last_reply_updated_to_plaintext(self):
         """DM 스레드의 마지막 blockquote가 평문으로 교체됨"""
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
         from seosoyoung.slackbot.presentation.types import PresentationContext
-        from seosoyoung.slackbot.claude.engine_types import ClaudeResult
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
         from seosoyoung.slackbot.plugins.trello.watcher import TrackedCard
 
         mock_client = MagicMock()
@@ -356,7 +356,7 @@ class TestHandleTrelloSuccessWithDm:
 
     def test_no_dm_params_uses_fallback(self):
         """DM 파라미터가 없으면 기존 동작 유지"""
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
         from seosoyoung.slackbot.presentation.types import PresentationContext
         from seosoyoung.slackbot.plugins.trello.watcher import TrackedCard
 
@@ -428,7 +428,7 @@ class TestHandleInterruptedWithDm:
 
     def test_dm_last_reply_marked_interrupted(self):
         """인터럽트 시 DM 스레드의 마지막 답글이 (중단됨)으로 업데이트"""
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
         from seosoyoung.slackbot.presentation.types import PresentationContext
         from seosoyoung.slackbot.plugins.trello.watcher import TrackedCard
 
@@ -932,7 +932,7 @@ class TestRestartMarkerDmRouting:
 
     def test_restart_confirmation_uses_current_channel(self):
         """재시작 확인 메시지가 현재 세션 채널로 전송됨 (DM 모드에서는 DM 채널)"""
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
 
         mock_send_restart = MagicMock()
         runtime = MagicMock()

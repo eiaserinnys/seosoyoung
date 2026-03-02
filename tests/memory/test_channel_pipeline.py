@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from seosoyoung.slackbot.claude.session import SessionManager
+from seosoyoung.slackbot.soulstream.session import SessionManager
 from seosoyoung.slackbot.plugins.channel_observer.intervention import InterventionAction, InterventionHistory
 from seosoyoung.slackbot.plugins.channel_observer.observer import (
     DigestCompressorResult,

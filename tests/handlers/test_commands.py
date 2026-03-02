@@ -381,7 +381,7 @@ class TestHandleProfile:
     @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
     def test_soul_service_error_handled(self, mock_api):
         """SoulServiceError 발생 시 에러 메시지 표시"""
-        from seosoyoung.slackbot.claude.service_client import SoulServiceError
+        from seosoyoung.slackbot.soulstream.service_client import SoulServiceError
         mock_api.side_effect = SoulServiceError("프로필을 찾을 수 없습니다: bad")
         say = MagicMock()
         handle_profile(

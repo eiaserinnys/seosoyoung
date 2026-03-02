@@ -367,35 +367,6 @@ class TestWaitingSessionsNotification:
         assert deployer.state == DeployState.WAITING_SESSIONS
 
 
-class TestSoulDashboardChangeDetection:
-    """soul-dashboard 변경 감지 테스트"""
-
-    def test_has_soul_dashboard_changes_true(self, deployer):
-        """src/soul-dashboard/ 경로 변경이 있으면 True"""
-        files = [
-            "src/soul-dashboard/client/App.tsx",
-            "src/seosoyoung/bot.py",
-        ]
-        assert deployer._has_soul_dashboard_changes(files) is True
-
-    def test_has_soul_dashboard_changes_false(self, deployer):
-        """soul-dashboard 외 변경만 있으면 False"""
-        files = [
-            "src/seosoyoung/bot.py",
-            "src/supervisor/deployer.py",
-        ]
-        assert deployer._has_soul_dashboard_changes(files) is False
-
-    def test_has_soul_dashboard_changes_empty(self, deployer):
-        """변경 파일 없으면 False"""
-        assert deployer._has_soul_dashboard_changes([]) is False
-
-    def test_has_soul_dashboard_changes_package_json(self, deployer):
-        """package.json 변경도 감지"""
-        files = ["src/soul-dashboard/package.json"]
-        assert deployer._has_soul_dashboard_changes(files) is True
-
-
 class TestGetRepoHead:
     """_get_repo_head 헬퍼 테스트"""
 
@@ -438,12 +409,12 @@ class TestGetChangedFilesBetween:
         with patch("supervisor.deployer.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
-                stdout="src/soul-dashboard/client/App.tsx\nsrc/soul-dashboard/server/index.ts\n",
+                stdout="src/seosoyoung/slackbot/main.py\nsrc/seosoyoung/slackbot/config.py\n",
             )
             files = deployer._get_changed_files_between(tmp_path, "aaa", "bbb")
             assert files == [
-                "src/soul-dashboard/client/App.tsx",
-                "src/soul-dashboard/server/index.ts",
+                "src/seosoyoung/slackbot/main.py",
+                "src/seosoyoung/slackbot/config.py",
             ]
 
     def test_failure_returns_empty(self, deployer, tmp_path):
@@ -564,99 +535,3 @@ class TestBuildSoulDashboard:
         assert result is False
 
 
-class TestDoUpdateSoulDashboardIntegration:
-    """_do_update 내 soul-dashboard 빌드 통합 테스트"""
-
-    def test_dashboard_build_triggered_on_change(self, deployer, tmp_path):
-        """seosoyoung 리포 변경 시 soul-dashboard 빌드가 트리거됨"""
-        # .projects/seosoyoung 디렉토리 생성
-        dev_dir = tmp_path / "workspace" / ".projects" / "seosoyoung"
-        dev_dir.mkdir(parents=True)
-
-        with patch("supervisor.deployer.subprocess.run") as mock_run, \
-             patch.object(
-                 deployer, "_get_repo_head",
-                 side_effect=["old_head_abc", "new_head_xyz"],
-             ), \
-             patch.object(
-                 deployer, "_get_changed_files_between",
-                 return_value=["src/soul-dashboard/client/App.tsx"],
-             ), \
-             patch.object(deployer, "_build_soul_dashboard") as mock_build:
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-            deployer._do_update()
-
-        mock_build.assert_called_once()
-        # npm_install=False (package-lock.json 변경 없음)
-        assert mock_build.call_args[1]["npm_install"] is False
-
-    def test_dashboard_build_with_package_lock_change(self, deployer, tmp_path):
-        """package-lock.json 변경 시 npm_install=True로 빌드"""
-        dev_dir = tmp_path / "workspace" / ".projects" / "seosoyoung"
-        dev_dir.mkdir(parents=True)
-
-        with patch("supervisor.deployer.subprocess.run") as mock_run, \
-             patch.object(
-                 deployer, "_get_repo_head",
-                 side_effect=["old_head", "new_head"],
-             ), \
-             patch.object(
-                 deployer, "_get_changed_files_between",
-                 return_value=[
-                     "src/soul-dashboard/package-lock.json",
-                     "src/soul-dashboard/client/App.tsx",
-                 ],
-             ), \
-             patch.object(deployer, "_build_soul_dashboard") as mock_build:
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-            deployer._do_update()
-
-        mock_build.assert_called_once()
-        assert mock_build.call_args[1]["npm_install"] is True
-
-    def test_no_dashboard_build_when_head_unchanged(self, deployer, tmp_path):
-        """HEAD가 같으면 빌드를 건너뜀"""
-        dev_dir = tmp_path / "workspace" / ".projects" / "seosoyoung"
-        dev_dir.mkdir(parents=True)
-
-        with patch("supervisor.deployer.subprocess.run") as mock_run, \
-             patch.object(
-                 deployer, "_get_repo_head",
-                 side_effect=["same_head", "same_head"],
-             ), \
-             patch.object(deployer, "_build_soul_dashboard") as mock_build:
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-            deployer._do_update()
-
-        mock_build.assert_not_called()
-
-    def test_no_dashboard_build_when_no_dashboard_files(self, deployer, tmp_path):
-        """soul-dashboard 외 파일만 변경 시 빌드 건너뜀"""
-        dev_dir = tmp_path / "workspace" / ".projects" / "seosoyoung"
-        dev_dir.mkdir(parents=True)
-
-        with patch("supervisor.deployer.subprocess.run") as mock_run, \
-             patch.object(
-                 deployer, "_get_repo_head",
-                 side_effect=["old_head", "new_head"],
-             ), \
-             patch.object(
-                 deployer, "_get_changed_files_between",
-                 return_value=["src/seosoyoung/bot.py"],
-             ), \
-             patch.object(deployer, "_build_soul_dashboard") as mock_build:
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-            deployer._do_update()
-
-        mock_build.assert_not_called()
-
-    def test_no_dashboard_build_when_dev_dir_missing(self, deployer, tmp_path):
-        """seosoyoung 디렉토리가 없으면 빌드 건너뜀"""
-        # .projects/seosoyoung 미생성
-
-        with patch("supervisor.deployer.subprocess.run") as mock_run, \
-             patch.object(deployer, "_build_soul_dashboard") as mock_build:
-            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-            deployer._do_update()
-
-        mock_build.assert_not_called()

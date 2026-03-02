@@ -121,7 +121,7 @@ class ChannelDigestScheduler:
     def _run_pipeline(self, channel_id: str) -> None:
         """소화/판단 파이프라인을 실행합니다."""
         from seosoyoung.slackbot.plugins.channel_observer.pipeline import run_channel_pipeline
-        from seosoyoung.slackbot.claude import get_claude_runner
+        from seosoyoung.slackbot.soulstream import get_claude_runner
 
         runner = get_claude_runner()
 

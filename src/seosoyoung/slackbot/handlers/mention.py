@@ -22,7 +22,7 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_plugins,
     handle_resume_list_run,
 )
-from seosoyoung.slackbot.claude.session_context import build_initial_context, format_hybrid_context
+from seosoyoung.slackbot.soulstream.session_context import build_initial_context, format_hybrid_context
 
 logger = logging.getLogger(__name__)
 

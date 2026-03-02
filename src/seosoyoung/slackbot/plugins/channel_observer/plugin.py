@@ -284,7 +284,7 @@ class ChannelObserverPlugin(Plugin):
                 from seosoyoung.slackbot.plugins.channel_observer.pipeline import (
                     run_channel_pipeline,
                 )
-                from seosoyoung.slackbot.claude import get_claude_runner
+                from seosoyoung.slackbot.soulstream import get_claude_runner
                 from seosoyoung.utils.async_bridge import run_in_new_loop
 
                 runner = get_claude_runner()

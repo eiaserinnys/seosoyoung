@@ -471,7 +471,7 @@ class TestPreemptiveCompact:
 
     def test_compact_success_with_session_id(self, tmp_path):
         """세션 ID가 있을 때 compact_session 호출 성공"""
-        from seosoyoung.slackbot.claude.session import Session
+        from seosoyoung.slackbot.soulstream.session import Session
 
         mock_session_manager = MagicMock()
         mock_session = Session(
@@ -501,7 +501,7 @@ class TestPreemptiveCompact:
 
     def test_compact_skipped_without_session_id(self, tmp_path):
         """세션 ID가 없으면 compact를 스킵"""
-        from seosoyoung.slackbot.claude.session import Session
+        from seosoyoung.slackbot.soulstream.session import Session
 
         mock_session_manager = MagicMock()
         mock_session = Session(
@@ -521,7 +521,7 @@ class TestPreemptiveCompact:
 
     def test_compact_failure_does_not_block_next_card(self, tmp_path):
         """compact 실패해도 예외가 전파되지 않아 다음 카드 처리를 막지 않음"""
-        from seosoyoung.slackbot.claude.session import Session
+        from seosoyoung.slackbot.soulstream.session import Session
 
         mock_session_manager = MagicMock()
         mock_session = Session(
@@ -544,7 +544,7 @@ class TestPreemptiveCompact:
 
     def test_compact_updates_session_id_when_changed(self, tmp_path):
         """compact 후 세션 ID가 변경되면 session_manager에 업데이트"""
-        from seosoyoung.slackbot.claude.session import Session
+        from seosoyoung.slackbot.soulstream.session import Session
 
         mock_session_manager = MagicMock()
         mock_session = Session(
@@ -1163,7 +1163,7 @@ class TestMultiCardChainingIntegration:
     def test_compact_timeout_does_not_block_chain(self, tmp_path):
         """_preemptive_compact 타임아웃 시 체인이 계속됨"""
         import concurrent.futures
-        from seosoyoung.slackbot.claude.session import Session
+        from seosoyoung.slackbot.soulstream.session import Session
 
         mock_session_manager = MagicMock()
         mock_session = Session(

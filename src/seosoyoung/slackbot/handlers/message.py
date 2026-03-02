@@ -8,7 +8,7 @@ from seosoyoung.utils.async_bridge import run_in_new_loop
 from seosoyoung.core.context import create_hook_context
 from seosoyoung.slackbot.slack import download_files_sync, build_file_context
 from seosoyoung.slackbot.slack.message_formatter import format_slack_message
-from seosoyoung.slackbot.claude.session_context import build_followup_context
+from seosoyoung.slackbot.soulstream.session_context import build_followup_context
 
 logger = logging.getLogger(__name__)
 

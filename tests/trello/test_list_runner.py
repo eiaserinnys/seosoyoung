@@ -484,7 +484,7 @@ class TestListRunMarkupParsing:
 
     def test_claude_result_has_list_run_field(self):
         """ClaudeResult에 list_run 필드 존재"""
-        from seosoyoung.slackbot.claude.engine_types import ClaudeResult
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
 
         result = ClaudeResult(
             success=True,
@@ -1495,8 +1495,8 @@ class TestHandleListRunMarkerIntegration:
 
     def test_handle_list_run_marker_starts_list_run(self):
         """LIST_RUN 마커 처리 시 정주행 시작"""
-        from seosoyoung.slackbot.claude.session import SessionRuntime
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.session import SessionRuntime
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
         from seosoyoung.slackbot.plugins.trello.watcher import TrelloWatcher
         from seosoyoung.slackbot.plugins.trello.list_runner import ListRunner
         from seosoyoung.slackbot.plugins.trello.client import TrelloCard
@@ -1552,8 +1552,8 @@ class TestHandleListRunMarkerIntegration:
 
     def test_handle_list_run_marker_without_watcher(self):
         """TrelloWatcher 없이 LIST_RUN 마커 처리 시 에러 메시지"""
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
-        from seosoyoung.slackbot.claude.session import SessionRuntime
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.session import SessionRuntime
         from unittest.mock import MagicMock
 
         executor = ClaudeExecutor(
@@ -1584,8 +1584,8 @@ class TestHandleListRunMarkerIntegration:
 
     def test_handle_list_run_marker_list_not_found(self):
         """존재하지 않는 리스트로 LIST_RUN 마커 처리 시 에러 메시지"""
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
-        from seosoyoung.slackbot.claude.session import SessionRuntime
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.session import SessionRuntime
         from seosoyoung.slackbot.plugins.trello.watcher import TrelloWatcher
         from unittest.mock import MagicMock
 

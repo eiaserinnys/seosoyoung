@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from seosoyoung.slackbot.handlers.mention import extract_command, get_channel_history
 from seosoyoung.slackbot.slack.helpers import send_long_message
 from seosoyoung.slackbot.auth import check_permission, get_user_role
-from seosoyoung.slackbot.claude.message_formatter import escape_backticks, build_trello_header
+from seosoyoung.slackbot.soulstream.message_formatter import escape_backticks, build_trello_header
 from seosoyoung.slackbot.plugins.trello.watcher import TrackedCard
 
 
