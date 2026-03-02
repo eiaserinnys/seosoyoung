@@ -1,7 +1,7 @@
 """Soulstream Service HTTP + SSE 클라이언트
 
 Soulstream 서버(독립 soul-server, 기본 포트 4105)와 통신하는 HTTP 클라이언트.
-CLAUDE_EXECUTION_MODE=remote일 때 사용됩니다.
+per-session 아키텍처: agent_session_id가 유일한 식별자.
 """
 
 import asyncio
@@ -30,6 +30,7 @@ class SSEEvent:
     """Server-Sent Event 데이터"""
     event: str
     data: dict
+    id: Optional[str] = None
 
 
 @dataclass
@@ -37,6 +38,7 @@ class ExecuteResult:
     """Soulstream 서버 실행 결과"""
     success: bool
     result: str
+    agent_session_id: Optional[str] = None
     claude_session_id: Optional[str] = None
     error: Optional[str] = None
 
@@ -48,18 +50,18 @@ class SoulServiceError(Exception):
     pass
 
 
-class TaskConflictError(SoulServiceError):
-    """태스크 충돌 오류 (이미 실행 중인 태스크 존재)"""
+class SessionConflictError(SoulServiceError):
+    """세션 충돌 오류 (이미 실행 중인 세션)"""
     pass
 
 
-class TaskNotFoundError(SoulServiceError):
-    """태스크를 찾을 수 없음"""
+class SessionNotFoundError(SoulServiceError):
+    """세션을 찾을 수 없음"""
     pass
 
 
-class TaskNotRunningError(SoulServiceError):
-    """태스크가 실행 중이 아님"""
+class SessionNotRunningError(SoulServiceError):
+    """세션이 실행 중이 아님"""
     pass
 
 
@@ -108,15 +110,12 @@ class ExponentialBackoff:
 class SoulServiceClient:
     """Soulstream 서버 HTTP + SSE 클라이언트
 
-    Task API를 사용하여 Claude Code를 원격 실행합니다.
+    per-session API를 사용하여 Claude Code를 원격 실행합니다.
+    agent_session_id가 유일한 식별자입니다.
 
     사용 예:
         client = SoulServiceClient(base_url="http://localhost:4105", token="xxx")
-        result = await client.execute(
-            client_id="seosoyoung_bot",
-            request_id="thread_ts",
-            prompt="안녕"
-        )
+        result = await client.execute(prompt="안녕")
     """
 
     def __init__(self, base_url: str, token: str = ""):
@@ -144,7 +143,7 @@ class SoulServiceClient:
     def _build_headers(self) -> dict:
         headers = {
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "text/event-stream",
         }
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
@@ -161,14 +160,12 @@ class SoulServiceClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
 
-    # === Task API ===
+    # === Session API ===
 
     async def execute(
         self,
-        client_id: str,
-        request_id: str,
         prompt: str,
-        resume_session_id: Optional[str] = None,
+        agent_session_id: Optional[str] = None,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
@@ -181,15 +178,15 @@ class SoulServiceClient:
     ) -> ExecuteResult:
         """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
 
+        POST /execute → SSE 응답. 첫 이벤트 init에서 agent_session_id를 읽습니다.
+
         Args:
-            client_id: 클라이언트 ID
-            request_id: 요청 ID
             prompt: 실행할 프롬프트
-            resume_session_id: 이전 세션 ID
+            agent_session_id: 기존 세션 ID (없으면 새 세션 생성, 있으면 resume)
             on_progress: 진행 상황 콜백
             on_compact: 컴팩션 콜백
             on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
-            on_session: 세션 ID 조기 통지 콜백 (session_id: str)
+            on_session: 세션 ID 조기 통지 콜백 (agent_session_id: str)
             on_credential_alert: 크레덴셜 알림 콜백 (data: dict)
             allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
             disallowed_tools: 금지 도구 목록
@@ -199,24 +196,23 @@ class SoulServiceClient:
         url = f"{self.base_url}/execute"
 
         data = {
-            "client_id": client_id,
-            "request_id": request_id,
             "prompt": prompt,
             "use_mcp": use_mcp,
         }
-        if resume_session_id:
-            data["resume_session_id"] = resume_session_id
+        if agent_session_id:
+            data["agent_session_id"] = agent_session_id
         if allowed_tools is not None:
             data["allowed_tools"] = allowed_tools
         if disallowed_tools is not None:
             data["disallowed_tools"] = disallowed_tools
 
         backoff = ExponentialBackoff()
+        resolved_session_id = agent_session_id  # init 이벤트에서 갱신됨
 
         async with session.post(url, json=data) as response:
             if response.status == 409:
-                raise TaskConflictError(
-                    f"이미 실행 중인 태스크가 있습니다: {client_id}:{request_id}"
+                raise SessionConflictError(
+                    f"이미 실행 중인 세션이 있습니다: {agent_session_id}"
                 )
             elif response.status == 503:
                 raise RateLimitError("동시 실행 제한을 초과했습니다")
@@ -225,7 +221,7 @@ class SoulServiceClient:
                 raise SoulServiceError(f"실행 실패: {error}")
 
             try:
-                return await self._handle_sse_events(
+                result = await self._handle_sse_events(
                     response=response,
                     on_progress=on_progress,
                     on_compact=on_compact,
@@ -233,10 +229,22 @@ class SoulServiceClient:
                     on_session=on_session,
                     on_credential_alert=on_credential_alert,
                 )
+                # init 이벤트에서 읽은 session_id를 보존
+                if result.agent_session_id:
+                    resolved_session_id = result.agent_session_id
+                return result
             except ConnectionLostError:
-                pass  # 재연결 루프로 진입
+                # init 이벤트에서 이미 session_id를 받았을 수 있음
+                pass
 
         # 연결 끊김 → reconnect_stream()으로 새 HTTP 요청을 보내 재연결
+        if not resolved_session_id:
+            return ExecuteResult(
+                success=False,
+                result="연결 끊김: 세션 ID를 받지 못해 재연결할 수 없습니다",
+                error="연결 끊김: 세션 ID를 받지 못해 재연결할 수 없습니다",
+            )
+
         while backoff.should_retry():
             delay = backoff.get_delay()
             logger.warning(
@@ -248,16 +256,16 @@ class SoulServiceClient:
 
             try:
                 return await self.reconnect_stream(
-                    client_id, request_id, on_progress, on_compact, on_debug,
+                    resolved_session_id, on_progress, on_compact, on_debug,
                     on_credential_alert,
                 )
             except ConnectionLostError:
                 continue
-            except TaskNotFoundError:
+            except SessionNotFoundError:
                 return ExecuteResult(
                     success=False,
-                    result="재연결 실패: 태스크가 이미 종료됨",
-                    error="재연결 실패: 태스크가 이미 종료됨",
+                    result="재연결 실패: 세션이 이미 종료됨",
+                    error="재연결 실패: 세션이 이미 종료됨",
                 )
 
         return ExecuteResult(
@@ -268,90 +276,59 @@ class SoulServiceClient:
 
     async def intervene(
         self,
-        client_id: str,
-        request_id: str,
+        agent_session_id: str,
         text: str,
         user: str,
+        *,
+        attachment_paths: Optional[List[str]] = None,
     ) -> dict:
-        """실행 중인 태스크에 개입 메시지 전송"""
+        """세션에 개입 메시지 전송
+
+        POST /sessions/{agent_session_id}/intervene
+        - 실행 중이면 intervention queue에 추가
+        - 완료된 세션이면 자동 resume
+        """
         session = await self._get_session()
-        url = f"{self.base_url}/tasks/{client_id}/{request_id}/intervene"
+        url = f"{self.base_url}/sessions/{agent_session_id}/intervene"
 
         data = {"text": text, "user": user}
+        if attachment_paths:
+            data["attachment_paths"] = attachment_paths
 
         async with session.post(url, json=data) as response:
             if response.status == 202:
                 return await response.json()
             elif response.status == 404:
-                raise TaskNotFoundError(
-                    f"태스크를 찾을 수 없습니다: {client_id}:{request_id}"
+                raise SessionNotFoundError(
+                    f"세션을 찾을 수 없습니다: {agent_session_id}"
                 )
             elif response.status == 409:
-                raise TaskNotRunningError(
-                    f"태스크가 실행 중이 아닙니다: {client_id}:{request_id}"
+                raise SessionNotRunningError(
+                    f"세션이 실행 중이 아닙니다: {agent_session_id}"
                 )
             else:
                 error = await self._parse_error(response)
                 raise SoulServiceError(f"개입 메시지 전송 실패: {error}")
 
-    async def intervene_by_session(
-        self,
-        session_id: str,
-        text: str,
-        user: str,
-    ) -> dict:
-        """session_id 기반 개입 메시지 전송"""
-        session = await self._get_session()
-        url = f"{self.base_url}/sessions/{session_id}/intervene"
-
-        data = {"text": text, "user": user}
-
-        async with session.post(url, json=data) as response:
-            if response.status == 202:
-                return await response.json()
-            elif response.status == 404:
-                raise TaskNotFoundError(
-                    f"세션에 대응하는 태스크를 찾을 수 없습니다: {session_id}"
-                )
-            elif response.status == 409:
-                raise TaskNotRunningError(
-                    f"세션의 태스크가 실행 중이 아닙니다: {session_id}"
-                )
-            else:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"세션 기반 개입 메시지 전송 실패: {error}")
-
-    async def ack(self, client_id: str, request_id: str) -> bool:
-        """결과 수신 확인"""
-        session = await self._get_session()
-        url = f"{self.base_url}/tasks/{client_id}/{request_id}/ack"
-
-        async with session.post(url) as response:
-            if response.status == 200:
-                return True
-            elif response.status == 404:
-                return False
-            else:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"ack 실패: {error}")
-
     async def reconnect_stream(
         self,
-        client_id: str,
-        request_id: str,
+        agent_session_id: str,
         on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
     ) -> ExecuteResult:
-        """태스크 SSE 스트림에 재연결"""
+        """세션 SSE 스트림에 재연결
+
+        GET /events/{agent_session_id}/stream
+        """
         session = await self._get_session()
-        url = f"{self.base_url}/tasks/{client_id}/{request_id}/stream"
+        url = f"{self.base_url}/events/{agent_session_id}/stream"
 
         async with session.get(url) as response:
             if response.status == 404:
-                raise TaskNotFoundError(
-                    f"태스크를 찾을 수 없습니다: {client_id}:{request_id}"
+                raise SessionNotFoundError(
+                    f"세션을 찾을 수 없습니다: {agent_session_id}"
                 )
             elif response.status != 200:
                 error = await self._parse_error(response)
@@ -477,15 +454,25 @@ class SoulServiceClient:
         재연결은 execute()에서 reconnect_stream()을 통해 처리합니다.
         """
         result_text = ""
+        result_agent_session_id = None
         result_claude_session_id = None
         error_message = None
 
         try:
             async for event in self._parse_sse_stream(response):
-                if event.event == "session":
+                if event.event == "init":
+                    # 첫 이벤트: agent_session_id 확보
+                    result_agent_session_id = event.data.get("agent_session_id", "")
+                    if on_session and result_agent_session_id:
+                        await on_session(result_agent_session_id)
+
+                elif event.event == "session":
+                    # 하위 호환: 기존 session 이벤트도 처리
                     session_id = event.data.get("session_id", "")
-                    if on_session and session_id:
-                        await on_session(session_id)
+                    if not result_agent_session_id and session_id:
+                        result_agent_session_id = session_id
+                        if on_session:
+                            await on_session(session_id)
 
                 elif event.event == "progress":
                     text = event.data.get("text", "")
@@ -531,12 +518,14 @@ class SoulServiceClient:
             return ExecuteResult(
                 success=False,
                 result=error_message,
+                agent_session_id=result_agent_session_id,
                 error=error_message,
             )
 
         return ExecuteResult(
             success=True,
             result=result_text,
+            agent_session_id=result_agent_session_id,
             claude_session_id=result_claude_session_id,
         )
 
@@ -551,13 +540,11 @@ class SoulServiceClient:
         """
         current_event = "message"
         current_data: list[str] = []
+        current_id: Optional[str] = None
         last_event_name = "none"  # 로깅용: 마지막으로 수신한 이벤트 이름
 
         while True:
             try:
-                # asyncio.wait_for 타임아웃 제거: Claude 실행이 오래 걸릴 수 있음 (테스트 등).
-                # Soulstream이 주기적으로 keepalive 이벤트(:)를 보내므로 readline()은 블로킹되지 않음.
-                # 전체 스트림 타임아웃도 제거: aiohttp.ClientTimeout(total=None).
                 line_bytes = await response.content.readline()
 
                 if not line_bytes:
@@ -570,6 +557,8 @@ class SoulServiceClient:
                     current_event = line[6:].strip()
                 elif line.startswith("data:"):
                     current_data.append(line[5:].strip())
+                elif line.startswith("id:"):
+                    current_id = line[3:].strip()
                 elif line.startswith(":"):
                     pass  # SSE comment (keepalive)
                 elif line == "":
@@ -581,10 +570,11 @@ class SoulServiceClient:
                             data = {"raw": data_str}
 
                         last_event_name = current_event
-                        yield SSEEvent(event=current_event, data=data)
+                        yield SSEEvent(event=current_event, data=data, id=current_id)
 
                         current_event = "message"
                         current_data = []
+                        current_id = None
 
             except asyncio.TimeoutError:
                 logger.error(
@@ -614,3 +604,10 @@ class SoulServiceClient:
             return str(data)
         except Exception:
             return f"HTTP {response.status}"
+
+
+# === 하위 호환 별칭 ===
+# 기존 코드에서 TaskConflictError 등을 import하는 경우를 위한 별칭
+TaskConflictError = SessionConflictError
+TaskNotFoundError = SessionNotFoundError
+TaskNotRunningError = SessionNotRunningError

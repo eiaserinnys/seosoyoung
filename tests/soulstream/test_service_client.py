@@ -1,6 +1,7 @@
 """SoulServiceClient 테스트
 
 mock aiohttp 서버를 사용하여 HTTP + SSE 클라이언트 동작을 검증합니다.
+per-session 아키텍처: agent_session_id가 유일한 식별자.
 """
 
 import asyncio
@@ -13,14 +14,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from seosoyoung.slackbot.soulstream.service_client import (
     SoulServiceClient,
     SoulServiceError,
-    TaskConflictError,
-    TaskNotFoundError,
-    TaskNotRunningError,
+    SessionConflictError,
+    SessionNotFoundError,
+    SessionNotRunningError,
     RateLimitError,
     ConnectionLostError,
     ExponentialBackoff,
     ExecuteResult,
     SSEEvent,
+    # 하위 호환 별칭
+    TaskConflictError,
+    TaskNotFoundError,
+    TaskNotRunningError,
 )
 
 
@@ -124,9 +129,15 @@ class TestSoulServiceClient:
         headers = client._build_headers()
         assert "Authorization" not in headers
 
+    def test_backward_compat_aliases(self):
+        """하위 호환 별칭이 올바르게 매핑되는지 확인"""
+        assert TaskConflictError is SessionConflictError
+        assert TaskNotFoundError is SessionNotFoundError
+        assert TaskNotRunningError is SessionNotRunningError
+
 
 class TestSoulServiceClientExecute:
-    """SoulServiceClient.execute() 테스트 (mock aiohttp)"""
+    """SoulServiceClient.execute() 테스트 (per-session, mock aiohttp)"""
 
     @pytest.fixture
     def client(self):
@@ -134,13 +145,13 @@ class TestSoulServiceClientExecute:
 
     @pytest.mark.asyncio
     async def test_execute_conflict_raises(self, client):
-        """409 응답 시 TaskConflictError"""
+        """409 응답 시 SessionConflictError"""
         mock_response = MagicMock()
         mock_response.status = 409
         client._session = _mock_session(mock_response)
 
-        with pytest.raises(TaskConflictError):
-            await client.execute("client1", "req1", "hello")
+        with pytest.raises(SessionConflictError):
+            await client.execute("hello")
 
     @pytest.mark.asyncio
     async def test_execute_rate_limit_raises(self, client):
@@ -150,7 +161,7 @@ class TestSoulServiceClientExecute:
         client._session = _mock_session(mock_response)
 
         with pytest.raises(RateLimitError):
-            await client.execute("client1", "req1", "hello")
+            await client.execute("hello")
 
     @pytest.mark.asyncio
     async def test_execute_generic_error_raises(self, client):
@@ -161,12 +172,65 @@ class TestSoulServiceClientExecute:
         client._session = _mock_session(mock_response)
 
         with pytest.raises(SoulServiceError, match="internal error"):
-            await client.execute("client1", "req1", "hello")
+            await client.execute("hello")
+
+    @pytest.mark.asyncio
+    async def test_execute_sends_prompt_only(self, client):
+        """기본 execute: prompt만 전송, agent_session_id 없음"""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"new-sess-1"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done","claude_session_id":"sess-1"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+
+        session = _mock_session(mock_response)
+        client._session = session
+
+        result = await client.execute("hello")
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert body["prompt"] == "hello"
+        assert "agent_session_id" not in body
+        assert result.agent_session_id == "new-sess-1"
+
+    @pytest.mark.asyncio
+    async def test_execute_with_agent_session_id(self, client):
+        """resume: agent_session_id 포함하여 전송"""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"existing-sess"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"resumed"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+
+        session = _mock_session(mock_response)
+        client._session = session
+
+        result = await client.execute("continue", agent_session_id="existing-sess")
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert body["agent_session_id"] == "existing-sess"
 
     @pytest.mark.asyncio
     async def test_execute_includes_tool_settings_in_body(self, client):
         """allowed_tools/disallowed_tools/use_mcp가 HTTP body에 포함되는지 확인"""
         sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-tools"}\n'
+            b"\n"
             b"event:complete\n"
             b'data:{"type":"complete","result":"done","claude_session_id":"sess-1"}\n'
             b"\n"
@@ -179,13 +243,12 @@ class TestSoulServiceClientExecute:
         client._session = session
 
         await client.execute(
-            "client1", "req1", "hello",
+            "hello",
             allowed_tools=["Read", "Glob"],
             disallowed_tools=["Bash"],
             use_mcp=False,
         )
 
-        # session.post가 호출된 json 데이터 확인
         call_kwargs = session.post.call_args
         body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
         assert body["allowed_tools"] == ["Read", "Glob"]
@@ -196,6 +259,9 @@ class TestSoulServiceClientExecute:
     async def test_execute_omits_none_tools_from_body(self, client):
         """allowed_tools/disallowed_tools가 None이면 body에서 생략"""
         sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-no-tools"}\n'
+            b"\n"
             b"event:complete\n"
             b'data:{"type":"complete","result":"done"}\n'
             b"\n"
@@ -207,7 +273,7 @@ class TestSoulServiceClientExecute:
         session = _mock_session(mock_response)
         client._session = session
 
-        await client.execute("client1", "req1", "hello")
+        await client.execute("hello")
 
         call_kwargs = session.post.call_args
         body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
@@ -215,9 +281,34 @@ class TestSoulServiceClientExecute:
         assert "disallowed_tools" not in body
         assert body["use_mcp"] is True  # 기본값
 
+    @pytest.mark.asyncio
+    async def test_execute_init_event_triggers_on_session(self, client):
+        """init 이벤트가 on_session 콜백을 호출하는지 확인"""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"new-sess-cb"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        client._session = _mock_session(mock_response)
+
+        session_ids = []
+
+        async def on_session(sid):
+            session_ids.append(sid)
+
+        result = await client.execute("hello", on_session=on_session)
+        assert session_ids == ["new-sess-cb"]
+        assert result.agent_session_id == "new-sess-cb"
+
 
 class TestSoulServiceClientIntervene:
-    """SoulServiceClient.intervene() 테스트"""
+    """SoulServiceClient.intervene() 테스트 (per-session)"""
 
     @pytest.fixture
     def client(self):
@@ -231,58 +322,65 @@ class TestSoulServiceClientIntervene:
         mock_response.json = AsyncMock(return_value={"queued": True, "queue_position": 1})
         client._session = _mock_session(mock_response)
 
-        result = await client.intervene("client1", "req1", "추가 지시", "user1")
+        result = await client.intervene("sess-123", "추가 지시", "user1")
         assert result["queued"] is True
 
     @pytest.mark.asyncio
+    async def test_intervene_with_attachments(self, client):
+        """attachment_paths 포함 전송"""
+        mock_response = AsyncMock()
+        mock_response.status = 202
+        mock_response.json = AsyncMock(return_value={"queued": True})
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.intervene(
+            "sess-123", "look at this", "user1",
+            attachment_paths=["/path/to/file.png"],
+        )
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert body["attachment_paths"] == ["/path/to/file.png"]
+
+    @pytest.mark.asyncio
     async def test_intervene_not_found(self, client):
-        """404 응답 시 TaskNotFoundError"""
+        """404 응답 시 SessionNotFoundError"""
         mock_response = MagicMock()
         mock_response.status = 404
         client._session = _mock_session(mock_response)
 
-        with pytest.raises(TaskNotFoundError):
-            await client.intervene("client1", "req1", "hello", "user1")
+        with pytest.raises(SessionNotFoundError):
+            await client.intervene("sess-missing", "hello", "user1")
 
     @pytest.mark.asyncio
     async def test_intervene_not_running(self, client):
-        """409 응답 시 TaskNotRunningError"""
+        """409 응답 시 SessionNotRunningError"""
         mock_response = MagicMock()
         mock_response.status = 409
         client._session = _mock_session(mock_response)
 
-        with pytest.raises(TaskNotRunningError):
-            await client.intervene("client1", "req1", "hello", "user1")
-
-
-class TestSoulServiceClientAck:
-    """SoulServiceClient.ack() 테스트"""
-
-    @pytest.fixture
-    def client(self):
-        return SoulServiceClient(base_url="http://localhost:3105", token="test")
+        with pytest.raises(SessionNotRunningError):
+            await client.intervene("sess-done", "hello", "user1")
 
     @pytest.mark.asyncio
-    async def test_ack_success(self, client):
-        mock_response = MagicMock()
-        mock_response.status = 200
-        client._session = _mock_session(mock_response)
+    async def test_intervene_url(self, client):
+        """intervene가 올바른 URL을 호출하는지 확인"""
+        mock_response = AsyncMock()
+        mock_response.status = 202
+        mock_response.json = AsyncMock(return_value={"queued": True})
+        session = _mock_session(mock_response)
+        client._session = session
 
-        result = await client.ack("client1", "req1")
-        assert result is True
+        await client.intervene("sess-abc", "hello", "user1")
 
-    @pytest.mark.asyncio
-    async def test_ack_not_found(self, client):
-        mock_response = MagicMock()
-        mock_response.status = 404
-        client._session = _mock_session(mock_response)
-
-        result = await client.ack("client1", "req1")
-        assert result is False
+        call_args = session.post.call_args
+        url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url", "")
+        assert url == "http://localhost:3105/sessions/sess-abc/intervene"
 
 
 class TestSoulServiceClientReconnect:
-    """SoulServiceClient.reconnect_stream() 테스트"""
+    """SoulServiceClient.reconnect_stream() 테스트 (per-session)"""
 
     @pytest.fixture
     def client(self):
@@ -294,8 +392,8 @@ class TestSoulServiceClientReconnect:
         mock_response.status = 404
         client._session = _mock_session(mock_response, method="get")
 
-        with pytest.raises(TaskNotFoundError):
-            await client.reconnect_stream("client1", "req1")
+        with pytest.raises(SessionNotFoundError):
+            await client.reconnect_stream("sess-missing")
 
     @pytest.mark.asyncio
     async def test_reconnect_success(self, client):
@@ -317,10 +415,30 @@ class TestSoulServiceClientReconnect:
         async def on_progress(text):
             progress_texts.append(text)
 
-        result = await client.reconnect_stream("client1", "req1", on_progress=on_progress)
+        result = await client.reconnect_stream("sess-123", on_progress=on_progress)
         assert result.success is True
         assert result.result == "reconnect done"
         assert "[재연결됨]" in progress_texts[0]
+
+    @pytest.mark.asyncio
+    async def test_reconnect_url(self, client):
+        """reconnect_stream이 올바른 URL을 호출하는지 확인"""
+        sse_data = (
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response, method="get")
+        client._session = session
+
+        await client.reconnect_stream("sess-xyz")
+
+        call_args = session.get.call_args
+        url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url", "")
+        assert url == "http://localhost:3105/events/sess-xyz/stream"
 
 
 class TestHandleSSEEvents:
@@ -329,6 +447,30 @@ class TestHandleSSEEvents:
     @pytest.fixture
     def client(self):
         return SoulServiceClient(base_url="http://localhost:3105")
+
+    @pytest.mark.asyncio
+    async def test_init_event(self, client):
+        """init 이벤트에서 agent_session_id를 읽는다"""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-init-123"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+
+        session_ids = []
+        async def on_session(sid):
+            session_ids.append(sid)
+
+        result = await client._handle_sse_events(mock_response, on_session=on_session)
+        assert result.success is True
+        assert result.agent_session_id == "sess-init-123"
+        assert session_ids == ["sess-init-123"]
 
     @pytest.mark.asyncio
     async def test_complete_event(self, client):
@@ -452,7 +594,7 @@ class TestHandleSSEEvents:
         mock_response = AsyncMock()
         mock_response.content = _make_stream_reader(sse_data)
 
-        # on_debug=None (기본값)으로 호출 — 에러 없어야 함
+        # on_debug=None (기본값)으로 호출 -- 에러 없어야 함
         result = await client._handle_sse_events(mock_response)
         assert result.success is True
         assert result.result == "done"
@@ -499,9 +641,33 @@ class TestHandleSSEEvents:
         assert result.success is True
         assert result.result == "after keepalive"
 
+    @pytest.mark.asyncio
+    async def test_sse_event_id_parsed(self, client):
+        """SSE id: 필드가 SSEEvent.id에 파싱되는지 확인"""
+        sse_data = (
+            b"event:progress\n"
+            b"id:evt-42\n"
+            b'data:{"text":"step 1"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"done"}\n'
+            b"\n"
+        )
+
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+
+        events = []
+        async for event in client._parse_sse_stream(mock_response):
+            events.append(event)
+
+        assert len(events) == 2
+        assert events[0].id == "evt-42"
+        assert events[1].id is None  # complete에는 id 없음
+
 
 class TestSSEReconnection:
-    """SSE 연결 끊김 시 자동 재연결 테스트"""
+    """SSE 연결 끊김 시 자동 재연결 테스트 (per-session)"""
 
     @pytest.fixture
     def client(self):
@@ -512,29 +678,43 @@ class TestSSEReconnection:
         """연결 끊김 시 reconnect_stream()으로 재연결하여 결과를 받는다"""
         import aiohttp
 
-        # 첫 번째 응답: SSE 스트림 도중 연결 끊김
-        broken_reader = AsyncMock()
-        broken_reader.readline = AsyncMock(
-            side_effect=aiohttp.ClientPayloadError("Connection lost")
-        )
+        # 첫 번째 응답: init 이벤트 후 연결 끊김
+        # init 이벤트를 먼저 보내고 그 다음 끊기도록 구성
+        init_line = b"event:init\n"
+        init_data = b'data:{"agent_session_id":"sess-recon"}\n'
+        init_end = b"\n"
+
+        lines = [init_line, init_data, init_end]
+        # 이후 ClientPayloadError 발생
+        reader = AsyncMock()
+        call_count = 0
+        async def readline_side_effect():
+            nonlocal call_count
+            if call_count < len(lines):
+                result = lines[call_count]
+                call_count += 1
+                return result
+            raise aiohttp.ClientPayloadError("Connection lost")
+        reader.readline = AsyncMock(side_effect=readline_side_effect)
+
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.content = broken_reader
+        mock_response.content = reader
         client._session = _mock_session(mock_response)
 
         # reconnect_stream mock: 성공 결과 반환
         reconnect_result = ExecuteResult(
             success=True,
             result="reconnected result",
+            agent_session_id="sess-recon",
             claude_session_id="sess-reconnect",
         )
         client.reconnect_stream = AsyncMock(return_value=reconnect_result)
 
-        result = await client.execute("client1", "req1", "hello")
+        result = await client.execute("hello")
 
         assert result.success is True
         assert result.result == "reconnected result"
-        assert result.claude_session_id == "sess-reconnect"
         client.reconnect_stream.assert_called_once()
 
     @pytest.mark.asyncio
@@ -542,20 +722,33 @@ class TestSSEReconnection:
         """재연결이 여러 번 실패하면 백오프 후 재시도한다"""
         import aiohttp
 
-        # 첫 번째 응답: 연결 끊김
-        broken_reader = AsyncMock()
-        broken_reader.readline = AsyncMock(
-            side_effect=aiohttp.ClientPayloadError("Connection lost")
-        )
+        # init 이벤트 후 연결 끊김
+        init_line = b"event:init\n"
+        init_data = b'data:{"agent_session_id":"sess-retry"}\n'
+        init_end = b"\n"
+        lines = [init_line, init_data, init_end]
+
+        reader = AsyncMock()
+        call_count = 0
+        async def readline_side_effect():
+            nonlocal call_count
+            if call_count < len(lines):
+                result = lines[call_count]
+                call_count += 1
+                return result
+            raise aiohttp.ClientPayloadError("Connection lost")
+        reader.readline = AsyncMock(side_effect=readline_side_effect)
+
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.content = broken_reader
+        mock_response.content = reader
         client._session = _mock_session(mock_response)
 
         # reconnect_stream: 처음 2회 실패, 3번째 성공
         success_result = ExecuteResult(
             success=True,
             result="finally connected",
+            agent_session_id="sess-retry",
             claude_session_id="sess-final",
         )
         client.reconnect_stream = AsyncMock(
@@ -567,7 +760,7 @@ class TestSSEReconnection:
         )
 
         with patch("asyncio.sleep", new_callable=AsyncMock):
-            result = await client.execute("client1", "req1", "hello")
+            result = await client.execute("hello")
 
         assert result.success is True
         assert result.result == "finally connected"
@@ -578,13 +771,26 @@ class TestSSEReconnection:
         """재연결 재시도를 모두 소진하면 실패 결과를 반환한다"""
         import aiohttp
 
-        broken_reader = AsyncMock()
-        broken_reader.readline = AsyncMock(
-            side_effect=aiohttp.ClientPayloadError("Connection lost")
-        )
+        # init 이벤트 후 연결 끊김
+        init_line = b"event:init\n"
+        init_data = b'data:{"agent_session_id":"sess-exhaust"}\n'
+        init_end = b"\n"
+        lines = [init_line, init_data, init_end]
+
+        reader = AsyncMock()
+        call_count = 0
+        async def readline_side_effect():
+            nonlocal call_count
+            if call_count < len(lines):
+                result = lines[call_count]
+                call_count += 1
+                return result
+            raise aiohttp.ClientPayloadError("Connection lost")
+        reader.readline = AsyncMock(side_effect=readline_side_effect)
+
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.content = broken_reader
+        mock_response.content = reader
         client._session = _mock_session(mock_response)
 
         # reconnect_stream: 항상 실패
@@ -593,14 +799,51 @@ class TestSSEReconnection:
         )
 
         with patch("asyncio.sleep", new_callable=AsyncMock):
-            result = await client.execute("client1", "req1", "hello")
+            result = await client.execute("hello")
 
         assert result.success is False
         assert "재시도 실패" in result.error
 
     @pytest.mark.asyncio
-    async def test_reconnect_task_not_found(self, client):
-        """재연결 시 태스크가 이미 종료된 경우"""
+    async def test_reconnect_session_not_found(self, client):
+        """재연결 시 세션이 이미 종료된 경우"""
+        import aiohttp
+
+        # init 이벤트 후 연결 끊김
+        init_line = b"event:init\n"
+        init_data = b'data:{"agent_session_id":"sess-gone"}\n'
+        init_end = b"\n"
+        lines = [init_line, init_data, init_end]
+
+        reader = AsyncMock()
+        call_count = 0
+        async def readline_side_effect():
+            nonlocal call_count
+            if call_count < len(lines):
+                result = lines[call_count]
+                call_count += 1
+                return result
+            raise aiohttp.ClientPayloadError("Connection lost")
+        reader.readline = AsyncMock(side_effect=readline_side_effect)
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = reader
+        client._session = _mock_session(mock_response)
+
+        client.reconnect_stream = AsyncMock(
+            side_effect=SessionNotFoundError("session gone")
+        )
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            result = await client.execute("hello")
+
+        assert result.success is False
+        assert "세션이 이미 종료됨" in result.error
+
+    @pytest.mark.asyncio
+    async def test_connection_lost_without_session_id(self, client):
+        """init 이벤트 없이 바로 연결이 끊기면 재연결 불가"""
         import aiohttp
 
         broken_reader = AsyncMock()
@@ -612,15 +855,10 @@ class TestSSEReconnection:
         mock_response.content = broken_reader
         client._session = _mock_session(mock_response)
 
-        client.reconnect_stream = AsyncMock(
-            side_effect=TaskNotFoundError("task gone")
-        )
-
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            result = await client.execute("client1", "req1", "hello")
+        result = await client.execute("hello")
 
         assert result.success is False
-        assert "태스크가 이미 종료됨" in result.error
+        assert "세션 ID를 받지 못해" in result.error
 
     @pytest.mark.asyncio
     async def test_parse_sse_stream_raises_connection_lost(self, client):

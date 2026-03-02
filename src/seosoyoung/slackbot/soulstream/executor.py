@@ -5,6 +5,7 @@ _run_claude_in_session 함수를 캡슐화한 모듈입니다.
 현재 실행을 중단하고 새 프롬프트로 이어서 실행합니다.
 
 Soulstream 서버(독립 soul-server)에 HTTP/SSE로 위임하여 실행합니다.
+per-session 아키텍처: agent_session_id가 유일한 식별자.
 """
 
 import logging
@@ -58,6 +59,8 @@ class ClaudeExecutor:
 
     세션 내에서 Claude Code를 실행하고 결과를 처리합니다.
     인터벤션 기능을 지원합니다.
+
+    per-session 아키텍처: agent_session_id가 유일한 식별자.
     """
 
     def __init__(
@@ -72,7 +75,6 @@ class ClaudeExecutor:
         role_tools: Optional[dict] = None,
         soul_url: str = "",
         soul_token: str = "",
-        soul_client_id: str = "",
         restart_type_update=None,
         restart_type_restart=None,
         trello_watcher_ref: Optional[Callable] = None,
@@ -88,7 +90,6 @@ class ClaudeExecutor:
         self.role_tools = role_tools or {}
         self.soul_url = soul_url
         self.soul_token = soul_token
-        self.soul_client_id = soul_client_id
         self.trello_watcher_ref = trello_watcher_ref
         self.list_runner_ref = list_runner_ref
         self._parse_markers_fn = parse_markers_fn
@@ -114,12 +115,10 @@ class ClaudeExecutor:
             restart_type_update=restart_type_update,
             restart_type_restart=restart_type_restart,
         )
-        # 실행 중인 request_id 추적 (인터벤션 폴백용)
-        self._active_remote_requests: dict[str, str] = {}  # thread_ts -> request_id
-        # thread_ts ↔ session_id 매핑 (session_id 기반 인터벤션용)
-        self._thread_session_map: dict[str, str] = {}  # thread_ts -> session_id
+        # thread_ts ↔ agent_session_id 매핑 (per-session 인터벤션용)
+        self._thread_session_map: dict[str, str] = {}  # thread_ts -> agent_session_id
         self._thread_session_lock = threading.Lock()
-        # session_id 확보 전 도착한 인터벤션 버퍼
+        # agent_session_id 확보 전 도착한 인터벤션 버퍼
         self._pending_session_interventions: dict[str, list] = {}  # thread_ts -> [(prompt, ...)]
         self._pending_session_lock = threading.Lock()
 
@@ -217,7 +216,7 @@ class ClaudeExecutor:
 
         self._intervention.fire_interrupt_remote(
             thread_ts, prompt,
-            self._active_remote_requests, self._get_service_adapter(),
+            self._get_service_adapter(),
             session_id=self._get_session_id(thread_ts),
             pending_session_interventions=self._pending_session_interventions,
             pending_session_lock=self._pending_session_lock,
@@ -290,7 +289,7 @@ class ClaudeExecutor:
         user_message,
         on_result,
     ):
-        """단일 Claude 실행 — Soulstream 서버에 위임"""
+        """단일 Claude 실행 -- Soulstream 서버에 위임"""
         effective_role = role or "admin"
         role_config = self._get_role_config(effective_role)
 
@@ -328,12 +327,11 @@ class ClaudeExecutor:
         )
         return ClaudeServiceAdapter(
             client=client,
-            client_id=self.soul_client_id,
             parse_markers_fn=self._parse_markers_fn,
         )
 
     def _register_session_id(self, thread_ts: str, session_id: str) -> None:
-        """thread_ts ↔ session_id 매핑 등록 및 버퍼된 인터벤션 flush"""
+        """thread_ts <-> agent_session_id 매핑 등록 및 버퍼된 인터벤션 flush"""
         with self._thread_session_lock:
             self._thread_session_map[thread_ts] = session_id
         logger.info(f"[Remote] session_id 매핑 등록: thread={thread_ts} -> session={session_id}")
@@ -347,8 +345,8 @@ class ClaudeExecutor:
             for (pending_prompt, pending_user) in pending:
                 try:
                     from seosoyoung.utils.async_bridge import run_in_new_loop as _run
-                    _run(adapter.intervene_by_session(
-                        session_id=session_id,
+                    _run(adapter.intervene(
+                        agent_session_id=session_id,
                         text=pending_prompt,
                         user=pending_user,
                     ))
@@ -357,7 +355,7 @@ class ClaudeExecutor:
                     logger.warning(f"[Remote] 버퍼된 인터벤션 flush 실패: {e}")
 
     def _unregister_session_id(self, thread_ts: str) -> None:
-        """thread_ts ↔ session_id 매핑 해제"""
+        """thread_ts <-> agent_session_id 매핑 해제"""
         with self._thread_session_lock:
             session_id = self._thread_session_map.pop(thread_ts, None)
         with self._pending_session_lock:
@@ -366,7 +364,7 @@ class ClaudeExecutor:
             logger.info(f"[Remote] session_id 매핑 해제: thread={thread_ts}, session={session_id}")
 
     def _get_session_id(self, thread_ts: str) -> Optional[str]:
-        """thread_ts에 대응하는 session_id 조회"""
+        """thread_ts에 대응하는 agent_session_id 조회"""
         with self._thread_session_lock:
             return self._thread_session_map.get(thread_ts)
 
@@ -385,9 +383,8 @@ class ClaudeExecutor:
         disallowed_tools: Optional[list] = None,
         use_mcp: bool = True,
     ):
-        """Remote 모드: Soulstream 서버에 실행을 위임"""
+        """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
-        request_id = thread_ts  # thread_ts를 request_id로 사용
 
         # debug 콜백: 로컬 모드의 debug_send_fn과 동등한 동작
         async def on_debug(message: str) -> None:
@@ -405,19 +402,15 @@ class ClaudeExecutor:
             if channel:
                 send_credential_alert(presentation.client, channel, data)
 
-        # session_id 조기 통지 콜백
+        # agent_session_id 조기 통지 콜백
         async def on_session_callback(new_session_id: str) -> None:
             self._register_session_id(thread_ts, new_session_id)
-
-        # 실행 중인 request_id 추적 (인터벤션 폴백용)
-        self._active_remote_requests[thread_ts] = request_id
 
         try:
             result = run_in_new_loop(
                 adapter.execute(
                     prompt=prompt,
-                    request_id=request_id,
-                    resume_session_id=session_id,
+                    agent_session_id=session_id,
                     on_progress=on_progress,
                     on_compact=on_compact,
                     on_debug=on_debug,
@@ -439,7 +432,6 @@ class ClaudeExecutor:
             logger.exception(f"[Remote] Claude 실행 오류: {e}")
             self._result_processor.handle_exception(presentation, e)
         finally:
-            self._active_remote_requests.pop(thread_ts, None)
             self._unregister_session_id(thread_ts)
 
     def _process_result(self, presentation: Any, result, thread_ts: str):

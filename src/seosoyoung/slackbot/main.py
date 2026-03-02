@@ -157,7 +157,6 @@ executor = ClaudeExecutor(
     role_tools=Config.auth.role_tools,
     soul_url=Config.claude.soul_url,
     soul_token=Config.claude.soul_token,
-    soul_client_id=Config.claude.soul_client_id,
     restart_type_update=RestartType.UPDATE,
     restart_type_restart=RestartType.RESTART,
     trello_watcher_ref=lambda: _trello_refs["watcher"],
