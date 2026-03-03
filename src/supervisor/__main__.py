@@ -135,6 +135,17 @@ def main() -> None:
         )
         logger.info("seosoyoung 개발소스 git poller 활성화: %s", dev_seosoyoung)
 
+    # GitPoller: seosoyoung-plugins 변경 감지
+    dev_plugins = paths["workspace"] / ".projects" / "seosoyoung-plugins"
+    plugins_poller: GitPoller | None = None
+    if dev_plugins.is_dir():
+        plugins_poller = GitPoller(
+            repo_path=dev_plugins,
+            remote="origin",
+            branch="main",
+        )
+        logger.info("seosoyoung-plugins git poller 활성화: %s", dev_plugins)
+
     # GitPoller: soulstream 리포 변경 감지
     soulstream_poller: GitPoller | None = None
     if paths["soulstream_runtime"].is_dir():
@@ -266,6 +277,8 @@ def main() -> None:
                     deployer.notify_change()
                 if seosoyoung_poller is not None and seosoyoung_poller.check():
                     deployer.notify_change(source="seosoyoung")
+                if plugins_poller is not None and plugins_poller.check():
+                    deployer.notify_change(source="seosoyoung-plugins")
                 if soulstream_poller is not None and soulstream_poller.check():
                     deployer.notify_change(source="soulstream")
 
