@@ -200,7 +200,8 @@ class TestBuildCredentialAlertBlocks:
     def test_buttons(self):
         blocks = build_credential_alert_blocks("linegames", self._make_profiles())
         buttons = blocks[1]["elements"]
-        assert len(buttons) == 2
+        # 프로필 전환 버튼 2개 + 프로필 관리 버튼 1개
+        assert len(buttons) == 3
 
         # 활성 프로필 버튼: (현재) 표시, style 없음
         assert "(현재)" in buttons[0]["text"]["text"]
@@ -209,6 +210,9 @@ class TestBuildCredentialAlertBlocks:
         # 비활성 프로필 버튼: style=primary
         assert "(현재)" not in buttons[1]["text"]["text"]
         assert buttons[1]["style"] == "primary"
+
+        # 프로필 관리 버튼
+        assert buttons[2]["action_id"] == "credential_list_profiles"
 
     def test_action_ids(self):
         blocks = build_credential_alert_blocks("linegames", self._make_profiles())
@@ -229,8 +233,10 @@ class TestBuildCredentialAlertBlocks:
         blocks = build_credential_alert_blocks("only", profiles)
         assert len(blocks) == 2
         buttons = blocks[1]["elements"]
-        assert len(buttons) == 1
+        # 프로필 전환 버튼 1개 + 프로필 관리 버튼 1개
+        assert len(buttons) == 2
         assert "(현재)" in buttons[0]["text"]["text"]
+        assert buttons[1]["action_id"] == "credential_list_profiles"
 
 
 # ── build_credential_alert_text ──────────────────────────────
