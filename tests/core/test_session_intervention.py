@@ -160,13 +160,12 @@ class TestInterventionRemoteSessionBased:
         """session_id가 있으면 session 기반 인터벤션 사용"""
         mgr = InterventionManager()
         adapter = MagicMock()
-        adapter.intervene_by_session = AsyncMock(return_value=True)
+        adapter.intervene = AsyncMock(return_value=True)
 
         with patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
             mgr.fire_interrupt_remote(
                 thread_ts="thread_123",
                 prompt="새 질문",
-                active_remote_requests={"thread_123": "thread_123"},
                 service_adapter=adapter,
                 session_id="sess-abc",
             )
@@ -183,7 +182,6 @@ class TestInterventionRemoteSessionBased:
         mgr.fire_interrupt_remote(
             thread_ts="thread_123",
             prompt="새 질문",
-            active_remote_requests={"thread_123": "thread_123"},
             service_adapter=adapter,
             session_id=None,
             pending_session_interventions=pending,
@@ -195,24 +193,20 @@ class TestInterventionRemoteSessionBased:
         assert pending["thread_123"][0] == ("새 질문", "intervention")
 
     def test_fire_interrupt_remote_fallback_without_buffer(self):
-        """버퍼 없이 session_id도 없으면 기존 폴백"""
+        """버퍼 없이 session_id도 없으면 경고만 로깅"""
         mgr = InterventionManager()
         adapter = MagicMock()
-        adapter.intervene = AsyncMock(return_value=True)
 
-        with patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
-            mgr.fire_interrupt_remote(
-                thread_ts="thread_123",
-                prompt="새 질문",
-                active_remote_requests={"thread_123": "thread_123"},
-                service_adapter=adapter,
-                session_id=None,
-            )
+        # session_id가 없고 버퍼도 없으면 경고만 남기고 종료
+        mgr.fire_interrupt_remote(
+            thread_ts="thread_123",
+            prompt="새 질문",
+            service_adapter=adapter,
+            session_id=None,
+        )
 
-        mock_run.assert_called_once()
-
-    def test_fire_interrupt_remote_no_request_id(self):
-        """request_id 없으면 전송 불가"""
+    def test_fire_interrupt_remote_no_session_id_no_buffer(self):
+        """session_id 없고 버퍼도 없으면 전송 불가 (에러 없이 완료)"""
         mgr = InterventionManager()
         adapter = MagicMock()
 
@@ -220,7 +214,6 @@ class TestInterventionRemoteSessionBased:
         mgr.fire_interrupt_remote(
             thread_ts="thread_123",
             prompt="새 질문",
-            active_remote_requests={},
             service_adapter=adapter,
             session_id=None,
         )

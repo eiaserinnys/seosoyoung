@@ -36,17 +36,18 @@ These backends wrap the existing seosoyoung infrastructure
 
 #### 메서드
 
-- `__init__(self, executor, session_manager, restart_manager, data_dir)` (줄 235): Initialize with Claude executor and session manager.
-- `async run(self, prompt, channel, thread_ts, role, session_id, on_progress, on_compact)` (줄 255): Execute Claude Code with the given prompt.
-- `async compact(self, session_id)` (줄 303): Compact a Claude Code session.
-- `get_session_id(self, thread_ts)` (줄 325): Get the Claude Code session ID for a thread.
-- `is_restart_pending(self)` (줄 330): Check if a restart is pending.
-- `get_data_dir(self)` (줄 334): Get the data directory for plugin storage.
+- `__init__(self, executor, session_manager, restart_manager, data_dir, slack_client)` (줄 235): Initialize with Claude executor and session manager.
+- `_build_presentation(self, channel, thread_ts, msg_ts, session_id, role)` (줄 258): presentation이 전달되지 않은 호출(워처 등)을 위해 PresentationContext를 자동 구성.
+- `async run(self, prompt, channel, thread_ts, role, session_id, on_progress, on_compact)` (줄 306): Execute Claude Code with the given prompt.
+- `async compact(self, session_id)` (줄 367): Compact a Claude Code session.
+- `get_session_id(self, thread_ts)` (줄 389): Get the Claude Code session ID for a thread.
+- `is_restart_pending(self)` (줄 394): Check if a restart is pending.
+- `get_data_dir(self)` (줄 398): Get the data directory for plugin storage.
 
 ## 함수
 
 ### `init_plugin_backends(slack_client, executor, session_manager, restart_manager, data_dir)`
-- 위치: 줄 344
+- 위치: 줄 408
 - 설명: Initialize plugin SDK backends.
 
 Call this during startup after slack_client and executor are ready.

@@ -238,19 +238,70 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         session_manager: "SessionManager",
         restart_manager,
         data_dir: Path,
+        slack_client=None,
     ):
         """Initialize with Claude executor and session manager.
 
         Args:
-            executor: ClaudeExecutor instance
+            executor: ClaudeExecutor.run bound method
             session_manager: SessionManager instance
             restart_manager: RestartManager instance
             data_dir: Data directory for plugin storage
+            slack_client: Slack WebClient instance (for auto-constructing PresentationContext)
         """
         self._executor = executor
         self._session_manager = session_manager
         self._restart_manager = restart_manager
         self._data_dir = data_dir
+        self._slack_client = slack_client
+
+    def _build_presentation(
+        self,
+        channel: str,
+        thread_ts: str,
+        msg_ts: str,
+        session_id: str | None,
+        role: str,
+        *,
+        dm_channel_id: str | None = None,
+        dm_thread_ts: str | None = None,
+    ):
+        """presentation이 전달되지 않은 호출(워처 등)을 위해 PresentationContext를 자동 구성.
+
+        slack_client가 없으면 RuntimeError를 발생시킵니다.
+        """
+        if self._slack_client is None:
+            raise RuntimeError(
+                "SoulstreamBackendImpl에 slack_client가 설정되지 않아 "
+                "PresentationContext를 자동 구성할 수 없습니다. "
+                "init_plugin_backends 호출 시 slack_client를 전달하세요."
+            )
+
+        from seosoyoung.slackbot.presentation.types import PresentationContext
+
+        client = self._slack_client
+
+        def say(*, text: str, thread_ts: str | None = None, **kw):
+            client.chat_postMessage(
+                channel=channel,
+                text=text,
+                thread_ts=thread_ts,
+                **kw,
+            )
+
+        return PresentationContext(
+            channel=channel,
+            thread_ts=thread_ts,
+            msg_ts=msg_ts,
+            say=say,
+            client=client,
+            effective_role=role,
+            session_id=session_id,
+            last_msg_ts=thread_ts,
+            is_trello_mode=True,
+            dm_channel_id=dm_channel_id,
+            dm_thread_ts=dm_thread_ts,
+        )
 
     async def run(
         self,
@@ -271,6 +322,19 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 if session:
                     session_id = session.session_id
 
+            # Resolve presentation context
+            presentation = kwargs.get("presentation")
+            if presentation is None:
+                presentation = self._build_presentation(
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    msg_ts=kwargs.get("msg_ts", thread_ts),
+                    session_id=session_id,
+                    role=role,
+                    dm_channel_id=kwargs.get("dm_channel_id"),
+                    dm_thread_ts=kwargs.get("dm_thread_ts"),
+                )
+
             # Run executor (this is synchronous internally)
             self._executor(
                 prompt=prompt,
@@ -278,7 +342,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 msg_ts=kwargs.get("msg_ts", thread_ts),
                 on_progress=on_progress,
                 on_compact=on_compact,
-                presentation=kwargs.get("presentation"),
+                presentation=presentation,
                 session_id=session_id,
                 role=role,
             )
@@ -366,7 +430,8 @@ def init_plugin_backends(
 
     # Initialize Soulstream backend
     soulstream_backend = SoulstreamBackendImpl(
-        executor, session_manager, restart_manager, data_dir
+        executor, session_manager, restart_manager, data_dir,
+        slack_client=slack_client,
     )
     soulstream.set_backend(soulstream_backend)
     logger.info("plugin_sdk.soulstream backend initialized")
