@@ -299,7 +299,7 @@ class Deployer:
                     soulstream_dir, old_head, new_head,
                 )
 
-                # soul-server 변경 시 pip install
+                # soul-server 변경 시 pip install + editable pth 보정
                 if any(f.startswith(_SOULSTREAM_SERVER_PATH_PREFIX) for f in changed):
                     packages_file = soulstream_dir / "soul-server" / "packages.txt"
                     if packages_file.exists():
@@ -319,6 +319,8 @@ class Deployer:
                                     pip_result.returncode,
                                     pip_result.stderr.strip()[:500],
                                 )
+                    # hatchling editable install 버그 보정 (pip install 결과와 무관)
+                    self._fix_editable_pth(soulstream_dir)
 
                 # soulstream-dashboard 변경 시 npm install
                 if any(f.startswith(_SOULSTREAM_DASHBOARD_PATH_PREFIX) for f in changed):
@@ -370,6 +372,32 @@ class Deployer:
         except (subprocess.SubprocessError, OSError) as exc:
             logger.warning("git diff 실패 (%s): %s", repo_path, exc)
         return []
+
+    @staticmethod
+    def _fix_editable_pth(soulstream_dir: Path) -> None:
+        """hatchling editable install이 빈 .pth 파일을 생성하는 버그를 보정한다.
+
+        soul-server의 src/ 디렉토리를 가리키는 경로가 .pth 파일에 있어야
+        soul_server 모듈을 import할 수 있다.
+        """
+        site_packages = soulstream_dir / "venv" / "Lib" / "site-packages"
+        pth_file = site_packages / "_soul_server.pth"
+        expected_path = str(soulstream_dir / "soul-server" / "src")
+
+        if not pth_file.exists():
+            return
+
+        try:
+            content = pth_file.read_text(encoding="utf-8").strip()
+            if content == expected_path:
+                return
+            if not content:
+                logger.warning("soulstream: _soul_server.pth가 비어있음 → 보정")
+            else:
+                logger.info("soulstream: _soul_server.pth 보정 (%r → %s)", content, expected_path)
+            pth_file.write_text(expected_path + "\n", encoding="utf-8")
+        except OSError:
+            logger.exception("_soul_server.pth 보정 실패")
 
     @staticmethod
     def _build_soul_dashboard(
