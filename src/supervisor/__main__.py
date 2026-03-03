@@ -137,13 +137,13 @@ def main() -> None:
 
     # GitPoller: soulstream 리포 변경 감지
     soulstream_poller: GitPoller | None = None
-    if paths["soulstream"].is_dir():
+    if paths["soulstream_runtime"].is_dir():
         soulstream_poller = GitPoller(
-            repo_path=paths["soulstream"],
+            repo_path=paths["soulstream_runtime"],
             remote="origin",
             branch="main",
         )
-        logger.info("soulstream git poller 활성화: %s", paths["soulstream"])
+        logger.info("soulstream git poller 활성화: %s", paths["soulstream_runtime"])
 
     # SessionMonitor: 봇 자식 프로세스 중 Claude Code 세션 감지
     session_monitor = SessionMonitor(process_manager=pm)

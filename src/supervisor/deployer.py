@@ -255,9 +255,8 @@ class Deployer:
 
             new_head = self._get_repo_head(dev_seosoyoung)
 
-        # soulstream 리포 동기화
-        soulstream_dir = workspace / ".projects" / "soulstream"
-        soulstream_runtime = self._paths.get("soulstream_runtime")
+        # soulstream 리포 동기화 (soulstream_runtime이 git repo)
+        soulstream_dir = self._paths["soulstream_runtime"]
         if soulstream_dir.exists():
             old_head = self._get_repo_head(soulstream_dir)
 
@@ -303,8 +302,8 @@ class Deployer:
                 # soul-server 변경 시 pip install
                 if any(f.startswith(_SOULSTREAM_SERVER_PATH_PREFIX) for f in changed):
                     packages_file = soulstream_dir / "soul-server" / "packages.txt"
-                    if packages_file.exists() and soulstream_runtime:
-                        soulstream_pip = soulstream_runtime / "venv" / "Scripts" / "pip.exe"
+                    if packages_file.exists():
+                        soulstream_pip = soulstream_dir / "venv" / "Scripts" / "pip.exe"
                         if soulstream_pip.exists():
                             logger.info("soulstream: pip install (packages.txt)")
                             pip_result = subprocess.run(

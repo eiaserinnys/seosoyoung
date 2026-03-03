@@ -24,7 +24,6 @@ def _resolve_paths() -> dict[str, Path]:
         "logs": runtime / "logs",
         "eb_lore": workspace / ".projects" / "eb_lore",
         "eb_narrative": workspace / ".projects" / "eb_narrative",
-        "soulstream": workspace / ".projects" / "soulstream",
         "soulstream_runtime": soulstream_runtime,
         "soulstream_venv_python": soulstream_runtime / "venv" / "Scripts" / "python.exe",
         "soulstream_logs": soulstream_runtime / "logs",
@@ -224,11 +223,11 @@ def build_process_configs() -> list[ProcessConfig]:
     # --- 선택적: soulstream-server (port 4105) ---
     # soulstream 독립 soul-server (soulstream_runtime venv 사용)
     # soul_server 모듈은 soulstream_runtime/venv에 editable install 되어 있어야 함:
-    #   pip install -e .projects/soulstream/soul-server --no-deps
+    #   pip install -e soulstream_runtime/soul-server --no-deps
     # cwd = soulstream_runtime → load_dotenv()가 soulstream_runtime/.env를 읽음
     # WORKSPACE_DIR = slackbot_workspace → Claude Code 세션의 작업 디렉토리
     soulstream_venv = paths["soulstream_venv_python"]
-    soulstream_server_dir = paths["soulstream"] / "soul-server"
+    soulstream_server_dir = paths["soulstream_runtime"] / "soul-server"
     if soulstream_venv.is_file() and soulstream_server_dir.is_dir():
         configs.append(ProcessConfig(
             name="soulstream-server",
@@ -256,7 +255,7 @@ def build_process_configs() -> list[ProcessConfig]:
         )
 
     # --- 선택적: soulstream-dashboard (TypeScript, port 4109) ---
-    soulstream_dashboard_dir = paths["soulstream"] / "soul-dashboard"
+    soulstream_dashboard_dir = paths["soulstream_runtime"] / "soul-dashboard"
     soulstream_tsx = soulstream_dashboard_dir / "node_modules" / "tsx" / "dist" / "cli.mjs"
     soulstream_dashboard_entry = soulstream_dashboard_dir / "server" / "index.ts"
 
