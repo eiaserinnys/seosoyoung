@@ -39,6 +39,7 @@
 - 설명: Claude 실행 모드 설정
 
 remote 모드에서 Soulstream 서버(독립 soul-server)에 연결합니다.
+per-session 아키텍처: agent_session_id가 유일한 식별자.
 
 ### `EmojiConfig`
 - 위치: 줄 97

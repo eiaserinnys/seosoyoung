@@ -89,7 +89,7 @@ class ClaudeServiceAdapter:
                 return ClaudeResult(
                     success=True,
                     output=output,
-                    session_id=result.claude_session_id,
+                    session_id=result.agent_session_id,
                     update_requested=getattr(markers, "update_requested", False),
                     restart_requested=getattr(markers, "restart_requested", False),
                     list_run=getattr(markers, "list_run", None),

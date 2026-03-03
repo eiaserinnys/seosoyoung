@@ -97,8 +97,6 @@ Args:
 
 ## 내부 의존성
 
-- `seosoyoung.slackbot.claude.session_context.build_initial_context`
-- `seosoyoung.slackbot.claude.session_context.format_hybrid_context`
 - `seosoyoung.slackbot.config.Config`
 - `seosoyoung.slackbot.handlers.commands.handle_cleanup`
 - `seosoyoung.slackbot.handlers.commands.handle_compact`
@@ -115,3 +113,5 @@ Args:
 - `seosoyoung.slackbot.slack.build_file_context`
 - `seosoyoung.slackbot.slack.download_files_sync`
 - `seosoyoung.slackbot.slack.message_formatter.format_slack_message`
+- `seosoyoung.slackbot.soulstream.session_context.build_initial_context`
+- `seosoyoung.slackbot.soulstream.session_context.format_hybrid_context`

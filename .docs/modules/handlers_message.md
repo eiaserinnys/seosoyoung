@@ -55,9 +55,9 @@ Args:
 ## 내부 의존성
 
 - `seosoyoung.core.context.create_hook_context`
-- `seosoyoung.slackbot.claude.session_context.build_followup_context`
 - `seosoyoung.slackbot.config.Config`
 - `seosoyoung.slackbot.slack.build_file_context`
 - `seosoyoung.slackbot.slack.download_files_sync`
 - `seosoyoung.slackbot.slack.message_formatter.format_slack_message`
+- `seosoyoung.slackbot.soulstream.session_context.build_followup_context`
 - `seosoyoung.utils.async_bridge.run_in_new_loop`
