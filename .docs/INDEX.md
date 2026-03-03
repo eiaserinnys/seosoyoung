@@ -249,13 +249,13 @@
 - `send_credential_alert()` (seosoyoung/slackbot/handlers/credential_ui.py:205): 크레덴셜 알림을 슬랙 채널에 전송
 - `extract_command()` (seosoyoung/slackbot/handlers/mention.py:30): 멘션에서 명령어 추출
 - `build_prompt()` (seosoyoung/slackbot/handlers/mention.py:56): 프롬프트 구성.
-- `get_channel_history()` (seosoyoung/slackbot/handlers/mention.py:111): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-- `try_handle_command()` (seosoyoung/slackbot/handlers/mention.py:142): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
-- `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:230): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
-- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:451): 멘션 핸들러 등록
+- `get_channel_history()` (seosoyoung/slackbot/handlers/mention.py:116): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
+- `try_handle_command()` (seosoyoung/slackbot/handlers/mention.py:147): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
+- `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:235): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
+- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:456): 멘션 핸들러 등록
 - `build_slack_context()` (seosoyoung/slackbot/handlers/message.py:16): 슬랙 컨텍스트 블록 문자열을 생성합니다.
-- `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:49): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
-- `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:340): 메시지 핸들러 등록
+- `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:52): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
+- `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:348): 메시지 핸들러 등록
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
 - `notify_startup()` (seosoyoung/slackbot/main.py:262): 봇 시작 알림
 - `notify_shutdown()` (seosoyoung/slackbot/main.py:273): 봇 종료 알림

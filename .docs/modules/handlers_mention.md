@@ -28,33 +28,36 @@
 - 위치: 줄 56
 - 설명: 프롬프트 구성.
 
+각 섹션을 XML 태그로 감싸서 LLM이 메타데이터, 대화 기록,
+사용자 질문, 첨부 파일을 명확히 구분할 수 있도록 합니다.
+
 Args:
-    context: 채널 히스토리 컨텍스트
+    context: 채널 히스토리 컨텍스트 (이미 XML 태그 포함)
     question: 사용자 질문
     file_context: 첨부 파일 컨텍스트
-    slack_context: 슬랙 컨텍스트 블록 문자열
+    slack_context: 슬랙 컨텍스트 블록 문자열 (이미 XML 태그 포함)
 
 Returns:
     구성된 프롬프트 문자열
 
 ### `_get_channel_messages(client, channel, limit)`
-- 위치: 줄 92
+- 위치: 줄 97
 - 설명: 채널의 최근 메시지를 가져와서 dict 리스트로 반환
 
 ### `_format_context_messages(messages, channel)`
-- 위치: 줄 104
+- 위치: 줄 109
 - 설명: 메시지 dict 리스트를 컨텍스트 문자열로 포맷팅
 
 ### `get_channel_history(client, channel, limit)`
-- 위치: 줄 111
+- 위치: 줄 116
 - 설명: 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 
 ### `_is_admin_command(command)`
-- 위치: 줄 133
+- 위치: 줄 138
 - 설명: 관리자 명령어 여부 판별
 
 ### `try_handle_command(command, text, channel, ts, thread_ts, user_id, say, client, deps)`
-- 위치: 줄 142
+- 위치: 줄 147
 - 설명: 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
 
 handle_mention과 DM 핸들러에서 공유합니다.
@@ -71,7 +74,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `create_session_and_run_claude(event, clean_text, channel, ts, thread_ts, user_id, say, client, deps)`
-- 위치: 줄 230
+- 위치: 줄 235
 - 설명: 세션 생성 + 컨텍스트 빌드 + Claude 실행.
 
 handle_mention과 DM 핸들러에서 공유합니다.
@@ -88,7 +91,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 451
+- 위치: 줄 456
 - 설명: 멘션 핸들러 등록
 
 Args:

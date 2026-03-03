@@ -62,6 +62,8 @@ Returns:
 - 위치: 줄 142
 - 설명: hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
 
+XML 태그로 감싸서 LLM이 대화 기록 섹션을 명확히 구분할 수 있도록 합니다.
+
 Args:
     messages: 시간순 정렬된 메시지 목록
     source_type: "thread" | "channel" | "hybrid"
@@ -72,7 +74,7 @@ Returns:
     포맷된 컨텍스트 문자열
 
 ### `_merge_messages()`
-- 위치: 줄 185
+- 위치: 줄 192
 - 설명: 여러 메시지 소스를 ts 기준으로 중복 제거하며 병합합니다.
 
 먼저 나오는 소스의 메시지가 우선합니다 (judged > pending > slack).

@@ -61,11 +61,14 @@ def build_prompt(
 ) -> str:
     """프롬프트 구성.
 
+    각 섹션을 XML 태그로 감싸서 LLM이 메타데이터, 대화 기록,
+    사용자 질문, 첨부 파일을 명확히 구분할 수 있도록 합니다.
+
     Args:
-        context: 채널 히스토리 컨텍스트
+        context: 채널 히스토리 컨텍스트 (이미 XML 태그 포함)
         question: 사용자 질문
         file_context: 첨부 파일 컨텍스트
-        slack_context: 슬랙 컨텍스트 블록 문자열
+        slack_context: 슬랙 컨텍스트 블록 문자열 (이미 XML 태그 포함)
 
     Returns:
         구성된 프롬프트 문자열
@@ -79,14 +82,16 @@ def build_prompt(
         prompt_parts.append(context)
 
     if question:
-        prompt_parts.append(f"\n사용자의 질문: {question}")
+        prompt_parts.append(
+            f"<user-request>\n{question}\n</user-request>"
+        )
 
     if file_context:
-        prompt_parts.append(file_context)
+        prompt_parts.append(
+            f"<attachments>\n{file_context}\n</attachments>"
+        )
 
-    prompt_parts.append("\n위 컨텍스트를 참고하여 질문에 답변해주세요.")
-
-    return "\n".join(prompt_parts)
+    return "\n\n".join(prompt_parts)
 
 
 def _get_channel_messages(client, channel: str, limit: int = 20) -> list[dict]:

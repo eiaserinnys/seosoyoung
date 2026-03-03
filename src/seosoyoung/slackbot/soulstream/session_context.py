@@ -147,6 +147,8 @@ def format_hybrid_context(
 ) -> str:
     """hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
 
+    XML 태그로 감싸서 LLM이 대화 기록 섹션을 명확히 구분할 수 있도록 합니다.
+
     Args:
         messages: 시간순 정렬된 메시지 목록
         source_type: "thread" | "channel" | "hybrid"
@@ -160,12 +162,12 @@ def format_hybrid_context(
         return ""
 
     if source_type == "hybrid":
-        header = (
-            "[이 세션은 채널 대화와 스레드가 연결된 hybrid 세션입니다]\n"
-            "[아래는 채널에서 수집된 최근 대화입니다]"
+        description = (
+            "이 세션은 채널 대화와 스레드가 연결된 hybrid 세션입니다. "
+            "아래는 채널에서 수집된 최근 대화입니다."
         )
     else:
-        header = "아래는 Slack 채널의 최근 대화입니다:"
+        description = "아래는 Slack 채널의 최근 대화입니다."
 
     def _default_formatter(msg, channel=""):
         ts = msg.get("ts", "")
@@ -179,7 +181,12 @@ def format_hybrid_context(
     formatter = format_message_fn or _default_formatter
     lines = [formatter(msg, channel=channel) for msg in messages]
 
-    return f"{header}\n\n" + "\n".join(lines)
+    parts = [
+        f'<channel-history description="{description}">',
+        "\n".join(lines),
+        "</channel-history>",
+    ]
+    return "\n".join(parts)
 
 
 def _merge_messages(*sources: list[dict]) -> list[dict]:

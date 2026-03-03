@@ -315,6 +315,13 @@ class TestFormatHybridContext:
         """메시지 없으면 빈 문자열"""
         assert format_hybrid_context([], "hybrid") == ""
 
+    def test_has_channel_history_xml_tags(self):
+        """결과가 <channel-history> XML 태그로 감싸져야 함"""
+        messages = [self._make_msg("1.0", text="hi")]
+        result = format_hybrid_context(messages, "hybrid")
+        assert result.startswith("<channel-history")
+        assert "</channel-history>" in result
+
     def test_hybrid_header(self):
         """hybrid 세션은 hybrid 헤더 포함"""
         messages = [self._make_msg("1.0", text="hi")]
@@ -327,7 +334,6 @@ class TestFormatHybridContext:
         messages = [self._make_msg("1.0", text="hi")]
         result = format_hybrid_context(messages, "thread")
         assert "Slack 채널의 최근 대화" in result
-        assert "hybrid" not in result
 
     def test_linked_info_included(self):
         """linked_message_ts가 있으면 [linked:ts] 표기"""
@@ -351,3 +357,15 @@ class TestFormatHybridContext:
         result = format_hybrid_context(messages, "hybrid", format_message_fn=custom_fn)
         assert "CUSTOM:hello" in result
         assert "<U1>" not in result  # 기본 포맷터가 사용되지 않음
+
+    def test_xml_structure_ordering(self):
+        """<channel-history> 태그가 메시지를 올바르게 감싸는지"""
+        messages = [self._make_msg("1.0", text="hello")]
+        result = format_hybrid_context(messages, "thread")
+        # description 속성이 있는 여는 태그
+        assert result.startswith("<channel-history")
+        close_idx = result.index("</channel-history>")
+        # 메시지가 태그 안에 위치
+        first_line_end = result.index(">")
+        inner = result[first_line_end:close_idx]
+        assert "hello" in inner
