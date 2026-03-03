@@ -1,5 +1,6 @@
-"""재시작 버튼 및 크레덴셜 프로필 전환 액션 핸들러"""
+"""재시작 버튼 및 크레덴셜 프로필 관리 액션 핸들러"""
 
+import json
 import logging
 import re
 import urllib.request
@@ -361,8 +362,202 @@ def activate_credential_profile(profile_name: str, channel: str, message_ts: str
             logger.error(f"에러 메시지 업데이트 실패: {update_err}")
 
 
+def save_credential_profile(
+    profile_name: str, channel: str, message_ts: str, client,
+) -> None:
+    """크레덴셜 프로필 저장 처리
+
+    Soul API를 호출하여 현재 크레덴셜을 프로필로 저장하고
+    슬랙 메시지를 업데이트합니다.
+
+    Args:
+        profile_name: 저장할 프로필 이름
+        channel: 슬랙 채널 ID
+        message_ts: 원본 메시지 타임스탬프
+        client: Slack client
+    """
+    if not _VALID_PROFILE_NAME.match(profile_name):
+        logger.error(f"유효하지 않은 프로필 이름 거부: {profile_name!r}")
+        client.chat_update(
+            channel=channel, ts=message_ts, blocks=[],
+            text=f"❌ 유효하지 않은 프로필 이름입니다: {profile_name}",
+        )
+        return
+
+    soul_url = Config.claude.soul_url
+    soul_token = Config.claude.soul_token
+
+    try:
+        url = f"{soul_url}/profiles/{profile_name}"
+        req = urllib.request.Request(url, data=b"", method="POST")
+        req.add_header("Authorization", f"Bearer {soul_token}")
+        req.add_header("Content-Type", "application/json")
+
+        with urllib.request.urlopen(req, timeout=10):
+            pass
+
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            blocks=[],
+            text=f"✅ *{profile_name}* 프로필을 저장했습니다",
+        )
+        logger.info(f"크레덴셜 프로필 저장 성공: {profile_name}")
+
+    except Exception as e:
+        logger.error(f"크레덴셜 프로필 저장 실패: {e}")
+        try:
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=[],
+                text=f"❌ *{profile_name}* 프로필 저장 실패: {e}",
+            )
+        except Exception as update_err:
+            logger.error(f"에러 메시지 업데이트 실패: {update_err}")
+
+
+def delete_credential_profile(
+    profile_name: str, channel: str, message_ts: str, client,
+) -> None:
+    """크레덴셜 프로필 삭제 처리
+
+    Soul API를 호출하여 프로필을 삭제하고 슬랙 메시지를 업데이트합니다.
+
+    Args:
+        profile_name: 삭제할 프로필 이름
+        channel: 슬랙 채널 ID
+        message_ts: 원본 메시지 타임스탬프
+        client: Slack client
+    """
+    if not _VALID_PROFILE_NAME.match(profile_name):
+        logger.error(f"유효하지 않은 프로필 이름 거부: {profile_name!r}")
+        client.chat_update(
+            channel=channel, ts=message_ts, blocks=[],
+            text=f"❌ 유효하지 않은 프로필 이름입니다: {profile_name}",
+        )
+        return
+
+    soul_url = Config.claude.soul_url
+    soul_token = Config.claude.soul_token
+
+    try:
+        url = f"{soul_url}/profiles/{profile_name}"
+        req = urllib.request.Request(url, method="DELETE")
+        req.add_header("Authorization", f"Bearer {soul_token}")
+        req.add_header("Content-Type", "application/json")
+
+        with urllib.request.urlopen(req, timeout=10):
+            pass
+
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            blocks=[],
+            text=f"✅ *{profile_name}* 프로필을 삭제했습니다",
+        )
+        logger.info(f"크레덴셜 프로필 삭제 성공: {profile_name}")
+
+    except Exception as e:
+        logger.error(f"크레덴셜 프로필 삭제 실패: {e}")
+        try:
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=[],
+                text=f"❌ *{profile_name}* 프로필 삭제 실패: {e}",
+            )
+        except Exception as update_err:
+            logger.error(f"에러 메시지 업데이트 실패: {update_err}")
+
+
+def list_credential_profiles(
+    channel: str, message_ts: str, client,
+) -> None:
+    """크레덴셜 프로필 목록 조회 및 관리 UI 표시
+
+    Soul API에서 프로필 목록과 rate limit 정보를 조회하여
+    프로필 관리 블록을 슬랙 메시지로 업데이트합니다.
+
+    Args:
+        channel: 슬랙 채널 ID
+        message_ts: 원본 메시지 타임스탬프
+        client: Slack client
+    """
+    from seosoyoung.slackbot.handlers.credential_ui import (
+        build_profile_management_blocks,
+    )
+
+    soul_url = Config.claude.soul_url
+    soul_token = Config.claude.soul_token
+
+    try:
+        # 프로필 목록 조회
+        profiles_req = urllib.request.Request(
+            f"{soul_url}/profiles", method="GET",
+        )
+        profiles_req.add_header("Authorization", f"Bearer {soul_token}")
+
+        with urllib.request.urlopen(profiles_req, timeout=10) as resp:
+            profiles_data = json.loads(resp.read())
+
+        # rate limit 조회
+        rate_req = urllib.request.Request(
+            f"{soul_url}/profiles/rate-limits", method="GET",
+        )
+        rate_req.add_header("Authorization", f"Bearer {soul_token}")
+
+        try:
+            with urllib.request.urlopen(rate_req, timeout=10) as resp:
+                rate_data = json.loads(resp.read())
+        except Exception:
+            rate_data = {"active_profile": None, "profiles": []}
+
+        active = profiles_data.get("active", "")
+        profiles = profiles_data.get("profiles", [])
+
+        # rate limit 데이터 병합
+        rate_map = {rp["name"]: rp for rp in rate_data.get("profiles", [])}
+
+        merged_profiles = []
+        for p in profiles:
+            name = p["name"]
+            rate = rate_map.get(name, {})
+            merged_profiles.append({
+                "name": name,
+                "five_hour": rate.get(
+                    "five_hour", {"utilization": "unknown", "resets_at": None},
+                ),
+                "seven_day": rate.get(
+                    "seven_day", {"utilization": "unknown", "resets_at": None},
+                ),
+            })
+
+        blocks = build_profile_management_blocks(active or "", merged_profiles)
+
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            blocks=blocks,
+            text="크레덴셜 프로필 관리",
+        )
+        logger.info(f"프로필 목록 표시: channel={channel}, count={len(merged_profiles)}")
+
+    except Exception as e:
+        logger.error(f"프로필 목록 조회 실패: {e}")
+        try:
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=[],
+                text=f"❌ 프로필 목록 조회 실패: {e}",
+            )
+        except Exception as update_err:
+            logger.error(f"에러 메시지 업데이트 실패: {update_err}")
+
+
 def register_credential_action_handlers(app, dependencies: dict):
-    """크레덴셜 프로필 전환 액션 핸들러 등록
+    """크레덴셜 프로필 관리 액션 핸들러 등록
 
     Args:
         app: Slack Bolt App 인스턴스
@@ -380,3 +575,103 @@ def register_credential_action_handlers(app, dependencies: dict):
         message_ts = body["message"]["ts"]
 
         activate_credential_profile(profile_name, channel, message_ts, client)
+
+    @app.action("credential_save_profile")
+    def handle_save_profile(ack, body, client):
+        """프로필 저장 버튼 클릭 → 이름 입력 안내 블록 표시"""
+        ack()
+
+        from seosoyoung.slackbot.handlers.credential_ui import (
+            build_save_prompt_blocks,
+        )
+
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        try:
+            blocks = build_save_prompt_blocks()
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=blocks,
+                text="프로필 저장: 이름을 입력해주세요",
+            )
+        except Exception as e:
+            logger.error(f"프로필 저장 안내 표시 실패: {e}")
+
+    @app.action("credential_save_name_input")
+    def handle_save_name_input(ack, body, client):
+        """프로필 이름 입력 후 저장"""
+        ack()
+
+        action = body["actions"][0]
+        profile_name = action.get("value", "").strip()
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        save_credential_profile(profile_name, channel, message_ts, client)
+
+    @app.action("credential_list_profiles")
+    def handle_list_profiles(ack, body, client):
+        """프로필 목록 버튼 클릭 핸들러"""
+        ack()
+
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        list_credential_profiles(channel, message_ts, client)
+
+    @app.action(re.compile(r"credential_delete_confirm_.+"))
+    def handle_delete_confirm(ack, body, client):
+        """삭제 확인 버튼 클릭 → 실제 삭제"""
+        ack()
+
+        action = body["actions"][0]
+        profile_name = action["value"]
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        delete_credential_profile(profile_name, channel, message_ts, client)
+
+    @app.action("credential_delete_cancel")
+    def handle_delete_cancel(ack, body, client):
+        """삭제 취소 버튼 클릭"""
+        ack()
+
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        try:
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=[],
+                text="삭제가 취소되었습니다.",
+            )
+        except Exception as e:
+            logger.error(f"삭제 취소 메시지 업데이트 실패: {e}")
+
+    @app.action(re.compile(r"credential_delete_(?!confirm_|cancel).+"))
+    def handle_delete_request(ack, body, client):
+        """삭제 버튼 클릭 → 삭제 확인 블록 표시"""
+        ack()
+
+        from seosoyoung.slackbot.handlers.credential_ui import (
+            build_delete_confirm_blocks,
+        )
+
+        action = body["actions"][0]
+        profile_name = action["value"]
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        try:
+            blocks = build_delete_confirm_blocks(profile_name)
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=blocks,
+                text=f"프로필 삭제 확인: {profile_name}",
+            )
+        except Exception as e:
+            logger.error(f"삭제 확인 메시지 표시 실패: {e}")

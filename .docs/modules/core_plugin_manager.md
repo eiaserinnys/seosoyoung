@@ -36,7 +36,7 @@ not buried in plugin config dicts.
 
 ## 내부 의존성
 
-- `seosoyoung.core.hooks.HookContext`
-- `seosoyoung.core.hooks.HookPriority`
-- `seosoyoung.core.hooks.HookResult`
-- `seosoyoung.core.plugin.Plugin`
+- `seosoyoung.plugin_sdk.hooks.HookContext`
+- `seosoyoung.plugin_sdk.hooks.HookPriority`
+- `seosoyoung.plugin_sdk.hooks.HookResult`
+- `seosoyoung.plugin_sdk.plugin.Plugin`

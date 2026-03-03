@@ -85,11 +85,11 @@ class ClaudeConfig:
     """Claude 실행 모드 설정
 
     remote 모드에서 Soulstream 서버(독립 soul-server)에 연결합니다.
+    per-session 아키텍처: agent_session_id가 유일한 식별자.
     """
 
     soul_url: str = os.getenv("SEOSOYOUNG_SOUL_URL", "http://localhost:4105")
     soul_token: str = os.getenv("SEOSOYOUNG_SOUL_TOKEN", "")
-    soul_client_id: str = os.getenv("SEOSOYOUNG_SOUL_CLIENT_ID", "seosoyoung_bot")
     credential_alert_channel: str = os.getenv("CREDENTIAL_ALERT_CHANNEL", "")
 
 

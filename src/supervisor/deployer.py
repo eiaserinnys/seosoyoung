@@ -28,10 +28,6 @@ logger = logging.getLogger("supervisor")
 # supervisor 코드가 포함된 경로 접두사
 _SUPERVISOR_PATH_PREFIX = "src/supervisor/"
 
-# soul-dashboard 관련 경로 접두사
-_SOUL_DASHBOARD_PATH_PREFIX = "src/soul-dashboard/"
-_SOUL_DASHBOARD_PACKAGE_LOCK = "src/soul-dashboard/package-lock.json"
-
 # soulstream 관련 경로 접두사
 _SOULSTREAM_DASHBOARD_PATH_PREFIX = "soul-dashboard/"
 _SOULSTREAM_DASHBOARD_PACKAGE_LOCK = "soul-dashboard/package-lock.json"
@@ -76,6 +72,7 @@ class Deployer:
         self._session_monitor = session_monitor
         self._paths = paths
         self._state = DeployState.IDLE
+        self._pending_sources: set[str] = set()
         self._waiting_since: float | None = None
         self._webhook_config = paths["runtime"] / "data" / "watchdog_config.json"
 
@@ -84,7 +81,13 @@ class Deployer:
         return self._state
 
     def notify_change(self, source: str = "runtime") -> None:
-        """git 변경 감지 알림. idle이면 pending으로 전환."""
+        """git 변경 감지 알림. idle이면 pending으로 전환.
+
+        이미 PENDING/WAITING_SESSIONS 상태라면 source를 누적만 한다.
+        _do_update()는 모든 리포를 일괄 pull하므로 누락은 없지만,
+        로깅에서 어느 리포들이 변경되었는지 정확히 추적할 수 있다.
+        """
+        self._pending_sources.add(source)
         if self._state == DeployState.IDLE:
             self._state = DeployState.PENDING
             logger.info("배포 상태: idle → pending (source: %s)", source)
@@ -92,6 +95,11 @@ class Deployer:
                 notify_change_detected(self._paths, self._webhook_config)
             except Exception:
                 logger.exception("변경 감지 알림 전송 실패")
+        else:
+            logger.info(
+                "변경 감지 누적: source=%s (현재 상태: %s, 누적: %s)",
+                source, self._state.value, self._pending_sources,
+            )
 
     def tick(self) -> None:
         """상태 머신 한 스텝 진행."""
@@ -113,11 +121,22 @@ class Deployer:
             if self._session_monitor.is_safe_to_deploy() or timed_out:
                 self._state = DeployState.DEPLOYING
                 self._waiting_since = None
+                # 배포 시작 전 누적 sources를 비운다.
+                # 배포 중 새로 들어오는 notify_change()는 다시 누적된다.
+                self._pending_sources.clear()
                 logger.info("배포 상태: → deploying (세션 0 또는 타임아웃)")
                 try:
                     self._execute_deploy()
                 finally:
-                    self._state = DeployState.IDLE
+                    if self._pending_sources:
+                        # 배포 중 추가 변경이 감지됨 → 재배포 예약
+                        logger.info(
+                            "배포 중 누적된 변경 감지, 재배포 예약: %s",
+                            self._pending_sources,
+                        )
+                        self._state = DeployState.PENDING
+                    else:
+                        self._state = DeployState.IDLE
             elif self._state == DeployState.PENDING:
                 self._state = DeployState.WAITING_SESSIONS
                 self._waiting_since = time.monotonic()
@@ -259,28 +278,55 @@ class Deployer:
 
             new_head = self._get_repo_head(dev_seosoyoung)
 
-            # soul-dashboard 빌드 (변경 감지 시)
-            if old_head and new_head and old_head != new_head:
-                changed = self._get_changed_files_between(
-                    dev_seosoyoung, old_head, new_head,
-                )
-                if self._has_soul_dashboard_changes(changed):
-                    needs_install = any(
-                        f == _SOUL_DASHBOARD_PACKAGE_LOCK for f in changed
-                    )
-                    dashboard_dir = dev_seosoyoung / "src" / "soul-dashboard"
-                    build_ok = self._build_soul_dashboard(
-                        dashboard_dir, npm_install=needs_install,
-                    )
-                    if not build_ok:
-                        logger.warning(
-                            "soul-dashboard 빌드 실패, "
-                            "이전 빌드 결과물로 프로세스 재시작 진행",
-                        )
+        # seosoyoung-plugins 동기화
+        dev_plugins = workspace / ".projects" / "seosoyoung-plugins"
+        if dev_plugins.exists():
+            plugins_old_head = self._get_repo_head(dev_plugins)
 
-        # soulstream 리포 동기화
-        soulstream_dir = workspace / ".projects" / "soulstream"
-        soulstream_runtime = self._paths.get("soulstream_runtime")
+            logger.info("업데이트: seosoyoung-plugins 동기화")
+            pull_result = subprocess.run(
+                ["git", "pull", "origin", "main"],
+                cwd=str(dev_plugins),
+                capture_output=True,
+                text=True,
+            )
+            if pull_result.returncode != 0:
+                logger.warning(
+                    "seosoyoung-plugins git pull 실패 (rc=%d): %s, stash 재시도",
+                    pull_result.returncode,
+                    pull_result.stderr.strip()[:500],
+                )
+                subprocess.run(["git", "stash"], cwd=str(dev_plugins))
+                subprocess.run(
+                    ["git", "pull", "origin", "main"], cwd=str(dev_plugins),
+                )
+                subprocess.run(["git", "stash", "pop"], cwd=str(dev_plugins))
+
+            plugins_new_head = self._get_repo_head(dev_plugins)
+
+            # 변경이 있을 때만 editable install 갱신 (의존성 변경 반영)
+            if (
+                plugins_old_head
+                and plugins_new_head
+                and plugins_old_head != plugins_new_head
+                and venv_pip.exists()
+            ):
+                logger.info("업데이트: seosoyoung-plugins pip install -e")
+                pip_result = subprocess.run(
+                    [str(venv_pip), "install", "-e", str(dev_plugins), "--quiet"],
+                    cwd=str(runtime),
+                    capture_output=True,
+                    text=True,
+                )
+                if pip_result.returncode != 0:
+                    logger.warning(
+                        "seosoyoung-plugins pip install 실패 (rc=%d): %s",
+                        pip_result.returncode,
+                        pip_result.stderr.strip()[:500],
+                    )
+
+        # soulstream 리포 동기화 (soulstream_runtime이 git repo)
+        soulstream_dir = self._paths["soulstream_runtime"]
         if soulstream_dir.exists():
             old_head = self._get_repo_head(soulstream_dir)
 
@@ -323,11 +369,11 @@ class Deployer:
                     soulstream_dir, old_head, new_head,
                 )
 
-                # soul-server 변경 시 pip install
+                # soul-server 변경 시 pip install + editable pth 보정
                 if any(f.startswith(_SOULSTREAM_SERVER_PATH_PREFIX) for f in changed):
                     packages_file = soulstream_dir / "soul-server" / "packages.txt"
-                    if packages_file.exists() and soulstream_runtime:
-                        soulstream_pip = soulstream_runtime / "venv" / "Scripts" / "pip.exe"
+                    if packages_file.exists():
+                        soulstream_pip = soulstream_dir / "venv" / "Scripts" / "pip.exe"
                         if soulstream_pip.exists():
                             logger.info("soulstream: pip install (packages.txt)")
                             pip_result = subprocess.run(
@@ -343,6 +389,8 @@ class Deployer:
                                     pip_result.returncode,
                                     pip_result.stderr.strip()[:500],
                                 )
+                    # hatchling editable install 버그 보정 (pip install 결과와 무관)
+                    self._fix_editable_pth(soulstream_dir)
 
                 # soulstream-dashboard 변경 시 npm install
                 if any(f.startswith(_SOULSTREAM_DASHBOARD_PATH_PREFIX) for f in changed):
@@ -396,11 +444,30 @@ class Deployer:
         return []
 
     @staticmethod
-    def _has_soul_dashboard_changes(changed_files: list[str]) -> bool:
-        """변경 파일 중 soul-dashboard 코드가 포함되어 있는지 확인."""
-        return any(
-            f.startswith(_SOUL_DASHBOARD_PATH_PREFIX) for f in changed_files
-        )
+    def _fix_editable_pth(soulstream_dir: Path) -> None:
+        """hatchling editable install이 빈 .pth 파일을 생성하는 버그를 보정한다.
+
+        soul-server의 src/ 디렉토리를 가리키는 경로가 .pth 파일에 있어야
+        soul_server 모듈을 import할 수 있다.
+        """
+        site_packages = soulstream_dir / "venv" / "Lib" / "site-packages"
+        pth_file = site_packages / "_soul_server.pth"
+        expected_path = str(soulstream_dir / "soul-server" / "src")
+
+        if not pth_file.exists():
+            return
+
+        try:
+            content = pth_file.read_text(encoding="utf-8").strip()
+            if content == expected_path:
+                return
+            if not content:
+                logger.warning("soulstream: _soul_server.pth가 비어있음 → 보정")
+            else:
+                logger.info("soulstream: _soul_server.pth 보정 (%r → %s)", content, expected_path)
+            pth_file.write_text(expected_path + "\n", encoding="utf-8")
+        except OSError:
+            logger.exception("_soul_server.pth 보정 실패")
 
     @staticmethod
     def _build_soul_dashboard(

@@ -185,7 +185,7 @@ class TestMCPE2ETrelloFlow:
 
     def test_admin_config_has_mcp_and_allows_all(self):
         """admin 역할은 MCP 설정 있고 allowed_tools=None (모든 도구 허용)"""
-        from seosoyoung.slackbot.claude.executor import _get_role_config
+        from seosoyoung.slackbot.soulstream.executor import _get_role_config
         from seosoyoung.slackbot.config import Config
 
         config = _get_role_config("admin", Config.auth.role_tools)

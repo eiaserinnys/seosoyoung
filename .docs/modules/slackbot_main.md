@@ -11,15 +11,15 @@ SeoSoyoung 슬랙 봇 메인
 ## 함수
 
 ### `_perform_restart(restart_type)`
-- 위치: 줄 50
+- 위치: 줄 51
 - 설명: 재시작 수행
 
 ### `_check_restart_on_session_stop()`
-- 위치: 줄 63
+- 위치: 줄 64
 - 설명: 세션 종료 시 재시작 확인
 
 ### `_shutdown_with_session_wait(restart_type, source)`
-- 위치: 줄 76
+- 위치: 줄 77
 - 설명: 활성 세션을 확인하고, 있으면 사용자에게 팝업으로 확인 후 종료.
 
 세션이 없으면 즉시 종료.
@@ -33,7 +33,7 @@ Args:
     source: 로그용 호출 출처 (예: "SIGTERM", "HTTP /shutdown")
 
 ### `_signal_handler(signum, frame)`
-- 위치: 줄 129
+- 위치: 줄 130
 - 설명: 시그널 수신 시 graceful shutdown 수행
 
 SIGTERM, SIGINT 수신 시 활성 세션이 있으면 완료를 기다린 후 종료합니다.
@@ -71,11 +71,11 @@ Plugins return runtime references (e.g. watcher, list_runner,
 channel_store, channel_collector) which are stored for handler access.
 
 ### `init_bot_user_id()`
-- 위치: 줄 322
+- 위치: 줄 317
 - 설명: 봇 사용자 ID 초기화
 
 ### `main()`
-- 위치: 줄 332
+- 위치: 줄 327
 - 설명: 봇 메인 진입점
 
 ## 내부 의존성
@@ -85,16 +85,17 @@ channel_store, channel_collector) which are stored for handler access.
 - `seosoyoung.core.plugin_manager.PluginManager`
 - `seosoyoung.slackbot.auth.check_permission`
 - `seosoyoung.slackbot.auth.get_user_role`
-- `seosoyoung.slackbot.claude.executor.ClaudeExecutor`
-- `seosoyoung.slackbot.claude.session.SessionManager`
-- `seosoyoung.slackbot.claude.session.SessionRuntime`
 - `seosoyoung.slackbot.config.Config`
 - `seosoyoung.slackbot.handlers.actions.send_restart_confirmation`
 - `seosoyoung.slackbot.handlers.mention_tracker.MentionTracker`
 - `seosoyoung.slackbot.handlers.register_all_handlers`
 - `seosoyoung.slackbot.logging_config.setup_logging`
 - `seosoyoung.slackbot.marker_parser.parse_markers`
+- `seosoyoung.slackbot.plugin_backends.init_plugin_backends`
 - `seosoyoung.slackbot.restart.RestartManager`
 - `seosoyoung.slackbot.restart.RestartType`
 - `seosoyoung.slackbot.slack.formatting.update_message`
 - `seosoyoung.slackbot.slack.helpers.send_long_message`
+- `seosoyoung.slackbot.soulstream.executor.ClaudeExecutor`
+- `seosoyoung.slackbot.soulstream.session.SessionManager`
+- `seosoyoung.slackbot.soulstream.session.SessionRuntime`

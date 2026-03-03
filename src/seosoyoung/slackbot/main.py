@@ -13,8 +13,8 @@ from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.logging_config import setup_logging
 from seosoyoung.slackbot.auth import check_permission, get_user_role
 from pathlib import Path
-from seosoyoung.slackbot.claude.session import SessionManager, SessionRuntime
-from seosoyoung.slackbot.claude.executor import ClaudeExecutor
+from seosoyoung.slackbot.soulstream.session import SessionManager, SessionRuntime
+from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
 from seosoyoung.slackbot.slack.helpers import send_long_message
 from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers
@@ -24,6 +24,7 @@ from seosoyoung.core.plugin_config import load_plugin_registry, load_plugin_conf
 from seosoyoung.slackbot.restart import RestartManager, RestartType
 from seosoyoung.slackbot.marker_parser import parse_markers
 from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
+from seosoyoung.slackbot.plugin_backends import init_plugin_backends
 
 # 로깅 설정
 logger = setup_logging()
@@ -156,7 +157,6 @@ executor = ClaudeExecutor(
     role_tools=Config.auth.role_tools,
     soul_url=Config.claude.soul_url,
     soul_token=Config.claude.soul_token,
-    soul_client_id=Config.claude.soul_client_id,
     restart_type_update=RestartType.UPDATE,
     restart_type_restart=RestartType.RESTART,
     trello_watcher_ref=lambda: _trello_refs["watcher"],
@@ -292,14 +292,9 @@ def _dispatch_plugin_startup():
 
     ctx = create_hook_context(
         "on_startup",
-        slack_client=app.client,
-        session_manager=session_manager,
-        session_runtime=session_runtime,
-        claude_runner_factory=executor.run,
-        get_session_lock=session_runtime.get_session_lock,
-        restart_manager=restart_manager,
+        # Runtime dependencies needed by plugins (legacy)
+        # Most of these should be accessed via plugin_sdk APIs now
         update_message_fn=update_message,
-        data_dir=Path(Config.get_session_path()).parent / "data",
         mention_tracker=_mention_tracker,
         bot_user_id=Config.slack.bot_user_id or "",
     )
@@ -353,6 +348,16 @@ def main():
     start_shutdown_server(_SHUTDOWN_PORT, _on_shutdown_request)
     logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")
     init_bot_user_id()
+
+    # Initialize plugin SDK backends (must be before plugin load)
+    init_plugin_backends(
+        slack_client=app.client,
+        executor=executor.run,
+        session_manager=session_manager,
+        restart_manager=restart_manager,
+        data_dir=Path(Config.get_session_path()).parent / "data",
+    )
+
     _load_plugins()
     _dispatch_plugin_startup()  # on_startup hooks (trello watcher, channel observer, etc.)
     notify_startup()

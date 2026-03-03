@@ -12,6 +12,8 @@
 - 위치: 줄 16
 - 설명: 슬랙 컨텍스트 블록 문자열을 생성합니다.
 
+XML 태그로 감싸서 LLM이 메타데이터 섹션을 명확히 구분할 수 있도록 합니다.
+
 Args:
     channel: 채널 ID
     user_id: 사용자 ID
@@ -19,11 +21,11 @@ Args:
     parent_thread_ts: 상위 스레드 타임스탬프 (스레드 내 메시지인 경우)
 
 ### `_get_plugin_instance(pm, name)`
-- 위치: 줄 42
+- 위치: 줄 45
 - 설명: PluginManager에서 플러그인 인스턴스를 가져옵니다.
 
 ### `process_thread_message(event, text, thread_ts, ts, channel, session, say, client, get_user_role, run_claude_in_session, log_prefix, session_manager, update_message_fn, plugin_manager)`
-- 위치: 줄 49
+- 위치: 줄 52
 - 설명: 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 
 mention.py와 message.py에서 공유합니다.
@@ -33,11 +35,11 @@ Returns:
     True if processed, False if skipped (empty message)
 
 ### `_contains_bot_mention(text)`
-- 위치: 줄 256
+- 위치: 줄 264
 - 설명: 텍스트에 봇 멘션이 포함되어 있는지 확인
 
 ### `_handle_dm_message(event, say, client, dependencies)`
-- 위치: 줄 264
+- 위치: 줄 272
 - 설명: DM 채널 메시지 처리
 
 앱 DM에서 보낸 메시지를 일반 채널 멘션과 동일하게 처리합니다.
@@ -45,7 +47,7 @@ Returns:
 - 스레드 메시지 (thread_ts 있음): 기존 세션에서 후속 처리
 
 ### `register_message_handlers(app, dependencies)`
-- 위치: 줄 340
+- 위치: 줄 348
 - 설명: 메시지 핸들러 등록
 
 Args:
@@ -55,9 +57,9 @@ Args:
 ## 내부 의존성
 
 - `seosoyoung.core.context.create_hook_context`
-- `seosoyoung.slackbot.claude.session_context.build_followup_context`
 - `seosoyoung.slackbot.config.Config`
 - `seosoyoung.slackbot.slack.build_file_context`
 - `seosoyoung.slackbot.slack.download_files_sync`
 - `seosoyoung.slackbot.slack.message_formatter.format_slack_message`
+- `seosoyoung.slackbot.soulstream.session_context.build_followup_context`
 - `seosoyoung.utils.async_bridge.run_in_new_loop`

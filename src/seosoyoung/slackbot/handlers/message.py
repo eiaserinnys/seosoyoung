@@ -8,7 +8,7 @@ from seosoyoung.utils.async_bridge import run_in_new_loop
 from seosoyoung.core.context import create_hook_context
 from seosoyoung.slackbot.slack import download_files_sync, build_file_context
 from seosoyoung.slackbot.slack.message_formatter import format_slack_message
-from seosoyoung.slackbot.claude.session_context import build_followup_context
+from seosoyoung.slackbot.soulstream.session_context import build_followup_context
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,8 @@ def build_slack_context(
 ) -> str:
     """슬랙 컨텍스트 블록 문자열을 생성합니다.
 
+    XML 태그로 감싸서 LLM이 메타데이터 섹션을 명확히 구분할 수 있도록 합니다.
+
     Args:
         channel: 채널 ID
         user_id: 사용자 ID
@@ -28,14 +30,15 @@ def build_slack_context(
         parent_thread_ts: 상위 스레드 타임스탬프 (스레드 내 메시지인 경우)
     """
     lines = [
-        "[사용자의 요청 컨텍스트는 다음과 같습니다]",
-        f"- 채널: {channel}",
-        f"- 사용자: {user_id}",
+        "<slack-context>",
+        f"channel_id: {channel}",
+        f"user_id: {user_id}",
     ]
     if parent_thread_ts:
-        lines.append(f"- 상위 스레드: {parent_thread_ts}")
+        lines.append(f"parent_thread_ts: {parent_thread_ts}")
     if thread_ts:
-        lines.append(f"- 스레드: {thread_ts}")
+        lines.append(f"thread_ts: {thread_ts}")
+    lines.append("</slack-context>")
     return "\n".join(lines)
 
 
@@ -116,8 +119,9 @@ def process_thread_message(
                 for msg in followup["messages"]
             ]
             followup_context = (
-                "[이전 대화 이후 채널에서 새로 발생한 대화입니다]\n"
+                '<channel-history description="이전 대화 이후 채널에서 새로 발생한 대화입니다.">\n'
                 + "\n".join(lines)
+                + "\n</channel-history>"
             )
 
             # last_seen_ts 업데이트
@@ -130,9 +134,13 @@ def process_thread_message(
     if followup_context:
         prompt_parts.append(followup_context)
     if clean_text:
-        prompt_parts.append(clean_text)
+        prompt_parts.append(
+            f"<user-request>\n{clean_text}\n</user-request>"
+        )
     if file_context:
-        prompt_parts.append(file_context)
+        prompt_parts.append(
+            f"<attachments>\n{file_context}\n</attachments>"
+        )
     prompt = "\n\n".join(prompt_parts)
 
     logger.info(
@@ -364,7 +372,7 @@ def register_message_handlers(app, dependencies: dict):
         if pm and pm.plugins:
             try:
                 ctx = create_hook_context(
-                    "on_message", event=event, client=client,
+                    "on_message", event=event,
                 )
                 ctx = run_in_new_loop(pm.dispatch("on_message", ctx))
                 if ctx.stopped:
@@ -442,7 +450,7 @@ def register_message_handlers(app, dependencies: dict):
         # Plugin hook dispatch: on_reaction
         if pm and pm.plugins:
             try:
-                ctx = create_hook_context("on_reaction", event=event, client=client)
+                ctx = create_hook_context("on_reaction", event=event)
                 ctx = run_in_new_loop(pm.dispatch("on_reaction", ctx))
                 if ctx.stopped:
                     return

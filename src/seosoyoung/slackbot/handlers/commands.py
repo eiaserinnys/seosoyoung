@@ -520,7 +520,7 @@ def _run_soul_profile_api(async_fn):
     Returns:
         API 응답 딕셔너리
     """
-    from seosoyoung.slackbot.claude.service_client import SoulServiceClient
+    from seosoyoung.slackbot.soulstream.service_client import SoulServiceClient
 
     async def _wrapper():
         soul = SoulServiceClient(
@@ -606,7 +606,7 @@ _PROFILE_SUBCMD_RESULT = {
 
 def handle_profile(*, command, say, thread_ts, client, user_id, check_permission, **_):
     """profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리"""
-    from seosoyoung.slackbot.claude.service_client import SoulServiceError
+    from seosoyoung.slackbot.soulstream.service_client import SoulServiceError
 
     if not check_permission(user_id, client):
         logger.warning(f"profile 권한 없음: user={user_id}")

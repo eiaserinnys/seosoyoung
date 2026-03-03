@@ -103,7 +103,7 @@ class TestMarkerParserModuleLocation:
         """marker_parser가 claude/ 패키지 안에 없어야 한다"""
         import importlib
         try:
-            importlib.import_module("seosoyoung.slackbot.claude.marker_parser")
+            importlib.import_module("seosoyoung.slackbot.soulstream.marker_parser")
             pytest.fail("marker_parser가 claude/ 안에 있으면 안 됩니다")
         except ImportError:
             pass  # 올바른 동작
@@ -114,14 +114,14 @@ class TestClaudeResultCompat:
 
     def test_claude_result_inherits_engine_result(self):
         """ClaudeResult가 EngineResult의 서브클래스"""
-        from seosoyoung.slackbot.claude.engine_types import ClaudeResult
-        from seosoyoung.slackbot.claude.engine_types import EngineResult
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+        from seosoyoung.slackbot.soulstream.engine_types import EngineResult
 
         assert issubclass(ClaudeResult, EngineResult)
 
     def test_claude_result_has_marker_fields(self):
         """ClaudeResult에 응용 마커 필드가 있다 (하위호환)"""
-        from seosoyoung.slackbot.claude.engine_types import ClaudeResult
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
 
         result = ClaudeResult(
             success=True,
@@ -135,8 +135,8 @@ class TestClaudeResultCompat:
 
     def test_from_engine_result(self):
         """EngineResult + ParsedMarkers → ClaudeResult 변환"""
-        from seosoyoung.slackbot.claude.engine_types import ClaudeResult
-        from seosoyoung.slackbot.claude.engine_types import EngineResult
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+        from seosoyoung.slackbot.soulstream.engine_types import EngineResult
         from seosoyoung.slackbot.marker_parser import ParsedMarkers
 
         engine_result = EngineResult(
@@ -157,8 +157,8 @@ class TestClaudeResultCompat:
 
     def test_from_engine_result_default_markers(self):
         """markers=None일 때 기본값 적용"""
-        from seosoyoung.slackbot.claude.engine_types import ClaudeResult
-        from seosoyoung.slackbot.claude.engine_types import EngineResult
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+        from seosoyoung.slackbot.soulstream.engine_types import EngineResult
 
         engine_result = EngineResult(success=True, output="test")
         claude_result = ClaudeResult.from_engine_result(engine_result)

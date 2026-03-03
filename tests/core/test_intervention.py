@@ -19,15 +19,15 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-from seosoyoung.slackbot.claude.executor import ClaudeExecutor
-from seosoyoung.slackbot.claude.intervention import PendingPrompt
+from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
+from seosoyoung.slackbot.soulstream.intervention import PendingPrompt
 from seosoyoung.slackbot.presentation.types import PresentationContext
-from seosoyoung.slackbot.claude.engine_types import ClaudeResult
+from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
 
 
 def make_executor(**overrides) -> ClaudeExecutor:
     """테스트용 ClaudeExecutor 생성"""
-    from seosoyoung.slackbot.claude.session import SessionRuntime
+    from seosoyoung.slackbot.soulstream.session import SessionRuntime
     runtime = MagicMock(spec=SessionRuntime)
     runtime.get_session_lock = overrides.pop("get_session_lock", MagicMock())
     runtime.mark_session_running = overrides.pop("mark_session_running", MagicMock())
@@ -281,7 +281,7 @@ class TestInterruptedExecution:
             trello_card=trello_card,
         )
 
-        with patch("seosoyoung.slackbot.claude.result_processor.build_trello_header", return_value="[Trello Header]"):
+        with patch("seosoyoung.slackbot.soulstream.result_processor.build_trello_header", return_value="[Trello Header]"):
             executor._result_processor.handle_interrupted(pctx)
 
         update_fn = executor._result_processor.update_message_fn
@@ -318,7 +318,7 @@ class TestExecuteOnceWithInterruption:
         executor = make_executor()
         pctx = _make_pctx()
 
-        with patch("seosoyoung.slackbot.claude.executor.run_in_new_loop", return_value=interrupted_result):
+        with patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop", return_value=interrupted_result):
             with patch.object(executor, "_get_service_adapter"):
                 with patch.object(executor._result_processor, "handle_interrupted") as mock_interrupted:
                     executor._execute_once(
@@ -341,7 +341,7 @@ class TestExecuteOnceWithInterruption:
         executor = make_executor()
         pctx = _make_pctx()
 
-        with patch("seosoyoung.slackbot.claude.executor.run_in_new_loop", return_value=normal_result):
+        with patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop", return_value=normal_result):
             with patch.object(executor, "_get_service_adapter"):
                 with patch.object(executor._result_processor, "handle_success") as mock_success:
                     executor._execute_once(
@@ -595,7 +595,7 @@ class TestNormalSuccessWithReplace:
 class TestTrelloSuccessWithReplace:
     """_handle_trello_success에서 _replace_thinking_message 사용 확인"""
 
-    @patch("seosoyoung.slackbot.claude.result_processor.build_trello_header", return_value="[Header]")
+    @patch("seosoyoung.slackbot.soulstream.result_processor.build_trello_header", return_value="[Header]")
     def test_trello_success_calls_replace_thinking(self, mock_header):
         """트렐로 성공 처리에서 _replace_thinking_message가 호출됨"""
         executor = make_executor()
@@ -625,7 +625,7 @@ class TestTrelloSuccessWithReplace:
 class TestListRunTrelloSuccessNoDelete:
     """정주행 카드 실행 시 chat_delete 방지 테스트"""
 
-    @patch("seosoyoung.slackbot.claude.result_processor.build_trello_header", return_value="[Header]")
+    @patch("seosoyoung.slackbot.soulstream.result_processor.build_trello_header", return_value="[Header]")
     def test_list_run_card_uses_chat_update_not_delete(self, mock_header):
         """정주행 카드(list_key='list_run')는 _replace_thinking_message를 호출하지 않음"""
         executor = make_executor()

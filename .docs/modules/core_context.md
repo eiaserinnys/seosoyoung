@@ -22,4 +22,4 @@ Example::
 
 ## 내부 의존성
 
-- `seosoyoung.core.hooks.HookContext`
+- `seosoyoung.plugin_sdk.hooks.HookContext`

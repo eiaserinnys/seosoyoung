@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
 
-from seosoyoung.slackbot.claude.intervention import InterventionManager, PendingPrompt
-from seosoyoung.slackbot.claude.service_client import SoulServiceClient, SSEEvent
+from seosoyoung.slackbot.soulstream.intervention import InterventionManager, PendingPrompt
+from seosoyoung.slackbot.soulstream.service_client import SoulServiceClient, SSEEvent
 
 
 # === SoulServiceClient 테스트 ===
@@ -104,8 +104,8 @@ class TestExecutorSessionMapping:
     """ClaudeExecutor의 thread_ts ↔ session_id 매핑"""
 
     def _make_executor(self, **overrides):
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
-        from seosoyoung.slackbot.claude.session import SessionRuntime
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.session import SessionRuntime
         runtime = MagicMock(spec=SessionRuntime)
         runtime.get_session_lock = overrides.pop("get_session_lock", MagicMock())
         runtime.mark_session_running = overrides.pop("mark_session_running", MagicMock())
@@ -233,8 +233,8 @@ class TestSessionBufferFlush:
 
     def test_flush_pending_on_register(self):
         """session_id 등록 시 버퍼된 인터벤션이 flush됨"""
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
-        from seosoyoung.slackbot.claude.session import SessionRuntime
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.session import SessionRuntime
 
         runtime = MagicMock(spec=SessionRuntime)
         runtime.get_session_lock = MagicMock()
@@ -262,7 +262,7 @@ class TestSessionBufferFlush:
         mock_adapter.intervene_by_session = AsyncMock(return_value=True)
         executor._service_adapter = mock_adapter
 
-        with patch("seosoyoung.slackbot.claude.executor.run_in_new_loop") as mock_run:
+        with patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop") as mock_run:
             # 원래 run_in_new_loop을 무시 (실행하지 않음)
             mock_run.return_value = True
             executor._register_session_id("thread_123", "sess-abc")
@@ -274,8 +274,8 @@ class TestSessionBufferFlush:
 
     def test_no_flush_when_no_pending(self):
         """버퍼가 비어있으면 flush하지 않음"""
-        from seosoyoung.slackbot.claude.executor import ClaudeExecutor
-        from seosoyoung.slackbot.claude.session import SessionRuntime
+        from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
+        from seosoyoung.slackbot.soulstream.session import SessionRuntime
 
         runtime = MagicMock(spec=SessionRuntime)
         runtime.get_session_lock = MagicMock()
