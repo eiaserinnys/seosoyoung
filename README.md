@@ -358,7 +358,8 @@ supervisor가 실행 중이면 `http://localhost:8042`에서 대시보드에 접
 
 ```
 config/
-├── plugins.yaml             # 플러그인 레지스트리 (트래킹됨)
+├── plugins.yaml.example     # 플러그인 레지스트리 템플릿
+├── plugins.yaml             # 실제 플러그인 레지스트리 (gitignored, 환경별 설정)
 ├── trello.yaml              # Trello 플러그인 설정 (gitignored, 시크릿)
 ├── translate.yaml           # 번역 플러그인 설정 (gitignored, 시크릿)
 └── ...                      # 기타 플러그인별 설정
@@ -402,6 +403,14 @@ scripts/
 플러그인 코드는 별도 패키지 `seosoyoung-plugins`로 분리되어 있습니다.
 `config/plugins.yaml` 레지스트리가 어떤 플러그인을 로드할지 정의하며,
 각 플러그인의 런타임 설정(API 키 등)은 `config/` 하위의 개별 YAML 파일에 저장됩니다.
+
+`config/` 하위의 모든 YAML 파일은 gitignored이며, 환경마다 별도로 설정해야 합니다.
+초기 설정 시 `config/plugins.yaml.example`을 복사하여 사용하세요:
+
+```bash
+cp config/plugins.yaml.example config/plugins.yaml
+# 필요에 따라 플러그인 활성화/비활성화 편집
+```
 
 ## 트러블슈팅
 
