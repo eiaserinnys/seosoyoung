@@ -356,6 +356,7 @@ def main():
         session_manager=session_manager,
         restart_manager=restart_manager,
         data_dir=Path(Config.get_session_path()).parent / "data",
+        update_message_fn=update_message,
     )
 
     _load_plugins()

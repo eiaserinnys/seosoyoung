@@ -268,7 +268,7 @@
 - `init_bot_user_id()` (seosoyoung/slackbot/main.py:317): 봇 사용자 ID 초기화
 - `main()` (seosoyoung/slackbot/main.py:327): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
-- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:408): Initialize plugin SDK backends.
+- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:419): Initialize plugin SDK backends.
 - `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:29): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류

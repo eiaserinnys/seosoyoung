@@ -187,3 +187,123 @@ class TestRunAutoPresentation:
         presentation = call_kwargs.kwargs.get("presentation") or call_kwargs[1].get("presentation")
         assert presentation.dm_channel_id == "D456"
         assert presentation.dm_thread_ts == "9999.0001"
+
+
+class TestRunAutoProgressCallbacks:
+    """run()에서 on_progress/on_compact 자동 생성 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_auto_builds_progress_callbacks_when_none(self):
+        """on_progress/on_compact가 None이고 update_message_fn이 있으면 자동 생성"""
+        mock_executor = MagicMock()
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+        mock_update_fn = MagicMock()
+
+        backend = _make_backend(
+            executor=mock_executor,
+            session_manager=mock_session_mgr,
+            update_message_fn=mock_update_fn,
+        )
+
+        await backend.run(
+            prompt="test",
+            channel="C123",
+            thread_ts="1234.5678",
+            role="admin",
+        )
+
+        call_kwargs = mock_executor.call_args
+        on_progress = call_kwargs.kwargs.get("on_progress")
+        on_compact = call_kwargs.kwargs.get("on_compact")
+
+        assert on_progress is not None, "on_progress should be auto-built"
+        assert on_compact is not None, "on_compact should be auto-built"
+        assert callable(on_progress)
+        assert callable(on_compact)
+
+    @pytest.mark.asyncio
+    async def test_preserves_explicit_progress_callbacks(self):
+        """on_progress/on_compact가 명시적으로 전달되면 그대로 사용"""
+        mock_executor = MagicMock()
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+
+        explicit_progress = AsyncMock()
+        explicit_compact = AsyncMock()
+
+        backend = _make_backend(
+            executor=mock_executor,
+            session_manager=mock_session_mgr,
+            update_message_fn=MagicMock(),
+        )
+
+        await backend.run(
+            prompt="test",
+            channel="C123",
+            thread_ts="1234.5678",
+            on_progress=explicit_progress,
+            on_compact=explicit_compact,
+        )
+
+        call_kwargs = mock_executor.call_args
+        assert call_kwargs.kwargs["on_progress"] is explicit_progress
+        assert call_kwargs.kwargs["on_compact"] is explicit_compact
+
+    @pytest.mark.asyncio
+    async def test_no_auto_build_without_update_message_fn(self):
+        """update_message_fn이 None이면 on_progress=None 그대로 전달 (하위 호환)"""
+        mock_executor = MagicMock()
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+
+        backend = _make_backend(
+            executor=mock_executor,
+            session_manager=mock_session_mgr,
+        )
+
+        await backend.run(
+            prompt="test",
+            channel="C123",
+            thread_ts="1234.5678",
+        )
+
+        call_kwargs = mock_executor.call_args
+        assert call_kwargs.kwargs.get("on_progress") is None
+        assert call_kwargs.kwargs.get("on_compact") is None
+
+    @pytest.mark.asyncio
+    async def test_auto_built_callbacks_use_correct_presentation(self):
+        """자동 생성된 콜백이 올바른 PresentationContext를 캡처하는지 확인"""
+        mock_executor = MagicMock()
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+        mock_client = MagicMock()
+        mock_update_fn = MagicMock()
+
+        backend = _make_backend(
+            executor=mock_executor,
+            session_manager=mock_session_mgr,
+            slack_client=mock_client,
+            update_message_fn=mock_update_fn,
+        )
+
+        await backend.run(
+            prompt="test",
+            channel="C123",
+            thread_ts="1234.5678",
+            role="admin",
+            dm_channel_id="D456",
+            dm_thread_ts="9999.0001",
+        )
+
+        call_kwargs = mock_executor.call_args
+        presentation = call_kwargs.kwargs.get("presentation")
+        on_progress = call_kwargs.kwargs.get("on_progress")
+
+        # presentation과 on_progress 둘 다 자동 구성됨
+        assert presentation is not None
+        assert on_progress is not None
+        # presentation의 DM 정보가 올바른지 확인
+        assert presentation.dm_channel_id == "D456"
+        assert presentation.dm_thread_ts == "9999.0001"

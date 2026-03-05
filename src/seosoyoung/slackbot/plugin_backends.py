@@ -239,6 +239,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         restart_manager,
         data_dir: Path,
         slack_client=None,
+        update_message_fn=None,
     ):
         """Initialize with Claude executor and session manager.
 
@@ -248,12 +249,15 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             restart_manager: RestartManager instance
             data_dir: Data directory for plugin storage
             slack_client: Slack WebClient instance (for auto-constructing PresentationContext)
+            update_message_fn: (client, channel, ts, text, *, blocks=None) -> None
+                               전달하면 on_progress/on_compact가 None일 때 자동 생성됨
         """
         self._executor = executor
         self._session_manager = session_manager
         self._restart_manager = restart_manager
         self._data_dir = data_dir
         self._slack_client = slack_client
+        self._update_message_fn = update_message_fn
 
     def _build_presentation(
         self,
@@ -335,6 +339,13 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                     dm_thread_ts=kwargs.get("dm_thread_ts"),
                 )
 
+            # Auto-build progress callbacks when not provided
+            if on_progress is None and self._update_message_fn is not None:
+                from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
+                on_progress, on_compact = build_progress_callbacks(
+                    presentation, self._update_message_fn,
+                )
+
             # Run executor (this is synchronous internally)
             self._executor(
                 prompt=prompt,
@@ -411,6 +422,7 @@ def init_plugin_backends(
     session_manager: "SessionManager",
     restart_manager,
     data_dir: Path,
+    update_message_fn=None,
 ) -> None:
     """Initialize plugin SDK backends.
 
@@ -422,6 +434,8 @@ def init_plugin_backends(
         session_manager: SessionManager instance
         restart_manager: RestartManager instance
         data_dir: Data directory for plugin storage
+        update_message_fn: (client, channel, ts, text, *, blocks=None) -> None
+                           전달하면 워처 등에서 on_progress/on_compact가 자동 생성됨
     """
     # Initialize Slack backend
     slack_backend = SlackBackendImpl(slack_client)
@@ -432,6 +446,7 @@ def init_plugin_backends(
     soulstream_backend = SoulstreamBackendImpl(
         executor, session_manager, restart_manager, data_dir,
         slack_client=slack_client,
+        update_message_fn=update_message_fn,
     )
     soulstream.set_backend(soulstream_backend)
     logger.info("plugin_sdk.soulstream backend initialized")
