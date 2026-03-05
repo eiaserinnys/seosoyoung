@@ -188,7 +188,7 @@ def _load_plugins() -> None:
     from seosoyoung.utils.async_bridge import run_in_new_loop
 
     base_dir = Path(__file__).resolve().parent.parent.parent.parent  # project root
-    registry_path = base_dir / "plugins" / "plugins.yaml"
+    registry_path = base_dir / "config" / "plugins.yaml"
     registry = load_plugin_registry(registry_path)
 
     if not registry:

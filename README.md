@@ -357,52 +357,51 @@ supervisor가 실행 중이면 `http://localhost:8042`에서 대시보드에 접
 ## 프로젝트 구조
 
 ```
+config/
+├── plugins.yaml             # 플러그인 레지스트리 (트래킹됨)
+├── trello.yaml              # Trello 플러그인 설정 (gitignored, 시크릿)
+├── translate.yaml           # 번역 플러그인 설정 (gitignored, 시크릿)
+└── ...                      # 기타 플러그인별 설정
+
 src/
 ├── seosoyoung/
-│   ├── main.py              # 앱 진입점
-│   ├── config.py            # 환경 변수 기반 설정
-│   ├── auth.py              # 사용자 권한 관리
-│   ├── bot/                 # 봇 유틸리티
-│   ├── claude/
-│   │   ├── agent_runner.py  # Claude Code SDK 래퍼
-│   │   ├── executor.py      # 실행 로직 (인터벤션 지원)
-│   │   ├── session.py       # 스레드-세션 매핑
-│   │   └── security.py      # 보안 레이어
-│   ├── handlers/
-│   │   ├── mention.py       # @멘션 핸들러
-│   │   ├── message.py       # 스레드 메시지 핸들러
-│   │   └── translate.py     # 번역 핸들러
-│   ├── mcp/                 # 커스텀 MCP 서버 (mcp-seosoyoung)
-│   ├── memory/              # 관찰 기억 시스템
-│   ├── recall/              # 도구/에이전트 라우팅
-│   ├── rescue/              # 긴급 복구 봇
-│   ├── slack/               # Slack API 유틸리티
+│   ├── core/                # 플러그인 코어 (레지스트리, 훅, 매니저)
+│   ├── plugin_sdk/          # 플러그인 SDK (Slack/Soulstream 백엔드 프로토콜)
 │   ├── slackbot/            # Slack 봇 메인 모듈
-│   ├── soul/                # Claude Code 실행 서비스
-│   ├── translator/          # 번역 로직 및 용어집
-│   ├── trello/              # Trello 카드 감시 및 자동 실행
-│   └── search/              # 대사 검색 인덱스/엔진
+│   │   ├── main.py          # 앱 진입점
+│   │   ├── config.py        # 환경 변수 기반 설정
+│   │   ├── handlers/        # 멘션, 메시지, 명령어 핸들러
+│   │   ├── soulstream/      # Claude Code 실행 (세션, 인터벤션)
+│   │   ├── presentation/    # 진행 상태 UI
+│   │   ├── slack/           # Slack API 유틸리티
+│   │   └── web/             # 웹 콘텐츠 추출
+│   ├── claude/              # Claude Code SDK 래퍼
+│   ├── mcp/                 # 커스텀 MCP 서버 (mcp-seosoyoung)
+│   ├── rescue/              # 긴급 복구 봇
+│   └── utils/               # 공통 유틸리티
 │
 ├── supervisor/              # 프로세스 관리자
 │   ├── __main__.py          # 진입점, 메인 루프
 │   ├── config.py            # 프로세스 정의, 경로 해석
-│   ├── models.py            # ProcessConfig, ExitAction 등
 │   ├── process_manager.py   # 프로세스 시작/중지/재시작
 │   ├── dashboard.py         # FastAPI 대시보드
 │   ├── deployer.py          # 배포 상태 머신
 │   ├── git_poller.py        # Git 변경 감지
 │   ├── job_object.py        # Windows Job Object (자식 프로세스 정리)
-│   ├── session_monitor.py   # Claude Code 세션 감시
 │   └── notifier.py          # Slack 알림
 │
 scripts/
 ├── setup.ps1                # 초기 환경 구성
 ├── watchdog.ps1             # supervisor 감시
 ├── install-service.ps1      # NSSM 서비스 등록
-├── start.ps1                # 봇 시작 (레거시)
-├── wrapper.ps1              # 봇 래퍼 (레거시)
 └── stop.ps1                 # 봇 강제 종료
 ```
+
+### 플러그인 시스템
+
+플러그인 코드는 별도 패키지 `seosoyoung-plugins`로 분리되어 있습니다.
+`config/plugins.yaml` 레지스트리가 어떤 플러그인을 로드할지 정의하며,
+각 플러그인의 런타임 설정(API 키 등)은 `config/` 하위의 개별 YAML 파일에 저장됩니다.
 
 ## 트러블슈팅
 

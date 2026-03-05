@@ -43,8 +43,8 @@ Thumbs.db
 tmpclaude-*
 
 # Plugin configs (environment-specific, contain secrets)
-plugins/*.yaml
-!plugins/plugins.yaml
+config/*.yaml
+!config/plugins.yaml
 
 # Runtime data
 data/*.json

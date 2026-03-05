@@ -4,11 +4,11 @@
 - name: trello
   module: seosoyoung_plugins.trello.plugin
   priority: 100
-  config: plugins/trello.yaml
+  config: config/trello.yaml
   enabled: true
 
 - name: translate
   module: seosoyoung_plugins.translate.plugin
   priority: 50
-  config: plugins/translate.yaml
+  config: config/translate.yaml
   enabled: true
