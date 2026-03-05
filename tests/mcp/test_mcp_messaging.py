@@ -164,22 +164,6 @@ class TestPostMessageWithFiles:
         assert result["success"] is False
         assert "존재하지 않" in result["message"]
 
-    def test_disallowed_extension(self):
-        """허용되지 않는 확장자"""
-        tmp_path = self._make_temp_file(suffix=".exe")
-        try:
-            from seosoyoung.mcp.tools.slack_messaging import post_message
-
-            result = post_message(
-                channel="C12345",
-                text="exe 첨부",
-                file_paths=tmp_path,
-            )
-            assert result["success"] is False
-            assert "확장자" in result["message"]
-        finally:
-            os.unlink(tmp_path)
-
     def test_file_outside_workspace(self):
         """workspace 외부 파일 거부"""
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:

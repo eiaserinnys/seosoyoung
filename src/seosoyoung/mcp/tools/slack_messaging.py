@@ -6,7 +6,6 @@ from pathlib import Path
 from slack_sdk import WebClient
 
 from seosoyoung.mcp.config import (
-    ALLOWED_EXTENSIONS,
     MAX_FILE_SIZE,
     SLACK_BOT_TOKEN,
     WORKSPACE_ROOT,
@@ -35,10 +34,6 @@ def _validate_file(file_path: str) -> str | None:
         resolved.relative_to(workspace)
     except ValueError:
         return f"workspace 외부 파일은 허용되지 않음: {file_path}"
-
-    ext = resolved.suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return f"허용되지 않는 확장자: {ext}"
 
     file_size = resolved.stat().st_size
     if file_size > MAX_FILE_SIZE:

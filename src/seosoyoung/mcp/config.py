@@ -14,10 +14,4 @@ WORKSPACE_ROOT = os.getenv(
     str(Path(__file__).resolve().parents[5]),
 )
 
-ALLOWED_EXTENSIONS = {
-    ".md", ".txt", ".yaml", ".yml", ".json", ".csv",
-    ".png", ".jpg", ".jpeg", ".gif", ".webp",
-    ".pdf", ".xlsx", ".xls", ".html",
-}
-
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB

@@ -7,7 +7,6 @@ from pathlib import Path
 from slack_sdk import WebClient
 
 from seosoyoung.mcp.config import (
-    ALLOWED_EXTENSIONS,
     MAX_FILE_SIZE,
     SLACK_BOT_TOKEN,
     WORKSPACE_ROOT,
@@ -58,11 +57,6 @@ def attach_file(file_path: str, channel: str, thread_ts: str) -> dict:
         resolved.relative_to(workspace)
     except ValueError:
         return {"success": False, "message": f"workspace 외부 파일은 허용되지 않음: {file_path}"}
-
-    # 확장자 검증
-    ext = resolved.suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        return {"success": False, "message": f"허용되지 않는 확장자: {ext}"}
 
     # 파일 크기 검증
     file_size = resolved.stat().st_size

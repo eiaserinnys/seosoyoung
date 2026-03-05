@@ -9,18 +9,18 @@
 ## 함수
 
 ### `_get_slack_client()`
-- 위치: 줄 19
+- 위치: 줄 18
 - 설명: Slack WebClient 인스턴스 반환
 
 ### `get_slack_context()`
-- 위치: 줄 24
+- 위치: 줄 23
 - 설명: 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 
 Returns:
     dict: channel, thread_ts 키를 포함하는 딕셔너리
 
 ### `attach_file(file_path, channel, thread_ts)`
-- 위치: 줄 36
+- 위치: 줄 35
 - 설명: 슬랙에 파일을 첨부
 
 Args:
@@ -33,7 +33,6 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.config.ALLOWED_EXTENSIONS`
 - `seosoyoung.mcp.config.MAX_FILE_SIZE`
 - `seosoyoung.mcp.config.SLACK_BOT_TOKEN`
 - `seosoyoung.mcp.config.WORKSPACE_ROOT`

@@ -9,15 +9,15 @@
 ## 함수
 
 ### `_get_slack_client()`
-- 위치: 줄 18
+- 위치: 줄 17
 - 설명: Slack WebClient 인스턴스 반환
 
 ### `_validate_file(file_path)`
-- 위치: 줄 23
+- 위치: 줄 22
 - 설명: 파일 검증. 문제가 있으면 에러 메시지 반환, 없으면 None.
 
 ### `post_message(channel, text, thread_ts, file_paths)`
-- 위치: 줄 51
+- 위치: 줄 46
 - 설명: 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부
 
 Args:
@@ -31,7 +31,6 @@ Returns:
 
 ## 내부 의존성
 
-- `seosoyoung.mcp.config.ALLOWED_EXTENSIONS`
 - `seosoyoung.mcp.config.MAX_FILE_SIZE`
 - `seosoyoung.mcp.config.SLACK_BOT_TOKEN`
 - `seosoyoung.mcp.config.WORKSPACE_ROOT`

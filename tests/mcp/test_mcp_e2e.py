@@ -239,22 +239,6 @@ class TestMCPE2EErrorCases:
         finally:
             os.unlink(outside_path)
 
-    def test_disallowed_extension_rejected(self):
-        """허용되지 않는 확장자(.exe) → success=False"""
-        tmp_path = self._make_workspace_file(suffix=".exe", content=b"MZ")
-        try:
-            from seosoyoung.mcp.tools.attach import attach_file
-
-            result = attach_file(
-                file_path=tmp_path,
-                channel="C12345",
-                thread_ts="1234567890.123456",
-            )
-            assert result["success"] is False
-            assert "확장자" in result["message"]
-        finally:
-            os.unlink(tmp_path)
-
     def test_file_size_exceeded_rejected(self):
         """20MB 초과 파일 → success=False"""
         tmp_path = self._make_workspace_file(
