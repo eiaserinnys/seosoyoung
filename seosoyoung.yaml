@@ -1,0 +1,199 @@
+# seosoyoung.yaml — soulstream + plugin-less seosoyoung bot
+#
+# 사용법:
+#   haniel install seosoyoung.yaml       # 환경 구성 (venv, .env, NSSM 서비스)
+#   haniel run seosoyoung.yaml           # 서비스 실행
+#   haniel validate seosoyoung.yaml      # 설정 유효성 검증
+#
+# 부트스트랩:
+#   irm https://raw.githubusercontent.com/eiaserinnys/Haniel/main/install-haniel.ps1 | iex
+#   → 설정 파일 URL 입력 시:
+#     https://raw.githubusercontent.com/eiaserinnys/seosoyoung/main/seosoyoung.yaml
+#
+# 디렉토리 구조 (설치 후):
+#   {root}/                              config_dir (.services/seosoyoung/)
+#   ├── seosoyoung.yaml                  이 파일
+#   ├── seosoyoung_runtime/              seosoyoung 리포 클론
+#   │   ├── src/seosoyoung/              봇 소스 코드
+#   │   ├── venv/                        메인 Python venv (bot용)
+#   │   └── mcp_venv/                    MCP Python venv
+#   ├── soulstream_runtime/              soulstream 리포 클론
+#   │   ├── soul-server/                 FastAPI 서버 패키지
+#   │   └── venv/                        soulstream Python venv
+#   └── workspace/                       작업 디렉토리 (클론 아님, install이 생성)
+#       ├── .env                         환경변수 (haniel install이 생성)
+#       └── plugins/plugins.yaml         플러그인 설정 (haniel install이 생성)
+
+poll_interval: 60
+
+# ============================================================
+# Git 리포지토리
+# ============================================================
+repos:
+  seosoyoung:
+    url: https://github.com/eiaserinnys/seosoyoung.git
+    branch: main
+    path: ./seosoyoung_runtime
+
+  soulstream:
+    url: https://github.com/eiaserinnys/soulstream.git
+    branch: main
+    path: ./soulstream_runtime
+
+# ============================================================
+# 서비스 정의
+# ============================================================
+# 기동 순서: soulstream → mcp-seosoyoung → bot
+#
+# 경로 규칙:
+#   - run 커맨드의 실행파일 경로는 cwd 기준 상대 경로
+#   - soulstream:  cwd=./soulstream_runtime  → ./venv/...
+#   - bot/mcp:     cwd=./workspace            → ../seosoyoung_runtime/venv/...
+
+services:
+  soulstream:
+    run: ./venv/Scripts/python.exe -X utf8 -m uvicorn soul_server.main:app --host 127.0.0.1 --port 4105
+    cwd: ./soulstream_runtime
+    repo: soulstream
+    ready: port:4105
+    shutdown:
+      method: http
+      endpoint: http://127.0.0.1:4105/shutdown
+      timeout: 15
+    hooks:
+      post_pull: ./venv/Scripts/pip.exe install -e ./soul-server --no-deps
+
+  mcp-seosoyoung:
+    run: ../seosoyoung_runtime/mcp_venv/Scripts/python.exe -X utf8 -m seosoyoung.mcp --transport=sse --port=3104
+    cwd: ./workspace
+    repo: seosoyoung
+    after:
+      - soulstream
+    ready: port:3104
+    hooks:
+      post_pull: ../seosoyoung_runtime/mcp_venv/Scripts/pip.exe install -r ../seosoyoung_runtime/mcp_requirements.txt
+
+  bot:
+    run: ../seosoyoung_runtime/venv/Scripts/python.exe -X utf8 -m seosoyoung.slackbot
+    cwd: ./workspace
+    repo: seosoyoung
+    after:
+      - soulstream
+      - mcp-seosoyoung
+    ready: log:Plugin startup summary
+    shutdown:
+      method: http
+      endpoint: http://127.0.0.1:3106/shutdown
+      timeout: 15
+    hooks:
+      post_pull: ../seosoyoung_runtime/venv/Scripts/pip.exe install -r ../seosoyoung_runtime/requirements.txt
+
+  # --------------------------------------------------------
+  # 확장 예시 (필요 시 enabled: true로 변경)
+  # --------------------------------------------------------
+  # rescue-bot:
+  #   run: ../seosoyoung_runtime/venv/Scripts/python.exe -X utf8 -m seosoyoung.rescue.main
+  #   cwd: ./workspace
+  #   repo: seosoyoung
+  #   after: [soulstream]
+  #   ready: delay:5
+  #   enabled: false
+  #
+  # mcp-eb-lore:
+  #   run: ../seosoyoung_runtime/mcp_venv/Scripts/python.exe -X utf8 -m lore_mcp --transport=sse --port=3108
+  #   cwd: ./workspace
+  #   repo: seosoyoung
+  #   ready: port:3108
+  #   enabled: false
+
+# ============================================================
+# 전역 설정
+# ============================================================
+shutdown:
+  timeout: 10
+  kill_timeout: 30
+
+backoff:
+  base_delay: 5
+  max_delay: 300
+  circuit_breaker: 5
+  circuit_window: 300
+
+webhooks: []
+
+mcp:
+  enabled: true
+  transport: sse
+  port: 3200
+
+# ============================================================
+# 설치 (haniel install)
+# ============================================================
+install:
+  requirements:
+    python: ">=3.11"
+    nssm: true
+
+  environments:
+    main-venv:
+      type: python-venv
+      path: ./seosoyoung_runtime/venv
+      requirements:
+        - ./seosoyoung_runtime/requirements.txt
+
+    mcp-venv:
+      type: python-venv
+      path: ./seosoyoung_runtime/mcp_venv
+      requirements:
+        - ./seosoyoung_runtime/mcp_requirements.txt
+
+    soulstream-venv:
+      type: python-venv
+      path: ./soulstream_runtime/venv
+      requirements:
+        - ./soulstream_runtime/soul-server
+
+  directories:
+    - ./workspace
+    - ./workspace/plugins
+
+  configs:
+    workspace-env:
+      path: ./workspace/.env
+      keys:
+        - key: SLACK_BOT_TOKEN
+          prompt: "Slack Bot Token (xoxb-...)"
+          guide: "https://api.slack.com/apps → OAuth & Permissions"
+        - key: SLACK_APP_TOKEN
+          prompt: "Slack App-Level Token (xapp-...)"
+          guide: "https://api.slack.com/apps → Basic Information → App-Level Tokens"
+        - key: ANTHROPIC_API_KEY
+          prompt: "Anthropic API Key"
+          guide: "https://console.anthropic.com/settings/keys"
+        - key: GEMINI_API_KEY
+          prompt: "Google Gemini API Key"
+          guide: "https://aistudio.google.com/apikey"
+        - key: CLAUDE_EXECUTION_MODE
+          default: "remote"
+        - key: SEOSOYOUNG_SOUL_URL
+          default: "http://localhost:4105"
+        - key: SESSION_PATH
+          default: "{root}/seosoyoung_runtime/sessions"
+        - key: LOG_PATH
+          default: "{root}/seosoyoung_runtime/logs"
+        - key: WORKSPACE_DIR
+          default: "{root}/workspace"
+
+    plugins-config:
+      path: ./workspace/plugins/plugins.yaml
+      content: |
+        # Plugin-less configuration
+        plugins: []
+
+  service:
+    name: haniel-seosoyoung
+    display: "Haniel - Seosoyoung Bot"
+    working_directory: "{root}"
+    environment:
+      PYTHONUTF8: "1"
+      PYTHONPATH: "{root}/seosoyoung_runtime/src"
