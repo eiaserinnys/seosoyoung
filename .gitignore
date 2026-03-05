@@ -39,6 +39,9 @@ blob-report/
 .DS_Store
 Thumbs.db
 
+# Claude Code temp files
+tmpclaude-*
+
 # Plugin configs (environment-specific, contain secrets)
 plugins/*.yaml
 !plugins/plugins.yaml
