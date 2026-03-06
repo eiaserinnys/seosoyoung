@@ -64,10 +64,14 @@ class Deployer:
         process_manager: ProcessManager,
         session_monitor: SessionMonitor,
         paths: dict[str, Path],
+        monitored_repos: dict[str, Path] | None = None,
     ) -> None:
         self._pm = process_manager
         self._session_monitor = session_monitor
         self._paths = paths
+        self._monitored_repos: dict[str, Path] = (
+            dict(monitored_repos) if monitored_repos else {}
+        )
         self._state = DeployState.IDLE
         self._pending_sources: set[str] = set()
         self._waiting_since: float | None = None
@@ -89,7 +93,9 @@ class Deployer:
             self._state = DeployState.PENDING
             logger.info("배포 상태: idle → pending (source: %s)", source)
             try:
-                notify_change_detected(self._paths, self._webhook_config)
+                notify_change_detected(
+                    self._monitored_repos, self._webhook_config,
+                )
             except Exception:
                 logger.exception("변경 감지 알림 전송 실패")
         else:

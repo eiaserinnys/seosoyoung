@@ -216,10 +216,12 @@ class TestNotifyDeployFailure:
 
 
 class TestFormatChangeDetectedMessage:
-    def test_with_both_repos(self):
-        runtime_commits = ["a1b2c3d feat: runtime change"]
-        seosoyoung_commits = ["e4f5g6h fix: bot fix"]
-        msg = format_change_detected_message(runtime_commits, seosoyoung_commits)
+    def test_with_multiple_repos(self):
+        commits_by_repo = {
+            "runtime": ["a1b2c3d feat: runtime change"],
+            "seosoyoung": ["e4f5g6h fix: bot fix"],
+        }
+        msg = format_change_detected_message(commits_by_repo)
         assert ":mag:" in msg
         assert "변경점" in msg
         assert "*runtime*" in msg
@@ -228,11 +230,37 @@ class TestFormatChangeDetectedMessage:
         assert "`e4f5g6h`" in msg
 
     def test_with_no_commits(self):
-        msg = format_change_detected_message([], [])
+        msg = format_change_detected_message({})
         assert ":mag:" in msg
 
     def test_with_only_runtime(self):
-        msg = format_change_detected_message(["a1b2c3d feat: change"], [])
+        msg = format_change_detected_message({
+            "runtime": ["a1b2c3d feat: change"],
+        })
+        assert "*runtime*" in msg
+        assert "*seosoyoung*" not in msg
+
+    def test_with_four_repos(self):
+        """4개 리포 모두 커밋이 있는 경우"""
+        commits_by_repo = {
+            "runtime": ["a1b2c3d feat: runtime"],
+            "seosoyoung": ["e4f5g6h fix: bot"],
+            "seosoyoung-plugins": ["1234567 feat: plugin"],
+            "soulstream": ["abcdef0 fix: soul"],
+        }
+        msg = format_change_detected_message(commits_by_repo)
+        assert "*runtime*" in msg
+        assert "*seosoyoung*" in msg
+        assert "*seosoyoung-plugins*" in msg
+        assert "*soulstream*" in msg
+
+    def test_empty_commits_list_excluded(self):
+        """빈 커밋 리스트를 가진 리포는 메시지에 포함되지 않음"""
+        commits_by_repo = {
+            "runtime": ["a1b2c3d feat: change"],
+            "seosoyoung": [],
+        }
+        msg = format_change_detected_message(commits_by_repo)
         assert "*runtime*" in msg
         assert "*seosoyoung*" not in msg
 
@@ -254,48 +282,116 @@ class TestNotifyChangeDetected:
             json.dumps({"slackWebhookUrl": "https://hooks.slack.com/test"}),
             encoding="utf-8",
         )
-        paths = {"runtime": tmp_path / "runtime", "workspace": tmp_path / "workspace"}
-        paths["runtime"].mkdir()
-        paths["workspace"].mkdir()
+        runtime = tmp_path / "runtime"
+        runtime.mkdir()
+        repo_paths = {"runtime": runtime}
 
         with patch("supervisor.notifier.get_pending_commits") as mock_commits, \
              patch("supervisor.notifier.send_webhook") as mock_send:
             mock_commits.return_value = ["abc1234 feat: test"]
-            notify_change_detected(paths, config_file)
+            notify_change_detected(repo_paths, config_file)
 
         mock_send.assert_called_once()
         msg = mock_send.call_args[0][1]
         assert ":mag:" in msg
 
     def test_skips_when_no_url(self, tmp_path):
-        paths = {"runtime": tmp_path / "runtime", "workspace": tmp_path / "workspace"}
-        paths["runtime"].mkdir()
-        paths["workspace"].mkdir()
+        runtime = tmp_path / "runtime"
+        runtime.mkdir()
+        repo_paths = {"runtime": runtime}
 
         with patch("supervisor.notifier.send_webhook") as mock_send:
-            notify_change_detected(paths, tmp_path / "nonexistent.json")
+            notify_change_detected(repo_paths, tmp_path / "nonexistent.json")
 
         mock_send.assert_not_called()
 
-    def test_uses_default_config_when_none(self, tmp_path):
-        """config_path=None이면 paths["runtime"]/data/watchdog_config.json 사용"""
-        runtime = tmp_path / "runtime"
-        data_dir = runtime / "data"
-        data_dir.mkdir(parents=True)
-        config_file = data_dir / "watchdog_config.json"
+    def test_collects_commits_from_all_repos(self, tmp_path):
+        """모든 등록된 리포에서 커밋을 수집한다"""
+        config_file = tmp_path / "watchdog_config.json"
         config_file.write_text(
             json.dumps({"slackWebhookUrl": "https://hooks.slack.com/test"}),
             encoding="utf-8",
         )
-        paths = {"runtime": runtime, "workspace": tmp_path / "workspace"}
-        (tmp_path / "workspace").mkdir()
+        runtime = tmp_path / "runtime"
+        seosoyoung = tmp_path / "seosoyoung"
+        plugins = tmp_path / "plugins"
+        soulstream = tmp_path / "soulstream"
+        for d in (runtime, seosoyoung, plugins, soulstream):
+            d.mkdir()
+
+        repo_paths = {
+            "runtime": runtime,
+            "seosoyoung": seosoyoung,
+            "seosoyoung-plugins": plugins,
+            "soulstream": soulstream,
+        }
+
+        def fake_commits(path):
+            return {
+                runtime: ["a1b2c3d feat: runtime change"],
+                seosoyoung: ["e4f5g6h fix: bot fix"],
+                plugins: ["1234567 feat: plugin update"],
+                soulstream: ["abcdef0 fix: soul fix"],
+            }.get(path, [])
+
+        with patch("supervisor.notifier.get_pending_commits", side_effect=fake_commits), \
+             patch("supervisor.notifier.send_webhook") as mock_send:
+            notify_change_detected(repo_paths, config_file)
+
+        mock_send.assert_called_once()
+        msg = mock_send.call_args[0][1]
+        assert "*runtime*" in msg
+        assert "*seosoyoung*" in msg
+        assert "*seosoyoung-plugins*" in msg
+        assert "*soulstream*" in msg
+
+    def test_skips_nonexistent_repos(self, tmp_path):
+        """존재하지 않는 리포 경로는 건너뛴다"""
+        config_file = tmp_path / "watchdog_config.json"
+        config_file.write_text(
+            json.dumps({"slackWebhookUrl": "https://hooks.slack.com/test"}),
+            encoding="utf-8",
+        )
+        runtime = tmp_path / "runtime"
+        runtime.mkdir()
+        repo_paths = {
+            "runtime": runtime,
+            "nonexistent": tmp_path / "does_not_exist",
+        }
 
         with patch("supervisor.notifier.get_pending_commits") as mock_commits, \
              patch("supervisor.notifier.send_webhook") as mock_send:
-            mock_commits.return_value = []
-            notify_change_detected(paths, None)
+            mock_commits.return_value = ["a1b2c3d feat: test"]
+            notify_change_detected(repo_paths, config_file)
 
-        mock_send.assert_called_once()
+        # get_pending_commits는 존재하는 리포에 대해서만 호출
+        mock_commits.assert_called_once_with(runtime)
+
+    def test_empty_repos_excluded_from_message(self, tmp_path):
+        """커밋이 없는 리포는 메시지에 포함되지 않음"""
+        config_file = tmp_path / "watchdog_config.json"
+        config_file.write_text(
+            json.dumps({"slackWebhookUrl": "https://hooks.slack.com/test"}),
+            encoding="utf-8",
+        )
+        runtime = tmp_path / "runtime"
+        seosoyoung = tmp_path / "seosoyoung"
+        runtime.mkdir()
+        seosoyoung.mkdir()
+        repo_paths = {"runtime": runtime, "seosoyoung": seosoyoung}
+
+        def fake_commits(path):
+            if path == runtime:
+                return ["a1b2c3d feat: change"]
+            return []
+
+        with patch("supervisor.notifier.get_pending_commits", side_effect=fake_commits), \
+             patch("supervisor.notifier.send_webhook") as mock_send:
+            notify_change_detected(repo_paths, config_file)
+
+        msg = mock_send.call_args[0][1]
+        assert "*runtime*" in msg
+        assert "*seosoyoung*" not in msg
 
 
 class TestNotifyWaitingSessions:

@@ -39,10 +39,12 @@ def deployer(mock_pm, mock_session_monitor, tmp_path):
     }
     for p in paths.values():
         p.mkdir(parents=True, exist_ok=True)
+    monitored_repos = {"runtime": paths["runtime"]}
     return Deployer(
         process_manager=mock_pm,
         session_monitor=mock_session_monitor,
         paths=paths,
+        monitored_repos=monitored_repos,
     )
 
 
@@ -335,7 +337,9 @@ class TestChangeDetectedNotification:
         with patch("supervisor.deployer.notify_change_detected") as mock_notify:
             deployer.notify_change()
 
-        mock_notify.assert_called_once_with(deployer._paths, deployer._webhook_config)
+        mock_notify.assert_called_once_with(
+            deployer._monitored_repos, deployer._webhook_config,
+        )
 
     def test_notify_change_already_pending_no_second_notification(self, deployer):
         """이미 pending 상태이면 알림을 다시 보내지 않음"""
@@ -354,6 +358,35 @@ class TestChangeDetectedNotification:
             deployer.notify_change()  # 예외가 전파되지 않아야 함
 
         assert deployer.state == DeployState.PENDING
+
+    def test_monitored_repos_passed_to_notification(self, mock_pm, mock_session_monitor, tmp_path):
+        """monitored_repos로 등록된 모든 리포가 알림에 전달된다"""
+        paths = {
+            "runtime": tmp_path / "runtime",
+            "workspace": tmp_path / "workspace",
+            "logs": tmp_path / "logs",
+        }
+        for p in paths.values():
+            p.mkdir(parents=True, exist_ok=True)
+        monitored = {
+            "runtime": paths["runtime"],
+            "seosoyoung": tmp_path / "seosoyoung",
+            "seosoyoung-plugins": tmp_path / "plugins",
+            "soulstream": tmp_path / "soulstream",
+        }
+        d = Deployer(
+            process_manager=mock_pm,
+            session_monitor=mock_session_monitor,
+            paths=paths,
+            monitored_repos=monitored,
+        )
+        with patch("supervisor.deployer.notify_change_detected") as mock_notify:
+            d.notify_change()
+
+        called_repos = mock_notify.call_args[0][0]
+        assert set(called_repos.keys()) == {
+            "runtime", "seosoyoung", "seosoyoung-plugins", "soulstream",
+        }
 
 
 class TestWaitingSessionsNotification:

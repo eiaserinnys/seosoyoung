@@ -159,11 +159,21 @@ def main() -> None:
     # SessionMonitor: 봇 자식 프로세스 중 Claude Code 세션 감지
     session_monitor = SessionMonitor(process_manager=pm)
 
+    # 모니터링 대상 리포 등록 (변경점 알림에 사용)
+    monitored_repos: dict[str, Path] = {"runtime": paths["runtime"]}
+    if seosoyoung_poller is not None:
+        monitored_repos["seosoyoung"] = dev_seosoyoung
+    if plugins_poller is not None:
+        monitored_repos["seosoyoung-plugins"] = dev_plugins
+    if soulstream_poller is not None:
+        monitored_repos["soulstream"] = paths["soulstream_runtime"]
+
     # Deployer: 배포 상태 머신
     deployer = Deployer(
         process_manager=pm,
         session_monitor=session_monitor,
         paths=paths,
+        monitored_repos=monitored_repos,
     )
 
     # 재시작 마커 확인: 이전 supervisor가 exit 42로 재시작한 경우 완료 알림 전송

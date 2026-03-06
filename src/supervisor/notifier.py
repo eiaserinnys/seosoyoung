@@ -177,16 +177,17 @@ def notify_restart_complete(config_path: Path | None = None) -> None:
 
 
 def format_change_detected_message(
-    runtime_commits: list[str],
-    seosoyoung_commits: list[str],
-    soulstream_commits: list[str] | None = None,
+    commits_by_repo: dict[str, list[str]],
 ) -> str:
-    """변경점 감지 메시지를 생성한다."""
+    """변경점 감지 메시지를 생성한다.
+
+    Args:
+        commits_by_repo: 리포명 → 커밋 목록 매핑.
+            예: {"runtime": ["a1b commit msg"], "seosoyoung": [...]}
+    """
     lines = [":mag: *변경점이 발견됐습니다*"]
-    lines.extend(_format_commit_section("runtime", runtime_commits))
-    lines.extend(_format_commit_section("seosoyoung", seosoyoung_commits))
-    if soulstream_commits:
-        lines.extend(_format_commit_section("soulstream", soulstream_commits))
+    for repo_name, commits in commits_by_repo.items():
+        lines.extend(_format_commit_section(repo_name, commits))
     return "\n".join(lines)
 
 
@@ -196,33 +197,31 @@ def format_waiting_sessions_message() -> str:
 
 
 def notify_change_detected(
-    paths: dict[str, Path],
-    config_path: Path | None = None,
+    repo_paths: dict[str, Path],
+    config_path: Path,
 ) -> None:
-    """변경점 감지 알림을 전송한다."""
-    if config_path is None:
-        config_path = _get_default_config_path(paths)
+    """변경점 감지 알림을 전송한다.
+
+    Args:
+        repo_paths: 모니터링 대상 리포명 → 리포 경로 매핑.
+            예: {"runtime": Path("/runtime"), "seosoyoung": Path("/dev/seosoyoung")}
+        config_path: watchdog_config.json 경로.
+    """
     url = load_webhook_url(config_path)
     if not url:
         return
 
-    runtime_commits = get_pending_commits(paths["runtime"])
-    dev_seosoyoung = paths["workspace"] / ".projects" / "seosoyoung"
-    seosoyoung_commits = (
-        get_pending_commits(dev_seosoyoung)
-        if dev_seosoyoung.exists()
-        else []
-    )
-    soulstream = paths.get("soulstream")
-    soulstream_commits = (
-        get_pending_commits(soulstream)
-        if soulstream and soulstream.exists()
-        else []
-    )
+    commits_by_repo: dict[str, list[str]] = {}
+    for name, path in repo_paths.items():
+        if path.exists():
+            commits = get_pending_commits(path)
+            if commits:
+                commits_by_repo[name] = commits
 
-    message = format_change_detected_message(
-        runtime_commits, seosoyoung_commits, soulstream_commits,
-    )
+    if not commits_by_repo:
+        return
+
+    message = format_change_detected_message(commits_by_repo)
     send_webhook(url, message)
 
 
