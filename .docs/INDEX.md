@@ -240,9 +240,9 @@
 - `handle_translate()` (seosoyoung/slackbot/handlers/commands.py:418): 번역 명령어 핸들러
 - `handle_update_restart()` (seosoyoung/slackbot/handlers/commands.py:461): update/restart 명령어 핸들러
 - `handle_compact()` (seosoyoung/slackbot/handlers/commands.py:499): compact 명령어 핸들러 - 안내 메시지
-- `handle_profile()` (seosoyoung/slackbot/handlers/commands.py:663): profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
-- `handle_plugins()` (seosoyoung/slackbot/handlers/commands.py:737): plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드
-- `handle_resume_list_run()` (seosoyoung/slackbot/handlers/commands.py:808): 정주행 재개 명령어 핸들러
+- `handle_profile()` (seosoyoung/slackbot/handlers/commands.py:652): profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
+- `handle_plugins()` (seosoyoung/slackbot/handlers/commands.py:735): plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드
+- `handle_resume_list_run()` (seosoyoung/slackbot/handlers/commands.py:806): 정주행 재개 명령어 핸들러
 - `render_gauge()` (seosoyoung/slackbot/handlers/credential_ui.py:33): 사용량을 이모지 게이지 바로 렌더링
 - `format_time_remaining()` (seosoyoung/slackbot/handlers/credential_ui.py:51): 리셋까지 남은 시간을 포맷
 - `render_rate_limit_line()` (seosoyoung/slackbot/handlers/credential_ui.py:95): 단일 rate limit 라인 렌더링
@@ -252,8 +252,8 @@
 - `build_profile_management_blocks()` (seosoyoung/slackbot/handlers/credential_ui.py:212): 프로필 관리 Block Kit 블록 생성
 - `build_save_prompt_blocks()` (seosoyoung/slackbot/handlers/credential_ui.py:291): 프로필 저장 이름 입력 안내 블록
 - `build_delete_selection_blocks()` (seosoyoung/slackbot/handlers/credential_ui.py:330): 프로필 삭제 선택 Block Kit 블록 생성
-- `build_delete_confirm_blocks()` (seosoyoung/slackbot/handlers/credential_ui.py:390): 프로필 삭제 확인 블록
-- `send_credential_alert()` (seosoyoung/slackbot/handlers/credential_ui.py:428): 크레덴셜 알림을 슬랙 채널에 전송
+- `build_delete_confirm_blocks()` (seosoyoung/slackbot/handlers/credential_ui.py:395): 프로필 삭제 확인 블록
+- `send_credential_alert()` (seosoyoung/slackbot/handlers/credential_ui.py:433): 크레덴셜 알림을 슬랙 채널에 전송
 - `extract_command()` (seosoyoung/slackbot/handlers/mention.py:30): 멘션에서 명령어 추출
 - `build_prompt()` (seosoyoung/slackbot/handlers/mention.py:56): 프롬프트 구성.
 - `get_channel_history()` (seosoyoung/slackbot/handlers/mention.py:116): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환

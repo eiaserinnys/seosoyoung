@@ -556,6 +556,40 @@ def _sanitize_email_to_profile_name(email: str) -> str:
     return sanitized[:64]
 
 
+def _fetch_profiles_with_rates():
+    """Soulstream API에서 프로필 목록 + rate limit을 조회하여 병합.
+
+    Returns:
+        (active: str, merged_profiles: list[dict])
+        - active: 현재 활성 프로필 이름 (없으면 "")
+        - merged_profiles: rate limit 정보가 병합된 프로필 리스트
+    """
+    async def _fetch(soul):
+        profiles_data = await soul.list_profiles()
+        try:
+            rate_limits = await soul.get_rate_limits()
+        except Exception:
+            logger.warning("rate limit 조회 실패, 기본값으로 대체합니다", exc_info=True)
+            rate_limits = {"active_profile": None, "profiles": []}
+        return profiles_data, rate_limits
+
+    profiles_data, rate_limits = _run_soul_profile_api(_fetch)
+    active = profiles_data.get("active") or ""
+    profiles = profiles_data.get("profiles", [])
+
+    rate_map = {rp["name"]: rp for rp in rate_limits.get("profiles", [])}
+    merged: list[dict] = []
+    for p in profiles:
+        name = p["name"]
+        rate = rate_map.get(name, {})
+        merged.append({
+            "name": name,
+            "five_hour": rate.get("five_hour", {"utilization": "unknown", "resets_at": None}),
+            "seven_day": rate.get("seven_day", {"utilization": "unknown", "resets_at": None}),
+        })
+    return active, merged
+
+
 def _handle_profile_list(say, reply_ts):
     """profile list: Soulstream API로 프로필 + rate limit 조회 후 게이지 바 UI 표시"""
     from seosoyoung.slackbot.handlers.credential_ui import (
@@ -563,38 +597,14 @@ def _handle_profile_list(say, reply_ts):
         build_credential_alert_text,
     )
 
-    async def _fetch(soul):
-        profiles_data = await soul.list_profiles()
-        try:
-            rate_limits = await soul.get_rate_limits()
-        except Exception:
-            rate_limits = {"active_profile": None, "profiles": []}
-        return profiles_data, rate_limits
+    active, merged_profiles = _fetch_profiles_with_rates()
 
-    profiles_data, rate_limits = _run_soul_profile_api(_fetch)
-
-    active = profiles_data.get("active")
-    profiles = profiles_data.get("profiles", [])
-
-    if not profiles:
+    if not merged_profiles:
         say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
         return
 
-    # rate limit 데이터 병합
-    rate_map = {rp["name"]: rp for rp in rate_limits.get("profiles", [])}
-
-    merged_profiles = []
-    for p in profiles:
-        name = p["name"]
-        rate = rate_map.get(name, {})
-        merged_profiles.append({
-            "name": name,
-            "five_hour": rate.get("five_hour", {"utilization": "unknown", "resets_at": None}),
-            "seven_day": rate.get("seven_day", {"utilization": "unknown", "resets_at": None}),
-        })
-
-    blocks = build_credential_alert_blocks(active or "", merged_profiles)
-    fallback_text = build_credential_alert_text(active or "", merged_profiles)
+    blocks = build_credential_alert_blocks(active, merged_profiles)
+    fallback_text = build_credential_alert_text(active, merged_profiles)
 
     # 헤더를 "알림" 대신 "프로필 목록"으로 교체
     if blocks:
@@ -610,34 +620,13 @@ def _handle_profile_delete_ui(say, reply_ts):
     """profile delete (이름 미입력): 프로필 목록을 삭제 버튼으로 표시"""
     from seosoyoung.slackbot.handlers.credential_ui import build_delete_selection_blocks
 
-    async def _fetch(soul):
-        profiles_data = await soul.list_profiles()
-        try:
-            rate_limits = await soul.get_rate_limits()
-        except Exception:
-            rate_limits = {"active_profile": None, "profiles": []}
-        return profiles_data, rate_limits
+    active, merged_profiles = _fetch_profiles_with_rates()
 
-    profiles_data, rate_limits = _run_soul_profile_api(_fetch)
-    active = profiles_data.get("active")
-    profiles = profiles_data.get("profiles", [])
-
-    if not profiles:
+    if not merged_profiles:
         say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
         return
 
-    rate_map = {rp["name"]: rp for rp in rate_limits.get("profiles", [])}
-    merged_profiles = []
-    for p in profiles:
-        name = p["name"]
-        rate = rate_map.get(name, {})
-        merged_profiles.append({
-            "name": name,
-            "five_hour": rate.get("five_hour", {"utilization": "unknown", "resets_at": None}),
-            "seven_day": rate.get("seven_day", {"utilization": "unknown", "resets_at": None}),
-        })
-
-    blocks = build_delete_selection_blocks(active or "", merged_profiles)
+    blocks = build_delete_selection_blocks(active, merged_profiles)
     say(text="프로필 삭제", blocks=blocks, thread_ts=reply_ts)
 
 
@@ -690,6 +679,15 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
                 )
                 return
             name = _sanitize_email_to_profile_name(email)
+            if not _VALID_PROFILE_NAME.match(name):
+                say(
+                    text=(
+                        f"이메일에서 생성된 이름 '{name}'이(가) 유효하지 않습니다.\n"
+                        "프로필 이름을 직접 지정해주세요: `profile save <이름>`"
+                    ),
+                    thread_ts=reply_ts,
+                )
+                return
             _run_soul_profile_api(lambda soul: soul.save_profile(name))
             say(
                 text=f"✅ 프로필 '{name}'을(를) 저장했습니다. (이메일: {email})",

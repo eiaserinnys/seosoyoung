@@ -377,11 +377,16 @@ def build_delete_selection_blocks(
             "style": "danger",
         })
 
-    if delete_buttons:
+    # Slack Block Kit actions 블록 제한: elements 최대 25개
+    _MAX_BTN = 25
+    for chunk_idx in range(0, max(1, len(delete_buttons)), _MAX_BTN):
+        chunk = delete_buttons[chunk_idx:chunk_idx + _MAX_BTN]
+        if not chunk:
+            break
         blocks.append({
             "type": "actions",
-            "block_id": "credential_delete_selection_actions",
-            "elements": delete_buttons,
+            "block_id": f"credential_delete_selection_actions_{chunk_idx // _MAX_BTN}",
+            "elements": chunk,
         })
 
     return blocks

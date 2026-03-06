@@ -105,7 +105,7 @@ Returns:
     Slack Block Kit blocks
 
 ### `build_delete_confirm_blocks(profile_name)`
-- 위치: 줄 390
+- 위치: 줄 395
 - 설명: 프로필 삭제 확인 블록
 
 Args:
@@ -115,7 +115,7 @@ Returns:
     Slack Block Kit blocks
 
 ### `send_credential_alert(client, channel, data)`
-- 위치: 줄 428
+- 위치: 줄 433
 - 설명: 크레덴셜 알림을 슬랙 채널에 전송
 
 Args:
