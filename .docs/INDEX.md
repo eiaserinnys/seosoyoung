@@ -265,10 +265,10 @@
 - `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:52): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 - `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:348): 메시지 핸들러 등록
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/slackbot/main.py:264): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/slackbot/main.py:275): 봇 종료 알림
-- `init_bot_user_id()` (seosoyoung/slackbot/main.py:319): 봇 사용자 ID 초기화
-- `main()` (seosoyoung/slackbot/main.py:329): 봇 메인 진입점
+- `notify_startup()` (seosoyoung/slackbot/main.py:249): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/slackbot/main.py:260): 봇 종료 알림
+- `init_bot_user_id()` (seosoyoung/slackbot/main.py:304): 봇 사용자 ID 초기화
+- `main()` (seosoyoung/slackbot/main.py:314): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:419): Initialize plugin SDK backends.
 - `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:29): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성

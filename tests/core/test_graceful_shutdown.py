@@ -4,15 +4,9 @@ SIGTERM / HTTP /shutdown 수신 시 활성 세션 대기 후 종료하는 로직
 main.py의 _shutdown_with_session_wait 함수와 동등한 로직을 RestartManager로 재현하여 테스트합니다.
 """
 
-import threading
-import time
-import pytest
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
-from seosoyoung.slackbot.restart import RestartManager, RestartRequest, RestartType
-
-
-GRACEFUL_SHUTDOWN_TIMEOUT = 60
+from seosoyoung.slackbot.restart import RestartManager, RestartType
 
 
 def make_shutdown_with_session_wait(manager: RestartManager, restart_type: RestartType):
@@ -20,23 +14,15 @@ def make_shutdown_with_session_wait(manager: RestartManager, restart_type: Resta
 
     실제 함수는 main.py 모듈 레벨 변수(restart_manager)에 의존하므로,
     동일한 로직을 RestartManager 인스턴스를 주입받아 구현합니다.
+
+    타임아웃 안전망은 사용자의 팝업 응답을 무시하고 강제 종료하는 문제를
+    일으키므로 제거되었다. supervisor가 프로세스 수명을 관리한다.
     """
-    _timer_holder = []
 
     def shutdown_with_session_wait(source: str = "TEST"):
-        result = manager.request_system_shutdown(restart_type)
-        if result:
-            return
+        manager.request_system_shutdown(restart_type)
 
-        def _force_shutdown():
-            manager.force_restart(restart_type)
-
-        timer = threading.Timer(GRACEFUL_SHUTDOWN_TIMEOUT, _force_shutdown)
-        timer.daemon = True
-        timer.start()
-        _timer_holder.append(timer)
-
-    return shutdown_with_session_wait, _timer_holder
+    return shutdown_with_session_wait
 
 
 class TestShutdownWithNoActiveSessions:
@@ -50,7 +36,7 @@ class TestShutdownWithNoActiveSessions:
             on_restart=on_restart,
         )
 
-        shutdown_fn, _ = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("SIGTERM")
 
         on_restart.assert_called_once_with(RestartType.RESTART)
@@ -64,7 +50,7 @@ class TestShutdownWithNoActiveSessions:
             on_restart=on_restart,
         )
 
-        shutdown_fn, _ = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("HTTP /shutdown")
 
         on_restart.assert_called_once_with(RestartType.RESTART)
@@ -81,7 +67,7 @@ class TestShutdownWithActiveSessions:
             on_restart=on_restart,
         )
 
-        shutdown_fn, _ = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("SIGTERM")
 
         on_restart.assert_not_called()
@@ -95,7 +81,7 @@ class TestShutdownWithActiveSessions:
             on_restart=on_restart,
         )
 
-        shutdown_fn, _ = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("HTTP /shutdown")
 
         on_restart.assert_not_called()
@@ -111,7 +97,7 @@ class TestShutdownWithActiveSessions:
             on_restart=on_restart,
         )
 
-        shutdown_fn, _ = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("SIGTERM")
 
         # 아직 세션 진행 중
@@ -135,7 +121,7 @@ class TestShutdownWithActiveSessions:
             on_restart=on_restart,
         )
 
-        shutdown_fn, _ = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("HTTP /shutdown")
 
         assert manager.is_pending is True
@@ -159,7 +145,7 @@ class TestShutdownWithActiveSessions:
             on_restart=on_restart,
         )
 
-        shutdown_fn, _ = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("SIGTERM")
 
         assert manager.pending_request is not None
@@ -173,7 +159,7 @@ class TestShutdownWithActiveSessions:
             on_restart=on_restart,
         )
 
-        shutdown_fn, _ = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("SIGTERM")
         first_pending = manager.pending_request
 
@@ -182,60 +168,47 @@ class TestShutdownWithActiveSessions:
         assert manager.pending_request is first_pending
 
 
-class TestTimeoutSafetyNet:
-    """타임아웃 안전망 동작 테스트 (단축된 타임아웃 사용)"""
+class TestNoTimeoutSafetyNet:
+    """타임아웃 안전망이 제거되었음을 검증하는 테스트
 
-    def test_timeout_triggers_force_restart(self):
-        """타임아웃 초과 시 강제 종료 실행"""
+    봇 내부에서 타임아웃으로 강제 종료하면 사용자의 팝업 응답을 무시하게 되므로,
+    shutdown_with_session_wait는 타이머를 설정하지 않는다.
+    supervisor가 프로세스 수명을 관리한다.
+    """
+
+    def test_pending_sessions_do_not_force_restart(self):
+        """활성 세션이 있으면 사용자 응답 없이는 재시작하지 않음"""
         on_restart = MagicMock()
         manager = RestartManager(
             get_running_count=lambda: 1,  # 세션이 영원히 끝나지 않는 상황
             on_restart=on_restart,
         )
-        timeout_sec = 0.1  # 테스트용 짧은 타임아웃
 
-        # 직접 타임아웃 타이머 시뮬레이션
-        manager.request_system_shutdown(RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn("SIGTERM")
+
+        # pending 상태이지만 on_restart는 호출되지 않음
         assert manager.is_pending is True
+        on_restart.assert_not_called()
 
-        def _force_shutdown():
-            manager.force_restart(RestartType.RESTART)
-
-        timer = threading.Timer(timeout_sec, _force_shutdown)
-        timer.daemon = True
-        timer.start()
-
-        # 타임아웃 대기
-        time.sleep(timeout_sec + 0.05)
-
-        on_restart.assert_called_once_with(RestartType.RESTART)
-
-    def test_no_timeout_if_session_ends_early(self):
-        """세션이 타임아웃 전에 끝나면 force_restart 호출 안 됨"""
+    def test_only_session_end_triggers_restart(self):
+        """세션이 끝나야만 재시작이 실행됨"""
         on_restart = MagicMock()
         running_count = [1]
-        timeout_sec = 0.2
 
         manager = RestartManager(
             get_running_count=lambda: running_count[0],
             on_restart=on_restart,
         )
 
-        manager.request_system_shutdown(RestartType.RESTART)
+        shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
+        shutdown_fn("SIGTERM")
 
-        def _force_shutdown():
-            manager.force_restart(RestartType.RESTART)
+        # 아직 세션 진행 중 — 재시작 안 됨
+        assert manager.check_and_restart_if_ready() is False
+        on_restart.assert_not_called()
 
-        timer = threading.Timer(timeout_sec, _force_shutdown)
-        timer.daemon = True
-        timer.start()
-
-        # 타임아웃 전에 세션 종료
+        # 세션 종료 — 이제야 재시작
         running_count[0] = 0
-        manager.check_and_restart_if_ready()
-
-        # 타이머가 발동되기 전에 정상 종료됨
-        timer.cancel()
-
-        # check_and_restart_if_ready에 의해 한 번만 호출됨
+        assert manager.check_and_restart_if_ready() is True
         on_restart.assert_called_once_with(RestartType.RESTART)

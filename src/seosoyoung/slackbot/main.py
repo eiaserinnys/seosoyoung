@@ -5,7 +5,6 @@
 
 import os
 import signal
-import threading
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
@@ -71,9 +70,6 @@ def _check_restart_on_session_stop():
 session_runtime.set_on_session_stopped(_check_restart_on_session_stop)
 
 
-_GRACEFUL_SHUTDOWN_TIMEOUT = 300  # 최대 대기 시간(초) — 사용자 응답 대기 포함
-
-
 def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
     """활성 세션을 확인하고, 있으면 사용자에게 팝업으로 확인 후 종료.
 
@@ -81,7 +77,8 @@ def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
     세션이 있으면 Slack 팝업으로 사용자에게 확인을 받는다.
     - "지금 종료": 즉시 os._exit
     - "세션 완료 후 종료": pending 등록, 세션 0 도달 시 자동 종료
-    최대 _GRACEFUL_SHUTDOWN_TIMEOUT 초 초과 시 강제 종료 (타임아웃 안전망).
+    사용자의 응답을 무기한 대기한다. supervisor가 프로세스 수명을 관리하므로
+    봇 내부에서 타임아웃으로 강제 종료하지 않는다.
 
     Args:
         restart_type: 재시작 유형
@@ -115,23 +112,11 @@ def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
         )
         restart_manager.request_system_shutdown(restart_type)
 
-    # 타임아웃 안전망: 사용자 응답이 없으면 강제 종료
-    def _force_shutdown():
-        logger.warning(
-            f"[{source}] 타임아웃 {_GRACEFUL_SHUTDOWN_TIMEOUT}초 초과 — 강제 종료"
-        )
-        _perform_restart(restart_type)
-
-    timer = threading.Timer(_GRACEFUL_SHUTDOWN_TIMEOUT, _force_shutdown)
-    timer.daemon = True
-    timer.start()
-
 
 def _signal_handler(signum, frame):
     """시그널 수신 시 graceful shutdown 수행
 
-    SIGTERM, SIGINT 수신 시 활성 세션이 있으면 완료를 기다린 후 종료합니다.
-    최대 _GRACEFUL_SHUTDOWN_TIMEOUT 초 대기 후 강제 종료합니다.
+    SIGTERM, SIGINT 수신 시 활성 세션이 있으면 사용자에게 확인을 받은 후 종료합니다.
     """
     sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
     logger.info(f"시그널 수신: {sig_name}")
@@ -342,8 +327,7 @@ def main():
     def _on_shutdown_request():
         """supervisor에서 graceful shutdown 요청을 받았을 때
 
-        활성 세션이 있으면 완료를 기다린 후 종료합니다.
-        최대 _GRACEFUL_SHUTDOWN_TIMEOUT 초 대기 후 강제 종료합니다.
+        활성 세션이 있으면 사용자에게 확인을 받은 후 종료합니다.
         """
         _shutdown_with_session_wait(RestartType.RESTART, "HTTP /shutdown")
 
