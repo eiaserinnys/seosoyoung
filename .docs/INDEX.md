@@ -68,9 +68,6 @@
 - [`soulstream/session.py`](modules/soulstream_session.md): Claude Code 세션 관리
 - [`soulstream/session_context.py`](modules/soulstream_session_context.md): 세션 컨텍스트 주입
 - [`soulstream/types.py`](modules/soulstream_types.md): claude/ 모듈 내부 Protocol 정의
-- [`web/cache.py`](modules/web_cache.md): 웹 콘텐츠 캐시 관리
-- [`web/extractor.py`](modules/web_extractor.md): HTML에서 컨텐츠 및 메타데이터 추출
-- [`web/fetcher.py`](modules/web_fetcher.md): Selenium 기반 HTML 페처
 - [`utils/async_bridge.py`](modules/utils_async_bridge.md): Async-to-sync 브릿지 유틸리티
 
 ## 빠른 참조
@@ -152,9 +149,6 @@
 - `ChannelStoreProtocol` (seosoyoung/slackbot/soulstream/session_context.py:14): ChannelStore가 구현해야 하는 인터페이스
 - `CardInfo` (seosoyoung/slackbot/soulstream/types.py:11): 트렐로 카드 정보 Protocol (TrackedCard 대체)
 - `SlackClient` (seosoyoung/slackbot/soulstream/types.py:40): Slack WebClient Protocol
-- `WebCache` (seosoyoung/slackbot/web/cache.py:10): URL 기반 웹 콘텐츠 캐시 관리자
-- `ContentExtractor` (seosoyoung/slackbot/web/extractor.py:30): HTML에서 본문과 메타데이터를 추출하는 클래스
-- `HtmlFetcher` (seosoyoung/slackbot/web/fetcher.py:14): Selenium을 사용한 동적 웹 페이지 HTML 페처
 
 ### 주요 함수
 
@@ -290,7 +284,5 @@
 - `build_initial_context()` (seosoyoung/slackbot/soulstream/session_context.py:23): 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
 - `build_followup_context()` (seosoyoung/slackbot/soulstream/session_context.py:75): 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
 - `format_hybrid_context()` (seosoyoung/slackbot/soulstream/session_context.py:142): hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
-- `async get_article()` (seosoyoung/slackbot/web/__init__.py:22): URL에서 아티클 추출
-- `format_article_for_prompt()` (seosoyoung/slackbot/web/__init__.py:97): 아티클 데이터를 프롬프트용 문자열로 포맷
 - `run_in_new_loop()` (seosoyoung/utils/async_bridge.py:13): 별도 스레드에서 새 이벤트 루프로 코루틴을 실행 (블로킹)
 - `run_async_in_thread()` (seosoyoung/utils/async_bridge.py:46): 별도 스레드에서 코루틴을 실행 (fire-and-forget)
