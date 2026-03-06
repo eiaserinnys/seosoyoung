@@ -233,7 +233,6 @@ def _build_dependencies():
         "channel_collector": lambda: _channel_refs["channel_collector"],
         "channel_store": lambda: _channel_refs["channel_store"],
         "channel_observer_channels": lambda: _channel_refs["channel_observer_channels"],
-        "mention_tracker": _mention_tracker,
         # 프레젠테이션 레이어 콜백 (호출부에서 사용)
         "update_message_fn": update_message,
         "plugin_manager": plugin_manager,
@@ -282,7 +281,6 @@ def _dispatch_plugin_startup():
         # Runtime dependencies needed by plugins (legacy)
         # Most of these should be accessed via plugin_sdk APIs now
         update_message_fn=update_message,
-        mention_tracker=_mention_tracker,
         bot_user_id=Config.slack.bot_user_id or "",
     )
     ctx = run_in_new_loop(plugin_manager.dispatch("on_startup", ctx))
@@ -343,6 +341,7 @@ def main():
         restart_manager=restart_manager,
         data_dir=Path(Config.get_session_path()).parent / "data",
         update_message_fn=update_message,
+        mention_tracker=_mention_tracker,
     )
 
     _load_plugins()

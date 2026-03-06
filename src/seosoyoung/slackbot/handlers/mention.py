@@ -267,7 +267,6 @@ def create_session_and_run_claude(
     session_manager = deps["session_manager"]
     run_claude_in_session = deps["run_claude_in_session"]
     get_user_role = deps["get_user_role"]
-    mention_tracker = deps.get("mention_tracker")
     update_message_fn = deps.get("update_message_fn")
     pm = deps.get("plugin_manager")
 
@@ -306,8 +305,9 @@ def create_session_and_run_claude(
     )
 
     # 멘션 스레드를 채널 관찰자 대상에서 제외
-    if mention_tracker:
-        mention_tracker.mark(session_thread_ts)
+    from seosoyoung.plugin_sdk import mention as mention_sdk
+    if mention_sdk.get_backend() is not None:
+        mention_sdk.mark(session_thread_ts)
 
     # 첨부 파일 처리
     file_context = ""
@@ -471,7 +471,6 @@ def register_mention_handlers(app, dependencies: dict):
     get_user_role = dependencies["get_user_role"]
     send_restart_confirmation = dependencies["send_restart_confirmation"]
     list_runner_ref = dependencies.get("list_runner_ref", lambda: None)
-    mention_tracker = dependencies.get("mention_tracker")
     pm = dependencies.get("plugin_manager")
 
     @app.event("app_mention")
@@ -519,8 +518,9 @@ def register_mention_handlers(app, dependencies: dict):
                     logger.info(f"개입 세션 승격: thread_ts={thread_ts}, user={user_id}, role={role}")
 
                 # 멘션 스레드를 채널 관찰자 대상에서 제외
-                if mention_tracker:
-                    mention_tracker.mark(thread_ts)
+                from seosoyoung.plugin_sdk import mention as mention_sdk
+                if mention_sdk.get_backend() is not None:
+                    mention_sdk.mark(thread_ts)
 
                 if restart_manager.is_pending:
                     say(

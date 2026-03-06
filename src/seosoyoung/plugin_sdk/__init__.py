@@ -6,16 +6,21 @@ Plugins depend ONLY on plugin_sdk, not on core.
 Submodules:
     - slack: Slack API functions (send_message, add_reaction, etc.)
     - soulstream: Claude Code execution API (run, compact, etc.)
+    - mention: Mention tracking API (mark, is_handled, unmark)
 
 Usage:
     from seosoyoung.plugin_sdk import HookContext, HookResult, Plugin, PluginMeta
-    from seosoyoung.plugin_sdk import slack, soulstream
+    from seosoyoung.plugin_sdk import slack, soulstream, mention
 
     # Use Slack API
     await slack.send_message(channel, "Hello!")
 
     # Use Soulstream API
     await soulstream.run(prompt, channel, thread_ts)
+
+    # Use Mention API
+    if mention.is_handled(thread_ts):
+        pass  # skip intervention
 """
 
 from seosoyoung.plugin_sdk.hooks import (
@@ -32,6 +37,7 @@ from seosoyoung.plugin_sdk.plugin import (
 # Import submodules for namespace access (e.g., sdk.slack.send_message)
 from seosoyoung.plugin_sdk import slack
 from seosoyoung.plugin_sdk import soulstream
+from seosoyoung.plugin_sdk import mention
 
 # Also export commonly used types from submodules
 from seosoyoung.plugin_sdk.slack import (
@@ -48,6 +54,9 @@ from seosoyoung.plugin_sdk.soulstream import (
     RunStatus,
     SoulstreamBackend,
 )
+from seosoyoung.plugin_sdk.mention import (
+    MentionTrackingBackend,
+)
 
 __all__ = [
     # Core plugin types
@@ -60,6 +69,7 @@ __all__ = [
     # Submodules
     "slack",
     "soulstream",
+    "mention",
     # Slack types
     "Message",
     "ReactionResult",
@@ -72,4 +82,6 @@ __all__ = [
     "RunResult",
     "RunStatus",
     "SoulstreamBackend",
+    # Mention types
+    "MentionTrackingBackend",
 ]

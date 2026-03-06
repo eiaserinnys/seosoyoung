@@ -19,7 +19,6 @@ def _make_deps(**overrides):
         "send_restart_confirmation": MagicMock(),
         "list_runner_ref": MagicMock(return_value=None),
         "channel_store": None,
-        "mention_tracker": None,
         "channel_collector": None,
         "channel_observer": None,
         "channel_compressor": None,

@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from seosoyoung.plugin_sdk import slack, soulstream
+from seosoyoung.plugin_sdk import slack, soulstream, mention
 from seosoyoung.plugin_sdk.slack import (
     Message,
     ReactionResult,
@@ -30,6 +30,7 @@ from seosoyoung.plugin_sdk.soulstream import (
 )
 
 if TYPE_CHECKING:
+    from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
     from seosoyoung.slackbot.soulstream.session import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -412,6 +413,27 @@ class SoulstreamBackendImpl(SoulstreamBackend):
 
 
 # ============================================================================
+# Mention Tracking Backend Implementation
+# ============================================================================
+
+
+class MentionTrackingBackendImpl:
+    """Mention tracking backend wrapping the existing MentionTracker."""
+
+    def __init__(self, tracker: "MentionTracker"):
+        self._tracker = tracker
+
+    def mark(self, thread_ts: str) -> None:
+        self._tracker.mark(thread_ts)
+
+    def is_handled(self, thread_ts: str) -> bool:
+        return self._tracker.is_handled(thread_ts)
+
+    def unmark(self, thread_ts: str) -> None:
+        self._tracker.unmark(thread_ts)
+
+
+# ============================================================================
 # Initialization
 # ============================================================================
 
@@ -423,6 +445,7 @@ def init_plugin_backends(
     restart_manager,
     data_dir: Path,
     update_message_fn=None,
+    mention_tracker: "MentionTracker | None" = None,
 ) -> None:
     """Initialize plugin SDK backends.
 
@@ -436,6 +459,7 @@ def init_plugin_backends(
         data_dir: Data directory for plugin storage
         update_message_fn: (client, channel, ts, text, *, blocks=None) -> None
                            전달하면 워처 등에서 on_progress/on_compact가 자동 생성됨
+        mention_tracker: MentionTracker instance for mention tracking backend
     """
     # Initialize Slack backend
     slack_backend = SlackBackendImpl(slack_client)
@@ -450,3 +474,9 @@ def init_plugin_backends(
     )
     soulstream.set_backend(soulstream_backend)
     logger.info("plugin_sdk.soulstream backend initialized")
+
+    # Initialize Mention tracking backend
+    if mention_tracker is not None:
+        mention_backend = MentionTrackingBackendImpl(mention_tracker)
+        mention.set_backend(mention_backend)
+        logger.info("plugin_sdk.mention backend initialized")

@@ -56,26 +56,26 @@ SIGTERM, SIGINT 수신 시 활성 세션이 있으면 사용자에게 확인을 
 - 설명: 핸들러 의존성 딕셔너리 빌드
 
 ### `notify_startup()`
-- 위치: 줄 249
+- 위치: 줄 248
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 260
+- 위치: 줄 259
 - 설명: 봇 종료 알림
 
 ### `_dispatch_plugin_startup()`
-- 위치: 줄 271
+- 위치: 줄 270
 - 설명: Dispatch on_startup hook to all loaded plugins.
 
 Plugins return runtime references (e.g. watcher, list_runner,
 channel_store, channel_collector) which are stored for handler access.
 
 ### `init_bot_user_id()`
-- 위치: 줄 304
+- 위치: 줄 302
 - 설명: 봇 사용자 ID 초기화
 
 ### `main()`
-- 위치: 줄 314
+- 위치: 줄 312
 - 설명: 봇 메인 진입점
 
 ## 내부 의존성

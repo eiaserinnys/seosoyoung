@@ -19,6 +19,7 @@
 - [`tools/thread_files.py`](modules/tools_thread_files.md): 스레드 내 파일 다운로드 MCP 도구
 - [`tools/user_profile.py`](modules/tools_user_profile.md): Slack 사용자 프로필 조회 및 아바타 다운로드 MCP 도구
 - [`plugin_sdk/hooks.py`](modules/plugin_sdk_hooks.md): Hook system primitives for the plugin architecture.
+- [`plugin_sdk/mention.py`](modules/plugin_sdk_mention.md): Mention tracking API for plugins.
 - [`plugin_sdk/plugin.py`](modules/plugin_sdk_plugin.md): Plugin base class and metadata.
 - [`plugin_sdk/slack.py`](modules/plugin_sdk_slack.md): Slack API for plugins.
 - [`plugin_sdk/soulstream.py`](modules/plugin_sdk_soulstream.md): Soulstream API for plugins.
@@ -79,6 +80,7 @@
 - `HookPriority` (seosoyoung/plugin_sdk/hooks.py:14): Execution priority for hook handlers. Higher values execute first.
 - `HookResult` (seosoyoung/plugin_sdk/hooks.py:23): Result of a hook handler, controlling chain behavior.
 - `HookContext` (seosoyoung/plugin_sdk/hooks.py:37): Mutable context passed through a hook handler chain.
+- `MentionTrackingBackend` (seosoyoung/plugin_sdk/mention.py:28): Protocol for mention tracking backend implementation.
 - `PluginMeta` (seosoyoung/plugin_sdk/plugin.py:22): Immutable plugin identity.
 - `Plugin` (seosoyoung/plugin_sdk/plugin.py:37): Base class for all plugins.
 - `UserInfo` (seosoyoung/plugin_sdk/slack.py:28): Slack user information.
@@ -115,8 +117,9 @@
 - `Config` (seosoyoung/slackbot/config.py:125): 애플리케이션 설정
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:20): 멘션으로 처리 중인 스레드를 추적 (TTL 기반 자동 만료)
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
-- `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:43): Slack backend implementation using slack_sdk client.
-- `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:232): Soulstream backend implementation using ClaudeExecutor.
+- `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:44): Slack backend implementation using slack_sdk client.
+- `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:233): Soulstream backend implementation using ClaudeExecutor.
+- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:420): Mention tracking backend wrapping the existing MentionTracker.
 - `PresentationContext` (seosoyoung/slackbot/presentation/types.py:12): 프레젠테이션 레이어가 관리하는 실행 컨텍스트
 - `RestartType` (seosoyoung/slackbot/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/slackbot/restart.py:23): 재시작 요청 정보
@@ -169,6 +172,11 @@
 - `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
 - `get_user_profile()` (seosoyoung/mcp/tools/user_profile.py:25): Slack 사용자 프로필 정보를 조회
 - `async download_user_avatar()` (seosoyoung/mcp/tools/user_profile.py:67): Slack 사용자 프로필 이미지를 다운로드
+- `set_backend()` (seosoyoung/plugin_sdk/mention.py:54): Set the mention tracking backend implementation.
+- `get_backend()` (seosoyoung/plugin_sdk/mention.py:63): Get the current mention tracking backend.
+- `mark()` (seosoyoung/plugin_sdk/mention.py:83): Mark a thread as being handled by the mention handler.
+- `is_handled()` (seosoyoung/plugin_sdk/mention.py:92): Check if a thread is currently being handled by mention handler.
+- `unmark()` (seosoyoung/plugin_sdk/mention.py:104): Remove a thread from mention tracking.
 - `set_backend()` (seosoyoung/plugin_sdk/slack.py:149): Set the Slack backend implementation.
 - `get_backend()` (seosoyoung/plugin_sdk/slack.py:158): Get the current Slack backend.
 - `async send_message()` (seosoyoung/plugin_sdk/slack.py:178): Send a message to a Slack channel.
@@ -259,12 +267,12 @@
 - `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:52): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 - `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:348): 메시지 핸들러 등록
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/slackbot/main.py:249): 봇 시작 알림
-- `notify_shutdown()` (seosoyoung/slackbot/main.py:260): 봇 종료 알림
-- `init_bot_user_id()` (seosoyoung/slackbot/main.py:304): 봇 사용자 ID 초기화
-- `main()` (seosoyoung/slackbot/main.py:314): 봇 메인 진입점
+- `notify_startup()` (seosoyoung/slackbot/main.py:248): 봇 시작 알림
+- `notify_shutdown()` (seosoyoung/slackbot/main.py:259): 봇 종료 알림
+- `init_bot_user_id()` (seosoyoung/slackbot/main.py:302): 봇 사용자 ID 초기화
+- `main()` (seosoyoung/slackbot/main.py:312): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
-- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:419): Initialize plugin SDK backends.
+- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:441): Initialize plugin SDK backends.
 - `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:29): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
