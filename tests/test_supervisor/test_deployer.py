@@ -83,6 +83,17 @@ class TestStateTransitions:
         deployer.tick()
         assert deployer.state == DeployState.WAITING_SESSIONS
 
+    def test_waiting_sessions_waits_indefinitely(self, deployer, mock_session_monitor):
+        """waiting_sessions는 타임아웃 없이 세션 종료까지 무한 대기한다."""
+        deployer._state = DeployState.WAITING_SESSIONS
+        deployer._waiting_since = 0.0  # 오래 전부터 대기 중인 것처럼 시뮬레이션
+        mock_session_monitor.is_safe_to_deploy.return_value = False
+
+        for _ in range(100):
+            deployer.tick()
+
+        assert deployer.state == DeployState.WAITING_SESSIONS
+
     def test_tick_waiting_sessions_cleared(self, deployer, mock_session_monitor):
         """waiting_sessions + 세션 종료 → deploying → idle"""
         deployer._state = DeployState.WAITING_SESSIONS
@@ -298,6 +309,22 @@ class TestStatus:
         deployer.notify_change()
         info = deployer.status()
         assert info["state"] == "pending"
+
+    def test_status_idle_has_no_waiting_seconds(self, deployer):
+        """idle 상태에서는 waiting_seconds가 포함되지 않음"""
+        info = deployer.status()
+        assert "waiting_seconds" not in info
+
+    def test_status_waiting_sessions_has_waiting_seconds(self, deployer, mock_session_monitor):
+        """waiting_sessions 상태에서는 대기 시간이 포함됨"""
+        deployer.notify_change()
+        mock_session_monitor.is_safe_to_deploy.return_value = False
+        deployer.tick()  # pending → waiting_sessions
+        info = deployer.status()
+        assert info["state"] == "waiting_sessions"
+        assert "waiting_seconds" in info
+        assert isinstance(info["waiting_seconds"], int)
+        assert info["waiting_seconds"] >= 0
 
 
 class TestChangeDetectedNotification:

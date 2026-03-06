@@ -33,9 +33,6 @@ _SOULSTREAM_DASHBOARD_PATH_PREFIX = "soul-dashboard/"
 _SOULSTREAM_DASHBOARD_PACKAGE_LOCK = "soul-dashboard/package-lock.json"
 _SOULSTREAM_SERVER_PATH_PREFIX = "soul-server/"
 
-# waiting_sessions 상태 최대 대기 시간 (초)
-_WAITING_SESSIONS_TIMEOUT = 600  # 10분
-
 # 배포 시 프로세스 stop() 타임아웃 (초)
 # 0 = 무한 대기 (클로드 세션이 자연 종료될 때까지 기다림)
 _DEPLOY_STOP_TIMEOUT = 0
@@ -107,24 +104,13 @@ class Deployer:
             return
 
         if self._state in (DeployState.PENDING, DeployState.WAITING_SESSIONS):
-            timed_out = False
-            if self._state == DeployState.WAITING_SESSIONS:
-                if self._waiting_since is None:
-                    self._waiting_since = time.monotonic()
-                elapsed = time.monotonic() - self._waiting_since
-                if elapsed >= _WAITING_SESSIONS_TIMEOUT:
-                    logger.warning(
-                        "세션 대기 타임아웃 (%.0f초 경과), 강제 배포 진행", elapsed,
-                    )
-                    timed_out = True
-
-            if self._session_monitor.is_safe_to_deploy() or timed_out:
+            if self._session_monitor.is_safe_to_deploy():
                 self._state = DeployState.DEPLOYING
                 self._waiting_since = None
                 # 배포 시작 전 누적 sources를 비운다.
                 # 배포 중 새로 들어오는 notify_change()는 다시 누적된다.
                 self._pending_sources.clear()
-                logger.info("배포 상태: → deploying (세션 0 또는 타임아웃)")
+                logger.info("배포 상태: → deploying (활성 세션 없음)")
                 try:
                     self._execute_deploy()
                 finally:
@@ -588,6 +574,9 @@ class Deployer:
 
     def status(self) -> dict:
         """현재 배포 상태 반환 (대시보드용)."""
-        return {
-            "state": self._state.value,
-        }
+        info: dict = {"state": self._state.value}
+        if self._waiting_since is not None:
+            info["waiting_seconds"] = round(
+                time.monotonic() - self._waiting_since,
+            )
+        return info
