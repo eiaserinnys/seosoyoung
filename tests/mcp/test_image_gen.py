@@ -230,6 +230,92 @@ class TestGeminiImageGenerator:
         contents = call_kwargs.kwargs["contents"]
         assert contents == "simple prompt"
 
+    async def test_generate_image_with_image_size(self, tmp_path):
+        """image_size 파라미터 전달"""
+        from seosoyoung.mcp.tools.image_gen import generate_image
+
+        response = self._make_mock_response()
+        client = self._make_mock_client(response)
+
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
+                    result = await generate_image("4K landscape", image_size="4K")
+
+        assert result.path.exists()
+        call_kwargs = client.models.generate_content.call_args
+        config = call_kwargs.kwargs["config"]
+        assert config.image_config is not None
+        assert config.image_config.image_size == "4K"
+
+    async def test_generate_image_with_aspect_ratio(self, tmp_path):
+        """aspect_ratio 파라미터 전달"""
+        from seosoyoung.mcp.tools.image_gen import generate_image
+
+        response = self._make_mock_response()
+        client = self._make_mock_client(response)
+
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
+                    result = await generate_image("wide banner", aspect_ratio="16:9")
+
+        call_kwargs = client.models.generate_content.call_args
+        config = call_kwargs.kwargs["config"]
+        assert config.image_config is not None
+        assert config.image_config.aspect_ratio == "16:9"
+
+    async def test_generate_image_with_size_and_ratio(self, tmp_path):
+        """image_size + aspect_ratio 동시 전달"""
+        from seosoyoung.mcp.tools.image_gen import generate_image
+
+        response = self._make_mock_response()
+        client = self._make_mock_client(response)
+
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
+                    result = await generate_image(
+                        "cinematic shot", image_size="2K", aspect_ratio="21:9"
+                    )
+
+        call_kwargs = client.models.generate_content.call_args
+        config = call_kwargs.kwargs["config"]
+        assert config.image_config.image_size == "2K"
+        assert config.image_config.aspect_ratio == "21:9"
+
+    async def test_generate_image_no_image_config_when_defaults(self, tmp_path):
+        """image_size, aspect_ratio 미지정 시 image_config=None"""
+        from seosoyoung.mcp.tools.image_gen import generate_image
+
+        response = self._make_mock_response()
+        client = self._make_mock_client(response)
+
+        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
+                    await generate_image("default settings")
+
+        call_kwargs = client.models.generate_content.call_args
+        config = call_kwargs.kwargs["config"]
+        assert config.image_config is None
+
+    async def test_generate_image_invalid_image_size(self):
+        """잘못된 image_size 검증"""
+        from seosoyoung.mcp.tools.image_gen import generate_image
+
+        with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with pytest.raises(ValueError, match="지원하지 않는 이미지 크기"):
+                await generate_image("test", image_size="8K")
+
+    async def test_generate_image_invalid_aspect_ratio(self):
+        """잘못된 aspect_ratio 검증"""
+        from seosoyoung.mcp.tools.image_gen import generate_image
+
+        with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with pytest.raises(ValueError, match="지원하지 않는 종횡비"):
+                await generate_image("test", aspect_ratio="7:3")
+
 
 @pytest.mark.asyncio
 class TestMcpGenerateAndUploadImage:
@@ -333,6 +419,86 @@ class TestMcpGenerateAndUploadImage:
         # generate_image에 reference_images 리스트 전달 확인
         call_kwargs = mock_gen.call_args
         assert call_kwargs.kwargs["reference_images"] == ["/path/to/ref1.png", "/path/to/ref2.jpg"]
+
+    async def test_with_image_size_and_aspect_ratio(self, tmp_path):
+        """image_size, aspect_ratio 파라미터 전달"""
+        from seosoyoung.mcp.tools.image_gen import GeneratedImage
+        from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
+
+        img_path = tmp_path / "generated.png"
+        img_path.write_bytes(b"\x89PNG" + b"\x00" * 100)
+
+        mock_generated = GeneratedImage(
+            path=img_path, mime_type="image/png", prompt="test"
+        )
+
+        mock_gen = AsyncMock(return_value=mock_generated)
+        mock_client = MagicMock()
+
+        with patch("seosoyoung.mcp.tools.image_gen.generate_image", mock_gen):
+            with patch("seosoyoung.mcp.tools.image_gen.WebClient", return_value=mock_client):
+                result = await generate_and_upload_image(
+                    "4K panorama", "C123", "T123",
+                    image_size="4K",
+                    aspect_ratio="16:9",
+                )
+
+        assert result["success"] is True
+        call_kwargs = mock_gen.call_args
+        assert call_kwargs.kwargs["image_size"] == "4K"
+        assert call_kwargs.kwargs["aspect_ratio"] == "16:9"
+
+    async def test_empty_size_and_ratio_passed_as_none(self, tmp_path):
+        """빈 문자열은 None으로 변환되어 전달"""
+        from seosoyoung.mcp.tools.image_gen import GeneratedImage
+        from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
+
+        img_path = tmp_path / "generated.png"
+        img_path.write_bytes(b"\x89PNG" + b"\x00" * 100)
+
+        mock_generated = GeneratedImage(
+            path=img_path, mime_type="image/png", prompt="test"
+        )
+
+        mock_gen = AsyncMock(return_value=mock_generated)
+        mock_client = MagicMock()
+
+        with patch("seosoyoung.mcp.tools.image_gen.generate_image", mock_gen):
+            with patch("seosoyoung.mcp.tools.image_gen.WebClient", return_value=mock_client):
+                result = await generate_and_upload_image(
+                    "default", "C123", "T123",
+                    image_size="",
+                    aspect_ratio="",
+                )
+
+        assert result["success"] is True
+        call_kwargs = mock_gen.call_args
+        assert call_kwargs.kwargs["image_size"] is None
+        assert call_kwargs.kwargs["aspect_ratio"] is None
+
+    async def test_invalid_image_size_returns_error(self):
+        """잘못된 image_size가 전달되면 에러 반환"""
+        from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
+
+        with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            result = await generate_and_upload_image(
+                "test", "C123", "T123", image_size="8K"
+            )
+
+        assert result["success"] is False
+        assert "지원하지 않는 이미지 크기" in result["message"]
+
+    async def test_invalid_aspect_ratio_returns_error(self):
+        """잘못된 aspect_ratio가 전달되면 에러 반환"""
+        from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
+
+        with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            result = await generate_and_upload_image(
+                "test", "C123", "T123", aspect_ratio="7:3"
+            )
+
+        assert result["success"] is False
+        assert "지원하지 않는 종횡비" in result["message"]
 
 
 if __name__ == "__main__":

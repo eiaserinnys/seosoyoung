@@ -78,7 +78,7 @@
 ### 주요 클래스
 
 - `PluginManager` (seosoyoung/core/plugin_manager.py:25): Manages plugin lifecycle and hook dispatch.
-- `GeneratedImage` (seosoyoung/mcp/tools/image_gen.py:32): 생성된 이미지 결과
+- `GeneratedImage` (seosoyoung/mcp/tools/image_gen.py:42): 생성된 이미지 결과
 - `HookPriority` (seosoyoung/plugin_sdk/hooks.py:14): Execution priority for hook handlers. Higher values execute first.
 - `HookResult` (seosoyoung/plugin_sdk/hooks.py:23): Result of a hook handler, controlling chain behavior.
 - `HookContext` (seosoyoung/plugin_sdk/hooks.py:37): Mutable context passed through a hook handler chain.
@@ -164,13 +164,13 @@
 - `slack_attach_file()` (seosoyoung/mcp/server.py:20): 슬랙에 파일을 첨부합니다.
 - `slack_post_message()` (seosoyoung/mcp/server.py:36): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
 - `async slack_generate_image()` (seosoyoung/mcp/server.py:57): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
-- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:80): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
-- `slack_get_user_profile()` (seosoyoung/mcp/server.py:94): Slack 사용자의 프로필 정보를 조회합니다.
-- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:106): Slack 사용자의 프로필 이미지를 다운로드합니다.
+- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:89): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
+- `slack_get_user_profile()` (seosoyoung/mcp/server.py:103): Slack 사용자의 프로필 정보를 조회합니다.
+- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:115): Slack 사용자의 프로필 이미지를 다운로드합니다.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:23): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:35): 슬랙에 파일을 첨부
-- `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:57): Gemini API로 이미지를 생성하고 임시 파일로 저장
-- `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:132): 이미지를 생성하고 슬랙 스레드에 업로드
+- `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:67): Gemini API로 이미지를 생성하고 임시 파일로 저장
+- `async generate_and_upload_image()` (seosoyoung/mcp/tools/image_gen.py:173): 이미지를 생성하고 슬랙 스레드에 업로드
 - `post_message()` (seosoyoung/mcp/tools/slack_messaging.py:46): 슬랙 채널에 메시지를 전송하고 선택적으로 파일을 첨부
 - `async download_thread_files()` (seosoyoung/mcp/tools/thread_files.py:19): 스레드 내 모든 메시지의 첨부 파일을 다운로드
 - `get_user_profile()` (seosoyoung/mcp/tools/user_profile.py:25): Slack 사용자 프로필 정보를 조회

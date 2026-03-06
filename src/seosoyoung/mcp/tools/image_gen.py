@@ -27,6 +27,16 @@ IMAGE_GEN_DIR = Path(".local/tmp/image_gen")
 # 레퍼런스 이미지 허용 MIME 타입
 _ALLOWED_IMAGE_MIMES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 
+# Nano Banana 2 지원 이미지 크기 (해상도 순)
+_IMAGE_SIZE_ORDER = ("512px", "1K", "2K", "4K")
+VALID_IMAGE_SIZES = set(_IMAGE_SIZE_ORDER)
+
+# Nano Banana 2 지원 종횡비
+VALID_ASPECT_RATIOS = {
+    "1:1", "1:4", "1:8", "2:3", "3:2", "3:4",
+    "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9",
+}
+
 
 @dataclass
 class GeneratedImage:
@@ -58,6 +68,8 @@ async def generate_image(
     prompt: str,
     model: Optional[str] = None,
     reference_images: Optional[list[str]] = None,
+    image_size: Optional[str] = None,
+    aspect_ratio: Optional[str] = None,
 ) -> GeneratedImage:
     """Gemini API로 이미지를 생성하고 임시 파일로 저장
 
@@ -65,19 +77,37 @@ async def generate_image(
         prompt: 이미지 생성 프롬프트
         model: 사용할 모델 (None이면 Config.gemini.model 사용)
         reference_images: 레퍼런스 이미지 파일 경로 목록 (선택)
+        image_size: 이미지 해상도 ("512px", "1K", "2K", "4K") (선택)
+        aspect_ratio: 종횡비 ("1:1", "16:9", "9:16" 등) (선택)
 
     Returns:
         GeneratedImage: 생성된 이미지 정보
 
     Raises:
-        ValueError: API 키가 설정되지 않은 경우
+        ValueError: API 키가 설정되지 않은 경우, 또는 잘못된 파라미터
         RuntimeError: 이미지 생성에 실패한 경우
     """
     if not Config.gemini.api_key:
         raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
 
+    if image_size and image_size not in VALID_IMAGE_SIZES:
+        raise ValueError(
+            f"지원하지 않는 이미지 크기: {image_size}. "
+            f"허용 값: {', '.join(_IMAGE_SIZE_ORDER)}"
+        )
+
+    if aspect_ratio and aspect_ratio not in VALID_ASPECT_RATIOS:
+        raise ValueError(
+            f"지원하지 않는 종횡비: {aspect_ratio}. "
+            f"허용 값: {', '.join(sorted(VALID_ASPECT_RATIOS))}"
+        )
+
     target_model = model or Config.gemini.model
-    logger.info(f"이미지 생성 요청: model={target_model}, prompt={prompt[:100]}")
+    logger.info(
+        f"이미지 생성 요청: model={target_model}, prompt={prompt[:100]}"
+        f"{f', size={image_size}' if image_size else ''}"
+        f"{f', ratio={aspect_ratio}' if aspect_ratio else ''}"
+    )
 
     client = genai.Client(api_key=Config.gemini.api_key)
 
@@ -89,11 +119,22 @@ async def generate_image(
             logger.info(f"레퍼런스 이미지 {len(ref_parts)}개 포함하여 요청")
             contents = [*ref_parts, prompt]
 
+    # ImageConfig 구성 (image_size, aspect_ratio가 있을 때만)
+    image_config = None
+    if image_size or aspect_ratio:
+        config_kwargs = {}
+        if image_size:
+            config_kwargs["image_size"] = image_size
+        if aspect_ratio:
+            config_kwargs["aspect_ratio"] = aspect_ratio
+        image_config = types.ImageConfig(**config_kwargs)
+
     response = client.models.generate_content(
         model=target_model,
         contents=contents,
         config=types.GenerateContentConfig(
             response_modalities=["IMAGE", "TEXT"],
+            image_config=image_config,
         ),
     )
 
@@ -134,6 +175,8 @@ async def generate_and_upload_image(
     channel: str,
     thread_ts: str,
     reference_image_paths: str = "",
+    image_size: str = "",
+    aspect_ratio: str = "",
 ) -> dict:
     """이미지를 생성하고 슬랙 스레드에 업로드
 
@@ -142,6 +185,8 @@ async def generate_and_upload_image(
         channel: 슬랙 채널 ID
         thread_ts: 스레드 타임스탬프
         reference_image_paths: 레퍼런스 이미지 절대 경로 (쉼표 구분, 선택)
+        image_size: 이미지 해상도 ("512px", "1K", "2K", "4K") (선택)
+        aspect_ratio: 종횡비 ("1:1", "16:9", "9:16" 등) (선택)
 
     Returns:
         dict: success, message, file_name(성공 시) 키를 포함하는 결과
@@ -153,7 +198,12 @@ async def generate_and_upload_image(
         ref_images = [p.strip() for p in reference_image_paths.split(",") if p.strip()]
 
     try:
-        generated = await generate_image(prompt, reference_images=ref_images)
+        generated = await generate_image(
+            prompt,
+            reference_images=ref_images,
+            image_size=image_size.strip() or None,
+            aspect_ratio=aspect_ratio.strip() or None,
+        )
     except ValueError as e:
         return {"success": False, "message": str(e)}
     except RuntimeError as e:

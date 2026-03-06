@@ -59,10 +59,12 @@ async def slack_generate_image(
     channel: str,
     thread_ts: str,
     reference_image_paths: Optional[str] = None,
+    image_size: Optional[str] = None,
+    aspect_ratio: Optional[str] = None,
 ) -> dict:
     """텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
 
-    Gemini API를 사용하여 이미지를 생성합니다.
+    Gemini API (Nano Banana 2)를 사용하여 이미지를 생성합니다.
     레퍼런스 이미지를 전달하면 해당 이미지를 참고하여 생성합니다.
 
     Args:
@@ -70,9 +72,16 @@ async def slack_generate_image(
         channel: 슬랙 채널 ID
         thread_ts: 스레드 타임스탬프
         reference_image_paths: 레퍼런스 이미지 절대 경로, 쉼표 구분 (선택)
+        image_size: 이미지 해상도 - "512px", "1K"(API 기본값), "2K", "4K" (선택)
+        aspect_ratio: 종횡비 - "1:1"(API 기본값), "16:9", "9:16", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "21:9", "1:4", "4:1", "1:8", "8:1" (선택)
     """
     return await generate_and_upload_image(
-        prompt, channel, thread_ts, reference_image_paths or ""
+        prompt,
+        channel,
+        thread_ts,
+        reference_image_paths or "",
+        image_size=image_size or "",
+        aspect_ratio=aspect_ratio or "",
     )
 
 

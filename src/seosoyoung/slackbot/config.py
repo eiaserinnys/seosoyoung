@@ -77,7 +77,7 @@ class GeminiConfig:
     """Gemini 설정 (이미지 생성)"""
 
     api_key: str | None = os.getenv("GEMINI_API_KEY")
-    model: str = os.getenv("GEMINI_MODEL", "gemini-3-pro-image-preview")
+    model: str = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-image-preview")
 
 
 @dataclass
