@@ -18,6 +18,7 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_compact,
     handle_profile,
     handle_resume_list_run,
+    handle_session_info,
     _sanitize_email_to_profile_name,
 )
 from seosoyoung.slackbot.handlers.mention import (
@@ -80,7 +81,7 @@ class TestGetAncestors:
 
 class TestIsAdminCommand:
     def test_exact_matches(self):
-        for cmd in ["help", "status", "update", "restart", "compact", "profile", "cleanup", "log"]:
+        for cmd in ["help", "status", "update", "restart", "compact", "profile", "cleanup", "log", "session-info"]:
             assert _is_admin_command(cmd), f"{cmd} should be admin command"
 
     def test_profile_subcommands(self):
@@ -171,7 +172,10 @@ class TestTryHandleCommandDispatch:
 
     def test_dispatch_table_contains_expected_commands(self):
         """디스패치 테이블에 예상된 명령어가 모두 있는지 확인"""
-        expected = {"help", "status", "cleanup", "cleanup confirm", "log", "update", "restart", "compact", "plugins"}
+        expected = {
+            "help", "status", "cleanup", "cleanup confirm", "log",
+            "update", "restart", "compact", "plugins", "session-info",
+        }
         assert set(_COMMAND_DISPATCH.keys()) == expected
 
 
@@ -513,6 +517,151 @@ class TestHandleResumeListRun:
         handle_resume_list_run(say=say, ts="ts1", list_runner_ref=lambda: runner)
         assert "정주행 재개" in say.call_args[1]["text"]
         runner.resume_run.assert_called_once_with("sess-1")
+
+
+def _make_session(**overrides):
+    """테스트용 Session mock 생성"""
+    defaults = {
+        "session_id": "claude-session-abc",
+        "thread_ts": "1234567890.123456",
+        "channel_id": "C08TEST",
+        "username": "testuser",
+        "user_id": "U123",
+        "role": "admin",
+        "message_count": 5,
+        "created_at": "2026-03-06T10:00:00+00:00",
+        "updated_at": "2026-03-06T10:05:00+00:00",
+        "source_type": "thread",
+    }
+    defaults.update(overrides)
+    session = MagicMock()
+    for k, v in defaults.items():
+        setattr(session, k, v)
+    return session
+
+
+class TestHandleSessionInfo:
+    def _call(self, *, say=None, ts="ts1", thread_ts="thread1",
+              session_manager=None, check_permission=None,
+              get_agent_session_id=None, **kwargs):
+        """핸들러 호출 헬퍼"""
+        handle_session_info(
+            say=say or MagicMock(),
+            ts=ts,
+            thread_ts=thread_ts,
+            session_manager=session_manager or MagicMock(),
+            client=MagicMock(),
+            user_id="U1",
+            check_permission=check_permission or MagicMock(return_value=True),
+            get_agent_session_id=get_agent_session_id,
+        )
+
+    def test_permission_denied(self):
+        """관리자 권한이 없으면 거부"""
+        say = MagicMock()
+        handle_session_info(
+            say=say, ts="ts1", thread_ts=None,
+            session_manager=MagicMock(),
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=False),
+        )
+        assert "관리자 권한" in say.call_args[1]["text"]
+
+    def test_no_session_found(self):
+        """세션이 없는 스레드에서 실행 시 안내 메시지"""
+        say = MagicMock()
+        sm = MagicMock()
+        sm.get.return_value = None
+        self._call(say=say, thread_ts="thread1", session_manager=sm)
+        text = say.call_args[1]["text"]
+        assert "세션이 없습니다" in text
+        assert "thread1" in text
+
+    def test_session_found_with_all_ids(self):
+        """세션이 있고, agent_session_id도 있을 때 모든 ID를 표시"""
+        say = MagicMock()
+        session = _make_session()
+        sm = MagicMock()
+        sm.get.return_value = session
+        get_agent = MagicMock(return_value="agent-session-xyz")
+
+        self._call(
+            say=say, thread_ts="1234567890.123456",
+            session_manager=sm, get_agent_session_id=get_agent,
+        )
+
+        text = say.call_args[1]["text"]
+        assert "claude-session-abc" in text
+        assert "agent-session-xyz" in text
+        assert "1234567890.123456" in text
+        assert "C08TEST" in text
+        assert "testuser" in text
+        assert "admin" in text
+        assert "실행 중" in text
+
+    def test_session_found_no_agent_session(self):
+        """세션은 있지만 agent_session_id가 없을 때 (대기 상태)"""
+        say = MagicMock()
+        session = _make_session(role="viewer", message_count=0, source_type="channel")
+        sm = MagicMock()
+        sm.get.return_value = session
+        get_agent = MagicMock(return_value=None)
+
+        self._call(
+            say=say, thread_ts="1234567890.123456",
+            session_manager=sm, get_agent_session_id=get_agent,
+        )
+
+        text = say.call_args[1]["text"]
+        assert "실행 중 아님" in text
+        assert "대기" in text
+
+    def test_no_thread_ts_uses_ts(self):
+        """thread_ts가 없으면 ts를 사용"""
+        say = MagicMock()
+        sm = MagicMock()
+        sm.get.return_value = None
+        self._call(say=say, ts="ts1", thread_ts=None, session_manager=sm)
+        sm.get.assert_called_once_with("ts1")
+
+    def test_no_get_agent_session_id(self):
+        """get_agent_session_id가 전달되지 않아도 동작"""
+        say = MagicMock()
+        session = _make_session(session_id=None, username="", user_id="")
+        sm = MagicMock()
+        sm.get.return_value = session
+
+        self._call(say=say, ts="ts1", thread_ts=None, session_manager=sm)
+
+        text = say.call_args[1]["text"]
+        assert "세션 정보" in text
+        assert "실행 중 아님" in text
+
+    def test_error_handling(self):
+        """session_manager.get()이 예외를 던져도 에러 메시지를 반환"""
+        say = MagicMock()
+        sm = MagicMock()
+        sm.get.side_effect = RuntimeError("disk error")
+
+        self._call(say=say, thread_ts="thread1", session_manager=sm)
+
+        text = say.call_args[1]["text"]
+        assert "오류가 발생했습니다" in text
+
+    def test_dispatched_via_try_handle_command(self):
+        """try_handle_command에서 session-info가 정상 디스패치되는지 확인"""
+        say = MagicMock()
+        sm = MagicMock()
+        sm.get.return_value = None
+        deps = _make_deps(session_manager=sm)
+
+        result = try_handle_command(
+            "session-info", "", "C1", "ts1", "thread1",
+            "U1", say, MagicMock(), deps,
+        )
+
+        assert result is True
+        assert say.called
 
 
 class TestHandleCleanup:

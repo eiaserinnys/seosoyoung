@@ -172,6 +172,7 @@ def handle_help(*, say, ts, **_):
             "• `@seosoyoung compact` - 스레드 세션 컴팩트\n"
             "• `@seosoyoung cleanup` - 고아 프로세스/세션 정리 (관리자)\n"
             "• `@seosoyoung profile` - 인증 프로필 관리 (관리자)\n"
+            "• `@seosoyoung session-info` - 스레드 세션 정보 조회 (관리자)\n"
             "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
             "• `@seosoyoung restart` - 봇 재시작 (관리자)"
         ),
@@ -829,3 +830,58 @@ def handle_resume_list_run(*, say, ts, list_runner_ref=None, **_):
         )
     else:
         say(text="정주행 재개에 실패했습니다.", thread_ts=ts)
+
+
+def handle_session_info(
+    *, say, ts, thread_ts, session_manager, client, user_id,
+    check_permission, get_agent_session_id=None, **_,
+):
+    """session-info 명령어 핸들러 - 현재 스레드의 세션 정보 표시
+
+    디버깅용으로, 현재 스레드에 연결된 세션의 주요 ID들을 표시합니다.
+    스레드 안에서 실행해야 의미 있는 결과를 얻을 수 있습니다.
+    """
+    if not check_permission(user_id, client):
+        logger.warning(f"session-info 권한 없음: user={user_id}")
+        say(text="관리자 권한이 필요합니다.", thread_ts=ts)
+        return
+
+    target_thread_ts = thread_ts or ts
+
+    try:
+        session = session_manager.get(target_thread_ts)
+        if not session:
+            say(
+                text=f"이 스레드에 연결된 세션이 없습니다.\n• thread_ts: `{target_thread_ts}`",
+                thread_ts=target_thread_ts,
+            )
+            return
+
+        # 실행 중인 agent_session_id (Soulstream)
+        agent_session_id = None
+        if get_agent_session_id:
+            agent_session_id = get_agent_session_id(target_thread_ts)
+
+        is_running = agent_session_id is not None
+        status = "🟢 실행 중" if is_running else "⚪ 대기"
+
+        lines = [
+            f"🔍 *세션 정보* ({status})",
+            "",
+            f"• *Claude Code 세션 ID*: `{session.session_id or '(없음)'}`",
+            f"• *Soulstream 세션 ID*: `{agent_session_id or '(실행 중 아님)'}`",
+            f"• *루트 스레드 ID*: `{session.thread_ts}`",
+            "",
+            f"• 채널: `{session.channel_id}`",
+            f"• 사용자: `{session.username or session.user_id or '(미설정)'}`",
+            f"• 역할: `{session.role}`",
+            f"• 메시지 수: {session.message_count}",
+            f"• 생성: `{session.created_at}`",
+            f"• 갱신: `{session.updated_at}`",
+            f"• 소스 타입: `{session.source_type}`",
+        ]
+
+        say(text="\n".join(lines), thread_ts=target_thread_ts)
+    except Exception as e:
+        logger.exception(f"session-info 오류: {e}")
+        say(text=f"세션 정보 조회 중 오류가 발생했습니다: `{e}`", thread_ts=target_thread_ts)

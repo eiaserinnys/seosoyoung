@@ -217,7 +217,7 @@ class ClaudeExecutor:
         self._intervention.fire_interrupt_remote(
             thread_ts, prompt,
             self._get_service_adapter(),
-            session_id=self._get_session_id(thread_ts),
+            session_id=self.get_session_id(thread_ts),
             pending_session_interventions=self._pending_session_interventions,
             pending_session_lock=self._pending_session_lock,
         )
@@ -363,7 +363,7 @@ class ClaudeExecutor:
         if session_id:
             logger.info(f"[Remote] session_id 매핑 해제: thread={thread_ts}, session={session_id}")
 
-    def _get_session_id(self, thread_ts: str) -> Optional[str]:
+    def get_session_id(self, thread_ts: str) -> Optional[str]:
         """thread_ts에 대응하는 agent_session_id 조회"""
         with self._thread_session_lock:
             return self._thread_session_map.get(thread_ts)

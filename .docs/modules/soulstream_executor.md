@@ -35,7 +35,7 @@ per-session 아키텍처: agent_session_id가 유일한 식별자.
 - `_get_service_adapter(self)` (줄 314): Remote 모드용 ClaudeServiceAdapter를 생성하여 반환 (호출마다 새 인스턴스)
 - `_register_session_id(self, thread_ts, session_id)` (줄 333): thread_ts <-> agent_session_id 매핑 등록 및 버퍼된 인터벤션 flush
 - `_unregister_session_id(self, thread_ts)` (줄 357): thread_ts <-> agent_session_id 매핑 해제
-- `_get_session_id(self, thread_ts)` (줄 366): thread_ts에 대응하는 agent_session_id 조회
+- `get_session_id(self, thread_ts)` (줄 366): thread_ts에 대응하는 agent_session_id 조회
 - `_execute_remote(self, thread_ts, prompt)` (줄 371): Remote 모드: Soulstream 서버에 실행을 위임 (per-session)
 - `_process_result(self, presentation, result, thread_ts)` (줄 437): 실행 결과 처리
 

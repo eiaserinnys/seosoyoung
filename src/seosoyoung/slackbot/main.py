@@ -252,6 +252,8 @@ def _build_dependencies():
         # 프레젠테이션 레이어 콜백 (호출부에서 사용)
         "update_message_fn": update_message,
         "plugin_manager": plugin_manager,
+        # 디버깅용: 실행 중인 agent_session_id 조회
+        "get_agent_session_id": executor.get_session_id,
     }
 
 

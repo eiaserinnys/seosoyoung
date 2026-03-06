@@ -21,6 +21,7 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_profile,
     handle_plugins,
     handle_resume_list_run,
+    handle_session_info,
 )
 from seosoyoung.slackbot.soulstream.session_context import build_initial_context, format_hybrid_context
 
@@ -120,6 +121,7 @@ def get_channel_history(client, channel: str, limit: int = 20) -> str:
 
 _ADMIN_COMMANDS = frozenset({
     "help", "status", "update", "restart", "compact", "profile", "cleanup", "log", "plugins",
+    "session-info",
 })
 
 _COMMAND_DISPATCH = {
@@ -132,6 +134,7 @@ _COMMAND_DISPATCH = {
     "restart": handle_update_restart,
     "compact": handle_compact,
     "plugins": handle_plugins,
+    "session-info": handle_session_info,
 }
 
 
@@ -496,11 +499,10 @@ def register_mention_handlers(app, dependencies: dict):
         command = extract_command(text)
 
         # 관리자 명령어는 스레드/세션 여부와 관계없이 항상 처리
-        admin_commands = ["help", "status", "update", "restart", "compact", "profile"]
-        is_admin_command = command in admin_commands or command.startswith("profile ")
+        is_admin_cmd = _is_admin_command(command)
 
         # 스레드에서 멘션된 경우 (관리자 명령어가 아닐 때만 세션 체크)
-        if thread_ts and not is_admin_command:
+        if thread_ts and not is_admin_cmd:
             session = session_manager.get(thread_ts)
             if session:
                 # 세션이 있는 스레드에서 멘션 → 직접 처리
