@@ -6,7 +6,9 @@ claude/, presentation/ 등 여러 패키지에서 공통으로 사용합니다.
 이 모듈은 seosoyoung 내부 의존성이 없는 리프(leaf) 모듈이어야 합니다.
 """
 
-from typing import Protocol
+import json
+import os
+from typing import Any, Protocol
 
 
 # --- Protocols ---
@@ -26,6 +28,11 @@ class _CardLike(Protocol):
 SLACK_MSG_MAX_LEN = 3900
 PROGRESS_MAX_LEN = 3800
 DM_MSG_MAX_LEN = 3000
+_TOOL_INPUT_MAX_LEN = 200
+
+# 이벤트 이모지 (선택적 오버라이드 — 없으면 슬랙 기본 이모지 사용)
+EMOJI_THINKING = os.environ.get("SOULSTREAM_EMOJI_THINKING", "\U0001f4ad")
+EMOJI_TOOL = os.environ.get("SOULSTREAM_EMOJI_TOOL", "\U0001f527")
 
 
 # --- 함수 ---
@@ -88,28 +95,61 @@ def format_dm_progress(text: str, max_len: int = DM_MSG_MAX_LEN) -> str:
 
 def format_thinking_initial() -> str:
     """thinking 메시지 초기 포맷"""
-    return "... (thinking)"
+    return f"{EMOJI_THINKING} *thinking...*"
 
 
 def format_thinking_text(text: str) -> str:
-    """thinking 메시지 텍스트 갱신 포맷"""
+    """thinking 메시지 텍스트 갱신 포맷
+
+    이모지 + bold 헤더 + blockquote로 thinking 내용을 표시합니다.
+    """
     escaped = escape_backticks(text)
     if len(escaped) > PROGRESS_MAX_LEN:
         escaped = "...\n" + escaped[-PROGRESS_MAX_LEN:]
-    return escaped
+    quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
+    return f"{EMOJI_THINKING} *thinking...*\n{quoted}"
 
 
-def format_tool_initial(tool_name: str) -> str:
-    """tool 메시지 초기 포맷"""
-    return f">> {tool_name}"
+def _summarize_tool_input(tool_input: Any) -> str:
+    """tool_input을 간결한 한 줄 문자열로 요약
+
+    dict이면 주요 필드를 compact JSON으로,
+    그 외에는 str 변환 후 truncate합니다.
+    """
+    if tool_input is None:
+        return ""
+    if isinstance(tool_input, dict):
+        try:
+            compact = json.dumps(tool_input, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError):
+            compact = str(tool_input)
+    else:
+        compact = str(tool_input)
+    if len(compact) > _TOOL_INPUT_MAX_LEN:
+        compact = compact[:_TOOL_INPUT_MAX_LEN] + "..."
+    return compact
+
+
+def format_tool_initial(tool_name: str, tool_input: Any = None) -> str:
+    """tool 메시지 초기 포맷
+
+    이모지 + bold tool_name 헤더를 표시하고,
+    tool_input이 있으면 blockquote로 요약을 덧붙입니다.
+    """
+    header = f"{EMOJI_TOOL} *{tool_name}*"
+    if tool_input:
+        summary = _summarize_tool_input(tool_input)
+        if summary:
+            return f"{header}\n> {summary}"
+    return header
 
 
 def format_tool_complete(tool_name: str) -> str:
     """tool 메시지 완료 포맷 (keep 모드)"""
-    return f">> {tool_name} (done)"
+    return f"{EMOJI_TOOL} *{tool_name}* (done)"
 
 
 def format_tool_error(tool_name: str, error: str) -> str:
     """tool 메시지 에러 포맷 (keep 모드)"""
     escaped_error = escape_backticks(error)
-    return f"🔧 {tool_name} ❌ {escaped_error}"
+    return f"{EMOJI_TOOL} *{tool_name}* :x: {escaped_error}"

@@ -274,7 +274,7 @@ def build_event_callbacks(
 
     async def on_tool_start(tool_name: str, tool_input, tool_use_id: str, event_id, parent_event_id):
         try:
-            text = format_tool_initial(tool_name)
+            text = format_tool_initial(tool_name, tool_input)
             reply = pctx.client.chat_postMessage(
                 channel=pctx.channel,
                 thread_ts=pctx.thread_ts,
