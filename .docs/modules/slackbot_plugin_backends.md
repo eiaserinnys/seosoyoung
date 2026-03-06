@@ -15,50 +15,58 @@ These backends wrap the existing seosoyoung infrastructure
 ## 클래스
 
 ### `SlackBackendImpl` (SlackBackend)
-- 위치: 줄 44
+- 위치: 줄 52
 - 설명: Slack backend implementation using slack_sdk client.
 
 #### 메서드
 
-- `__init__(self, client)` (줄 47): Initialize with Slack WebClient.
-- `async send_message(self, channel, text, thread_ts)` (줄 55): Send a message to a channel.
-- `async update_message(self, channel, ts, text)` (줄 79): Update an existing message.
-- `async add_reaction(self, channel, ts, emoji)` (줄 103): Add a reaction to a message.
-- `async remove_reaction(self, channel, ts, emoji)` (줄 124): Remove a reaction from a message.
-- `async get_user_info(self, user_id)` (줄 145): Get information about a user.
-- `async get_thread_replies(self, channel, thread_ts, limit)` (줄 162): Get replies in a thread.
-- `async get_channel_history(self, channel, limit)` (줄 191): Get recent messages in a channel.
-- `async open_dm(self, user_id)` (줄 218): Open a DM channel with a user.
+- `__init__(self, client)` (줄 55): Initialize with Slack WebClient.
+- `async send_message(self, channel, text, thread_ts)` (줄 63): Send a message to a channel.
+- `async update_message(self, channel, ts, text)` (줄 87): Update an existing message.
+- `async add_reaction(self, channel, ts, emoji)` (줄 111): Add a reaction to a message.
+- `async remove_reaction(self, channel, ts, emoji)` (줄 132): Remove a reaction from a message.
+- `async get_user_info(self, user_id)` (줄 153): Get information about a user.
+- `async get_thread_replies(self, channel, thread_ts, limit)` (줄 170): Get replies in a thread.
+- `async get_channel_history(self, channel, limit)` (줄 199): Get recent messages in a channel.
+- `async open_dm(self, user_id)` (줄 226): Open a DM channel with a user.
 
 ### `SoulstreamBackendImpl` (SoulstreamBackend)
-- 위치: 줄 233
+- 위치: 줄 241
 - 설명: Soulstream backend implementation using ClaudeExecutor.
 
 #### 메서드
 
-- `__init__(self, executor, session_manager, restart_manager, data_dir, slack_client, update_message_fn)` (줄 236): Initialize with Claude executor and session manager.
-- `_build_presentation(self, channel, thread_ts, msg_ts, session_id, role)` (줄 263): presentation이 전달되지 않은 호출(워처 등)을 위해 PresentationContext를 자동 구성.
-- `async run(self, prompt, channel, thread_ts, role, session_id, on_progress, on_compact)` (줄 313): Execute Claude Code with the given prompt.
-- `async compact(self, session_id)` (줄 382): Compact a Claude Code session.
-- `get_session_id(self, thread_ts)` (줄 404): Get the Claude Code session ID for a thread.
-- `is_restart_pending(self)` (줄 409): Check if a restart is pending.
-- `get_data_dir(self)` (줄 413): Get the data directory for plugin storage.
+- `__init__(self, executor, session_manager, restart_manager, data_dir, slack_client, update_message_fn)` (줄 244): Initialize with Claude executor and session manager.
+- `_build_presentation(self, channel, thread_ts, msg_ts, session_id, role)` (줄 271): presentation이 전달되지 않은 호출(워처 등)을 위해 PresentationContext를 자동 구성.
+- `async run(self, prompt, channel, thread_ts, role, session_id, on_progress, on_compact)` (줄 321): Execute Claude Code with the given prompt.
+- `async compact(self, session_id)` (줄 416): Compact a Claude Code session.
+- `get_session_id(self, thread_ts)` (줄 438): Get the Claude Code session ID for a thread.
+- `is_restart_pending(self)` (줄 443): Check if a restart is pending.
+- `get_data_dir(self)` (줄 447): Get the data directory for plugin storage.
 
 ### `MentionTrackingBackendImpl`
-- 위치: 줄 423
+- 위치: 줄 457
 - 설명: Mention tracking backend wrapping the existing MentionTracker.
 
 #### 메서드
 
-- `__init__(self, tracker)` (줄 426): 
-- `mark(self, thread_ts)` (줄 429): 
-- `is_handled(self, thread_ts)` (줄 432): 
-- `unmark(self, thread_ts)` (줄 435): 
+- `__init__(self, tracker)` (줄 460): 
+- `mark(self, thread_ts)` (줄 463): 
+- `is_handled(self, thread_ts)` (줄 466): 
+- `unmark(self, thread_ts)` (줄 469): 
 
 ## 함수
 
+### `async _noop_progress(_msg)`
+- 위치: 줄 39
+- 설명: text_only 모드용 no-op progress 콜백.
+
+### `async _noop_compact(_session_id, _msg)`
+- 위치: 줄 43
+- 설명: text_only 모드용 no-op compact 콜백.
+
 ### `init_plugin_backends(slack_client, executor, session_manager, restart_manager, data_dir, update_message_fn, mention_tracker)`
-- 위치: 줄 444
+- 위치: 줄 478
 - 설명: Initialize plugin SDK backends.
 
 Call this during startup after slack_client and executor are ready.

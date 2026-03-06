@@ -388,6 +388,8 @@ class ClaudeExecutor:
 
         # debug 콜백: 로컬 모드의 debug_send_fn과 동등한 동작
         async def on_debug(message: str) -> None:
+            if presentation is None:
+                return
             try:
                 presentation.client.chat_postMessage(
                     channel=presentation.channel, thread_ts=thread_ts, text=message)
@@ -396,6 +398,8 @@ class ClaudeExecutor:
 
         # credential_alert 콜백: 크레덴셜 알림 UI를 슬랙 채널에 전송
         async def on_credential_alert_callback(data: dict) -> None:
+            if presentation is None:
+                return
             from seosoyoung.slackbot.handlers.credential_ui import send_credential_alert
             from seosoyoung.slackbot.config import Config
             channel = Config.claude.credential_alert_channel
@@ -424,13 +428,17 @@ class ClaudeExecutor:
 
             # 결과 콜백 호출 (OM 등)
             if on_result:
-                on_result(result, thread_ts, user_message)
+                try:
+                    on_result(result, thread_ts, user_message)
+                except Exception as cb_err:
+                    logger.warning(f"[Remote] on_result 콜백 오류 (무시): {cb_err}")
 
             self._process_result(presentation, result, thread_ts)
 
         except Exception as e:
             logger.exception(f"[Remote] Claude 실행 오류: {e}")
-            self._result_processor.handle_exception(presentation, e)
+            if presentation is not None:
+                self._result_processor.handle_exception(presentation, e)
         finally:
             self._unregister_session_id(thread_ts)
 
@@ -438,13 +446,19 @@ class ClaudeExecutor:
         """실행 결과 처리
 
         세션 업데이트 후 결과 타입에 따라 핸들러를 호출합니다.
+        presentation이 None이면 세션만 갱신하고 슬랙 게시를 건너뜁니다 (text_only 모드).
         """
         if result.session_id:
             self.session_manager.update_session_id(thread_ts, result.session_id)
-            # pctx에도 session_id 반영 (후속 콜백/핸들러에서 사용)
-            presentation.session_id = result.session_id
+            if presentation is not None:
+                # pctx에도 session_id 반영 (후속 콜백/핸들러에서 사용)
+                presentation.session_id = result.session_id
 
         self.session_manager.increment_message_count(thread_ts)
+
+        if presentation is None:
+            # text_only 모드: 출력은 on_result 콜백으로 이미 캡처됨
+            return
 
         if result.interrupted:
             self._result_processor.handle_interrupted(presentation)
