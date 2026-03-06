@@ -94,20 +94,46 @@ Args:
 Returns:
     API 응답 딕셔너리
 
-### `_handle_profile_list(say, reply_ts)`
+### `_sanitize_email_to_profile_name(email)`
 - 위치: 줄 538
+- 설명: 이메일에서 프로필 이름 생성
+
+user@example.com → user
+유효하지 않은 문자는 언더스코어로 대체하고, 최대 64자로 제한합니다.
+
+Args:
+    email: 이메일 주소
+
+Returns:
+    프로필 이름으로 사용 가능한 문자열
+
+### `_fetch_profiles_with_rates()`
+- 위치: 줄 559
+- 설명: Soulstream API에서 프로필 목록 + rate limit을 조회하여 병합.
+
+Returns:
+    (active: str, merged_profiles: list[dict])
+    - active: 현재 활성 프로필 이름 (없으면 "")
+    - merged_profiles: rate limit 정보가 병합된 프로필 리스트
+
+### `_handle_profile_list(say, reply_ts)`
+- 위치: 줄 593
 - 설명: profile list: Soulstream API로 프로필 + rate limit 조회 후 게이지 바 UI 표시
 
+### `_handle_profile_delete_ui(say, reply_ts)`
+- 위치: 줄 619
+- 설명: profile delete (이름 미입력): 프로필 목록을 삭제 버튼으로 표시
+
 ### `handle_profile()`
-- 위치: 줄 607
+- 위치: 줄 652
 - 설명: profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
 
 ### `handle_plugins()`
-- 위치: 줄 658
+- 위치: 줄 735
 - 설명: plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드
 
 ### `handle_resume_list_run()`
-- 위치: 줄 729
+- 위치: 줄 806
 - 설명: 정주행 재개 명령어 핸들러
 
 ## 내부 의존성

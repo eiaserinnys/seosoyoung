@@ -535,6 +535,61 @@ def _run_soul_profile_api(async_fn):
     return asyncio.run(_wrapper())
 
 
+def _sanitize_email_to_profile_name(email: str) -> str:
+    """이메일에서 프로필 이름 생성
+
+    user@example.com → user
+    유효하지 않은 문자는 언더스코어로 대체하고, 최대 64자로 제한합니다.
+
+    Args:
+        email: 이메일 주소
+
+    Returns:
+        프로필 이름으로 사용 가능한 문자열
+    """
+    local = email.split("@")[0] if "@" in email else email
+    sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", local)
+    if sanitized and sanitized[0].isdigit():
+        sanitized = f"p_{sanitized}"
+    if not sanitized:
+        sanitized = "profile"
+    return sanitized[:64]
+
+
+def _fetch_profiles_with_rates():
+    """Soulstream API에서 프로필 목록 + rate limit을 조회하여 병합.
+
+    Returns:
+        (active: str, merged_profiles: list[dict])
+        - active: 현재 활성 프로필 이름 (없으면 "")
+        - merged_profiles: rate limit 정보가 병합된 프로필 리스트
+    """
+    async def _fetch(soul):
+        profiles_data = await soul.list_profiles()
+        try:
+            rate_limits = await soul.get_rate_limits()
+        except Exception:
+            logger.warning("rate limit 조회 실패, 기본값으로 대체합니다", exc_info=True)
+            rate_limits = {"active_profile": None, "profiles": []}
+        return profiles_data, rate_limits
+
+    profiles_data, rate_limits = _run_soul_profile_api(_fetch)
+    active = profiles_data.get("active") or ""
+    profiles = profiles_data.get("profiles", [])
+
+    rate_map = {rp["name"]: rp for rp in rate_limits.get("profiles", [])}
+    merged: list[dict] = []
+    for p in profiles:
+        name = p["name"]
+        rate = rate_map.get(name, {})
+        merged.append({
+            "name": name,
+            "five_hour": rate.get("five_hour", {"utilization": "unknown", "resets_at": None}),
+            "seven_day": rate.get("seven_day", {"utilization": "unknown", "resets_at": None}),
+        })
+    return active, merged
+
+
 def _handle_profile_list(say, reply_ts):
     """profile list: Soulstream API로 프로필 + rate limit 조회 후 게이지 바 UI 표시"""
     from seosoyoung.slackbot.handlers.credential_ui import (
@@ -542,38 +597,14 @@ def _handle_profile_list(say, reply_ts):
         build_credential_alert_text,
     )
 
-    async def _fetch(soul):
-        profiles_data = await soul.list_profiles()
-        try:
-            rate_limits = await soul.get_rate_limits()
-        except Exception:
-            rate_limits = {"active_profile": None, "profiles": []}
-        return profiles_data, rate_limits
+    active, merged_profiles = _fetch_profiles_with_rates()
 
-    profiles_data, rate_limits = _run_soul_profile_api(_fetch)
-
-    active = profiles_data.get("active")
-    profiles = profiles_data.get("profiles", [])
-
-    if not profiles:
+    if not merged_profiles:
         say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
         return
 
-    # rate limit 데이터 병합
-    rate_map = {rp["name"]: rp for rp in rate_limits.get("profiles", [])}
-
-    merged_profiles = []
-    for p in profiles:
-        name = p["name"]
-        rate = rate_map.get(name, {})
-        merged_profiles.append({
-            "name": name,
-            "five_hour": rate.get("five_hour", {"utilization": "unknown", "resets_at": None}),
-            "seven_day": rate.get("seven_day", {"utilization": "unknown", "resets_at": None}),
-        })
-
-    blocks = build_credential_alert_blocks(active or "", merged_profiles)
-    fallback_text = build_credential_alert_text(active or "", merged_profiles)
+    blocks = build_credential_alert_blocks(active, merged_profiles)
+    fallback_text = build_credential_alert_text(active, merged_profiles)
 
     # 헤더를 "알림" 대신 "프로필 목록"으로 교체
     if blocks:
@@ -583,6 +614,20 @@ def _handle_profile_list(say, reply_ts):
     fallback_text = fallback_text.replace("크레덴셜 사용량 알림", "크레덴셜 프로필")
 
     say(text=fallback_text, blocks=blocks, thread_ts=reply_ts)
+
+
+def _handle_profile_delete_ui(say, reply_ts):
+    """profile delete (이름 미입력): 프로필 목록을 삭제 버튼으로 표시"""
+    from seosoyoung.slackbot.handlers.credential_ui import build_delete_selection_blocks
+
+    active, merged_profiles = _fetch_profiles_with_rates()
+
+    if not merged_profiles:
+        say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
+        return
+
+    blocks = build_delete_selection_blocks(active, merged_profiles)
+    say(text="프로필 삭제", blocks=blocks, thread_ts=reply_ts)
 
 
 _PROFILE_SUBCMD_LABELS = {
@@ -621,6 +666,36 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
     try:
         if subcmd is None or subcmd == "list":
             _handle_profile_list(say, reply_ts)
+        elif subcmd == "save" and not arg:
+            # 이름 미입력 → credentials.json의 이메일 자동 추출 후 저장
+            email = _run_soul_profile_api(lambda soul: soul.get_current_email())
+            if not email:
+                say(
+                    text=(
+                        "현재 크레덴셜에서 이메일 정보를 찾을 수 없습니다.\n"
+                        "프로필 이름을 직접 지정해주세요: `profile save <이름>`"
+                    ),
+                    thread_ts=reply_ts,
+                )
+                return
+            name = _sanitize_email_to_profile_name(email)
+            if not _VALID_PROFILE_NAME.match(name):
+                say(
+                    text=(
+                        f"이메일에서 생성된 이름 '{name}'이(가) 유효하지 않습니다.\n"
+                        "프로필 이름을 직접 지정해주세요: `profile save <이름>`"
+                    ),
+                    thread_ts=reply_ts,
+                )
+                return
+            _run_soul_profile_api(lambda soul: soul.save_profile(name))
+            say(
+                text=f"✅ 프로필 '{name}'을(를) 저장했습니다. (이메일: {email})",
+                thread_ts=reply_ts,
+            )
+        elif subcmd == "delete" and not arg:
+            # 이름 미입력 → 삭제 버튼 UI 표시
+            _handle_profile_delete_ui(say, reply_ts)
         elif subcmd in _PROFILE_SUBCMD_API:
             verb = _PROFILE_SUBCMD_LABELS[subcmd]
             if not arg:
@@ -642,8 +717,10 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
                 text=(
                     "📁 *profile 명령어 사용법*\n"
                     "• `profile` / `profile list` - 프로필 목록 + 사용량\n"
+                    "• `profile save` - 현재 인증을 이메일로 자동 저장\n"
                     "• `profile save <이름>` - 현재 인증을 프로필로 저장\n"
                     "• `profile change <이름>` - 프로필 전환\n"
+                    "• `profile delete` - 프로필 삭제 (버튼 UI)\n"
                     "• `profile delete <이름>` - 프로필 삭제"
                 ),
                 thread_ts=reply_ts,

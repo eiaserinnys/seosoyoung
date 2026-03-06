@@ -18,6 +18,7 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_compact,
     handle_profile,
     handle_resume_list_run,
+    _sanitize_email_to_profile_name,
 )
 from seosoyoung.slackbot.handlers.mention import (
     try_handle_command,
@@ -348,25 +349,45 @@ class TestHandleProfile:
         assert "전환" in say.call_args[1]["text"]
         assert "personal" in say.call_args[1]["text"]
 
-    def test_profile_save_no_arg(self):
-        """profile save 인자 없으면 안내 메시지"""
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
+    def test_profile_save_no_arg_email_found(self, mock_api):
+        """profile save (인자 없음) + 이메일 찾음 → 자동 저장"""
+        # 첫 호출: get_current_email → "user@example.com"
+        # 두 번째 호출: save_profile → 성공
+        mock_api.side_effect = ["user@example.com", {"name": "user", "saved": True}]
         say = MagicMock()
         handle_profile(
             command="profile save", say=say, thread_ts="ts1",
             client=MagicMock(), user_id="U1",
             check_permission=MagicMock(return_value=True),
         )
-        assert "이름을 입력" in say.call_args[1]["text"]
+        assert mock_api.call_count == 2
+        assert "user" in say.call_args[1]["text"]
+        assert "저장" in say.call_args[1]["text"]
 
-    def test_profile_delete_no_arg(self):
-        """profile delete 인자 없으면 안내 메시지"""
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
+    def test_profile_save_no_arg_email_not_found(self, mock_api):
+        """profile save (인자 없음) + 이메일 없음 → 이름 입력 안내"""
+        mock_api.return_value = None
+        say = MagicMock()
+        handle_profile(
+            command="profile save", say=say, thread_ts="ts1",
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        assert "이메일" in say.call_args[1]["text"]
+        assert "직접 지정" in say.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._handle_profile_delete_ui")
+    def test_profile_delete_no_arg_shows_ui(self, mock_delete_ui):
+        """profile delete (인자 없음) → 삭제 버튼 UI 표시"""
         say = MagicMock()
         handle_profile(
             command="profile delete", say=say, thread_ts="ts1",
             client=MagicMock(), user_id="U1",
             check_permission=MagicMock(return_value=True),
         )
-        assert "이름을 입력" in say.call_args[1]["text"]
+        mock_delete_ui.assert_called_once_with(say, "ts1")
 
     def test_profile_change_no_arg(self):
         """profile change 인자 없으면 안내 메시지"""
@@ -425,6 +446,43 @@ class TestHandleProfile:
                 check_permission=MagicMock(return_value=True),
             )
             assert "영문/숫자" in say.call_args[1]["text"], f"Should reject '{name}'"
+
+
+class TestSanitizeEmailToProfileName:
+    def test_basic_email(self):
+        """user@example.com → user"""
+        assert _sanitize_email_to_profile_name("user@example.com") == "user"
+
+    def test_no_at_sign(self):
+        """@ 없는 경우 전체를 local로 사용"""
+        assert _sanitize_email_to_profile_name("just_a_name") == "just_a_name"
+
+    def test_dots_replaced(self):
+        """점은 언더스코어로 대체"""
+        result = _sanitize_email_to_profile_name("user.name@example.com")
+        assert "." not in result
+        assert "user" in result
+
+    def test_digit_prefix_gets_p_prefix(self):
+        """숫자로 시작하면 p_ 접두사"""
+        result = _sanitize_email_to_profile_name("123user@example.com")
+        assert result.startswith("p_")
+
+    def test_max_length_64(self):
+        """64자 초과 이름은 잘림"""
+        long_local = "a" * 100
+        result = _sanitize_email_to_profile_name(f"{long_local}@example.com")
+        assert len(result) <= 64
+
+    def test_empty_local_fallback(self):
+        """빈 local 부분이면 fallback"""
+        result = _sanitize_email_to_profile_name("@example.com")
+        assert result == "profile"
+
+    def test_special_chars_sanitized(self):
+        """특수문자는 언더스코어로 대체"""
+        result = _sanitize_email_to_profile_name("user+tag@example.com")
+        assert "+" not in result
 
 
 class TestHandleResumeListRun:
