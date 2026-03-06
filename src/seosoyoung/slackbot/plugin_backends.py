@@ -36,6 +36,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def _noop_progress(_msg: str) -> None:
+    """text_only 모드용 no-op progress 콜백."""
+
+
+async def _noop_compact(_session_id: str, _msg: str) -> None:
+    """text_only 모드용 no-op compact 콜백."""
+
+
 # ============================================================================
 # Slack Backend Implementation
 # ============================================================================
@@ -321,7 +329,15 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         on_compact=None,
         **kwargs: Any,
     ) -> RunResult:
-        """Execute Claude Code with the given prompt."""
+        """Execute Claude Code with the given prompt.
+
+        Args:
+            text_only (bool, kwarg): True이면 Slack 게시 없이 텍스트만 생성합니다.
+                presentation을 None으로 설정하여 executor가 결과를 슬랙에 게시하지 않으며,
+                on_result 콜백으로 출력 텍스트를 캡처하여 RunResult.output에 담아 반환합니다.
+        """
+        text_only = kwargs.pop("text_only", False)
+
         try:
             # Get or use provided session_id
             if session_id is None:
@@ -329,26 +345,41 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 if session:
                     session_id = session.session_id
 
-            # Resolve presentation context
-            presentation = kwargs.get("presentation")
-            if presentation is None:
-                presentation = self._build_presentation(
-                    channel=channel,
-                    thread_ts=thread_ts,
-                    msg_ts=kwargs.get("msg_ts", thread_ts),
-                    session_id=session_id,
-                    role=role,
-                    dm_channel_id=kwargs.get("dm_channel_id"),
-                    dm_thread_ts=kwargs.get("dm_thread_ts"),
-                    trello_card=kwargs.get("trello_card"),
-                )
+            on_result_fn = None
 
-            # Auto-build progress callbacks when not provided
-            if on_progress is None and self._update_message_fn is not None:
-                from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
-                on_progress, on_compact = build_progress_callbacks(
-                    presentation, self._update_message_fn,
-                )
+            if text_only:
+                # text_only 모드: presentation 없이 실행하여 슬랙 게시를 건너뜀
+                # on_result 콜백으로 출력 텍스트를 캡처
+                captured_output: list[str] = []
+
+                def capture_result(result, _thread_ts, _user_message):
+                    captured_output.append(result.output or "")
+
+                presentation = None
+                on_progress = _noop_progress
+                on_compact = _noop_compact
+                on_result_fn = capture_result
+            else:
+                # Resolve presentation context
+                presentation = kwargs.get("presentation")
+                if presentation is None:
+                    presentation = self._build_presentation(
+                        channel=channel,
+                        thread_ts=thread_ts,
+                        msg_ts=kwargs.get("msg_ts", thread_ts),
+                        session_id=session_id,
+                        role=role,
+                        dm_channel_id=kwargs.get("dm_channel_id"),
+                        dm_thread_ts=kwargs.get("dm_thread_ts"),
+                        trello_card=kwargs.get("trello_card"),
+                    )
+
+                # Auto-build progress callbacks when not provided
+                if on_progress is None and self._update_message_fn is not None:
+                    from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
+                    on_progress, on_compact = build_progress_callbacks(
+                        presentation, self._update_message_fn,
+                    )
 
             # Run executor (this is synchronous internally)
             self._executor(
@@ -360,16 +391,19 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 presentation=presentation,
                 session_id=session_id,
                 role=role,
+                on_result=on_result_fn,
             )
 
             # Get updated session_id
             session = self._session_manager.get(thread_ts)
             new_session_id = session.session_id if session else session_id
+            output = captured_output[0] if (text_only and captured_output) else ""
 
             return RunResult(
                 ok=True,
                 status=RunStatus.COMPLETED,
                 session_id=new_session_id,
+                output=output,
             )
         except Exception as e:
             logger.error(f"soulstream.run failed: {e}")
