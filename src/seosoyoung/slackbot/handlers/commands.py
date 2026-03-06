@@ -535,6 +535,27 @@ def _run_soul_profile_api(async_fn):
     return asyncio.run(_wrapper())
 
 
+def _sanitize_email_to_profile_name(email: str) -> str:
+    """이메일에서 프로필 이름 생성
+
+    user@example.com → user
+    유효하지 않은 문자는 언더스코어로 대체하고, 최대 64자로 제한합니다.
+
+    Args:
+        email: 이메일 주소
+
+    Returns:
+        프로필 이름으로 사용 가능한 문자열
+    """
+    local = email.split("@")[0] if "@" in email else email
+    sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", local)
+    if sanitized and sanitized[0].isdigit():
+        sanitized = f"p_{sanitized}"
+    if not sanitized:
+        sanitized = "profile"
+    return sanitized[:64]
+
+
 def _handle_profile_list(say, reply_ts):
     """profile list: Soulstream API로 프로필 + rate limit 조회 후 게이지 바 UI 표시"""
     from seosoyoung.slackbot.handlers.credential_ui import (
@@ -585,6 +606,41 @@ def _handle_profile_list(say, reply_ts):
     say(text=fallback_text, blocks=blocks, thread_ts=reply_ts)
 
 
+def _handle_profile_delete_ui(say, reply_ts):
+    """profile delete (이름 미입력): 프로필 목록을 삭제 버튼으로 표시"""
+    from seosoyoung.slackbot.handlers.credential_ui import build_delete_selection_blocks
+
+    async def _fetch(soul):
+        profiles_data = await soul.list_profiles()
+        try:
+            rate_limits = await soul.get_rate_limits()
+        except Exception:
+            rate_limits = {"active_profile": None, "profiles": []}
+        return profiles_data, rate_limits
+
+    profiles_data, rate_limits = _run_soul_profile_api(_fetch)
+    active = profiles_data.get("active")
+    profiles = profiles_data.get("profiles", [])
+
+    if not profiles:
+        say(text="저장된 프로필이 없습니다.", thread_ts=reply_ts)
+        return
+
+    rate_map = {rp["name"]: rp for rp in rate_limits.get("profiles", [])}
+    merged_profiles = []
+    for p in profiles:
+        name = p["name"]
+        rate = rate_map.get(name, {})
+        merged_profiles.append({
+            "name": name,
+            "five_hour": rate.get("five_hour", {"utilization": "unknown", "resets_at": None}),
+            "seven_day": rate.get("seven_day", {"utilization": "unknown", "resets_at": None}),
+        })
+
+    blocks = build_delete_selection_blocks(active or "", merged_profiles)
+    say(text="프로필 삭제", blocks=blocks, thread_ts=reply_ts)
+
+
 _PROFILE_SUBCMD_LABELS = {
     "save": "저장할",
     "delete": "삭제할",
@@ -621,6 +677,27 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
     try:
         if subcmd is None or subcmd == "list":
             _handle_profile_list(say, reply_ts)
+        elif subcmd == "save" and not arg:
+            # 이름 미입력 → credentials.json의 이메일 자동 추출 후 저장
+            email = _run_soul_profile_api(lambda soul: soul.get_current_email())
+            if not email:
+                say(
+                    text=(
+                        "현재 크레덴셜에서 이메일 정보를 찾을 수 없습니다.\n"
+                        "프로필 이름을 직접 지정해주세요: `profile save <이름>`"
+                    ),
+                    thread_ts=reply_ts,
+                )
+                return
+            name = _sanitize_email_to_profile_name(email)
+            _run_soul_profile_api(lambda soul: soul.save_profile(name))
+            say(
+                text=f"✅ 프로필 '{name}'을(를) 저장했습니다. (이메일: {email})",
+                thread_ts=reply_ts,
+            )
+        elif subcmd == "delete" and not arg:
+            # 이름 미입력 → 삭제 버튼 UI 표시
+            _handle_profile_delete_ui(say, reply_ts)
         elif subcmd in _PROFILE_SUBCMD_API:
             verb = _PROFILE_SUBCMD_LABELS[subcmd]
             if not arg:
@@ -642,8 +719,10 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
                 text=(
                     "📁 *profile 명령어 사용법*\n"
                     "• `profile` / `profile list` - 프로필 목록 + 사용량\n"
+                    "• `profile save` - 현재 인증을 이메일로 자동 저장\n"
                     "• `profile save <이름>` - 현재 인증을 프로필로 저장\n"
                     "• `profile change <이름>` - 프로필 전환\n"
+                    "• `profile delete` - 프로필 삭제 (버튼 UI)\n"
                     "• `profile delete <이름>` - 프로필 삭제"
                 ),
                 thread_ts=reply_ts,

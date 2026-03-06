@@ -437,6 +437,24 @@ class SoulServiceClient:
                 raise SoulServiceError(f"프로필 삭제 실패: {error}")
             return await response.json()
 
+    async def get_current_email(self) -> Optional[str]:
+        """현재 크레덴셜의 계정 이메일 조회 (GET /profiles/email)
+
+        Returns:
+            이메일 주소 또는 None (이메일 없거나 크레덴셜에 포함되지 않음)
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/profiles/email"
+
+        async with session.get(url) as response:
+            if response.status == 404:
+                return None
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"이메일 조회 실패: {error}")
+            data = await response.json()
+            return data.get("email")
+
     # === 헬퍼 메서드 ===
 
     async def _handle_sse_events(

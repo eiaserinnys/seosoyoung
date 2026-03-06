@@ -90,8 +90,22 @@ dispatch_action input 블록을 사용합니다.
 Returns:
     Slack Block Kit blocks
 
-### `build_delete_confirm_blocks(profile_name)`
+### `build_delete_selection_blocks(active_profile, profiles)`
 - 위치: 줄 330
+- 설명: 프로필 삭제 선택 Block Kit 블록 생성
+
+모든 프로필을 나열하고 각각 삭제 버튼을 표시합니다.
+활성 프로필에는 '저장본만 삭제' 안내를 포함합니다.
+
+Args:
+    active_profile: 현재 활성 프로필 이름
+    profiles: 프로필별 rate limit 정보 리스트
+
+Returns:
+    Slack Block Kit blocks
+
+### `build_delete_confirm_blocks(profile_name)`
+- 위치: 줄 390
 - 설명: 프로필 삭제 확인 블록
 
 Args:
@@ -101,7 +115,7 @@ Returns:
     Slack Block Kit blocks
 
 ### `send_credential_alert(client, channel, data)`
-- 위치: 줄 368
+- 위치: 줄 428
 - 설명: 크레덴셜 알림을 슬랙 채널에 전송
 
 Args:

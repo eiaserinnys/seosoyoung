@@ -327,6 +327,66 @@ def build_save_prompt_blocks() -> list[dict]:
     ]
 
 
+def build_delete_selection_blocks(
+    active_profile: str,
+    profiles: list[dict],
+) -> list[dict]:
+    """프로필 삭제 선택 Block Kit 블록 생성
+
+    모든 프로필을 나열하고 각각 삭제 버튼을 표시합니다.
+    활성 프로필에는 '저장본만 삭제' 안내를 포함합니다.
+
+    Args:
+        active_profile: 현재 활성 프로필 이름
+        profiles: 프로필별 rate limit 정보 리스트
+
+    Returns:
+        Slack Block Kit blocks
+    """
+    sections = []
+    for profile in profiles:
+        is_active = profile["name"] == active_profile
+        section = render_profile_section(profile, is_active)
+        if is_active:
+            section += "\n_⚠️ 활성 프로필: 저장본만 삭제되며, 현재 인증은 유지됩니다._"
+        sections.append(section)
+
+    header = ":wastebasket: *프로필 삭제*"
+    if sections:
+        body = header + "\n\n" + "\n\n".join(sections)
+    else:
+        body = header + "\n\n저장된 프로필이 없습니다."
+
+    blocks: list[dict] = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": body},
+        },
+    ]
+
+    delete_buttons: list[dict] = []
+    for profile in profiles:
+        name = profile["name"]
+        is_active = name == active_profile
+        label = f"{name} (현재)" if is_active else name
+        delete_buttons.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": f"{label} 삭제"},
+            "action_id": f"credential_delete_{name}",
+            "value": name,
+            "style": "danger",
+        })
+
+    if delete_buttons:
+        blocks.append({
+            "type": "actions",
+            "block_id": "credential_delete_selection_actions",
+            "elements": delete_buttons,
+        })
+
+    return blocks
+
+
 def build_delete_confirm_blocks(profile_name: str) -> list[dict]:
     """프로필 삭제 확인 블록
 

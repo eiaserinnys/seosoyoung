@@ -12,6 +12,7 @@ from seosoyoung.slackbot.handlers.credential_ui import (
     build_profile_management_blocks,
     build_save_prompt_blocks,
     build_delete_confirm_blocks,
+    build_delete_selection_blocks,
 )
 from seosoyoung.slackbot.handlers.actions import (
     save_credential_profile,
@@ -425,3 +426,79 @@ class TestRegisterCredentialActionHandlers:
         assert any("credential_delete_" in p for p in registered_patterns)
         assert any("credential_delete_confirm_" in p for p in registered_patterns)
         assert any("credential_delete_cancel" in p for p in registered_patterns)
+
+
+# ── build_delete_selection_blocks ───────────────────────────
+
+
+class TestBuildDeleteSelectionBlocks:
+    """프로필 삭제 선택 블록 (모든 프로필 + 삭제 버튼)"""
+
+    def _make_profiles(self):
+        return [
+            {
+                "name": "linegames",
+                "five_hour": {"utilization": 0.95, "resets_at": None},
+                "seven_day": {"utilization": 0.51, "resets_at": None},
+            },
+            {
+                "name": "personal",
+                "five_hour": {"utilization": 0.0, "resets_at": None},
+                "seven_day": {"utilization": "unknown", "resets_at": None},
+            },
+        ]
+
+    def test_structure_has_section_and_actions(self):
+        blocks = build_delete_selection_blocks("linegames", self._make_profiles())
+        types = [b["type"] for b in blocks]
+        assert "section" in types
+        assert "actions" in types
+
+    def test_header_text(self):
+        blocks = build_delete_selection_blocks("linegames", self._make_profiles())
+        text = blocks[0]["text"]["text"]
+        assert "삭제" in text
+
+    def test_both_profiles_listed(self):
+        blocks = build_delete_selection_blocks("linegames", self._make_profiles())
+        text = blocks[0]["text"]["text"]
+        assert "linegames" in text
+        assert "personal" in text
+
+    def test_active_profile_has_warning(self):
+        """활성 프로필에 저장본만 삭제 안내가 있어야 함"""
+        blocks = build_delete_selection_blocks("linegames", self._make_profiles())
+        text = blocks[0]["text"]["text"]
+        assert "저장본만 삭제" in text
+
+    def test_all_profiles_have_delete_buttons(self):
+        """활성 포함 모든 프로필에 삭제 버튼이 있어야 함"""
+        blocks = build_delete_selection_blocks("linegames", self._make_profiles())
+        actions_block = next(b for b in blocks if b["type"] == "actions")
+        action_ids = [e["action_id"] for e in actions_block["elements"]]
+        assert any("credential_delete_linegames" in aid for aid in action_ids)
+        assert any("credential_delete_personal" in aid for aid in action_ids)
+
+    def test_active_profile_button_label_has_current(self):
+        """활성 프로필 버튼에 '(현재)' 표시"""
+        blocks = build_delete_selection_blocks("linegames", self._make_profiles())
+        actions_block = next(b for b in blocks if b["type"] == "actions")
+        linegames_btn = next(
+            e for e in actions_block["elements"]
+            if e["action_id"] == "credential_delete_linegames"
+        )
+        assert "현재" in linegames_btn["text"]["text"]
+
+    def test_empty_profiles(self):
+        """프로필이 없으면 actions 블록 없음"""
+        blocks = build_delete_selection_blocks("", [])
+        types = [b["type"] for b in blocks]
+        assert "section" in types
+        assert "actions" not in types
+
+    def test_delete_buttons_are_danger_style(self):
+        """삭제 버튼은 danger 스타일"""
+        blocks = build_delete_selection_blocks("linegames", self._make_profiles())
+        actions_block = next(b for b in blocks if b["type"] == "actions")
+        for btn in actions_block["elements"]:
+            assert btn["style"] == "danger"
