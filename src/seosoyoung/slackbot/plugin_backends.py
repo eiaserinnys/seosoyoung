@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from seosoyoung.plugin_sdk import slack, soulstream, mention
+from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
 from seosoyoung.plugin_sdk.slack import (
     Message,
     ReactionResult,
@@ -337,6 +338,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 on_result 콜백으로 출력 텍스트를 캡처하여 RunResult.output에 담아 반환합니다.
         """
         text_only = kwargs.pop("text_only", False)
+        _event_cbs = None  # 세분화 콜백 초기값
 
         try:
             # Get or use provided session_id
@@ -374,24 +376,37 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         trello_card=kwargs.get("trello_card"),
                     )
 
-                # Auto-build progress callbacks when not provided
+                # Auto-build event callbacks when not provided
                 if on_progress is None and self._update_message_fn is not None:
-                    from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
-                    on_progress, on_compact = build_progress_callbacks(
-                        presentation, self._update_message_fn,
-                    )
+                    from seosoyoung.slackbot.presentation.progress import build_event_callbacks
+                    _node_map = SlackNodeMap()
+                    _event_cbs = build_event_callbacks(presentation, _node_map, "clean")
+                    on_compact = _event_cbs["on_compact"]
+
+            # 세분화 콜백 구성
+            event_kwargs = {}
+            if _event_cbs:
+                event_kwargs = {
+                    "on_thinking": _event_cbs["on_thinking"],
+                    "on_text_start": _event_cbs["on_text_start"],
+                    "on_text_delta": _event_cbs["on_text_delta"],
+                    "on_text_end": _event_cbs["on_text_end"],
+                    "on_tool_start": _event_cbs["on_tool_start"],
+                    "on_tool_result": _event_cbs["on_tool_result"],
+                }
 
             # Run executor (this is synchronous internally)
             self._executor(
                 prompt=prompt,
                 thread_ts=thread_ts,
                 msg_ts=kwargs.get("msg_ts", thread_ts),
-                on_progress=on_progress,
+                on_progress=None if _event_cbs else on_progress,
                 on_compact=on_compact,
                 presentation=presentation,
                 session_id=session_id,
                 role=role,
                 on_result=on_result_fn,
+                **event_kwargs,
             )
 
             # Get updated session_id

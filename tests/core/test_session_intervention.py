@@ -127,7 +127,7 @@ class TestExecutorSessionMapping:
         executor = self._make_executor()
         executor._register_session_id("thread_123", "sess-abc")
 
-        assert executor._get_session_id("thread_123") == "sess-abc"
+        assert executor.get_session_id("thread_123") == "sess-abc"
 
     def test_unregister_session_id(self):
         """session_id 해제"""
@@ -135,7 +135,7 @@ class TestExecutorSessionMapping:
         executor._register_session_id("thread_123", "sess-abc")
         executor._unregister_session_id("thread_123")
 
-        assert executor._get_session_id("thread_123") is None
+        assert executor.get_session_id("thread_123") is None
 
     def test_unregister_nonexistent(self):
         """존재하지 않는 thread_ts 해제 (에러 없음)"""
@@ -263,7 +263,7 @@ class TestSessionBufferFlush:
         # flush 후 버퍼 비움
         assert "thread_123" not in executor._pending_session_interventions
         # session_id 매핑 등록됨
-        assert executor._get_session_id("thread_123") == "sess-abc"
+        assert executor.get_session_id("thread_123") == "sess-abc"
 
     def test_no_flush_when_no_pending(self):
         """버퍼가 비어있으면 flush하지 않음"""

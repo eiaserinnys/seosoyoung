@@ -193,11 +193,11 @@ class TestRunAutoPresentation:
 
 
 class TestRunAutoProgressCallbacks:
-    """run()에서 on_progress/on_compact 자동 생성 테스트"""
+    """run()에서 세분화 이벤트 콜백 자동 생성 테스트"""
 
     @pytest.mark.asyncio
-    async def test_auto_builds_progress_callbacks_when_none(self):
-        """on_progress/on_compact가 None이고 update_message_fn이 있으면 자동 생성"""
+    async def test_auto_builds_event_callbacks_when_none(self):
+        """on_progress가 None이고 update_message_fn이 있으면 세분화 콜백이 자동 생성됨"""
         mock_executor = MagicMock()
         mock_session_mgr = MagicMock()
         mock_session_mgr.get.return_value = None
@@ -219,11 +219,18 @@ class TestRunAutoProgressCallbacks:
         call_kwargs = mock_executor.call_args
         on_progress = call_kwargs.kwargs.get("on_progress")
         on_compact = call_kwargs.kwargs.get("on_compact")
+        on_thinking = call_kwargs.kwargs.get("on_thinking")
+        on_tool_start = call_kwargs.kwargs.get("on_tool_start")
 
-        assert on_progress is not None, "on_progress should be auto-built"
+        # 세분화 콜백이 on_progress를 대체하므로 on_progress는 None
+        assert on_progress is None, "on_progress should be None (replaced by event callbacks)"
         assert on_compact is not None, "on_compact should be auto-built"
-        assert callable(on_progress)
         assert callable(on_compact)
+        # 세분화 콜백이 자동 구성됨
+        assert on_thinking is not None, "on_thinking should be auto-built"
+        assert on_tool_start is not None, "on_tool_start should be auto-built"
+        assert callable(on_thinking)
+        assert callable(on_tool_start)
 
     @pytest.mark.asyncio
     async def test_preserves_explicit_progress_callbacks(self):
@@ -277,7 +284,7 @@ class TestRunAutoProgressCallbacks:
 
     @pytest.mark.asyncio
     async def test_auto_built_callbacks_use_correct_presentation(self):
-        """자동 생성된 콜백이 올바른 PresentationContext를 캡처하는지 확인"""
+        """자동 생성된 세분화 콜백이 올바른 PresentationContext를 캡처하는지 확인"""
         mock_executor = MagicMock()
         mock_session_mgr = MagicMock()
         mock_session_mgr.get.return_value = None
@@ -302,11 +309,11 @@ class TestRunAutoProgressCallbacks:
 
         call_kwargs = mock_executor.call_args
         presentation = call_kwargs.kwargs.get("presentation")
-        on_progress = call_kwargs.kwargs.get("on_progress")
+        on_thinking = call_kwargs.kwargs.get("on_thinking")
 
-        # presentation과 on_progress 둘 다 자동 구성됨
+        # presentation과 세분화 콜백이 자동 구성됨
         assert presentation is not None
-        assert on_progress is not None
+        assert on_thinking is not None
         # presentation의 DM 정보가 올바른지 확인
         assert presentation.dm_channel_id == "D456"
         assert presentation.dm_thread_ts == "9999.0001"

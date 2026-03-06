@@ -1,0 +1,94 @@
+"""SlackNodeMap 단위 테스트"""
+
+import pytest
+from seosoyoung.slackbot.presentation.node_map import SlackNode, SlackNodeMap
+
+
+class TestSlackNodeMap:
+    def test_add_thinking(self):
+        nm = SlackNodeMap()
+        node = nm.add_thinking(event_id=1, msg_ts="1234.5678", parent_event_id=None)
+        assert node.event_id == 1
+        assert node.node_type == "thinking"
+        assert node.msg_ts == "1234.5678"
+
+    def test_add_tool(self):
+        nm = SlackNodeMap()
+        node = nm.add_tool(event_id=2, msg_ts="1234.5679", tool_use_id="tu_123", parent_event_id=1, tool_name="Bash")
+        assert node.event_id == 2
+        assert node.tool_use_id == "tu_123"
+        assert node.tool_name == "Bash"
+
+    def test_find_thinking_for_text(self):
+        nm = SlackNodeMap()
+        nm.add_thinking(event_id=1, msg_ts="ts1", parent_event_id=100)
+        node = nm.find_thinking_for_text(parent_event_id=100)
+        assert node is not None
+        assert node.event_id == 1
+
+    def test_find_thinking_for_text_not_found(self):
+        nm = SlackNodeMap()
+        node = nm.find_thinking_for_text(parent_event_id=999)
+        assert node is None
+
+    def test_find_tool_by_use_id(self):
+        nm = SlackNodeMap()
+        nm.add_tool(event_id=3, msg_ts="ts3", tool_use_id="tu_456", parent_event_id=1)
+        node = nm.find_tool_by_use_id("tu_456")
+        assert node is not None
+        assert node.event_id == 3
+
+    def test_find_tool_by_use_id_not_found(self):
+        nm = SlackNodeMap()
+        node = nm.find_tool_by_use_id("nonexistent")
+        assert node is None
+
+    def test_mark_completed(self):
+        nm = SlackNodeMap()
+        nm.add_thinking(event_id=1, msg_ts="ts1")
+        node = nm.mark_completed(1)
+        assert node is not None
+        assert node.completed is True
+
+    def test_mark_completed_nonexistent(self):
+        nm = SlackNodeMap()
+        node = nm.mark_completed(999)
+        assert node is None
+
+    def test_add_text_independent(self):
+        """독립 text 노드가 _last_thinking_by_parent에 등록되는지 (S6)"""
+        nm = SlackNodeMap()
+        nm.add_text(event_id=10, msg_ts="ts10", parent_event_id=5)
+        node = nm.find_thinking_for_text(parent_event_id=5)
+        assert node is not None
+        assert node.event_id == 10
+        assert node.node_type == "text"
+
+    def test_text_buffer_accumulation(self):
+        """text_buffer 누적 테스트 (S7)"""
+        nm = SlackNodeMap()
+        node = nm.add_thinking(event_id=1, msg_ts="ts1")
+        node.text_buffer = ""
+        node.text_buffer += "Hello "
+        node.text_buffer += "World"
+        assert node.text_buffer == "Hello World"
+
+    def test_clear_completed(self):
+        """완료된 노드 정리 (C1 수정)"""
+        nm = SlackNodeMap()
+        nm.add_thinking(event_id=1, msg_ts="ts1", parent_event_id=100)
+        nm.add_tool(event_id=2, msg_ts="ts2", tool_use_id="tu_1", parent_event_id=100)
+        nm.mark_completed(1)
+        count = nm.clear_completed()
+        assert count == 1
+        assert nm.find_thinking_for_text(parent_event_id=100) is None
+        # tool은 아직 있어야 함
+        assert nm.find_tool_by_use_id("tu_1") is not None
+
+    def test_clear_completed_with_tools(self):
+        nm = SlackNodeMap()
+        nm.add_tool(event_id=3, msg_ts="ts3", tool_use_id="tu_2")
+        nm.mark_completed(3)
+        count = nm.clear_completed()
+        assert count == 1
+        assert nm.find_tool_by_use_id("tu_2") is None

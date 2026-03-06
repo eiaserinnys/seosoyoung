@@ -82,3 +82,34 @@ def format_dm_progress(text: str, max_len: int = DM_MSG_MAX_LEN) -> str:
     if len(escaped) > max_len:
         escaped = escaped[-max_len:]
     return format_as_blockquote(escaped)
+
+
+# --- 세분화 이벤트 메시지 포맷 ---
+
+def format_thinking_initial() -> str:
+    """thinking 메시지 초기 포맷"""
+    return "... (thinking)"
+
+
+def format_thinking_text(text: str) -> str:
+    """thinking 메시지 텍스트 갱신 포맷"""
+    escaped = escape_backticks(text)
+    if len(escaped) > PROGRESS_MAX_LEN:
+        escaped = "...\n" + escaped[-PROGRESS_MAX_LEN:]
+    return escaped
+
+
+def format_tool_initial(tool_name: str) -> str:
+    """tool 메시지 초기 포맷"""
+    return f">> {tool_name}"
+
+
+def format_tool_complete(tool_name: str) -> str:
+    """tool 메시지 완료 포맷 (keep 모드)"""
+    return f">> {tool_name} (done)"
+
+
+def format_tool_error(tool_name: str, error: str) -> str:
+    """tool 메시지 에러 포맷 (keep 모드)"""
+    escaped_error = escape_backticks(error)
+    return f"🔧 {tool_name} ❌ {escaped_error}"

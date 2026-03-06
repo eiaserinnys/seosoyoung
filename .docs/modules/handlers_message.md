@@ -35,11 +35,11 @@ Returns:
     True if processed, False if skipped (empty message)
 
 ### `_contains_bot_mention(text)`
-- 위치: 줄 264
+- 위치: 줄 273
 - 설명: 텍스트에 봇 멘션이 포함되어 있는지 확인
 
 ### `_handle_dm_message(event, say, client, dependencies)`
-- 위치: 줄 272
+- 위치: 줄 281
 - 설명: DM 채널 메시지 처리
 
 앱 DM에서 보낸 메시지를 일반 채널 멘션과 동일하게 처리합니다.
@@ -47,7 +47,7 @@ Returns:
 - 스레드 메시지 (thread_ts 있음): 기존 세션에서 후속 처리
 
 ### `register_message_handlers(app, dependencies)`
-- 위치: 줄 348
+- 위치: 줄 357
 - 설명: 메시지 핸들러 등록
 
 Args:

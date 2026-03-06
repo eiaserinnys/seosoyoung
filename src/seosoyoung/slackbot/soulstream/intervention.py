@@ -31,6 +31,13 @@ class PendingPrompt:
     user_message: Optional[str] = None
     on_result: Any = None      # ResultCallback
     session_id: Optional[str] = None
+    # 세분화 이벤트 콜백
+    on_thinking: Any = None       # (thinking_text, event_id, parent_event_id) -> None
+    on_text_start: Any = None     # (event_id, parent_event_id) -> None
+    on_text_delta: Any = None     # (text, event_id, parent_event_id) -> None
+    on_text_end: Any = None       # (event_id, parent_event_id) -> None
+    on_tool_start: Any = None     # (tool_name, tool_input, tool_use_id, event_id, parent_event_id) -> None
+    on_tool_result: Any = None    # (result, tool_use_id, is_error, event_id, parent_event_id) -> None
 
 
 class InterventionManager:

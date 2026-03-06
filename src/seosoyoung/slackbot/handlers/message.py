@@ -64,7 +64,8 @@ def process_thread_message(
         True if processed, False if skipped (empty message)
     """
     from seosoyoung.slackbot.presentation.types import PresentationContext
-    from seosoyoung.slackbot.presentation.progress import build_progress_callbacks
+    from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
+    from seosoyoung.slackbot.presentation.progress import build_event_callbacks
 
     pm = plugin_manager
     user_id = event["user"]
@@ -178,8 +179,10 @@ def process_thread_message(
         is_thread_reply=True,
     )
 
-    # 콜백 팩토리
-    on_progress, on_compact = build_progress_callbacks(pctx, update_message_fn)
+    # 세분화 이벤트 콜백 (build_progress_callbacks 대체)
+    node_map = SlackNodeMap()
+    event_cbs = build_event_callbacks(pctx, node_map, "clean")
+    on_compact = event_cbs["on_compact"]
 
     # Plugin: before_execute hook — memory injection
     effective_prompt = prompt
@@ -250,13 +253,19 @@ def process_thread_message(
         prompt=effective_prompt,
         thread_ts=thread_ts,
         msg_ts=ts,
-        on_progress=on_progress,
+        on_progress=None,  # 세분화 콜백이 대체
         on_compact=on_compact,
         presentation=pctx,
         session_id=session.session_id,
         role=user_info["role"],
         user_message=clean_text,
         on_result=on_result,
+        on_thinking=event_cbs["on_thinking"],
+        on_text_start=event_cbs["on_text_start"],
+        on_text_delta=event_cbs["on_text_delta"],
+        on_text_end=event_cbs["on_text_end"],
+        on_tool_start=event_cbs["on_tool_start"],
+        on_tool_result=event_cbs["on_tool_result"],
     )
     return True
 

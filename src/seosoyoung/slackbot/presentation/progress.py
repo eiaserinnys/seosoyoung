@@ -13,7 +13,13 @@ from seosoyoung.slackbot.formatting import (
     format_as_blockquote,
     format_trello_progress,
     format_dm_progress,
+    format_thinking_initial,
+    format_thinking_text,
+    format_tool_initial,
+    format_tool_complete,
+    format_tool_error,
 )
+from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
 from seosoyoung.slackbot.presentation.types import PresentationContext
 
 logger = logging.getLogger(__name__)
@@ -150,3 +156,193 @@ def build_progress_callbacks(
             logger.warning(f"컴팩션 알림 전송 실패: {e}")
 
     return on_progress, on_compact
+
+
+def build_event_callbacks(
+    pctx: PresentationContext,
+    node_map: SlackNodeMap,
+    mode: str = "clean",
+) -> dict:
+    """세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
+
+    Args:
+        pctx: 프레젠테이션 컨텍스트
+        node_map: 이벤트-메시지 매핑
+        mode: "clean" (삭제) 또는 "keep" (유지)
+
+    Returns:
+        {
+            "on_thinking": ...,
+            "on_text_start": ...,
+            "on_text_delta": ...,
+            "on_text_end": ...,
+            "on_tool_start": ...,
+            "on_tool_result": ...,
+            "on_compact": ...,
+        }
+    """
+
+    async def _delete_or_update_complete(msg_ts: str) -> None:
+        """메시지 삭제, 실패 시 "(완료)"로 갱신 (S5)"""
+        try:
+            pctx.client.chat_delete(
+                channel=pctx.channel,
+                ts=msg_ts,
+            )
+        except Exception:
+            try:
+                pctx.client.chat_update(
+                    channel=pctx.channel,
+                    ts=msg_ts,
+                    text="(done)",
+                )
+            except Exception as e:
+                logger.warning(f"삭제/갱신 폴백 실패: {e}")
+
+    async def on_thinking(thinking_text: str, event_id, parent_event_id):
+        try:
+            text = format_thinking_text(thinking_text) if thinking_text else format_thinking_initial()
+            reply = pctx.client.chat_postMessage(
+                channel=pctx.channel,
+                thread_ts=pctx.thread_ts,
+                text=text,
+            )
+            msg_ts = reply["ts"]
+            node = node_map.add_thinking(event_id, msg_ts, parent_event_id)
+            if thinking_text:
+                node.text_buffer = thinking_text
+        except Exception as e:
+            logger.warning(f"thinking 메시지 생성 실패: {e}")
+
+    async def on_text_start(event_id, parent_event_id):
+        try:
+            node = node_map.find_thinking_for_text(parent_event_id)
+            if node:
+                # thinking 노드가 있으면 text_buffer 초기화
+                node.text_buffer = ""
+            else:
+                # 독립 text 노드: 새 스레드 메시지 생성 (S6)
+                text = format_thinking_initial()
+                reply = pctx.client.chat_postMessage(
+                    channel=pctx.channel,
+                    thread_ts=pctx.thread_ts,
+                    text=text,
+                )
+                msg_ts = reply["ts"]
+                node_map.add_text(event_id, msg_ts, parent_event_id)
+        except Exception as e:
+            logger.warning(f"text_start 처리 실패: {e}")
+
+    async def on_text_delta(text: str, event_id, parent_event_id):
+        try:
+            node = node_map.find_thinking_for_text(parent_event_id)
+            if not node:
+                logger.debug(f"text_delta: thinking 노드 없음 (parent_event_id={parent_event_id})")
+                return
+            node.text_buffer += text
+            display_text = format_thinking_text(node.text_buffer)
+            pctx.client.chat_update(
+                channel=pctx.channel,
+                ts=node.msg_ts,
+                text=display_text,
+            )
+        except Exception as e:
+            logger.warning(f"text_delta 갱신 실패: {e}")
+
+    async def on_text_end(event_id, parent_event_id):
+        try:
+            node = node_map.find_thinking_for_text(parent_event_id)
+            if not node:
+                return
+            node_map.mark_completed(node.event_id)
+
+            if mode == "clean":
+                await _delete_or_update_complete(node.msg_ts)
+            else:
+                # keep 모드: 최종 텍스트로 갱신 후 유지
+                display_text = format_thinking_text(node.text_buffer) if node.text_buffer else "(done)"
+                try:
+                    pctx.client.chat_update(
+                        channel=pctx.channel,
+                        ts=node.msg_ts,
+                        text=display_text,
+                    )
+                except Exception as e:
+                    logger.warning(f"text_end keep 갱신 실패: {e}")
+        except Exception as e:
+            logger.warning(f"text_end 처리 실패: {e}")
+
+    async def on_tool_start(tool_name: str, tool_input, tool_use_id: str, event_id, parent_event_id):
+        try:
+            text = format_tool_initial(tool_name)
+            reply = pctx.client.chat_postMessage(
+                channel=pctx.channel,
+                thread_ts=pctx.thread_ts,
+                text=text,
+            )
+            msg_ts = reply["ts"]
+            node_map.add_tool(event_id, msg_ts, tool_use_id, parent_event_id, tool_name)
+        except Exception as e:
+            logger.warning(f"tool_start 메시지 생성 실패: {e}")
+
+    async def on_tool_result(result, tool_use_id: str, is_error, event_id, parent_event_id):
+        try:
+            node = node_map.find_tool_by_use_id(tool_use_id)
+            if not node:
+                return
+            node_map.mark_completed(node.event_id)
+            tool_name = node.tool_name or "tool"
+
+            if mode == "clean":
+                await _delete_or_update_complete(node.msg_ts)
+            else:
+                # keep 모드: 결과 반영
+                if is_error:
+                    text = format_tool_error(tool_name, str(result)[:200])
+                else:
+                    text = format_tool_complete(tool_name)
+                try:
+                    pctx.client.chat_update(
+                        channel=pctx.channel,
+                        ts=node.msg_ts,
+                        text=text,
+                    )
+                except Exception as e:
+                    logger.warning(f"tool_result keep 갱신 실패: {e}")
+        except Exception as e:
+            logger.warning(f"tool_result 처리 실패: {e}")
+
+    # on_compact 콜백 (S8 - build_progress_callbacks와 동일 로직)
+    async def on_compact(trigger: str, message: str):
+        try:
+            if pctx.compact_msg_ts:
+                try:
+                    pctx.client.chat_update(
+                        channel=pctx.channel,
+                        ts=pctx.compact_msg_ts,
+                        text="... compact done",
+                    )
+                except Exception as e:
+                    logger.warning(f"이전 컴팩트 완료 메시지 갱신 실패: {e}")
+
+            text = ("... auto compact ..." if trigger == "auto"
+                    else "... compacting ...")
+            reply = pctx.client.chat_postMessage(
+                channel=pctx.channel,
+                thread_ts=pctx.thread_ts,
+                text=text,
+            )
+            pctx.compact_msg_ts = reply["ts"]
+            pctx._last_stale_check = 0.0
+        except Exception as e:
+            logger.warning(f"컴팩션 알림 전송 실패: {e}")
+
+    return {
+        "on_thinking": on_thinking,
+        "on_text_start": on_text_start,
+        "on_text_delta": on_text_delta,
+        "on_text_end": on_text_end,
+        "on_tool_start": on_tool_start,
+        "on_tool_result": on_tool_result,
+        "on_compact": on_compact,
+    }

@@ -54,3 +54,23 @@ card가 None이면 카드 정보 없이 세션 ID만 표시합니다.
 ### `format_dm_progress(text, max_len)`
 - 위치: 줄 79
 - 설명: DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
+
+### `format_thinking_initial()`
+- 위치: 줄 89
+- 설명: thinking 메시지 초기 포맷
+
+### `format_thinking_text(text)`
+- 위치: 줄 94
+- 설명: thinking 메시지 텍스트 갱신 포맷
+
+### `format_tool_initial(tool_name)`
+- 위치: 줄 102
+- 설명: tool 메시지 초기 포맷
+
+### `format_tool_complete(tool_name)`
+- 위치: 줄 107
+- 설명: tool 메시지 완료 포맷 (keep 모드)
+
+### `format_tool_error(tool_name, error)`
+- 위치: 줄 112
+- 설명: tool 메시지 에러 포맷 (keep 모드)

@@ -172,6 +172,13 @@ class SoulServiceClient:
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
         on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
         *,
+        # 세분화 이벤트 콜백
+        on_thinking: Optional[Callable] = None,
+        on_text_start: Optional[Callable] = None,
+        on_text_delta: Optional[Callable] = None,
+        on_text_end: Optional[Callable] = None,
+        on_tool_start: Optional[Callable] = None,
+        on_tool_result: Optional[Callable] = None,
         allowed_tools: Optional[List[str]] = None,
         disallowed_tools: Optional[List[str]] = None,
         use_mcp: bool = True,
@@ -228,6 +235,12 @@ class SoulServiceClient:
                     on_debug=on_debug,
                     on_session=on_session,
                     on_credential_alert=on_credential_alert,
+                    on_thinking=on_thinking,
+                    on_text_start=on_text_start,
+                    on_text_delta=on_text_delta,
+                    on_text_end=on_text_end,
+                    on_tool_start=on_tool_start,
+                    on_tool_result=on_tool_result,
                 )
                 # init 이벤트에서 읽은 session_id를 보존
                 if result.agent_session_id:
@@ -258,6 +271,12 @@ class SoulServiceClient:
                 return await self.reconnect_stream(
                     resolved_session_id, on_progress, on_compact, on_debug,
                     on_credential_alert,
+                    on_thinking=on_thinking,
+                    on_text_start=on_text_start,
+                    on_text_delta=on_text_delta,
+                    on_text_end=on_text_end,
+                    on_tool_start=on_tool_start,
+                    on_tool_result=on_tool_result,
                 )
             except ConnectionLostError:
                 continue
@@ -317,6 +336,14 @@ class SoulServiceClient:
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
+        *,
+        # 세분화 이벤트 콜백
+        on_thinking: Optional[Callable] = None,
+        on_text_start: Optional[Callable] = None,
+        on_text_delta: Optional[Callable] = None,
+        on_text_end: Optional[Callable] = None,
+        on_tool_start: Optional[Callable] = None,
+        on_tool_result: Optional[Callable] = None,
     ) -> ExecuteResult:
         """세션 SSE 스트림에 재연결
 
@@ -340,6 +367,12 @@ class SoulServiceClient:
                 on_compact=on_compact,
                 on_debug=on_debug,
                 on_credential_alert=on_credential_alert,
+                on_thinking=on_thinking,
+                on_text_start=on_text_start,
+                on_text_delta=on_text_delta,
+                on_text_end=on_text_end,
+                on_tool_start=on_tool_start,
+                on_tool_result=on_tool_result,
             )
 
     async def health_check(self) -> dict:
@@ -465,6 +498,13 @@ class SoulServiceClient:
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
         on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
+        # 세분화 이벤트 콜백
+        on_thinking: Optional[Callable] = None,       # (thinking_text, event_id, parent_event_id) -> None
+        on_text_start: Optional[Callable] = None,     # (event_id, parent_event_id) -> None
+        on_text_delta: Optional[Callable] = None,     # (text, event_id, parent_event_id) -> None
+        on_text_end: Optional[Callable] = None,       # (event_id, parent_event_id) -> None
+        on_tool_start: Optional[Callable] = None,     # (tool_name, tool_input, tool_use_id, event_id, parent_event_id) -> None
+        on_tool_result: Optional[Callable] = None,    # (result, tool_use_id, is_error, event_id, parent_event_id) -> None
     ) -> ExecuteResult:
         """SSE 이벤트 스트림 처리
 
@@ -475,6 +515,8 @@ class SoulServiceClient:
         result_agent_session_id = None
         result_claude_session_id = None
         error_message = None
+
+        has_granular = any([on_thinking, on_text_start, on_text_delta, on_text_end, on_tool_start, on_tool_result])
 
         try:
             async for event in self._parse_sse_stream(response):
@@ -493,9 +535,10 @@ class SoulServiceClient:
                             await on_session(session_id)
 
                 elif event.event == "progress":
-                    text = event.data.get("text", "")
-                    if on_progress and text:
-                        await on_progress(text)
+                    if not has_granular:
+                        text = event.data.get("text", "")
+                        if on_progress and text:
+                            await on_progress(text)
 
                 elif event.event == "compact":
                     if on_compact:
@@ -524,6 +567,56 @@ class SoulServiceClient:
                     last_progress = event.data.get("last_progress", "")
                     if last_progress and on_progress:
                         await on_progress(f"[재연결됨] {last_progress}")
+
+                elif event.event == "thinking":
+                    if on_thinking:
+                        await on_thinking(
+                            event.data.get("thinking", ""),
+                            event.data.get("_event_id"),
+                            event.data.get("parent_event_id"),
+                        )
+
+                elif event.event == "text_start":
+                    if on_text_start:
+                        await on_text_start(
+                            event.data.get("_event_id"),
+                            event.data.get("parent_event_id"),
+                        )
+
+                elif event.event == "text_delta":
+                    if on_text_delta:
+                        await on_text_delta(
+                            event.data.get("text", ""),
+                            event.data.get("_event_id"),
+                            event.data.get("parent_event_id"),
+                        )
+
+                elif event.event == "text_end":
+                    if on_text_end:
+                        await on_text_end(
+                            event.data.get("_event_id"),
+                            event.data.get("parent_event_id"),
+                        )
+
+                elif event.event == "tool_start":
+                    if on_tool_start:
+                        await on_tool_start(
+                            event.data.get("tool_name", ""),
+                            event.data.get("tool_input", {}),
+                            event.data.get("tool_use_id", ""),
+                            event.data.get("_event_id"),
+                            event.data.get("parent_event_id"),
+                        )
+
+                elif event.event == "tool_result":
+                    if on_tool_result:
+                        await on_tool_result(
+                            event.data.get("result", ""),
+                            event.data.get("tool_use_id", ""),
+                            event.data.get("is_error", False),
+                            event.data.get("_event_id"),
+                            event.data.get("parent_event_id"),
+                        )
 
         except asyncio.TimeoutError:
             error_message = "응답 대기 시간 초과"

@@ -135,6 +135,13 @@ class ClaudeExecutor:
         role: Optional[str] = None,
         user_message: Optional[str] = None,
         on_result: Optional[Callable] = None,  # (result, thread_ts, user_message) -> None
+        # 세분화 이벤트 콜백
+        on_thinking=None,
+        on_text_start=None,
+        on_text_delta=None,
+        on_text_end=None,
+        on_tool_start=None,
+        on_tool_result=None,
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -167,6 +174,12 @@ class ClaudeExecutor:
                 user_message=user_message,
                 on_result=on_result,
                 session_id=session_id,
+                on_thinking=on_thinking,
+                on_text_start=on_text_start,
+                on_text_delta=on_text_delta,
+                on_text_end=on_text_end,
+                on_tool_start=on_tool_start,
+                on_tool_result=on_tool_result,
             )
             return
 
@@ -180,6 +193,12 @@ class ClaudeExecutor:
                 role=role,
                 user_message=user_message,
                 on_result=on_result,
+                on_thinking=on_thinking,
+                on_text_start=on_text_start,
+                on_text_delta=on_text_delta,
+                on_text_end=on_text_end,
+                on_tool_start=on_tool_start,
+                on_tool_result=on_tool_result,
             )
         finally:
             lock.release()
@@ -197,6 +216,13 @@ class ClaudeExecutor:
         user_message,
         on_result,
         session_id,
+        # 세분화 이벤트 콜백
+        on_thinking=None,
+        on_text_start=None,
+        on_text_delta=None,
+        on_text_end=None,
+        on_tool_start=None,
+        on_tool_result=None,
     ):
         """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우"""
         logger.info(f"인터벤션 발생: thread={thread_ts}")
@@ -211,6 +237,12 @@ class ClaudeExecutor:
             user_message=user_message,
             on_result=on_result,
             session_id=session_id,
+            on_thinking=on_thinking,
+            on_text_start=on_text_start,
+            on_text_delta=on_text_delta,
+            on_text_end=on_text_end,
+            on_tool_start=on_tool_start,
+            on_tool_result=on_tool_result,
         )
         self._intervention.save_pending(thread_ts, pending)
 
@@ -235,6 +267,13 @@ class ClaudeExecutor:
         role,
         user_message,
         on_result,
+        # 세분화 이벤트 콜백
+        on_thinking=None,
+        on_text_start=None,
+        on_text_delta=None,
+        on_text_end=None,
+        on_tool_start=None,
+        on_tool_result=None,
     ):
         """락을 보유한 상태에서 실행 (while 루프로 pending 처리)"""
         # 실행 중 세션으로 표시
@@ -251,6 +290,12 @@ class ClaudeExecutor:
                 role=role,
                 user_message=user_message,
                 on_result=on_result,
+                on_thinking=on_thinking,
+                on_text_start=on_text_start,
+                on_text_delta=on_text_delta,
+                on_text_end=on_text_end,
+                on_tool_start=on_tool_start,
+                on_tool_result=on_tool_result,
             )
 
             # pending 확인 → while 루프
@@ -270,6 +315,12 @@ class ClaudeExecutor:
                     role=pending.role,
                     user_message=pending.user_message,
                     on_result=pending.on_result,
+                    on_thinking=pending.on_thinking,
+                    on_text_start=pending.on_text_start,
+                    on_text_delta=pending.on_text_delta,
+                    on_text_end=pending.on_text_end,
+                    on_tool_start=pending.on_tool_start,
+                    on_tool_result=pending.on_tool_result,
                 )
 
         finally:
@@ -288,6 +339,13 @@ class ClaudeExecutor:
         role,
         user_message,
         on_result,
+        # 세분화 이벤트 콜백
+        on_thinking=None,
+        on_text_start=None,
+        on_text_delta=None,
+        on_text_end=None,
+        on_tool_start=None,
+        on_tool_result=None,
     ):
         """단일 Claude 실행 -- Soulstream 서버에 위임"""
         effective_role = role or "admin"
@@ -305,6 +363,12 @@ class ClaudeExecutor:
             allowed_tools=role_config["allowed_tools"],
             disallowed_tools=role_config["disallowed_tools"],
             use_mcp=role_config["mcp_config_path"] is not None,
+            on_thinking=on_thinking,
+            on_text_start=on_text_start,
+            on_text_delta=on_text_delta,
+            on_text_end=on_text_end,
+            on_tool_start=on_tool_start,
+            on_tool_result=on_tool_result,
         )
 
     def _get_role_config(self, role: str) -> dict:
@@ -382,6 +446,13 @@ class ClaudeExecutor:
         allowed_tools: Optional[list] = None,
         disallowed_tools: Optional[list] = None,
         use_mcp: bool = True,
+        # 세분화 이벤트 콜백
+        on_thinking=None,
+        on_text_start=None,
+        on_text_delta=None,
+        on_text_end=None,
+        on_tool_start=None,
+        on_tool_result=None,
     ):
         """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
@@ -420,6 +491,12 @@ class ClaudeExecutor:
                     on_debug=on_debug,
                     on_session=on_session_callback,
                     on_credential_alert=on_credential_alert_callback,
+                    on_thinking=on_thinking,
+                    on_text_start=on_text_start,
+                    on_text_delta=on_text_delta,
+                    on_text_end=on_text_end,
+                    on_tool_start=on_tool_start,
+                    on_tool_result=on_tool_result,
                     allowed_tools=allowed_tools,
                     disallowed_tools=disallowed_tools,
                     use_mcp=use_mcp,
