@@ -38,27 +38,27 @@ These backends wrap the existing seosoyoung infrastructure
 
 - `__init__(self, executor, session_manager, restart_manager, data_dir, slack_client, update_message_fn)` (줄 236): Initialize with Claude executor and session manager.
 - `_build_presentation(self, channel, thread_ts, msg_ts, session_id, role)` (줄 263): presentation이 전달되지 않은 호출(워처 등)을 위해 PresentationContext를 자동 구성.
-- `async run(self, prompt, channel, thread_ts, role, session_id, on_progress, on_compact)` (줄 311): Execute Claude Code with the given prompt.
-- `async compact(self, session_id)` (줄 379): Compact a Claude Code session.
-- `get_session_id(self, thread_ts)` (줄 401): Get the Claude Code session ID for a thread.
-- `is_restart_pending(self)` (줄 406): Check if a restart is pending.
-- `get_data_dir(self)` (줄 410): Get the data directory for plugin storage.
+- `async run(self, prompt, channel, thread_ts, role, session_id, on_progress, on_compact)` (줄 313): Execute Claude Code with the given prompt.
+- `async compact(self, session_id)` (줄 382): Compact a Claude Code session.
+- `get_session_id(self, thread_ts)` (줄 404): Get the Claude Code session ID for a thread.
+- `is_restart_pending(self)` (줄 409): Check if a restart is pending.
+- `get_data_dir(self)` (줄 413): Get the data directory for plugin storage.
 
 ### `MentionTrackingBackendImpl`
-- 위치: 줄 420
+- 위치: 줄 423
 - 설명: Mention tracking backend wrapping the existing MentionTracker.
 
 #### 메서드
 
-- `__init__(self, tracker)` (줄 423): 
-- `mark(self, thread_ts)` (줄 426): 
-- `is_handled(self, thread_ts)` (줄 429): 
-- `unmark(self, thread_ts)` (줄 432): 
+- `__init__(self, tracker)` (줄 426): 
+- `mark(self, thread_ts)` (줄 429): 
+- `is_handled(self, thread_ts)` (줄 432): 
+- `unmark(self, thread_ts)` (줄 435): 
 
 ## 함수
 
 ### `init_plugin_backends(slack_client, executor, session_manager, restart_manager, data_dir, update_message_fn, mention_tracker)`
-- 위치: 줄 441
+- 위치: 줄 444
 - 설명: Initialize plugin SDK backends.
 
 Call this during startup after slack_client and executor are ready.

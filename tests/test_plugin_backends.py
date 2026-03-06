@@ -9,7 +9,10 @@ from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 
+from seosoyoung.slackbot.formatting import build_trello_header, format_trello_progress
 from seosoyoung.slackbot.plugin_backends import SoulstreamBackendImpl
+from seosoyoung.slackbot.presentation.types import PresentationContext
+from seosoyoung.slackbot.soulstream.result_processor import ResultProcessor
 
 
 def _make_backend(**overrides):
@@ -307,3 +310,174 @@ class TestRunAutoProgressCallbacks:
         # presentation의 DM 정보가 올바른지 확인
         assert presentation.dm_channel_id == "D456"
         assert presentation.dm_thread_ts == "9999.0001"
+
+
+class TestBuildTrelloHeaderDefense:
+    """build_trello_header에 None card 전달 시 방어 처리 테스트"""
+
+    def test_none_card_returns_fallback_header(self):
+        """card=None이면 '카드 정보 없음' 폴백 헤더 반환"""
+        header = build_trello_header(None, "sess-12345678")
+        assert "카드 정보 없음" in header
+        assert "sess-123" in header
+
+    def test_none_card_without_session_id(self):
+        """card=None, session_id 없을 때도 에러 없이 반환"""
+        header = build_trello_header(None)
+        assert "카드 정보 없음" in header
+
+    def test_normal_card_unchanged(self):
+        """정상 카드는 기존 동작 유지"""
+        mock_card = MagicMock()
+        mock_card.card_name = "테스트 카드"
+        mock_card.card_url = "https://trello.com/c/abc123"
+        header = build_trello_header(mock_card, "sess-abc")
+        assert "테스트 카드" in header
+        assert "https://trello.com/c/abc123" in header
+
+    def test_format_trello_progress_none_card(self):
+        """format_trello_progress에 card=None 전달 시 에러 없이 반환"""
+        result = format_trello_progress("진행 중...", None, "sess-abc")
+        assert "카드 정보 없음" in result
+        assert "진행 중..." in result
+
+
+class TestBuildPresentationTrelloCard:
+    """_build_presentation에 trello_card 전달 테스트"""
+
+    def test_trello_card_set_when_provided(self):
+        """trello_card가 전달되면 PresentationContext에 설정됨"""
+        mock_card = MagicMock()
+        mock_card.card_name = "테스트 카드"
+        mock_card.card_url = "https://trello.com/c/abc123"
+        backend = _make_backend()
+
+        pctx = backend._build_presentation(
+            channel="C123",
+            thread_ts="1234.5678",
+            msg_ts="1234.5678",
+            session_id=None,
+            role="admin",
+            trello_card=mock_card,
+        )
+
+        assert pctx.trello_card is mock_card
+        assert pctx.is_trello_mode is True
+
+    def test_trello_card_none_when_not_provided(self):
+        """trello_card 미전달 시 None (하위호환)"""
+        backend = _make_backend()
+
+        pctx = backend._build_presentation(
+            channel="C123",
+            thread_ts="1234.5678",
+            msg_ts="1234.5678",
+            session_id=None,
+            role="admin",
+        )
+
+        assert pctx.trello_card is None
+        assert pctx.is_trello_mode is True
+
+
+class TestRunPassesTrelloCard:
+    """run()에서 trello_card kwarg 전달 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_trello_card_passed_to_presentation(self):
+        """run()에 trello_card kwarg를 전달하면 presentation에 설정됨"""
+        mock_executor = MagicMock()
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+        mock_card = MagicMock()
+        mock_card.card_name = "테스트 카드"
+        mock_card.card_url = "https://trello.com/c/abc123"
+
+        backend = _make_backend(
+            executor=mock_executor,
+            session_manager=mock_session_mgr,
+        )
+
+        await backend.run(
+            prompt="test",
+            channel="C123",
+            thread_ts="1234.5678",
+            role="admin",
+            trello_card=mock_card,
+        )
+
+        call_kwargs = mock_executor.call_args
+        presentation = call_kwargs.kwargs.get("presentation")
+        assert presentation is not None
+        assert presentation.trello_card is mock_card
+
+
+def _make_pctx_trello_none(**overrides):
+    """trello_card=None인 트렐로 모드 PresentationContext 생성 헬퍼"""
+    defaults = dict(
+        channel="C123",
+        thread_ts="1234.5678",
+        msg_ts="1234.5678",
+        say=MagicMock(),
+        client=MagicMock(),
+        effective_role="admin",
+        session_id="sess-abc",
+        last_msg_ts="1234.5678",
+        main_msg_ts="1234.9999",
+        is_trello_mode=True,
+        trello_card=None,
+    )
+    defaults.update(overrides)
+    return PresentationContext(**defaults)
+
+
+def _make_result_processor():
+    """테스트용 ResultProcessor 생성 헬퍼"""
+    return ResultProcessor(
+        send_long_message=MagicMock(),
+        restart_manager=MagicMock(is_pending=False),
+        get_running_session_count=MagicMock(return_value=1),
+        send_restart_confirmation=MagicMock(),
+        update_message_fn=MagicMock(),
+    )
+
+
+class TestResultProcessorTrelloCardNone:
+    """ResultProcessor에서 trello_card=None일 때 방어 처리 테스트"""
+
+    def test_handle_interrupted_trello_card_none(self):
+        """handle_interrupted에서 trello_card=None이면 에러 없이 중단 메시지 표시"""
+        rp = _make_result_processor()
+        pctx = _make_pctx_trello_none()
+
+        # 에러 없이 완료되어야 함
+        rp.handle_interrupted(pctx)
+
+        # update_message_fn이 호출되어야 함
+        rp.update_message_fn.assert_called()
+        call_args = rp.update_message_fn.call_args
+        text_arg = call_args[0][3] if len(call_args[0]) > 3 else call_args.kwargs.get("text", "")
+        assert "중단됨" in text_arg
+
+    def test_handle_trello_success_trello_card_none(self):
+        """handle_trello_success에서 trello_card=None이면 에러 없이 성공 처리"""
+        rp = _make_result_processor()
+        pctx = _make_pctx_trello_none()
+        mock_result = MagicMock()
+        mock_result.session_id = "sess-new"
+        mock_result.list_run = None
+
+        # 에러 없이 완료되어야 함
+        rp.handle_trello_success(pctx, mock_result, "작업 완료", False)
+
+        rp.update_message_fn.assert_called()
+
+    def test_handle_error_trello_card_none(self):
+        """handle_error에서 trello_card=None이면 에러 없이 오류 메시지 표시"""
+        rp = _make_result_processor()
+        pctx = _make_pctx_trello_none()
+
+        # 에러 없이 완료되어야 함
+        rp.handle_error(pctx, "테스트 오류")
+
+        rp.update_message_fn.assert_called()

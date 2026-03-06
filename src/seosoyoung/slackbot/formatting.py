@@ -57,16 +57,19 @@ def format_as_blockquote(text: str) -> str:
     return "\n".join(lines)
 
 
-def build_trello_header(card: _CardLike, session_id: str = "") -> str:
+def build_trello_header(card: _CardLike | None, session_id: str = "") -> str:
     """트렐로 카드용 슬랙 메시지 헤더 생성
 
     진행 상태(계획/실행/완료)는 헤더가 아닌 슬랙 이모지 리액션으로 표시합니다.
+    card가 None이면 카드 정보 없이 세션 ID만 표시합니다.
     """
     session_display = f" | #️⃣ {session_id[:8]}" if session_id else ""
+    if card is None:
+        return f"*🎫 (카드 정보 없음){session_display}*"
     return f"*🎫 <{card.card_url}|{card.card_name}>{session_display}*"
 
 
-def format_trello_progress(text: str, card: _CardLike, session_id: str) -> str:
+def format_trello_progress(text: str, card: _CardLike | None, session_id: str) -> str:
     """트렐로 모드 채널 진행 상황 포맷"""
     header = build_trello_header(card, session_id)
     escaped = escape_backticks(text)

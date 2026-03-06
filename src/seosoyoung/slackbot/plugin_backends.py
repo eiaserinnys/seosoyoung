@@ -270,6 +270,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         *,
         dm_channel_id: str | None = None,
         dm_thread_ts: str | None = None,
+        trello_card: Any = None,
     ):
         """presentation이 전달되지 않은 호출(워처 등)을 위해 PresentationContext를 자동 구성.
 
@@ -304,6 +305,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             session_id=session_id,
             last_msg_ts=thread_ts,
             is_trello_mode=True,
+            trello_card=trello_card,
             dm_channel_id=dm_channel_id,
             dm_thread_ts=dm_thread_ts,
         )
@@ -338,6 +340,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                     role=role,
                     dm_channel_id=kwargs.get("dm_channel_id"),
                     dm_thread_ts=kwargs.get("dm_thread_ts"),
+                    trello_card=kwargs.get("trello_card"),
                 )
 
             # Auto-build progress callbacks when not provided

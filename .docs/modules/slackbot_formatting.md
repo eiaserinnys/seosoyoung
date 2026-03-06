@@ -45,11 +45,12 @@ claude/, presentation/ 등 여러 패키지에서 공통으로 사용합니다.
 - 설명: 트렐로 카드용 슬랙 메시지 헤더 생성
 
 진행 상태(계획/실행/완료)는 헤더가 아닌 슬랙 이모지 리액션으로 표시합니다.
+card가 None이면 카드 정보 없이 세션 ID만 표시합니다.
 
 ### `format_trello_progress(text, card, session_id)`
-- 위치: 줄 69
+- 위치: 줄 72
 - 설명: 트렐로 모드 채널 진행 상황 포맷
 
 ### `format_dm_progress(text, max_len)`
-- 위치: 줄 76
+- 위치: 줄 79
 - 설명: DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)

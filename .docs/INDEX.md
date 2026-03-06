@@ -119,7 +119,7 @@
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
 - `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:44): Slack backend implementation using slack_sdk client.
 - `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:233): Soulstream backend implementation using ClaudeExecutor.
-- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:420): Mention tracking backend wrapping the existing MentionTracker.
+- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:423): Mention tracking backend wrapping the existing MentionTracker.
 - `PresentationContext` (seosoyoung/slackbot/presentation/types.py:12): 프레젠테이션 레이어가 관리하는 실행 컨텍스트
 - `RestartType` (seosoyoung/slackbot/restart.py:15): 재시작 유형
 - `RestartRequest` (seosoyoung/slackbot/restart.py:23): 재시작 요청 정보
@@ -222,8 +222,8 @@
 - `truncate_progress_text()` (seosoyoung/slackbot/formatting.py:43): 진행 상황 텍스트를 표시용으로 정리
 - `format_as_blockquote()` (seosoyoung/slackbot/formatting.py:53): 텍스트를 슬랙 blockquote 형식으로 변환
 - `build_trello_header()` (seosoyoung/slackbot/formatting.py:60): 트렐로 카드용 슬랙 메시지 헤더 생성
-- `format_trello_progress()` (seosoyoung/slackbot/formatting.py:69): 트렐로 모드 채널 진행 상황 포맷
-- `format_dm_progress()` (seosoyoung/slackbot/formatting.py:76): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
+- `format_trello_progress()` (seosoyoung/slackbot/formatting.py:72): 트렐로 모드 채널 진행 상황 포맷
+- `format_dm_progress()` (seosoyoung/slackbot/formatting.py:79): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
 - `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:11): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:15): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `send_deploy_shutdown_popup()` (seosoyoung/slackbot/handlers/actions.py:83): 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
@@ -272,7 +272,7 @@
 - `init_bot_user_id()` (seosoyoung/slackbot/main.py:302): 봇 사용자 ID 초기화
 - `main()` (seosoyoung/slackbot/main.py:312): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
-- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:441): Initialize plugin SDK backends.
+- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:444): Initialize plugin SDK backends.
 - `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:29): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
