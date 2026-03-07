@@ -159,13 +159,12 @@ def format_expiry_date(expires_at: int | str | None) -> str:
 def render_profile_section(profile: dict, is_active: bool) -> str:
     """프로필 섹션 렌더링
 
-    프로필 데이터에 expires_at이 포함되어 있으면 인증 유효 기간을 표시하고,
-    없으면 rate limit 게이지 바를 표시합니다.
+    인증 유효 기간(expires_at이 있을 때)과 rate limit 게이지를 모두 표시합니다.
 
     Args:
-        profile: 프로필 데이터. 다음 두 형태를 모두 지원:
-            - 프로필 목록: {"name": str, "expires_at": int|None, ...}
-            - rate limit: {"name": str, "five_hour": {...}, "seven_day": {...}}
+        profile: 프로필 데이터
+            - expires_at: 인증 만료 시각 (Unix ms 또는 ISO, optional)
+            - five_hour, seven_day: rate limit 상태 (optional)
         is_active: 활성 프로필 여부
 
     Returns:
@@ -176,15 +175,16 @@ def render_profile_section(profile: dict, is_active: bool) -> str:
 
     lines = [header]
 
-    # expires_at 키가 있으면 유효 기간 표시, 없으면 rate limit 게이지 표시
+    # 인증 유효 기간 (expires_at 키가 있으면 표시)
     if "expires_at" in profile:
         lines.append(format_expiry_date(profile["expires_at"]))
-    else:
-        for rate_type in ("five_hour", "seven_day"):
-            state = profile.get(rate_type, {})
-            utilization = state.get("utilization", "unknown")
-            resets_at = state.get("resets_at")
-            lines.append(render_rate_limit_line(rate_type, utilization, resets_at))
+
+    # rate limit 게이지 (항상 표시)
+    for rate_type in ("five_hour", "seven_day"):
+        state = profile.get(rate_type, {})
+        utilization = state.get("utilization", "unknown")
+        resets_at = state.get("resets_at")
+        lines.append(render_rate_limit_line(rate_type, utilization, resets_at))
 
     return "\n".join(lines)
 
