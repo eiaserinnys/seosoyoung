@@ -26,7 +26,6 @@ from seosoyoung.slackbot.formatting import (
     format_thinking_complete,
     format_thinking_initial,
     format_thinking_text,
-    format_tool_complete,
     format_tool_initial,
     format_tool_result,
 )
@@ -370,25 +369,6 @@ class TestFormatToolResult:
         result = format_tool_result("Bash", "error1\nerror2", is_error=True)
         assert "> error1" in result
         assert "> error2" in result
-
-
-class TestFormatToolComplete:
-    """format_tool_complete 테스트"""
-
-    def test_uses_done_emoji(self):
-        result = format_tool_complete("Grep")
-        assert _emoji_tool_done() in result
-        assert "*Grep*" in result
-
-    def test_no_done_text(self):
-        """이전의 (done) 텍스트가 없어야 한다"""
-        result = format_tool_complete("Grep")
-        assert "(done)" not in result
-
-    def test_custom_done_emoji(self):
-        with patch.dict(os.environ, {"SOULSTREAM_EMOJI_TOOL_DONE": ":ssy-done:"}):
-            result = format_tool_complete("Read")
-            assert ":ssy-done:" in result
 
 
 class TestNormalizeNewlines:

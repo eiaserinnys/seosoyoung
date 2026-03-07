@@ -12,7 +12,6 @@ from seosoyoung.rescue.engine_adapter import (
     create_runner,
     interrupt,
     compact_session_sync,
-    ALLOWED_TOOLS,
     DISALLOWED_TOOLS,
 )
 
@@ -33,7 +32,7 @@ class TestCreateRunner:
     def test_runner_has_correct_tools_config(self):
         """allowed/disallowed tools가 올바르게 설정되는지 확인"""
         runner = create_runner("ts_123")
-        assert runner.allowed_tools == ALLOWED_TOOLS
+        assert runner.allowed_tools is None
         assert runner.disallowed_tools == DISALLOWED_TOOLS
 
     def test_no_env_parameter(self):
@@ -48,7 +47,8 @@ class TestAllowedTools:
 
     def test_allowed_tools_is_none(self):
         """admin 역할의 allowed_tools=None (모든 도구 허용)"""
-        assert ALLOWED_TOOLS is None
+        runner = create_runner()
+        assert runner.allowed_tools is None
 
     def test_disallowed_tools_list(self):
         """금지 도구 목록이 올바른지 확인"""

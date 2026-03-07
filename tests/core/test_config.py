@@ -8,12 +8,32 @@ from unittest.mock import patch
 import pytest
 
 
+_MINIMAL_ENV = {
+    "NOTIFY_CHANNEL": "",
+    "GEMINI_MODEL": "gemini-test",
+    "SEOSOYOUNG_SOUL_URL": "http://localhost:4105",
+    "EXECUTE_EMOJI": "rocket",
+    "EMOJI_TRANSLATE_PROGRESS": "hourglass_flowing_sand",
+    "EMOJI_TRANSLATE_DONE": "ssy-happy",
+    "EMOJI_TEXT_SESSION_START": ":ssy-surprised:",
+    "EMOJI_TEXT_LTM_INJECT": ":ssy-thinking:",
+    "EMOJI_TEXT_NEW_OBS_INJECT": ":ssy-curious:",
+    "EMOJI_TEXT_SESSION_OBS_INJECT": ":ssy-thinking:",
+    "EMOJI_TEXT_CHANNEL_OBS_INJECT": ":ssy-curious:",
+    "EMOJI_TEXT_RESTART_TROUBLE": ":ssy-troubled:",
+    "EMOJI_TEXT_OBS_COMPLETE": ":ssy-happy:",
+    "EMOJI_TEXT_INTERVENTION_ERROR": ":ssy-troubled:",
+}
+
+
 def reload_config_with_env(env_vars: dict):
     """환경변수를 설정하고 config 모듈 재로드
 
-    dotenv.load_dotenv를 mock하여 .env 파일 로드를 방지
+    dotenv.load_dotenv를 mock하여 .env 파일 로드를 방지.
+    _MINIMAL_ENV 기본 환경변수 위에 env_vars를 덮어씁니다.
     """
-    with patch.dict(os.environ, env_vars, clear=True):
+    merged = {**_MINIMAL_ENV, **env_vars}
+    with patch.dict(os.environ, merged, clear=True):
         with patch("dotenv.load_dotenv"):
             import seosoyoung.slackbot.config as config_module
             importlib.reload(config_module)
@@ -83,7 +103,7 @@ class TestConfigPaths:
 
     def test_get_log_path_default(self):
         """LOG_PATH 환경변수 없을 때 기본 경로 반환"""
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, _MINIMAL_ENV, clear=True):
             with patch("dotenv.load_dotenv"):
                 import seosoyoung.slackbot.config as config_module
                 importlib.reload(config_module)
@@ -95,7 +115,7 @@ class TestConfigPaths:
     def test_get_log_path_from_env(self):
         """LOG_PATH 환경변수 설정 시 해당 경로 반환"""
         custom_path = "/custom/log/path"
-        with patch.dict(os.environ, {"LOG_PATH": custom_path}, clear=True):
+        with patch.dict(os.environ, {**_MINIMAL_ENV, "LOG_PATH": custom_path}, clear=True):
             with patch("dotenv.load_dotenv"):
                 import seosoyoung.slackbot.config as config_module
                 importlib.reload(config_module)

@@ -107,18 +107,6 @@ def _get_channel_messages(client, channel: str, limit: int = 20) -> list[dict]:
         return []
 
 
-def _format_context_messages(messages: list[dict], channel: str = "") -> str:
-    """메시지 dict 리스트를 컨텍스트 문자열로 포맷팅"""
-    return "\n".join(
-        format_slack_message(msg, channel=channel) for msg in messages
-    )
-
-
-def get_channel_history(client, channel: str, limit: int = 20) -> str:
-    """채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환"""
-    return _format_context_messages(_get_channel_messages(client, channel, limit), channel=channel)
-
-
 _ADMIN_COMMANDS = frozenset({
     "help", "status", "update", "restart", "compact", "profile", "cleanup", "log", "plugins",
     "session-info",

@@ -44,20 +44,12 @@ Returns:
 - 위치: 줄 98
 - 설명: 채널의 최근 메시지를 가져와서 dict 리스트로 반환
 
-### `_format_context_messages(messages, channel)`
-- 위치: 줄 110
-- 설명: 메시지 dict 리스트를 컨텍스트 문자열로 포맷팅
-
-### `get_channel_history(client, channel, limit)`
-- 위치: 줄 117
-- 설명: 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
-
 ### `_is_admin_command(command)`
-- 위치: 줄 141
+- 위치: 줄 129
 - 설명: 관리자 명령어 여부 판별
 
 ### `try_handle_command(command, text, channel, ts, thread_ts, user_id, say, client, deps)`
-- 위치: 줄 150
+- 위치: 줄 138
 - 설명: 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
 
 handle_mention과 DM 핸들러에서 공유합니다.
@@ -74,7 +66,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `create_session_and_run_claude(event, clean_text, channel, ts, thread_ts, user_id, say, client, deps)`
-- 위치: 줄 238
+- 위치: 줄 226
 - 설명: 세션 생성 + 컨텍스트 빌드 + Claude 실행.
 
 handle_mention과 DM 핸들러에서 공유합니다.
@@ -91,7 +83,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 436
+- 위치: 줄 424
 - 설명: 멘션 핸들러 등록
 
 Args:

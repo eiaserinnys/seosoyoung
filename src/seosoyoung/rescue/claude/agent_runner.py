@@ -286,16 +286,6 @@ class ClaudeRunner:
         self.pid: Optional[int] = None
         self.execution_loop: Optional[asyncio.AbstractEventLoop] = None
 
-    @classmethod
-    async def shutdown_all_clients(cls) -> int:
-        """하위 호환: 모듈 레벨 shutdown_all()로 위임"""
-        return await shutdown_all()
-
-    @classmethod
-    def shutdown_all_clients_sync(cls) -> int:
-        """하위 호환: 모듈 레벨 shutdown_all_sync()로 위임"""
-        return shutdown_all_sync()
-
     def run_sync(self, coro):
         """동기 컨텍스트에서 코루틴을 실행하는 브릿지"""
         return run_in_new_loop(coro)

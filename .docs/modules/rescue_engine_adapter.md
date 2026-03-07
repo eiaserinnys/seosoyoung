@@ -16,18 +16,18 @@ Claude에 전달되며, env 주입은 사용하지 않습니다.
 ## 함수
 
 ### `create_runner(thread_ts)`
-- 위치: 줄 28
+- 위치: 줄 27
 - 설명: rescue-bot용 ClaudeRunner를 생성합니다.
 
 Args:
     thread_ts: 스레드 타임스탬프 (세션 키)
 
 ### `interrupt(thread_ts)`
-- 위치: 줄 42
+- 위치: 줄 41
 - 설명: 실행 중인 스레드에 인터럽트 전송
 
 ### `compact_session_sync(session_id)`
-- 위치: 줄 50
+- 위치: 줄 49
 - 설명: 세션 컴팩트 (동기)
 
 ## 내부 의존성

@@ -201,7 +201,7 @@ class TestMentionHandlerThreadSession:
         handler_deps["session_manager"].create.return_value = mock_session
 
         with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process, \
-             patch("seosoyoung.slackbot.handlers.mention.get_channel_history", return_value=""):
+             patch("seosoyoung.slackbot.handlers.mention._get_channel_messages", return_value=[]):
 
             from seosoyoung.slackbot.handlers.mention import register_mention_handlers
 
@@ -245,7 +245,7 @@ class TestMentionHandlerThreadSession:
         handler_deps["session_manager"].create.return_value = mock_session
 
         with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process, \
-             patch("seosoyoung.slackbot.handlers.mention.get_channel_history", return_value=""):
+             patch("seosoyoung.slackbot.handlers.mention._get_channel_messages", return_value=[]):
 
             from seosoyoung.slackbot.handlers.mention import register_mention_handlers
 
