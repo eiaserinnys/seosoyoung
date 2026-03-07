@@ -149,8 +149,8 @@
 - `SessionNotRunningError` (seosoyoung/slackbot/soulstream/service_client.py:63): 세션이 실행 중이 아님
 - `RateLimitError` (seosoyoung/slackbot/soulstream/service_client.py:68): 동시 실행 제한 초과
 - `ConnectionLostError` (seosoyoung/slackbot/soulstream/service_client.py:73): SSE 연결 끊김 (재시도 실패)
-- `ExponentialBackoff` (seosoyoung/slackbot/soulstream/service_client.py:80): 지수 백오프 유틸리티
-- `SoulServiceClient` (seosoyoung/slackbot/soulstream/service_client.py:110): Soulstream 서버 HTTP + SSE 클라이언트
+- `ExponentialBackoff` (seosoyoung/slackbot/soulstream/service_client.py:88): 지수 백오프 유틸리티
+- `SoulServiceClient` (seosoyoung/slackbot/soulstream/service_client.py:118): Soulstream 서버 HTTP + SSE 클라이언트
 - `Session` (seosoyoung/slackbot/soulstream/session.py:19): Claude Code 세션 정보
 - `SessionManager` (seosoyoung/slackbot/soulstream/session.py:41): 세션 매니저
 - `SessionRuntime` (seosoyoung/slackbot/soulstream/session.py:263): 세션 실행 상태 관리자

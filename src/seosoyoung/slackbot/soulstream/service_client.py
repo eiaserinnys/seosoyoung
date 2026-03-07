@@ -71,8 +71,16 @@ class RateLimitError(SoulServiceError):
 
 
 class ConnectionLostError(SoulServiceError):
-    """SSE 연결 끊김 (재시도 실패)"""
-    pass
+    """SSE 연결 끊김 (재시도 실패)
+
+    Attributes:
+        agent_session_id: init 이벤트에서 확보한 세션 ID (없으면 None).
+            _handle_sse_events에서 init 이후 연결이 끊긴 경우 이 값이 설정되어
+            execute()에서 재연결에 활용할 수 있습니다.
+    """
+    def __init__(self, message: str, agent_session_id: str | None = None):
+        super().__init__(message)
+        self.agent_session_id = agent_session_id
 
 
 # === 유틸리티 ===
@@ -249,9 +257,10 @@ class SoulServiceClient:
                 if result.agent_session_id:
                     resolved_session_id = result.agent_session_id
                 return result
-            except ConnectionLostError:
+            except ConnectionLostError as e:
                 # init 이벤트에서 이미 session_id를 받았을 수 있음
-                pass
+                if e.agent_session_id:
+                    resolved_session_id = e.agent_session_id
 
         # 연결 끊김 → reconnect_stream()으로 새 HTTP 요청을 보내 재연결
         if not resolved_session_id:
@@ -564,7 +573,8 @@ class SoulServiceClient:
     ) -> ExecuteResult:
         """SSE 이벤트 스트림 처리
 
-        ConnectionLostError는 catch하지 않고 상위 레이어로 전파합니다.
+        ConnectionLostError가 발생하면 이미 확보한 agent_session_id를 에러에
+        첨부하여 상위 레이어로 전파합니다.
         재연결은 execute()에서 reconnect_stream()을 통해 처리합니다.
         """
         result_text = ""
@@ -679,6 +689,11 @@ class SoulServiceClient:
                             result_agent_session_id or "",
                         )
 
+        except ConnectionLostError as e:
+            # 확보한 agent_session_id를 에러에 첨부하여 재연결에 활용
+            raise ConnectionLostError(
+                str(e), agent_session_id=result_agent_session_id,
+            ) from e
         except asyncio.TimeoutError:
             error_message = "응답 대기 시간 초과"
             logger.error("[SSE] asyncio.TimeoutError: 전체 스트림 10분 제한 초과")

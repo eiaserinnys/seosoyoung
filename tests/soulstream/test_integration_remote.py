@@ -230,7 +230,6 @@ class TestIntegrationIntervention:
         """session_id 확보 후 인터벤션은 session 기반 API를 사용"""
         mock_adapter = MagicMock()
         executor._service_adapter = mock_adapter
-        executor._active_remote_requests["1234.5678"] = "1234.5678"
         executor._register_session_id("1234.5678", "sess-abc")
 
         pctx = _make_pctx()
@@ -254,7 +253,6 @@ class TestIntegrationIntervention:
         """session_id 미확보 상태에서 인터벤션은 버퍼에 보관"""
         mock_adapter = MagicMock()
         executor._service_adapter = mock_adapter
-        executor._active_remote_requests["1234.5678"] = "1234.5678"
         # session_id는 아직 등록 안 됨
 
         pctx = _make_pctx()

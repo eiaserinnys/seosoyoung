@@ -46,8 +46,7 @@ class TestPhase1_DeployMessageNoDuplicateCommits:
         from supervisor.notifier import format_change_detected_message
 
         result = format_change_detected_message(
-            runtime_commits=["abc1234 feat: test feature"],
-            seosoyoung_commits=[],
+            {"runtime": ["abc1234 feat: test feature"]},
         )
         assert "변경점" in result
         assert "`abc1234`" in result
@@ -94,8 +93,7 @@ class TestPhase1_DeployMessageNoDuplicateCommits:
         )
 
         change_msg = format_change_detected_message(
-            runtime_commits=["abc1234 feat: something"],
-            seosoyoung_commits=["def5678 fix: bug"],
+            {"runtime": ["abc1234 feat: something"], "seosoyoung": ["def5678 fix: bug"]},
         )
         deploy_msg = format_deploy_start_message()
 
@@ -277,7 +275,7 @@ class TestDeployMessageFlow:
         )
 
         commits = ["abc1234 feat: important change"]
-        change_msg = format_change_detected_message(commits, [])
+        change_msg = format_change_detected_message({"runtime": commits})
         deploy_msg = format_deploy_start_message()
         restart_msg = format_restart_start_message()
         complete_msg = format_restart_complete_message()

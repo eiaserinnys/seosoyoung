@@ -275,9 +275,8 @@ class TestInterventionDualPath:
         )
 
     def test_remote_intervention_uses_adapter(self, executor, session):
-        """remote 인터벤션: session_id 확보 시 run_in_new_loop으로 adapter.intervene_by_session 호출"""
+        """remote 인터벤션: session_id 확보 시 run_in_new_loop으로 adapter.intervene 호출"""
         mock_adapter = MagicMock()
-        executor._active_remote_requests["1234.5678"] = "1234.5678"
         # session_id를 등록하여 session 기반 경로로 진입
         executor._register_session_id("1234.5678", "sess-abc")
 
