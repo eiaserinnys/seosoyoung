@@ -120,7 +120,7 @@
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
 - `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:53): Slack backend implementation using slack_sdk client.
 - `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:242): Soulstream backend implementation using ClaudeExecutor.
-- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:472): Mention tracking backend wrapping the existing MentionTracker.
+- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:473): Mention tracking backend wrapping the existing MentionTracker.
 - `SlackNode` (seosoyoung/slackbot/presentation/node_map.py:12): 이벤트 노드에 대응하는 슬랙 메시지
 - `SlackNodeMap` (seosoyoung/slackbot/presentation/node_map.py:24): 이벤트 노드 <-> 슬랙 메시지 ts 매핑
 - `PresentationContext` (seosoyoung/slackbot/presentation/types.py:12): 프레젠테이션 레이어가 관리하는 실행 컨텍스트
@@ -280,9 +280,9 @@
 - `init_bot_user_id()` (seosoyoung/slackbot/main.py:302): 봇 사용자 ID 초기화
 - `main()` (seosoyoung/slackbot/main.py:312): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
-- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:493): Initialize plugin SDK backends.
+- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:494): Initialize plugin SDK backends.
 - `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:35): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
-- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:161): 세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
+- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:164): 세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slackbot/slack/file_handler.py:67): 스레드별 임시 폴더 생성

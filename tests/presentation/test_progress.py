@@ -482,3 +482,25 @@ class TestStaleThinkingRecovery:
 
         # 트렐로 모드에서는 conversations_replies 호출 안 됨
         client.conversations_replies.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_trello_mode_main_msg_ts_none_skips_update(self):
+        """트렐로 모드 + DM 없음 + main_msg_ts=None이면 update를 스킵한다"""
+        client = MagicMock()
+        pctx = _make_pctx(
+            client=client,
+            is_trello_mode=True,
+            main_msg_ts=None,
+            dm_channel_id=None,
+            dm_thread_ts=None,
+        )
+        update_fn = MagicMock()
+
+        on_progress, _ = build_progress_callbacks(pctx, update_fn)
+
+        await on_progress("작업 중...")
+
+        # main_msg_ts가 None이므로 update_message_fn은 호출되지 않아야 함
+        update_fn.assert_not_called()
+        # chat_postMessage도 호출되지 않아야 함 (DM 채널 없음)
+        client.chat_postMessage.assert_not_called()

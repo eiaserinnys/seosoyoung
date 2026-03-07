@@ -75,9 +75,12 @@ def build_progress_callbacks(
                     )
                     pctx.dm_last_reply_ts = reply["ts"]
                 else:
-                    update_text = format_trello_progress(
-                        display_text, pctx.trello_card, pctx.session_id or "")
-                    update_message_fn(pctx.client, pctx.channel, pctx.main_msg_ts, update_text)
+                    if pctx.main_msg_ts:
+                        update_text = format_trello_progress(
+                            display_text, pctx.trello_card, pctx.session_id or "")
+                        update_message_fn(pctx.client, pctx.channel, pctx.main_msg_ts, update_text)
+                    else:
+                        logger.warning("trello mode progress: main_msg_ts is None, skipping update")
             else:
                 # stale 사고 과정 체크 (rate-limited)
                 now = time.monotonic()

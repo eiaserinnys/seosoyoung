@@ -313,6 +313,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             effective_role=role,
             session_id=session_id,
             last_msg_ts=thread_ts,
+            main_msg_ts=msg_ts,
             is_trello_mode=True,
             trello_card=trello_card,
             dm_channel_id=dm_channel_id,

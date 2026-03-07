@@ -38,22 +38,22 @@ These backends wrap the existing seosoyoung infrastructure
 
 - `__init__(self, executor, session_manager, restart_manager, data_dir, slack_client, update_message_fn)` (줄 245): Initialize with Claude executor and session manager.
 - `_build_presentation(self, channel, thread_ts, msg_ts, session_id, role)` (줄 272): presentation이 전달되지 않은 호출(워처 등)을 위해 PresentationContext를 자동 구성.
-- `async run(self, prompt, channel, thread_ts, role, session_id, on_progress, on_compact)` (줄 322): Execute Claude Code with the given prompt.
-- `async compact(self, session_id)` (줄 431): Compact a Claude Code session.
-- `get_session_id(self, thread_ts)` (줄 453): Get the Claude Code session ID for a thread.
-- `is_restart_pending(self)` (줄 458): Check if a restart is pending.
-- `get_data_dir(self)` (줄 462): Get the data directory for plugin storage.
+- `async run(self, prompt, channel, thread_ts, role, session_id, on_progress, on_compact)` (줄 323): Execute Claude Code with the given prompt.
+- `async compact(self, session_id)` (줄 432): Compact a Claude Code session.
+- `get_session_id(self, thread_ts)` (줄 454): Get the Claude Code session ID for a thread.
+- `is_restart_pending(self)` (줄 459): Check if a restart is pending.
+- `get_data_dir(self)` (줄 463): Get the data directory for plugin storage.
 
 ### `MentionTrackingBackendImpl`
-- 위치: 줄 472
+- 위치: 줄 473
 - 설명: Mention tracking backend wrapping the existing MentionTracker.
 
 #### 메서드
 
-- `__init__(self, tracker)` (줄 475): 
-- `mark(self, thread_ts)` (줄 478): 
-- `is_handled(self, thread_ts)` (줄 481): 
-- `unmark(self, thread_ts)` (줄 484): 
+- `__init__(self, tracker)` (줄 476): 
+- `mark(self, thread_ts)` (줄 479): 
+- `is_handled(self, thread_ts)` (줄 482): 
+- `unmark(self, thread_ts)` (줄 485): 
 
 ## 함수
 
@@ -66,7 +66,7 @@ These backends wrap the existing seosoyoung infrastructure
 - 설명: text_only 모드용 no-op compact 콜백.
 
 ### `init_plugin_backends(slack_client, executor, session_manager, restart_manager, data_dir, update_message_fn, mention_tracker)`
-- 위치: 줄 493
+- 위치: 줄 494
 - 설명: Initialize plugin SDK backends.
 
 Call this during startup after slack_client and executor are ready.

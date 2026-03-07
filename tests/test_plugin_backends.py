@@ -56,6 +56,7 @@ class TestBuildPresentation:
         assert pctx.dm_channel_id == "D456"
         assert pctx.dm_thread_ts == "9999.0001"
         assert pctx.last_msg_ts == "1234.5678"
+        assert pctx.main_msg_ts == "1234.5679"
 
     def test_builds_presentation_without_dm(self):
         """DM 정보 없이 구성"""
@@ -488,3 +489,59 @@ class TestResultProcessorTrelloCardNone:
         rp.handle_error(pctx, "테스트 오류")
 
         rp.update_message_fn.assert_called()
+
+
+class TestResultProcessorMainMsgTsNone:
+    """ResultProcessor에서 main_msg_ts=None일 때 방어 처리 테스트"""
+
+    def test_handle_interrupted_main_msg_ts_none_trello(self):
+        """handle_interrupted에서 트렐로 모드 + main_msg_ts=None이면 조용히 반환"""
+        rp = _make_result_processor()
+        pctx = _make_pctx_trello_none(main_msg_ts=None)
+
+        rp.handle_interrupted(pctx)
+
+        # main_msg_ts가 None이므로 update_message_fn은 호출되지 않아야 함
+        rp.update_message_fn.assert_not_called()
+
+    def test_handle_trello_success_main_msg_ts_none_falls_back_to_send(self):
+        """handle_trello_success에서 main_msg_ts=None이면 send_long_message 폴백"""
+        rp = _make_result_processor()
+        pctx = _make_pctx_trello_none(main_msg_ts=None)
+        mock_result = MagicMock()
+        mock_result.session_id = "sess-new"
+        mock_result.list_run = None
+
+        rp.handle_trello_success(pctx, mock_result, "작업 완료", False)
+
+        # update_message_fn은 호출되지 않아야 함
+        rp.update_message_fn.assert_not_called()
+        # send_long_message로 폴백
+        rp.send_long_message.assert_called_once()
+
+    def test_handle_trello_success_main_msg_ts_none_list_run(self):
+        """handle_trello_success에서 main_msg_ts=None + is_list_run이면 send_long_message 폴백"""
+        rp = _make_result_processor()
+        pctx = _make_pctx_trello_none(main_msg_ts=None)
+        mock_result = MagicMock()
+        mock_result.session_id = "sess-new"
+        mock_result.list_run = "📌 PLAN: test"
+
+        rp.handle_trello_success(pctx, mock_result, "작업 완료", True)
+
+        rp.update_message_fn.assert_not_called()
+        rp.send_long_message.assert_called_once()
+
+    def test_handle_error_main_msg_ts_none_trello_falls_back_to_say(self):
+        """handle_error에서 트렐로 모드 + main_msg_ts=None이면 say로 폴백"""
+        rp = _make_result_processor()
+        pctx = _make_pctx_trello_none(main_msg_ts=None)
+
+        rp.handle_error(pctx, "테스트 오류")
+
+        # update_message_fn은 호출되지 않아야 함 (main_msg_ts가 None)
+        rp.update_message_fn.assert_not_called()
+        # say로 폴백
+        pctx.say.assert_called_once()
+        call_kwargs = pctx.say.call_args[1]
+        assert "오류" in call_kwargs["text"]

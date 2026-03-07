@@ -62,7 +62,10 @@ class ResultProcessor:
                 except Exception as e:
                     logger.warning(f"DM 중단 메시지 업데이트 실패: {e}")
 
-            target_ts = pctx.main_msg_ts if pctx.is_trello_mode else pctx.last_msg_ts
+            if pctx.is_trello_mode:
+                target_ts = pctx.main_msg_ts
+            else:
+                target_ts = pctx.last_msg_ts
             if not target_ts:
                 return
 
@@ -135,14 +138,19 @@ class ResultProcessor:
             "text": {"type": "mrkdwn", "text": final_text}
         }]
 
-        if is_list_run:
-            self.update_message_fn(pctx.client, pctx.channel, pctx.main_msg_ts,
-                           final_text, blocks=final_blocks)
+        if pctx.main_msg_ts:
+            if is_list_run:
+                self.update_message_fn(pctx.client, pctx.channel, pctx.main_msg_ts,
+                               final_text, blocks=final_blocks)
+            else:
+                self.replace_thinking_message(
+                    pctx.client, pctx.channel, pctx.main_msg_ts,
+                    final_text, final_blocks, thread_ts=None,
+                )
         else:
-            self.replace_thinking_message(
-                pctx.client, pctx.channel, pctx.main_msg_ts,
-                final_text, final_blocks, thread_ts=None,
-            )
+            logger.warning("main_msg_ts is None — skipping chat.update, sending as new message")
+            self.send_long_message(pctx.say, response, pctx.thread_ts)
+            return
 
         if len(response) > max_response_len:
             self.send_long_message(pctx.say, response, pctx.thread_ts)
@@ -315,13 +323,16 @@ class ResultProcessor:
                 logger.warning(f"DM 에러 메시지 업데이트 실패: {e}")
 
         if pctx.is_trello_mode:
-            try:
-                header = build_trello_header(pctx.trello_card, pctx.session_id or "")
-                error_text = f"{header}\n\n❌ {error_msg}"
-                self.update_message_fn(pctx.client, pctx.channel, pctx.main_msg_ts, error_text,
-                               blocks=[{"type": "section",
-                                        "text": {"type": "mrkdwn", "text": error_text}}])
-            except Exception:
+            if pctx.main_msg_ts:
+                try:
+                    header = build_trello_header(pctx.trello_card, pctx.session_id or "")
+                    error_text = f"{header}\n\n❌ {error_msg}"
+                    self.update_message_fn(pctx.client, pctx.channel, pctx.main_msg_ts, error_text,
+                                   blocks=[{"type": "section",
+                                            "text": {"type": "mrkdwn", "text": error_text}}])
+                except Exception:
+                    pctx.say(text=f"❌ {error_msg}", thread_ts=pctx.thread_ts)
+            else:
                 pctx.say(text=f"❌ {error_msg}", thread_ts=pctx.thread_ts)
         else:
             try:
