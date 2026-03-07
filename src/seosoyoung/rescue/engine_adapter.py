@@ -21,7 +21,6 @@ from seosoyoung.utils.async_bridge import run_in_new_loop
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_TOOLS = None  # None = 모든 도구 허용
 DISALLOWED_TOOLS = ["WebFetch", "WebSearch", "Task"]
 
 
@@ -34,7 +33,7 @@ def create_runner(thread_ts: str = "") -> ClaudeRunner:
     return ClaudeRunner(
         thread_ts=thread_ts,
         working_dir=RescueConfig.get_working_dir(),
-        allowed_tools=ALLOWED_TOOLS,
+        allowed_tools=None,
         disallowed_tools=DISALLOWED_TOOLS,
     )
 

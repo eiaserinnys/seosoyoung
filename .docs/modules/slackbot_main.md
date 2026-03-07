@@ -47,35 +47,31 @@ SIGTERM, SIGINT 수신 시 활성 세션이 있으면 사용자에게 확인을 
 - 위치: 줄 171
 - 설명: plugins.yaml 레지스트리에서 플러그인을 로드합니다.
 
-### `_get_memory_plugin()`
-- 위치: 줄 214
-- 설명: MemoryPlugin 인스턴스를 반환합니다.
-
 ### `_build_dependencies()`
-- 위치: 줄 219
+- 위치: 줄 214
 - 설명: 핸들러 의존성 딕셔너리 빌드
 
 ### `notify_startup()`
-- 위치: 줄 248
+- 위치: 줄 243
 - 설명: 봇 시작 알림
 
 ### `notify_shutdown()`
-- 위치: 줄 259
+- 위치: 줄 254
 - 설명: 봇 종료 알림
 
 ### `_dispatch_plugin_startup()`
-- 위치: 줄 270
+- 위치: 줄 265
 - 설명: Dispatch on_startup hook to all loaded plugins.
 
 Plugins return runtime references (e.g. watcher, list_runner,
 channel_store, channel_collector) which are stored for handler access.
 
 ### `init_bot_user_id()`
-- 위치: 줄 302
+- 위치: 줄 297
 - 설명: 봇 사용자 ID 초기화
 
 ### `main()`
-- 위치: 줄 312
+- 위치: 줄 307
 - 설명: 봇 메인 진입점
 
 ## 내부 의존성

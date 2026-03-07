@@ -9,10 +9,6 @@ from pathlib import Path
 from typing import Optional
 
 
-# 세션 에러 코드
-SESSION_NOT_FOUND_CODE = "SESSION_NOT_FOUND"
-
-
 def find_session_file(session_id: str) -> Optional[Path]:
     """세션 파일을 찾습니다."""
     claude_dir = Path.home() / ".claude" / "projects"

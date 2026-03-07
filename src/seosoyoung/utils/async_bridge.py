@@ -41,25 +41,3 @@ def run_in_new_loop(coro):
     if error_box[0] is not None:
         raise error_box[0]
     return result_box[0]
-
-
-def run_async_in_thread(coro) -> threading.Thread:
-    """별도 스레드에서 코루틴을 실행 (fire-and-forget)
-
-    예외는 로그로만 기록하고 호출자로 전파하지 않습니다.
-
-    Args:
-        coro: 실행할 코루틴
-
-    Returns:
-        시작된 Thread 객체 (테스트 시 join 가능)
-    """
-    def _run():
-        try:
-            asyncio.run(coro)
-        except Exception as e:
-            logger.error(f"run_async_in_thread 오류: {e}")
-
-    thread = threading.Thread(target=_run, daemon=True, name="async-bridge-bg")
-    thread.start()
-    return thread

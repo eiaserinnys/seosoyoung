@@ -46,7 +46,7 @@ per-session 아키텍처: agent_session_id가 유일한 식별자.
 - 설명: 이모지 설정
 
 ### `Config`
-- 위치: 줄 125
+- 위치: 줄 115
 - 설명: 애플리케이션 설정
 
 설정 접근 방식:
@@ -55,13 +55,13 @@ per-session 아키텍처: agent_session_id가 유일한 식별자.
 
 #### 메서드
 
-- `get_log_path()` (줄 145): 로그 경로
-- `get_session_path()` (줄 150): 세션 경로
-- `get_glossary_path()` (줄 155): 용어집 경로 (번역 시 고유명사 참조)
-- `get_narrative_path()` (줄 160): 대사 데이터 경로
-- `get_search_index_path()` (줄 165): 검색 인덱스 경로
-- `get_memory_path()` (줄 170): 관찰 로그 저장 경로
-- `validate(cls)` (줄 178): 필수 환경변수 검증
+- `get_log_path()` (줄 135): 로그 경로
+- `get_session_path()` (줄 140): 세션 경로
+- `get_glossary_path()` (줄 145): 용어집 경로 (번역 시 고유명사 참조)
+- `get_narrative_path()` (줄 150): 대사 데이터 경로
+- `get_search_index_path()` (줄 155): 검색 인덱스 경로
+- `get_memory_path()` (줄 160): 관찰 로그 저장 경로
+- `validate(cls)` (줄 168): 필수 환경변수 검증
 
 ## 함수
 

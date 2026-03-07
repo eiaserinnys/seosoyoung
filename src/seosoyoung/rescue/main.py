@@ -637,7 +637,7 @@ def main():
     # Shutdown 서버 시작 (supervisor graceful shutdown용)
     from seosoyoung.rescue.shutdown import start_shutdown_server
 
-    _SHUTDOWN_PORT = int(os.environ.get("RESCUE_SHUTDOWN_PORT", "3107"))
+    _SHUTDOWN_PORT = int(os.environ["RESCUE_SHUTDOWN_PORT"])
 
     def _on_shutdown():
         logger.info("rescue-bot: graceful shutdown")

@@ -25,15 +25,3 @@ Returns:
 
 Raises:
     코루틴에서 발생한 예외를 그대로 전파
-
-### `run_async_in_thread(coro)`
-- 위치: 줄 46
-- 설명: 별도 스레드에서 코루틴을 실행 (fire-and-forget)
-
-예외는 로그로만 기록하고 호출자로 전파하지 않습니다.
-
-Args:
-    coro: 실행할 코루틴
-
-Returns:
-    시작된 Thread 객체 (테스트 시 join 가능)

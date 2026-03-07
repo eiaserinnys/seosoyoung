@@ -49,7 +49,7 @@ class SlackConfig:
     bot_token: str | None = os.getenv("SLACK_BOT_TOKEN")
     app_token: str | None = os.getenv("SLACK_APP_TOKEN")
     bot_user_id: str | None = None  # 런타임에 auth.test()로 설정
-    notify_channel: str = os.getenv("NOTIFY_CHANNEL", "")
+    notify_channel: str = os.environ["NOTIFY_CHANNEL"]
 
 
 @dataclass
@@ -77,7 +77,7 @@ class GeminiConfig:
     """Gemini 설정 (이미지 생성)"""
 
     api_key: str | None = os.getenv("GEMINI_API_KEY")
-    model: str = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-image-preview")
+    model: str = os.environ["GEMINI_MODEL"]
 
 
 @dataclass
@@ -88,7 +88,7 @@ class ClaudeConfig:
     per-session 아키텍처: agent_session_id가 유일한 식별자.
     """
 
-    soul_url: str = os.getenv("SEOSOYOUNG_SOUL_URL", "http://localhost:4105")
+    soul_url: str = os.environ["SEOSOYOUNG_SOUL_URL"]
     soul_token: str = os.getenv("SEOSOYOUNG_SOUL_TOKEN", "")
     credential_alert_channel: str = os.getenv("CREDENTIAL_ALERT_CHANNEL", "")
 
@@ -97,29 +97,19 @@ class ClaudeConfig:
 class EmojiConfig:
     """이모지 설정"""
 
-    execute: str = os.getenv("EXECUTE_EMOJI", "rocket")
+    execute: str = os.environ["EXECUTE_EMOJI"]
     # 번역 리액션 이모지 (슬랙 리액션으로 사용, 콜론 없이)
-    translate_progress: str = os.getenv(
-        "EMOJI_TRANSLATE_PROGRESS", "hourglass_flowing_sand"
-    )
-    translate_done: str = os.getenv("EMOJI_TRANSLATE_DONE", "ssy-happy")
+    translate_progress: str = os.environ["EMOJI_TRANSLATE_PROGRESS"]
+    translate_done: str = os.environ["EMOJI_TRANSLATE_DONE"]
     # 텍스트 이모지 (슬랙 메시지 텍스트용, 콜론 포함)
-    text_session_start: str = os.getenv("EMOJI_TEXT_SESSION_START", ":ssy-surprised:")
-    text_ltm_inject: str = os.getenv("EMOJI_TEXT_LTM_INJECT", ":ssy-thinking:")
-    text_new_obs_inject: str = os.getenv("EMOJI_TEXT_NEW_OBS_INJECT", ":ssy-curious:")
-    text_session_obs_inject: str = os.getenv(
-        "EMOJI_TEXT_SESSION_OBS_INJECT", ":ssy-thinking:"
-    )
-    text_channel_obs_inject: str = os.getenv(
-        "EMOJI_TEXT_CHANNEL_OBS_INJECT", ":ssy-curious:"
-    )
-    text_restart_trouble: str = os.getenv(
-        "EMOJI_TEXT_RESTART_TROUBLE", ":ssy-troubled:"
-    )
-    text_obs_complete: str = os.getenv("EMOJI_TEXT_OBS_COMPLETE", ":ssy-happy:")
-    text_intervention_error: str = os.getenv(
-        "EMOJI_TEXT_INTERVENTION_ERROR", ":ssy-troubled:"
-    )
+    text_session_start: str = os.environ["EMOJI_TEXT_SESSION_START"]
+    text_ltm_inject: str = os.environ["EMOJI_TEXT_LTM_INJECT"]
+    text_new_obs_inject: str = os.environ["EMOJI_TEXT_NEW_OBS_INJECT"]
+    text_session_obs_inject: str = os.environ["EMOJI_TEXT_SESSION_OBS_INJECT"]
+    text_channel_obs_inject: str = os.environ["EMOJI_TEXT_CHANNEL_OBS_INJECT"]
+    text_restart_trouble: str = os.environ["EMOJI_TEXT_RESTART_TROUBLE"]
+    text_obs_complete: str = os.environ["EMOJI_TEXT_OBS_COMPLETE"]
+    text_intervention_error: str = os.environ["EMOJI_TEXT_INTERVENTION_ERROR"]
 
 
 class Config:

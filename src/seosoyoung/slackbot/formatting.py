@@ -273,11 +273,6 @@ def format_tool_result(tool_name: str, result: Any, is_error: bool = False) -> s
     return f"{_emoji_tool_done()} *{tool_name}*"
 
 
-def format_tool_complete(tool_name: str) -> str:
-    """tool 메시지 완료 포맷 (결과 없이 이름만)"""
-    return f"{_emoji_tool_done()} *{tool_name}*"
-
-
 # --- AskUserQuestion Block Kit ---
 
 def build_input_request_blocks(

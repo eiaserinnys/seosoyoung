@@ -159,31 +159,3 @@ Example:
     data_dir = soulstream.get_data_dir()
     plugin_dir = data_dir / "my_plugin"
     plugin_dir.mkdir(exist_ok=True)
-
-### `create_request(prompt, channel, thread_ts, role, session_id)`
-- 위치: 줄 326
-- 설명: Create a RunRequest for hook-based execution.
-
-Some hooks may need to return a request object instead of
-directly calling run(). This helper creates the request.
-
-Args:
-    prompt: The prompt to send
-    channel: Slack channel ID
-    thread_ts: Thread timestamp
-    role: User role
-    session_id: Existing session ID
-    **metadata: Additional metadata
-
-Returns:
-    RunRequest object
-
-Example:
-    async def _on_reaction(self, ctx: HookContext):
-        request = soulstream.create_request(
-            prompt="Execute this task...",
-            channel=ctx.args["channel"],
-            thread_ts=ctx.args["thread_ts"],
-        )
-        ctx.args["soulstream_request"] = request
-        return HookResult.CONTINUE, request

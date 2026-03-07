@@ -211,11 +211,6 @@ def _load_plugins() -> None:
     run_in_new_loop(_load_all())
 
 
-def _get_memory_plugin():
-    """MemoryPlugin 인스턴스를 반환합니다."""
-    return plugin_manager.plugins.get("memory")
-
-
 def _build_dependencies():
     """핸들러 의존성 딕셔너리 빌드"""
     return {
