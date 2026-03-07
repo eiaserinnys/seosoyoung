@@ -154,7 +154,6 @@ class TestExecutorRemoteDebug:
             tmp_path,
             soul_url="http://localhost:3105",
             soul_token="test-token",
-            soul_client_id="test_bot",
         )
 
     @pytest.fixture
@@ -247,7 +246,6 @@ class TestGetServiceAdapter:
             tmp_path,
             soul_url="http://localhost:3105",
             soul_token="test-token",
-            soul_client_id="test_bot",
         )
 
     def test_each_call_returns_new_instance(self, executor):
@@ -324,7 +322,3 @@ class TestConfigEnvVars:
     def test_soul_url_default(self):
         from seosoyoung.slackbot.config import Config
         assert "localhost" in Config.claude.soul_url or Config.claude.soul_url != ""
-
-    def test_soul_client_id_default(self):
-        from seosoyoung.slackbot.config import Config
-        assert Config.claude.soul_client_id == "seosoyoung_bot"

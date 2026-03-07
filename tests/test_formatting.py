@@ -472,3 +472,143 @@ class TestMultilineToolInputBlockquote:
             assert line.startswith(">"), f"blockquote 이탈: {line!r}"
 
 
+class TestBuildInputRequestBlocks:
+    """build_input_request_blocks 유닛 테스트"""
+
+    def test_empty_questions_returns_empty(self):
+        """빈 질문 목록이면 빈 블록 리스트 반환"""
+        from seosoyoung.slackbot.formatting import build_input_request_blocks
+        blocks = build_input_request_blocks("req-1", [])
+        assert blocks == []
+
+    def test_single_question_with_options(self):
+        """단일 질문 + 옵션 → section + actions 블록"""
+        from seosoyoung.slackbot.formatting import build_input_request_blocks
+        questions = [{
+            "question": "어떤 방향이 좋을까요?",
+            "options": [
+                {"label": "A안"},
+                {"label": "B안"},
+            ],
+        }]
+        blocks = build_input_request_blocks("req-1", questions, "sess-001")
+        assert len(blocks) == 2  # section + actions
+        assert blocks[0]["type"] == "section"
+        assert "어떤 방향이 좋을까요?" in blocks[0]["text"]["text"]
+        assert blocks[1]["type"] == "actions"
+        assert len(blocks[1]["elements"]) == 2
+
+    def test_question_with_header(self):
+        """header가 있으면 bold header + question 형식"""
+        from seosoyoung.slackbot.formatting import build_input_request_blocks
+        questions = [{
+            "question": "세부 질문입니다",
+            "header": "카테고리 선택",
+            "options": [{"label": "예"}],
+        }]
+        blocks = build_input_request_blocks("req-2", questions)
+        display_text = blocks[0]["text"]["text"]
+        assert "*카테고리 선택*" in display_text
+        assert "세부 질문입니다" in display_text
+
+    def test_button_value_contains_required_fields(self):
+        """버튼 value에 rid, q, a, sid가 JSON으로 인코딩됨"""
+        import json
+        from seosoyoung.slackbot.formatting import build_input_request_blocks
+        questions = [{
+            "question": "선택하세요",
+            "options": [{"label": "확인"}],
+        }]
+        blocks = build_input_request_blocks("req-3", questions, "sess-002")
+        button = blocks[1]["elements"][0]
+        value_data = json.loads(button["value"])
+        assert value_data["rid"] == "req-3"
+        assert value_data["q"] == "선택하세요"
+        assert value_data["a"] == "확인"
+        assert value_data["sid"] == "sess-002"
+
+    def test_action_id_format(self):
+        """action_id가 input_request_{request_id}_{q_idx}_{o_idx} 형식"""
+        from seosoyoung.slackbot.formatting import build_input_request_blocks
+        questions = [{
+            "question": "Q1",
+            "options": [{"label": "A"}, {"label": "B"}],
+        }]
+        blocks = build_input_request_blocks("req-4", questions)
+        buttons = blocks[1]["elements"]
+        assert buttons[0]["action_id"] == "input_request_req-4_0_0"
+        assert buttons[1]["action_id"] == "input_request_req-4_0_1"
+
+    def test_button_label_truncated_at_75(self):
+        """슬랙 버튼 텍스트는 최대 75자로 절단"""
+        from seosoyoung.slackbot.formatting import build_input_request_blocks
+        long_label = "가" * 100
+        questions = [{
+            "question": "Q",
+            "options": [{"label": long_label}],
+        }]
+        blocks = build_input_request_blocks("req-5", questions)
+        button_text = blocks[1]["elements"][0]["text"]["text"]
+        assert len(button_text) <= 75
+
+    def test_multiple_questions_produce_multiple_blocks(self):
+        """여러 질문이면 질문마다 section + actions 쌍"""
+        from seosoyoung.slackbot.formatting import build_input_request_blocks
+        questions = [
+            {"question": "Q1", "options": [{"label": "A"}]},
+            {"question": "Q2", "options": [{"label": "B"}]},
+        ]
+        blocks = build_input_request_blocks("req-6", questions)
+        assert len(blocks) == 4  # 2 sections + 2 actions
+
+    def test_over_25_options_split_into_chunks(self):
+        """옵션이 25개 초과하면 actions 블록이 분할됨"""
+        from seosoyoung.slackbot.formatting import build_input_request_blocks
+        options = [{"label": f"Opt{i}"} for i in range(30)]
+        questions = [{"question": "Q", "options": options}]
+        blocks = build_input_request_blocks("req-7", questions)
+        # section(1) + actions(25개짜리) + actions(5개짜리) = 3 블록
+        assert len(blocks) == 3
+        assert blocks[1]["type"] == "actions"
+        assert len(blocks[1]["elements"]) == 25
+        assert blocks[2]["type"] == "actions"
+        assert len(blocks[2]["elements"]) == 5
+
+
+class TestFormatInputRequestAnswered:
+    """format_input_request_answered 유닛 테스트"""
+
+    def test_single_answer(self):
+        """단일 질문 + 응답 → 체크 이모지 + 질문 + 답변"""
+        from seosoyoung.slackbot.formatting import format_input_request_answered
+        questions = [{"question": "선택하세요"}]
+        answers = {"선택하세요": "A안"}
+        result = format_input_request_answered(questions, answers)
+        assert ":white_check_mark:" in result
+        assert "*선택하세요*" in result
+        assert "A안" in result
+
+    def test_multiple_answers(self):
+        """여러 질문 + 응답"""
+        from seosoyoung.slackbot.formatting import format_input_request_answered
+        questions = [
+            {"question": "Q1"},
+            {"question": "Q2"},
+        ]
+        answers = {"Q1": "A1", "Q2": "A2"}
+        result = format_input_request_answered(questions, answers)
+        assert "Q1" in result
+        assert "A1" in result
+        assert "Q2" in result
+        assert "A2" in result
+
+    def test_unanswered_question_no_blockquote(self):
+        """미응답 질문은 체크 이모지만 표시"""
+        from seosoyoung.slackbot.formatting import format_input_request_answered
+        questions = [{"question": "Q1"}]
+        answers = {}
+        result = format_input_request_answered(questions, answers)
+        assert "*Q1*" in result
+        assert "> " not in result.split("\n")[-1] or result.count("\n") == 0
+
+

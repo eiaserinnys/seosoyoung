@@ -91,7 +91,7 @@ class TestReturnInterface:
         expected_keys = {
             "on_thinking", "on_text_start", "on_text_delta",
             "on_text_end", "on_tool_start", "on_tool_result",
-            "on_compact", "cleanup",
+            "on_input_request", "on_compact", "cleanup",
         }
         assert set(cbs.keys()) == expected_keys
 
@@ -442,3 +442,65 @@ class TestToolResult:
         last_text = update_calls[-1][1]["text"]
         # format_tool_result(is_error=True)는 :x: 이모지를 사용
         assert ":x:" in last_text
+
+
+class TestOnInputRequest:
+    """on_input_request 콜백 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_posts_block_kit_message(self):
+        """on_input_request가 Block Kit 버튼 메시지를 게시"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "ir_msg_ts"}
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        questions = [{"question": "어떤 방향?", "options": [{"label": "A"}, {"label": "B"}]}]
+        await cbs["on_input_request"]("req-001", questions, "sess-001")
+
+        # chat_postMessage가 blocks 파라미터로 호출됨
+        call_kwargs = client.chat_postMessage.call_args[1]
+        assert "blocks" in call_kwargs
+        assert call_kwargs["channel"] == pctx.channel
+        assert call_kwargs["thread_ts"] == pctx.thread_ts
+
+    @pytest.mark.asyncio
+    async def test_registers_in_node_map(self):
+        """on_input_request가 node_map에 InputRequestNode를 등록"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "ir_msg_ts_2"}
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        questions = [{"question": "Q1", "options": [{"label": "Yes"}]}]
+        await cbs["on_input_request"]("req-002", questions, "sess-002")
+
+        node = node_map.find_input_request("req-002")
+        assert node is not None
+        assert node.msg_ts == "ir_msg_ts_2"
+        assert node.agent_session_id == "sess-002"
+        assert node.questions == questions
+        assert node.answered is False
+
+    @pytest.mark.asyncio
+    async def test_empty_questions_no_post(self):
+        """빈 질문 목록이면 메시지를 게시하지 않음"""
+        client = MagicMock()
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        await cbs["on_input_request"]("req-003", [], "sess-003")
+
+        # chat_postMessage가 on_input_request에서 호출되지 않아야 함
+        # (placeholder를 위한 호출은 있을 수 있으므로 blocks 파라미터 검사)
+        for call_args in client.chat_postMessage.call_args_list:
+            if "blocks" in (call_args[1] if len(call_args) > 1 else {}):
+                pytest.fail("빈 질문이면 블록 메시지를 게시하면 안 됨")
+
+    @pytest.mark.asyncio
+    async def test_post_failure_does_not_raise(self):
+        """게시 실패 시 예외가 전파되지 않음"""
+        client = MagicMock()
+        client.chat_postMessage.side_effect = Exception("Slack API error")
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        questions = [{"question": "Q", "options": [{"label": "A"}]}]
+        # 예외가 전파되지 않아야 함
+        await cbs["on_input_request"]("req-004", questions, "sess-004")

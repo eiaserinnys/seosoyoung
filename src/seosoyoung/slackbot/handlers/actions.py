@@ -1,4 +1,4 @@
-"""재시작 버튼 및 크레덴셜 프로필 관리 액션 핸들러"""
+"""재시작 버튼, AskUserQuestion 응답, 크레덴셜 프로필 관리 액션 핸들러"""
 
 import json
 import logging
@@ -305,6 +305,110 @@ def register_action_handlers(app, dependencies: dict):
         trello_watcher = trello_watcher_ref()
         if trello_watcher:
             trello_watcher.pause()
+
+    # --- AskUserQuestion 버튼 클릭 핸들러 ---
+
+    @app.action(re.compile(r"input_request_.+"))
+    def handle_input_request_response(ack, body, client):
+        """AskUserQuestion 버튼 클릭 → 사용자 응답을 soul-server에 전달"""
+        ack()
+
+        action = body["actions"][0]
+        value_str = action.get("value", "")
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        # value 파싱: JSON 형식 {"rid", "q", "a", "sid"}
+        try:
+            value_data = json.loads(value_str)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"input_request: 잘못된 value JSON: {value_str!r}")
+            return
+
+        request_id = value_data.get("rid", "")
+        question_text = value_data.get("q", "")
+        selected_label = value_data.get("a", "")
+        agent_session_id = value_data.get("sid", "")
+
+        if not request_id or not agent_session_id:
+            logger.warning(
+                f"input_request: 필수 정보 누락: "
+                f"request_id={request_id!r}, session_id={agent_session_id!r}"
+            )
+            return
+
+        # 즉시 UI 갱신: 버튼을 응답 결과 텍스트로 교체
+        try:
+            from seosoyoung.slackbot.formatting import format_input_request_answered
+            answers = {question_text: selected_label}
+            display = format_input_request_answered(
+                [{"question": question_text}],
+                answers,
+            )
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=[],
+                text=display or f":white_check_mark: {selected_label}",
+            )
+        except Exception as e:
+            logger.warning(f"input_request UI 갱신 실패: {e}")
+            try:
+                client.chat_update(
+                    channel=channel,
+                    ts=message_ts,
+                    blocks=[],
+                    text=f":white_check_mark: {selected_label}",
+                )
+            except Exception:
+                pass
+
+        # soul-server에 응답 전달
+        _deliver_input_response_to_soul(
+            agent_session_id=agent_session_id,
+            request_id=request_id,
+            question_text=question_text,
+            selected_label=selected_label,
+        )
+
+
+def _deliver_input_response_to_soul(
+    agent_session_id: str,
+    request_id: str,
+    question_text: str,
+    selected_label: str,
+) -> None:
+    """soul-server에 AskUserQuestion 응답을 HTTP로 전달
+
+    POST /sessions/{agent_session_id}/respond
+    Body: {"request_id": "...", "answers": {"question_text": "selected_label"}}
+    """
+    soul_url = Config.claude.soul_url
+    soul_token = Config.claude.soul_token
+
+    url = f"{soul_url}/sessions/{agent_session_id}/respond"
+    data = json.dumps({
+        "request_id": request_id,
+        "answers": {question_text: selected_label},
+    }).encode("utf-8")
+
+    try:
+        req = urllib.request.Request(url, data=data, method="POST")
+        req.add_header("Authorization", f"Bearer {soul_token}")
+        req.add_header("Content-Type", "application/json")
+
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+
+        logger.info(
+            f"input_request 응답 전달 성공: request_id={request_id}, "
+            f"session={agent_session_id}, result={result}"
+        )
+    except Exception as e:
+        logger.error(
+            f"input_request 응답 전달 실패: request_id={request_id}, "
+            f"session={agent_session_id}, error={e}"
+        )
 
 
 _VALID_PROFILE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")

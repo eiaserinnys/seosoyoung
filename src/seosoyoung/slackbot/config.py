@@ -167,11 +167,6 @@ class Config:
         return _get_path("SEARCH_INDEX_PATH", "internal/index/dialogues")
 
     @staticmethod
-    def get_web_cache_path() -> str:
-        """웹 콘텐츠 캐시 경로"""
-        return _get_path("WEB_CACHE_PATH", ".local/cache/web")
-
-    @staticmethod
     def get_memory_path() -> str:
         """관찰 로그 저장 경로"""
         return _get_path("MEMORY_PATH", "memory")

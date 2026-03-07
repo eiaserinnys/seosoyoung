@@ -38,6 +38,7 @@ class PendingPrompt:
     on_text_end: Any = None       # (event_id, parent_event_id) -> None
     on_tool_start: Any = None     # (tool_name, tool_input, tool_use_id, event_id, parent_event_id) -> None
     on_tool_result: Any = None    # (result, tool_use_id, is_error, event_id, parent_event_id) -> None
+    on_input_request: Any = None  # (request_id, questions, agent_session_id) -> None
 
 
 class InterventionManager:

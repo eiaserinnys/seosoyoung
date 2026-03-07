@@ -73,6 +73,7 @@ def run_with_event_callbacks(
         on_text_end=event_cbs["on_text_end"],
         on_tool_start=event_cbs["on_tool_start"],
         on_tool_result=event_cbs["on_tool_result"],
+        on_input_request=event_cbs["on_input_request"],
     )
 
     try:

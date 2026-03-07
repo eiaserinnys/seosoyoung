@@ -21,6 +21,16 @@ class SlackNode:
     text_buffer: str = ""    # text_delta 누적 버퍼 (S7)
 
 
+@dataclass
+class InputRequestNode:
+    """AskUserQuestion 이벤트에 대응하는 슬랙 메시지"""
+    request_id: str
+    msg_ts: str
+    questions: list = field(default_factory=list)
+    agent_session_id: str = ""
+    answered: bool = False
+
+
 class SlackNodeMap:
     """이벤트 노드 <-> 슬랙 메시지 ts 매핑
 
@@ -34,6 +44,7 @@ class SlackNodeMap:
         self._nodes: dict[int, SlackNode] = {}
         self._tool_use_index: dict[str, int] = {}
         self._last_thinking_by_parent: dict[Optional[int], int] = {}
+        self._input_requests: dict[str, InputRequestNode] = {}  # request_id -> InputRequestNode
 
     def add_thinking(
         self,
@@ -155,3 +166,33 @@ class SlackNodeMap:
             node = self._nodes.pop(eid)
             self._remove_from_indexes(node)
         return len(completed_ids)
+
+    # --- Input Request (AskUserQuestion) ---
+
+    def add_input_request(
+        self,
+        request_id: str,
+        msg_ts: str,
+        questions: list,
+        agent_session_id: str = "",
+    ) -> InputRequestNode:
+        """input_request 이벤트에 대응하는 노드 등록"""
+        node = InputRequestNode(
+            request_id=request_id,
+            msg_ts=msg_ts,
+            questions=questions,
+            agent_session_id=agent_session_id,
+        )
+        self._input_requests[request_id] = node
+        return node
+
+    def find_input_request(self, request_id: str) -> Optional[InputRequestNode]:
+        """request_id로 input_request 노드 검색"""
+        return self._input_requests.get(request_id)
+
+    def mark_input_request_answered(self, request_id: str) -> Optional[InputRequestNode]:
+        """input_request를 응답 완료 상태로 마킹"""
+        node = self._input_requests.get(request_id)
+        if node:
+            node.answered = True
+        return node

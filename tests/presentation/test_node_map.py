@@ -1,7 +1,11 @@
 """SlackNodeMap 단위 테스트"""
 
 import pytest
-from seosoyoung.slackbot.presentation.node_map import SlackNode, SlackNodeMap
+from seosoyoung.slackbot.presentation.node_map import (
+    InputRequestNode,
+    SlackNode,
+    SlackNodeMap,
+)
 
 
 class TestSlackNodeMap:
@@ -92,3 +96,60 @@ class TestSlackNodeMap:
         count = nm.clear_completed()
         assert count == 1
         assert nm.find_tool_by_use_id("tu_2") is None
+
+
+class TestInputRequestNode:
+    """InputRequestNode 관련 SlackNodeMap 메서드 테스트"""
+
+    def test_add_input_request(self):
+        nm = SlackNodeMap()
+        questions = [{"question": "Q1", "options": [{"label": "A"}]}]
+        node = nm.add_input_request(
+            request_id="req-1", msg_ts="ts-ir-1",
+            questions=questions, agent_session_id="sess-001",
+        )
+        assert isinstance(node, InputRequestNode)
+        assert node.request_id == "req-1"
+        assert node.msg_ts == "ts-ir-1"
+        assert node.questions == questions
+        assert node.agent_session_id == "sess-001"
+        assert node.answered is False
+
+    def test_find_input_request(self):
+        nm = SlackNodeMap()
+        nm.add_input_request("req-1", "ts-1", [])
+        found = nm.find_input_request("req-1")
+        assert found is not None
+        assert found.request_id == "req-1"
+
+    def test_find_input_request_not_found(self):
+        nm = SlackNodeMap()
+        assert nm.find_input_request("nonexistent") is None
+
+    def test_mark_input_request_answered(self):
+        nm = SlackNodeMap()
+        nm.add_input_request("req-1", "ts-1", [])
+        node = nm.mark_input_request_answered("req-1")
+        assert node is not None
+        assert node.answered is True
+
+    def test_mark_input_request_answered_not_found(self):
+        nm = SlackNodeMap()
+        assert nm.mark_input_request_answered("nonexistent") is None
+
+    def test_multiple_input_requests(self):
+        nm = SlackNodeMap()
+        nm.add_input_request("req-1", "ts-1", [{"question": "Q1"}])
+        nm.add_input_request("req-2", "ts-2", [{"question": "Q2"}])
+        assert nm.find_input_request("req-1").msg_ts == "ts-1"
+        assert nm.find_input_request("req-2").msg_ts == "ts-2"
+
+    def test_input_request_independent_from_regular_nodes(self):
+        """input_request 노드는 일반 SlackNode와 독립적"""
+        nm = SlackNodeMap()
+        nm.add_thinking(event_id=1, msg_ts="ts-thinking", parent_event_id=None)
+        nm.add_input_request("req-1", "ts-ir", [])
+        # 일반 노드 clear가 input_request에 영향 없음
+        nm.mark_completed(1)
+        nm.clear_completed()
+        assert nm.find_input_request("req-1") is not None

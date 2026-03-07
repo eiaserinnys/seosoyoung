@@ -76,7 +76,6 @@ class TestConfigConsistency:
         assert callable(Config.get_glossary_path)
         assert callable(Config.get_narrative_path)
         assert callable(Config.get_search_index_path)
-        assert callable(Config.get_web_cache_path)
 
 
 class TestConfigPaths:

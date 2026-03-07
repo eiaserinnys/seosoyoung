@@ -14,6 +14,7 @@ from seosoyoung.slackbot.formatting import (
     format_thinking_complete,
     format_tool_initial,
     format_tool_result,
+    build_input_request_blocks,
 )
 from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
 from seosoyoung.slackbot.presentation.types import PresentationContext
@@ -223,6 +224,32 @@ def build_event_callbacks(
         except Exception as e:
             logger.warning(f"tool_result 처리 실패: {e}")
 
+    async def on_input_request(request_id: str, questions: list, agent_session_id: str):
+        """AskUserQuestion 이벤트 수신 → Block Kit 버튼 메시지 게시"""
+        try:
+            blocks = build_input_request_blocks(request_id, questions, agent_session_id)
+            if not blocks:
+                logger.warning(f"input_request: 빈 질문 목록 (request_id={request_id})")
+                return
+
+            reply = pctx.client.chat_postMessage(
+                channel=pctx.channel,
+                thread_ts=pctx.thread_ts,
+                blocks=blocks,
+                text="질문에 응답해주세요",  # fallback text
+            )
+            msg_ts = reply["ts"]
+
+            # 응답 전달에 필요한 메타데이터를 node_map에 저장
+            node_map.add_input_request(
+                request_id=request_id,
+                msg_ts=msg_ts,
+                questions=questions,
+                agent_session_id=agent_session_id,
+            )
+        except Exception as e:
+            logger.warning(f"input_request 메시지 게시 실패: {e}")
+
     # on_compact 콜백
     async def on_compact(trigger: str, message: str):
         try:
@@ -255,6 +282,7 @@ def build_event_callbacks(
         "on_text_end": on_text_end,
         "on_tool_start": on_tool_start,
         "on_tool_result": on_tool_result,
+        "on_input_request": on_input_request,
         "on_compact": on_compact,
         "cleanup": cleanup,
     }

@@ -179,6 +179,7 @@ class SoulServiceClient:
         on_text_end: Optional[Callable] = None,
         on_tool_start: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
+        on_input_request: Optional[Callable] = None,
         allowed_tools: Optional[List[str]] = None,
         disallowed_tools: Optional[List[str]] = None,
         use_mcp: bool = True,
@@ -195,6 +196,7 @@ class SoulServiceClient:
             on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
             on_session: 세션 ID 조기 통지 콜백 (agent_session_id: str)
             on_credential_alert: 크레덴셜 알림 콜백 (data: dict)
+            on_input_request: AskUserQuestion 이벤트 콜백 (request_id, questions, agent_session_id)
             allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
             disallowed_tools: 금지 도구 목록
             use_mcp: MCP 서버 연결 여부
@@ -241,6 +243,7 @@ class SoulServiceClient:
                     on_text_end=on_text_end,
                     on_tool_start=on_tool_start,
                     on_tool_result=on_tool_result,
+                    on_input_request=on_input_request,
                 )
                 # init 이벤트에서 읽은 session_id를 보존
                 if result.agent_session_id:
@@ -277,6 +280,7 @@ class SoulServiceClient:
                     on_text_end=on_text_end,
                     on_tool_start=on_tool_start,
                     on_tool_result=on_tool_result,
+                    on_input_request=on_input_request,
                 )
             except ConnectionLostError:
                 continue
@@ -344,6 +348,7 @@ class SoulServiceClient:
         on_text_end: Optional[Callable] = None,
         on_tool_start: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
+        on_input_request: Optional[Callable] = None,
     ) -> ExecuteResult:
         """세션 SSE 스트림에 재연결
 
@@ -373,7 +378,57 @@ class SoulServiceClient:
                 on_text_end=on_text_end,
                 on_tool_start=on_tool_start,
                 on_tool_result=on_tool_result,
+                on_input_request=on_input_request,
             )
+
+    async def respond_to_input_request(
+        self,
+        agent_session_id: str,
+        request_id: str,
+        answers: dict,
+    ) -> dict:
+        """AskUserQuestion에 대한 사용자 응답 전달
+
+        POST /sessions/{agent_session_id}/respond
+
+        Args:
+            agent_session_id: 세션 식별자
+            request_id: input_request 이벤트의 request_id
+            answers: {question_text: selected_label} 형태의 응답
+
+        Returns:
+            {"delivered": True, "request_id": "..."}
+
+        Raises:
+            SessionNotFoundError: 세션을 찾을 수 없음
+            SessionNotRunningError: 세션이 실행 중이 아님
+            SoulServiceError: 기타 오류
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/sessions/{agent_session_id}/respond"
+
+        data = {
+            "request_id": request_id,
+            "answers": answers,
+        }
+
+        async with session.post(url, json=data) as response:
+            if response.status == 200:
+                return await response.json()
+            elif response.status == 404:
+                raise SessionNotFoundError(
+                    f"세션을 찾을 수 없습니다: {agent_session_id}"
+                )
+            elif response.status == 409:
+                raise SessionNotRunningError(
+                    f"세션이 실행 중이 아닙니다: {agent_session_id}"
+                )
+            elif response.status == 422:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"대기 중인 요청 없음: {error}")
+            else:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"응답 전달 실패: {error}")
 
     async def health_check(self) -> dict:
         """헬스 체크"""
@@ -505,6 +560,7 @@ class SoulServiceClient:
         on_text_end: Optional[Callable] = None,       # (event_id, parent_event_id) -> None
         on_tool_start: Optional[Callable] = None,     # (tool_name, tool_input, tool_use_id, event_id, parent_event_id) -> None
         on_tool_result: Optional[Callable] = None,    # (result, tool_use_id, is_error, event_id, parent_event_id) -> None
+        on_input_request: Optional[Callable] = None,  # (request_id, questions, agent_session_id) -> None
     ) -> ExecuteResult:
         """SSE 이벤트 스트림 처리
 
@@ -613,6 +669,14 @@ class SoulServiceClient:
                             event.data.get("is_error", False),
                             event.data.get("_event_id"),
                             event.data.get("parent_event_id"),
+                        )
+
+                elif event.event == "input_request":
+                    if on_input_request:
+                        await on_input_request(
+                            event.data.get("request_id", ""),
+                            event.data.get("questions", []),
+                            result_agent_session_id or "",
                         )
 
         except asyncio.TimeoutError:

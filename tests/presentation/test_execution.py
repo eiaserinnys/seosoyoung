@@ -53,6 +53,7 @@ class TestRunWithEventCallbacks:
             "on_text_end": MagicMock(),
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
+            "on_input_request": MagicMock(),
             "cleanup": mock_cleanup,
         }
 
@@ -93,6 +94,7 @@ class TestRunWithEventCallbacks:
             "on_text_end": MagicMock(),
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
+            "on_input_request": MagicMock(),
             "cleanup": MagicMock(),
         }
 
@@ -127,6 +129,7 @@ class TestRunWithEventCallbacks:
             "on_text_end": MagicMock(),
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
+            "on_input_request": MagicMock(),
             "cleanup": MagicMock(),
         }
 
@@ -169,6 +172,7 @@ class TestRunWithEventCallbacks:
             "on_text_end": MagicMock(),
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
+            "on_input_request": MagicMock(),
             "cleanup": MagicMock(),
         }
 
@@ -203,6 +207,7 @@ class TestRunWithEventCallbacks:
             "on_text_end": MagicMock(),
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
+            "on_input_request": MagicMock(),
             "cleanup": MagicMock(),
         }
 
@@ -231,6 +236,7 @@ class TestRunWithEventCallbacks:
         mock_text_end = MagicMock(name="on_text_end")
         mock_tool_start = MagicMock(name="on_tool_start")
         mock_tool_result = MagicMock(name="on_tool_result")
+        mock_input_request = MagicMock(name="on_input_request")
         mock_build_cbs.return_value = {
             "on_compact": MagicMock(),
             "on_thinking": mock_thinking,
@@ -239,6 +245,7 @@ class TestRunWithEventCallbacks:
             "on_text_end": mock_text_end,
             "on_tool_start": mock_tool_start,
             "on_tool_result": mock_tool_result,
+            "on_input_request": mock_input_request,
             "cleanup": MagicMock(),
         }
 
@@ -259,6 +266,7 @@ class TestRunWithEventCallbacks:
         assert call_kwargs["on_text_end"] is mock_text_end
         assert call_kwargs["on_tool_start"] is mock_tool_start
         assert call_kwargs["on_tool_result"] is mock_tool_result
+        assert call_kwargs["on_input_request"] is mock_input_request
 
     @patch("seosoyoung.slackbot.presentation.execution.build_event_callbacks")
     @patch("seosoyoung.slackbot.presentation.execution.post_initial_placeholder")
@@ -275,6 +283,7 @@ class TestRunWithEventCallbacks:
             "on_text_end": MagicMock(),
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
+            "on_input_request": MagicMock(),
             "cleanup": MagicMock(),
         }
 

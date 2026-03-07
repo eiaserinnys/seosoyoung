@@ -261,3 +261,107 @@ def format_tool_result(tool_name: str, result: Any, is_error: bool = False) -> s
 def format_tool_complete(tool_name: str) -> str:
     """tool 메시지 완료 포맷 (결과 없이 이름만)"""
     return f"{_emoji_tool_done()} *{tool_name}*"
+
+
+# --- AskUserQuestion Block Kit ---
+
+def build_input_request_blocks(
+    request_id: str,
+    questions: list[dict],
+    agent_session_id: str = "",
+) -> list[dict]:
+    """AskUserQuestion 이벤트를 Slack Block Kit으로 변환
+
+    각 질문에 대해 header + 버튼 그룹을 생성합니다.
+    action_id에 request_id를 인코딩하여 핸들러에서 매칭할 수 있도록 합니다.
+    value에 request_id, question_text, selected_label, agent_session_id를 인코딩하여
+    핸들러에서 soul-server API를 호출할 수 있도록 합니다.
+
+    Args:
+        request_id: input_request 이벤트의 고유 ID
+        questions: 질문 목록 [{question, header?, options, multi_select?}]
+        agent_session_id: 응답 전달 시 사용할 세션 ID
+
+    Returns:
+        Slack Block Kit 블록 리스트
+    """
+    blocks: list[dict] = []
+
+    for q_idx, question in enumerate(questions):
+        question_text = question.get("question", "")
+        header = question.get("header", "")
+        options = question.get("options", [])
+
+        # 질문 텍스트 블록
+        display_text = f"*{header}*\n{question_text}" if header else f"*{question_text}*"
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f":question: {display_text}",
+            },
+        })
+
+        # 옵션 버튼 블록 (Slack은 actions 블록당 최대 25개 요소)
+        if options:
+            buttons = []
+            for o_idx, option in enumerate(options):
+                label = option.get("label", f"Option {o_idx + 1}")
+
+                # value에 응답 전달에 필요한 모든 정보 인코딩
+                # 형식: request_id|question_text|label|agent_session_id
+                # 파이프(|)를 구분자로 사용 — question_text와 label에는
+                # 파이프가 포함되지 않는 것이 일반적
+                value_data = json.dumps({
+                    "rid": request_id,
+                    "q": question_text,
+                    "a": label,
+                    "sid": agent_session_id,
+                }, ensure_ascii=False)
+
+                button: dict = {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": label[:75],  # Slack 버튼 텍스트 최대 75자
+                    },
+                    "action_id": f"input_request_{request_id}_{q_idx}_{o_idx}",
+                    "value": value_data[:2000],  # Slack value 최대 2000자
+                }
+                buttons.append(button)
+
+            # Slack은 actions 블록당 최대 25개 요소 — 분할
+            for chunk_start in range(0, len(buttons), 25):
+                chunk = buttons[chunk_start:chunk_start + 25]
+                blocks.append({
+                    "type": "actions",
+                    "block_id": f"input_request_{request_id}_{q_idx}_{chunk_start}",
+                    "elements": chunk,
+                })
+
+    return blocks
+
+
+def format_input_request_answered(
+    questions: list[dict],
+    answers: dict[str, str],
+) -> str:
+    """응답 완료된 AskUserQuestion을 텍스트로 변환
+
+    버튼 메시지를 응답 결과 텍스트로 교체할 때 사용합니다.
+
+    Args:
+        questions: 원본 질문 목록
+        answers: {question_text: selected_label} 형태의 응답
+
+    Returns:
+        슬랙 mrkdwn 텍스트
+    """
+    lines = []
+    for question in questions:
+        q_text = question.get("question", "")
+        answer = answers.get(q_text, "")
+        lines.append(f":white_check_mark: *{q_text}*")
+        if answer:
+            lines.append(f"> {escape_backticks(answer)}")
+    return "\n".join(lines)

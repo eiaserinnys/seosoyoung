@@ -142,6 +142,7 @@ class ClaudeExecutor:
         on_text_end=None,
         on_tool_start=None,
         on_tool_result=None,
+        on_input_request=None,
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -180,6 +181,7 @@ class ClaudeExecutor:
                 on_text_end=on_text_end,
                 on_tool_start=on_tool_start,
                 on_tool_result=on_tool_result,
+                on_input_request=on_input_request,
             )
             return
 
@@ -199,6 +201,7 @@ class ClaudeExecutor:
                 on_text_end=on_text_end,
                 on_tool_start=on_tool_start,
                 on_tool_result=on_tool_result,
+                on_input_request=on_input_request,
             )
         finally:
             lock.release()
@@ -223,6 +226,7 @@ class ClaudeExecutor:
         on_text_end=None,
         on_tool_start=None,
         on_tool_result=None,
+        on_input_request=None,
     ):
         """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우"""
         logger.info(f"인터벤션 발생: thread={thread_ts}")
@@ -243,6 +247,7 @@ class ClaudeExecutor:
             on_text_end=on_text_end,
             on_tool_start=on_tool_start,
             on_tool_result=on_tool_result,
+            on_input_request=on_input_request,
         )
         self._intervention.save_pending(thread_ts, pending)
 
@@ -274,6 +279,7 @@ class ClaudeExecutor:
         on_text_end=None,
         on_tool_start=None,
         on_tool_result=None,
+        on_input_request=None,
     ):
         """락을 보유한 상태에서 실행 (while 루프로 pending 처리)"""
         # 실행 중 세션으로 표시
@@ -296,6 +302,7 @@ class ClaudeExecutor:
                 on_text_end=on_text_end,
                 on_tool_start=on_tool_start,
                 on_tool_result=on_tool_result,
+                on_input_request=on_input_request,
             )
 
             # pending 확인 → while 루프
@@ -321,6 +328,7 @@ class ClaudeExecutor:
                     on_text_end=pending.on_text_end,
                     on_tool_start=pending.on_tool_start,
                     on_tool_result=pending.on_tool_result,
+                    on_input_request=pending.on_input_request,
                 )
 
         finally:
@@ -346,6 +354,7 @@ class ClaudeExecutor:
         on_text_end=None,
         on_tool_start=None,
         on_tool_result=None,
+        on_input_request=None,
     ):
         """단일 Claude 실행 -- Soulstream 서버에 위임"""
         effective_role = role or "admin"
@@ -369,6 +378,7 @@ class ClaudeExecutor:
             on_text_end=on_text_end,
             on_tool_start=on_tool_start,
             on_tool_result=on_tool_result,
+            on_input_request=on_input_request,
         )
 
     def _get_role_config(self, role: str) -> dict:
@@ -453,6 +463,7 @@ class ClaudeExecutor:
         on_text_end=None,
         on_tool_start=None,
         on_tool_result=None,
+        on_input_request=None,
     ):
         """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
@@ -497,6 +508,7 @@ class ClaudeExecutor:
                     on_text_end=on_text_end,
                     on_tool_start=on_tool_start,
                     on_tool_result=on_tool_result,
+                    on_input_request=on_input_request,
                     allowed_tools=allowed_tools,
                     disallowed_tools=disallowed_tools,
                     use_mcp=use_mcp,

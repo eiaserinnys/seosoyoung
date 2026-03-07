@@ -27,8 +27,8 @@ client_id, request_id는 사용하지 않습니다.
 
 - `__init__(self, client)` (줄 35): 
 - `async execute(self, prompt, agent_session_id, on_progress, on_compact, on_debug, on_session, on_credential_alert)` (줄 40): Claude Code를 Soulstream에서 실행하고 ClaudeResult로 반환
-- `async intervene(self, agent_session_id, text, user)` (줄 147): 세션에 인터벤션 전송 (agent_session_id 기반)
-- `async close(self)` (줄 176): 클라이언트 종료
+- `async intervene(self, agent_session_id, text, user)` (줄 149): 세션에 인터벤션 전송 (agent_session_id 기반)
+- `async close(self)` (줄 178): 클라이언트 종료
 
 ## 내부 의존성
 

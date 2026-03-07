@@ -33,7 +33,7 @@ Note:
     커스텀 on_progress를 넘길 수 있기 때문입니다.
 
 ### `wrap_on_compact_with_memory(on_compact, pm, thread_ts)`
-- 위치: 줄 85
+- 위치: 줄 86
 - 설명: on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
 
 MemoryPlugin이 없으면 원본 콜백을 그대로 반환합니다.

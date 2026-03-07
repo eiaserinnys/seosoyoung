@@ -79,7 +79,6 @@ class TestIntegrationBasicFlow:
             tmp_path,
             soul_url="http://localhost:3105",
             soul_token="test-token",
-            soul_client_id="test_bot",
         )
 
     @pytest.fixture
@@ -184,7 +183,6 @@ class TestIntegrationIntervention:
             tmp_path,
             soul_url="http://localhost:3105",
             soul_token="test-token",
-            soul_client_id="test_bot",
         )
 
     @pytest.fixture
@@ -226,7 +224,7 @@ class TestIntegrationIntervention:
         )
 
         # 실행 완료 후에는 session_id 매핑이 해제됨 (정상 동작)
-        assert executor._get_session_id("1234.5678") is None
+        assert executor.get_session_id("1234.5678") is None
 
     def test_intervention_uses_session_based_api(self, executor, session):
         """session_id 확보 후 인터벤션은 session 기반 API를 사용"""
@@ -432,7 +430,6 @@ class TestIntegrationDebugEvents:
             tmp_path,
             soul_url="http://localhost:3105",
             soul_token="test-token",
-            soul_client_id="test_bot",
         )
 
     @pytest.fixture
@@ -519,7 +516,6 @@ class TestIntegrationCompaction:
             tmp_path,
             soul_url="http://localhost:3105",
             soul_token="test-token",
-            soul_client_id="test_bot",
         )
 
     @pytest.fixture

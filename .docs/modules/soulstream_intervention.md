@@ -22,7 +22,7 @@ per-session 아키텍처: agent_session_id가 유일한 식별자.
 Slack 필드(channel, say, client 등)는 presentation 컨텍스트에 포함됩니다.
 
 ### `InterventionManager`
-- 위치: 줄 43
+- 위치: 줄 44
 - 설명: 인터벤션 관리자
 
 실행 중인 스레드에 새 메시지가 도착하면:
@@ -31,8 +31,8 @@ Slack 필드(channel, say, client 등)는 presentation 컨텍스트에 포함됩
 
 #### 메서드
 
-- `__init__(self)` (줄 51): 
-- `save_pending(self, thread_ts, pending)` (줄 55): pending 프롬프트 저장 (최신 것으로 덮어씀)
-- `pop_pending(self, thread_ts)` (줄 60): pending 프롬프트를 꺼내고 제거
-- `pending_prompts(self)` (줄 66): pending_prompts dict 직접 접근 (테스트용)
-- `fire_interrupt_remote(self, thread_ts, prompt, service_adapter)` (줄 70): Remote 모드: Soulstream에 HTTP intervene 요청 (agent_session_id 기반)
+- `__init__(self)` (줄 52): 
+- `save_pending(self, thread_ts, pending)` (줄 56): pending 프롬프트 저장 (최신 것으로 덮어씀)
+- `pop_pending(self, thread_ts)` (줄 61): pending 프롬프트를 꺼내고 제거
+- `pending_prompts(self)` (줄 67): pending_prompts dict 직접 접근 (테스트용)
+- `fire_interrupt_remote(self, thread_ts, prompt, service_adapter)` (줄 71): Remote 모드: Soulstream에 HTTP intervene 요청 (agent_session_id 기반)
