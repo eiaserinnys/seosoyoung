@@ -117,27 +117,27 @@ Returns:
     - merged_profiles: rate limit 정보가 병합된 프로필 리스트
 
 ### `_handle_profile_list(say, reply_ts)`
-- 위치: 줄 640
+- 위치: 줄 641
 - 설명: profile list: Soulstream API로 프로필 + rate limit 조회 후 게이지 바 UI 표시
 
 ### `_handle_profile_delete_ui(say, reply_ts)`
-- 위치: 줄 666
+- 위치: 줄 667
 - 설명: profile delete (이름 미입력): 프로필 목록을 삭제 버튼으로 표시
 
 ### `handle_profile()`
-- 위치: 줄 699
+- 위치: 줄 700
 - 설명: profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
 
 ### `handle_plugins()`
-- 위치: 줄 782
+- 위치: 줄 783
 - 설명: plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드
 
 ### `handle_resume_list_run()`
-- 위치: 줄 853
+- 위치: 줄 854
 - 설명: 정주행 재개 명령어 핸들러
 
 ### `handle_session_info()`
-- 위치: 줄 881
+- 위치: 줄 882
 - 설명: session-info 명령어 핸들러 - 현재 스레드의 세션 정보 표시
 
 디버깅용으로, 현재 스레드에 연결된 세션의 주요 ID들을 표시합니다.

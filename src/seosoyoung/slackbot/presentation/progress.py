@@ -19,6 +19,7 @@ from seosoyoung.slackbot.formatting import (
     build_input_request_blocks,
 )
 from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
+from seosoyoung.slackbot.presentation.redact import redact_sensitive
 from seosoyoung.slackbot.presentation.types import PresentationContext
 
 logger = logging.getLogger(__name__)
@@ -238,8 +239,11 @@ def build_event_callbacks(
             node_map.mark_completed_and_remove(node.event_id)
             tool_name = node.tool_name or "tool"
 
+            # 민감 정보 REDACT 처리 (슬랙에 노출되기 전)
+            safe_result = redact_sensitive(result) if isinstance(result, str) else result
+
             # [공통] 결과 내용으로 교체 + 완료 이모지
-            display_text = format_tool_result(tool_name, result, is_error=is_error)
+            display_text = format_tool_result(tool_name, safe_result, is_error=is_error)
             try:
                 pctx.client.chat_update(
                     channel=pctx.channel,

@@ -98,7 +98,7 @@ Args:
     client: Slack client
 
 ### `register_credential_action_handlers(app, dependencies)`
-- 위치: 줄 663
+- 위치: 줄 664
 - 설명: 크레덴셜 프로필 관리 액션 핸들러 등록
 
 Args:
