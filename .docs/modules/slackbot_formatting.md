@@ -52,80 +52,80 @@ claude/, presentation/ 등 여러 패키지에서 공통으로 사용합니다.
 - 위치: 줄 74
 - 설명: 진행 상황 텍스트를 표시용으로 정리
 
-### `format_as_blockquote(text)`
+### `_quote_lines(text)`
 - 위치: 줄 84
+- 설명: 이미 escape된 텍스트를 슬랙 blockquote로 변환 (> prefix per line)
+
+### `format_as_blockquote(text)`
+- 위치: 줄 89
 - 설명: 텍스트를 슬랙 blockquote 형식으로 변환
 
 ### `build_trello_header(card, session_id)`
-- 위치: 줄 91
+- 위치: 줄 94
 - 설명: 트렐로 카드용 슬랙 메시지 헤더 생성
 
 진행 상태(계획/실행/완료)는 헤더가 아닌 슬랙 이모지 리액션으로 표시합니다.
 card가 None이면 카드 정보 없이 세션 ID만 표시합니다.
 
 ### `format_trello_progress(text, card, session_id)`
-- 위치: 줄 103
+- 위치: 줄 106
 - 설명: 트렐로 모드 채널 진행 상황 포맷
 
 ### `format_dm_progress(text, max_len)`
-- 위치: 줄 110
+- 위치: 줄 113
 - 설명: DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
 
 ### `format_initial_placeholder()`
-- 위치: 줄 120
+- 위치: 줄 123
 - 설명: 소울스트림 요청 전송 직후 표시할 대기 메시지
 
 ### `format_thinking_initial()`
-- 위치: 줄 125
+- 위치: 줄 128
 - 설명: thinking 메시지 초기 포맷
 
 ### `_format_thinking_body(text, emoji_fn)`
-- 위치: 줄 130
+- 위치: 줄 133
 - 설명: thinking 포맷 공통 로직 — 이모지 함수만 다름
 
 ### `format_thinking_text(text)`
-- 위치: 줄 142
+- 위치: 줄 145
 - 설명: thinking 메시지 텍스트 갱신 포맷
 
 이모지 + bold 헤더 + blockquote로 thinking 내용을 표시합니다.
 길이 초과 시 뒤에서 잘라서 최신 내용을 표시합니다.
 
 ### `format_thinking_complete(text)`
-- 위치: 줄 151
+- 위치: 줄 154
 - 설명: thinking 완료 포맷 — done 이모지로 교체한 최종 상태
 
 빈 텍스트도 처리하므로 호출자는 text_buffer 유무를 검사하지 않고
 항상 format_thinking_complete(text) 호출 가능.
 
 ### `_format_tool_input_readable(tool_input)`
-- 위치: 줄 160
+- 위치: 줄 163
 - 설명: tool_input을 human-readable blockquote로 변환
 
 dict이면 key/value 쌍을 개별 줄로 나열하고,
 그 외에는 str 변환 후 단일 blockquote로 표시합니다.
 
 ### `format_tool_initial(tool_name, tool_input)`
-- 위치: 줄 189
+- 위치: 줄 192
 - 설명: tool 메시지 초기 포맷
 
 이모지 + bold tool_name 헤더를 표시하고,
 tool_input이 있으면 human-readable blockquote로 key/value를 나열합니다.
 
 ### `_stringify_result(result)`
-- 위치: 줄 203
+- 위치: 줄 206
 - 설명: result를 읽기 쉬운 문자열로 변환
 
 ### `format_tool_result(tool_name, result, is_error)`
-- 위치: 줄 217
+- 위치: 줄 220
 - 설명: tool result 도착 시 표시 포맷
 
 성공 시 done 이모지 + 결과 blockquote,
 에러 시 :x: + 에러 메시지 blockquote.
 
 ### `format_tool_complete(tool_name)`
-- 위치: 줄 240
+- 위치: 줄 243
 - 설명: tool 메시지 완료 포맷 (결과 없이 이름만)
-
-### `format_tool_error(tool_name, error)`
-- 위치: 줄 245
-- 설명: tool 메시지 에러 포맷

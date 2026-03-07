@@ -81,11 +81,14 @@ def truncate_progress_text(text: str) -> str:
     return display_text
 
 
+def _quote_lines(text: str) -> str:
+    """이미 escape된 텍스트를 슬랙 blockquote로 변환 (> prefix per line)"""
+    return "\n".join(f"> {line}" for line in text.split("\n"))
+
+
 def format_as_blockquote(text: str) -> str:
     """텍스트를 슬랙 blockquote 형식으로 변환"""
-    escaped = escape_backticks(text)
-    lines = [f"> {line}" for line in escaped.split("\n")]
-    return "\n".join(lines)
+    return _quote_lines(escape_backticks(text))
 
 
 def build_trello_header(card: _CardLike | None, session_id: str = "") -> str:
@@ -135,7 +138,7 @@ def _format_thinking_body(text: str | None, emoji_fn: Callable[[], str]) -> str:
     if len(display) > THINKING_QUOTE_MAX_LEN:
         display = "..." + display[-THINKING_QUOTE_MAX_LEN:]
     escaped = escape_backticks(display)
-    quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
+    quoted = _quote_lines(escaped)
     return f"{emoji_fn()} *생각합니다...*\n{quoted}"
 
 
@@ -224,7 +227,7 @@ def format_tool_result(tool_name: str, result: Any, is_error: bool = False) -> s
         raw = str(result)
         result_str = raw[:TOOL_RESULT_MAX_LEN] + ("..." if len(raw) > TOOL_RESULT_MAX_LEN else "")
         escaped = escape_backticks(result_str)
-        quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
+        quoted = _quote_lines(escaped)
         return f":x: *{tool_name}*\n{quoted}"
 
     result_str = _stringify_result(result)
@@ -232,7 +235,7 @@ def format_tool_result(tool_name: str, result: Any, is_error: bool = False) -> s
         result_str = result_str[:TOOL_RESULT_MAX_LEN] + "..."
     if result_str:
         escaped = escape_backticks(result_str)
-        quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
+        quoted = _quote_lines(escaped)
         return f"{_emoji_tool_done()} *{tool_name}*\n{quoted}"
     return f"{_emoji_tool_done()} *{tool_name}*"
 
@@ -240,10 +243,3 @@ def format_tool_result(tool_name: str, result: Any, is_error: bool = False) -> s
 def format_tool_complete(tool_name: str) -> str:
     """tool 메시지 완료 포맷 (결과 없이 이름만)"""
     return f"{_emoji_tool_done()} *{tool_name}*"
-
-
-def format_tool_error(tool_name: str, error: str) -> str:
-    """tool 메시지 에러 포맷"""
-    escaped_error = escape_backticks(error)
-    quoted = "\n".join(f"> {line}" for line in escaped_error.split("\n"))
-    return f":x: *{tool_name}*\n{quoted}"

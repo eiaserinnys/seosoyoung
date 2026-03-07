@@ -24,7 +24,6 @@ from seosoyoung.slackbot.formatting import (
     format_thinking_initial,
     format_thinking_text,
     format_tool_complete,
-    format_tool_error,
     format_tool_initial,
     format_tool_result,
 )
@@ -368,27 +367,3 @@ class TestFormatToolComplete:
             assert ":ssy-done:" in result
 
 
-class TestFormatToolError:
-    """format_tool_error 테스트"""
-
-    def test_error_format(self):
-        result = format_tool_error("Bash", "command failed")
-        assert ":x:" in result
-        assert "*Bash*" in result
-        assert "> command failed" in result
-
-    def test_backticks_in_error_escaped(self):
-        result = format_tool_error("Bash", "error in `main`")
-        assert "`" not in result
-        assert "main" in result
-
-    def test_no_old_tool_emoji(self):
-        """에러 포맷에 tool 이모지가 아닌 :x:가 사용된다"""
-        result = format_tool_error("Bash", "fail")
-        assert result.startswith(":x:")
-
-    def test_multiline_error_blockquoted(self):
-        """멀티라인 에러 메시지의 모든 줄이 blockquote"""
-        result = format_tool_error("Bash", "line1\nline2")
-        assert "> line1" in result
-        assert "> line2" in result
