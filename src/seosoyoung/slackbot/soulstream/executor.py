@@ -128,7 +128,7 @@ class ClaudeExecutor:
         thread_ts: str,
         msg_ts: str,
         *,
-        on_progress: ProgressCallback,
+        on_progress: ProgressCallback | None = None,
         on_compact: CompactCallback,
         presentation: Any,         # PresentationContext (opaque)
         session_id: Optional[str] = None,

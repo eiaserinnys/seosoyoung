@@ -377,8 +377,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         trello_card=kwargs.get("trello_card"),
                     )
 
-                # Auto-build event callbacks when not provided
-                if on_progress is None and self._update_message_fn is not None:
+                # Auto-build event callbacks when update_message_fn is available
+                if self._update_message_fn is not None:
                     from seosoyoung.slackbot.presentation.progress import (
                         build_event_callbacks,
                         post_initial_placeholder,
@@ -389,7 +389,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                     )
                     _node_map = SlackNodeMap()
                     _event_cbs = build_event_callbacks(presentation, _node_map, "clean", initial_placeholder_ts=_placeholder_ts)
-                    on_compact = _event_cbs["on_compact"]
+                    if on_compact is None:
+                        on_compact = _event_cbs["on_compact"]
 
             # 세분화 콜백 구성
             event_kwargs = {}
@@ -408,7 +409,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 prompt=prompt,
                 thread_ts=thread_ts,
                 msg_ts=kwargs.get("msg_ts", thread_ts),
-                on_progress=_event_cbs["on_progress"] if _event_cbs else on_progress,
+                on_progress=on_progress,
                 on_compact=on_compact,
                 presentation=presentation,
                 session_id=session_id,
@@ -417,13 +418,13 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 **event_kwargs,
             )
 
-            # 실행 완료 후 남은 progress 메시지 정리
+            # 실행 완료 후 placeholder 삭제
             if _event_cbs:
                 try:
                     from seosoyoung.utils.async_bridge import run_in_new_loop
-                    run_in_new_loop(_event_cbs["_cleanup_progress"]())
+                    run_in_new_loop(_event_cbs["cleanup"]())
                 except Exception as e:
-                    logger.warning(f"progress 메시지 정리 실패 (무시): {e}")
+                    logger.warning(f"placeholder 삭제 실패 (무시): {e}")
 
             # Get updated session_id
             session = self._session_manager.get(thread_ts)

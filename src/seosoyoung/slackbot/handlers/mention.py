@@ -438,7 +438,6 @@ def create_session_and_run_claude(
         prompt=effective_prompt,
         thread_ts=session_thread_ts,
         msg_ts=ts,
-        on_progress=event_cbs["on_progress"],
         on_compact=on_compact,
         presentation=pctx,
         session_id=session.session_id,
@@ -453,12 +452,12 @@ def create_session_and_run_claude(
         on_tool_result=event_cbs["on_tool_result"],
     )
 
-    # 실행 완료 후 남은 progress 메시지 정리
+    # 실행 완료 후 placeholder 삭제
     try:
         from seosoyoung.utils.async_bridge import run_in_new_loop
-        run_in_new_loop(event_cbs["_cleanup_progress"]())
+        run_in_new_loop(event_cbs["cleanup"]())
     except Exception as e:
-        logger.warning(f"progress 메시지 정리 실패 (무시): {e}")
+        logger.warning(f"placeholder 삭제 실패 (무시): {e}")
 
 
 def register_mention_handlers(app, dependencies: dict):
