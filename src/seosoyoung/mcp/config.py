@@ -3,9 +3,9 @@
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
-load_dotenv()
+load_dotenv(find_dotenv(usecwd=True))
 
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
 
