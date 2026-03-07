@@ -26,7 +26,7 @@ class TestFormatThinkingInitial:
     def test_contains_emoji_and_bold(self):
         result = format_thinking_initial()
         assert EMOJI_THINKING in result
-        assert "*thinking...*" in result
+        assert "*생각합니다...*" in result
 
     def test_default_emoji_is_thought_balloon(self):
         """환경변수 미설정 시 기본 이모지는 U+1F4AD"""
@@ -41,7 +41,7 @@ class TestFormatThinkingText:
 
     def test_contains_header_and_quoted_text(self):
         result = format_thinking_text("I need to analyze this")
-        assert "*thinking...*" in result
+        assert "*생각합니다...*" in result
         assert "> I need to analyze this" in result
 
     def test_multiline_text_each_line_quoted(self):
@@ -63,7 +63,7 @@ class TestFormatThinkingText:
 
     def test_empty_text(self):
         result = format_thinking_text("")
-        assert "*thinking...*" in result
+        assert "*생각합니다...*" in result
         assert "> " in result
 
 

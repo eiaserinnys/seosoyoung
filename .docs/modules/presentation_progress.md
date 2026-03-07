@@ -23,7 +23,7 @@ Returns:
     (on_progress, on_compact) 콜백 튜플
 
 ### `build_event_callbacks(pctx, node_map, mode)`
-- 위치: 줄 164
+- 위치: 줄 168
 - 설명: 세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
 
 Args:

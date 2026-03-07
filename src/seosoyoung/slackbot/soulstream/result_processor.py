@@ -67,6 +67,8 @@ class ResultProcessor:
             else:
                 target_ts = pctx.last_msg_ts
             if not target_ts:
+                # placeholder 없음 — 새 메시지로 중단 알림
+                pctx.say(text="> (중단됨)", thread_ts=pctx.thread_ts)
                 return
 
             if pctx.is_trello_mode:
@@ -161,6 +163,11 @@ class ResultProcessor:
     ):
         """일반 모드(멘션) 성공 처리"""
         reply_thread_ts = pctx.thread_ts
+
+        # placeholder가 없으면 (last_msg_ts=None) 새 메시지로 결과 게시
+        if not pctx.last_msg_ts:
+            self.send_long_message(pctx.say, response, pctx.thread_ts)
+            return
 
         if not pctx.is_thread_reply:
             # 채널 최초 응답: 미리보기를 채널에, 전문은 스레드에
@@ -335,13 +342,16 @@ class ResultProcessor:
             else:
                 pctx.say(text=f"❌ {error_msg}", thread_ts=pctx.thread_ts)
         else:
-            try:
-                error_text = f"❌ {error_msg}"
-                self.update_message_fn(pctx.client, pctx.channel, pctx.last_msg_ts, error_text,
-                               blocks=[{"type": "section",
-                                        "text": {"type": "mrkdwn", "text": error_text}}])
-            except Exception:
+            if not pctx.last_msg_ts:
                 pctx.say(text=f"❌ {error_msg}", thread_ts=pctx.thread_ts)
+            else:
+                try:
+                    error_text = f"❌ {error_msg}"
+                    self.update_message_fn(pctx.client, pctx.channel, pctx.last_msg_ts, error_text,
+                                   blocks=[{"type": "section",
+                                            "text": {"type": "mrkdwn", "text": error_text}}])
+                except Exception:
+                    pctx.say(text=f"❌ {error_msg}", thread_ts=pctx.thread_ts)
 
     def handle_exception(self, pctx, e: Exception):
         """예외 처리 — handle_error에 위임"""

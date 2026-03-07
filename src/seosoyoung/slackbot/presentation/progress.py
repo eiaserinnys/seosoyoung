@@ -115,6 +115,10 @@ def build_progress_callbacks(
                     except Exception as e:
                         logger.warning(f"stale 체크 실패: {e}")
 
+                if not pctx.last_msg_ts:
+                    logger.debug("on_progress: last_msg_ts is None, skipping update")
+                    return
+
                 quote_text = format_as_blockquote(display_text)
                 try:
                     update_message_fn(pctx.client, pctx.channel, pctx.last_msg_ts, quote_text)
@@ -192,7 +196,9 @@ def build_event_callbacks(
                 channel=pctx.channel,
                 ts=msg_ts,
             )
-        except Exception:
+            logger.debug(f"이벤트 메시지 삭제 성공: ts={msg_ts}")
+        except Exception as del_err:
+            logger.info(f"이벤트 메시지 삭제 실패 (폴백 시도): ts={msg_ts}, err={del_err}")
             try:
                 pctx.client.chat_update(
                     channel=pctx.channel,
@@ -200,7 +206,7 @@ def build_event_callbacks(
                     text="(done)",
                 )
             except Exception as e:
-                logger.warning(f"삭제/갱신 폴백 실패: {e}")
+                logger.warning(f"삭제/갱신 폴백 실패: ts={msg_ts}, err={e}")
 
     async def on_thinking(thinking_text: str, event_id, parent_event_id):
         try:
@@ -256,7 +262,9 @@ def build_event_callbacks(
         try:
             node = node_map.find_thinking_for_text(parent_event_id)
             if not node:
+                logger.debug(f"text_end: thinking 노드 없음 (event_id={event_id}, parent_event_id={parent_event_id})")
                 return
+            logger.debug(f"text_end: 노드 발견 (node.event_id={node.event_id}, node.msg_ts={node.msg_ts}, mode={mode})")
             node_map.mark_completed(node.event_id)
 
             if mode == "clean":

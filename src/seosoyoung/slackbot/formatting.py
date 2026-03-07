@@ -95,7 +95,7 @@ def format_dm_progress(text: str, max_len: int = DM_MSG_MAX_LEN) -> str:
 
 def format_thinking_initial() -> str:
     """thinking 메시지 초기 포맷"""
-    return f"{EMOJI_THINKING} *thinking...*"
+    return f"{EMOJI_THINKING} *생각합니다...*"
 
 
 def format_thinking_text(text: str) -> str:
@@ -107,7 +107,7 @@ def format_thinking_text(text: str) -> str:
     if len(escaped) > PROGRESS_MAX_LEN:
         escaped = "...\n" + escaped[-PROGRESS_MAX_LEN:]
     quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
-    return f"{EMOJI_THINKING} *thinking...*\n{quoted}"
+    return f"{EMOJI_THINKING} *생각합니다...*\n{quoted}"
 
 
 def _summarize_tool_input(tool_input: Any) -> str:

@@ -270,10 +270,10 @@
 - `get_channel_history()` (seosoyoung/slackbot/handlers/mention.py:117): 채널의 최근 메시지를 가져와서 컨텍스트 문자열로 반환
 - `try_handle_command()` (seosoyoung/slackbot/handlers/mention.py:150): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
 - `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:238): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
-- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:468): 멘션 핸들러 등록
+- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:454): 멘션 핸들러 등록
 - `build_slack_context()` (seosoyoung/slackbot/handlers/message.py:16): 슬랙 컨텍스트 블록 문자열을 생성합니다.
 - `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:52): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
-- `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:357): 메시지 핸들러 등록
+- `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:343): 메시지 핸들러 등록
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
 - `notify_startup()` (seosoyoung/slackbot/main.py:248): 봇 시작 알림
 - `notify_shutdown()` (seosoyoung/slackbot/main.py:259): 봇 종료 알림
@@ -282,7 +282,7 @@
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:494): Initialize plugin SDK backends.
 - `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:35): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
-- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:164): 세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
+- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:168): 세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slackbot/slack/file_handler.py:67): 스레드별 임시 폴더 생성

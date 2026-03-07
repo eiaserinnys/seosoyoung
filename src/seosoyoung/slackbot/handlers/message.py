@@ -150,21 +150,7 @@ def process_thread_message(
         f"text={clean_text[:50] if clean_text else '(파일 첨부)'}"
     )
 
-    # 초기 메시지 표시 (사고 과정 업데이트용)
-    initial_text = ("> 소영이 생각합니다..." if user_info["role"] == "admin"
-                    else "> 소영이 조회 전용 모드로 생각합니다...")
-    initial_msg = client.chat_postMessage(
-        channel=channel,
-        thread_ts=thread_ts,
-        text=initial_text,
-        blocks=[{
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": initial_text}
-        }]
-    )
-    initial_msg_ts = initial_msg["ts"]
-
-    # PresentationContext 구성
+    # PresentationContext 구성 (초기 placeholder 없음 — 세분화 이벤트가 즉시 피드백)
     pctx = PresentationContext(
         channel=channel,
         thread_ts=thread_ts,
@@ -174,7 +160,7 @@ def process_thread_message(
         effective_role=user_info["role"],
         session_id=session.session_id,
         user_id=user_id,
-        last_msg_ts=initial_msg_ts,
+        last_msg_ts=None,
         is_existing_thread=True,
         is_thread_reply=True,
     )
