@@ -32,5 +32,7 @@
 - `add_tool(self, event_id, msg_ts, tool_use_id, parent_event_id, tool_name)` (줄 76): tool_start 이벤트에 대응하는 노드 등록
 - `find_thinking_for_text(self, parent_event_id)` (줄 98): text 이벤트가 병합할 대상 노드 검색
 - `find_tool_by_use_id(self, tool_use_id)` (줄 111): tool_use_id로 tool 노드 검색
-- `mark_completed(self, event_id)` (줄 121): 노드를 완료 상태로 마킹
-- `clear_completed(self)` (줄 128): 완료된 노드를 정리. 정리된 노드 수를 반환.
+- `_remove_from_indexes(self, node)` (줄 121): 완료된 노드를 룩업 인덱스에서 제거 (노드 자체는 _nodes에 유지)
+- `mark_completed(self, event_id)` (줄 129): 노드를 완료 상태로 마킹
+- `mark_completed_and_remove(self, event_id)` (줄 136): 노드를 완료 상태로 마킹하고 룩업 인덱스에서 즉시 제거
+- `clear_completed(self)` (줄 151): 완료된 노드를 정리. 정리된 노드 수를 반환.

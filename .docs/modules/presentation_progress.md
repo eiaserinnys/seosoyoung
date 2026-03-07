@@ -11,8 +11,12 @@ PresentationContext를 캡처하는 클로저 쌍을 반환합니다.
 
 ## 함수
 
+### `_event_delete_delay()`
+- 위치: 줄 36
+- 설명: 이벤트 메시지 삭제 전 대기 시간 (초) — 호출 시점에 환경변수를 읽음
+
 ### `build_progress_callbacks(pctx, update_message_fn)`
-- 위치: 줄 35
+- 위치: 줄 41
 - 설명: PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
 
 Args:
@@ -23,7 +27,7 @@ Returns:
     (on_progress, on_compact) 콜백 튜플
 
 ### `build_event_callbacks(pctx, node_map, mode)`
-- 위치: 줄 168
+- 위치: 줄 174
 - 설명: 세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
 
 Args:

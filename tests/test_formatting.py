@@ -8,8 +8,10 @@ import pytest
 from unittest.mock import patch
 
 from seosoyoung.slackbot.formatting import (
-    EMOJI_THINKING,
-    EMOJI_TOOL,
+    _EMOJI_THINKING_DEFAULT,
+    _EMOJI_TOOL_DEFAULT,
+    _emoji_thinking,
+    _emoji_tool,
     PROGRESS_MAX_LEN,
     _summarize_tool_input,
     format_thinking_initial,
@@ -25,15 +27,20 @@ class TestFormatThinkingInitial:
 
     def test_contains_emoji_and_bold(self):
         result = format_thinking_initial()
-        assert EMOJI_THINKING in result
+        assert _emoji_thinking() in result
         assert "*생각합니다...*" in result
 
     def test_default_emoji_is_thought_balloon(self):
         """환경변수 미설정 시 기본 이모지는 U+1F4AD"""
-        # 이미 기본값이 로드된 상태를 검증
-        assert "\U0001f4ad" == EMOJI_THINKING or EMOJI_THINKING == os.environ.get(
-            "SOULSTREAM_EMOJI_THINKING", "\U0001f4ad"
-        )
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SOULSTREAM_EMOJI_THINKING", None)
+            assert _emoji_thinking() == _EMOJI_THINKING_DEFAULT
+
+    def test_custom_emoji_via_env(self):
+        """환경변수로 이모지를 오버라이드할 수 있다"""
+        with patch.dict(os.environ, {"SOULSTREAM_EMOJI_THINKING": ":ssy-thinking:"}):
+            result = format_thinking_initial()
+            assert ":ssy-thinking:" in result
 
 
 class TestFormatThinkingText:
@@ -98,7 +105,7 @@ class TestFormatToolInitial:
 
     def test_header_only_without_input(self):
         result = format_tool_initial("Grep")
-        assert EMOJI_TOOL in result
+        assert _emoji_tool() in result
         assert "*Grep*" in result
         assert "\n>" not in result
 
@@ -126,7 +133,7 @@ class TestFormatToolComplete:
 
     def test_contains_emoji_and_done(self):
         result = format_tool_complete("Grep")
-        assert EMOJI_TOOL in result
+        assert _emoji_tool() in result
         assert "*Grep*" in result
         assert "(done)" in result
 
@@ -136,7 +143,7 @@ class TestFormatToolError:
 
     def test_contains_emoji_and_error(self):
         result = format_tool_error("Bash", "command failed")
-        assert EMOJI_TOOL in result
+        assert _emoji_tool() in result
         assert "*Bash*" in result
         assert ":x:" in result
         assert "command failed" in result

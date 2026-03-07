@@ -118,6 +118,14 @@ class SlackNodeMap:
             return None
         return self._nodes.get(event_id)
 
+    def _remove_from_indexes(self, node: SlackNode) -> None:
+        """완료된 노드를 룩업 인덱스에서 제거 (노드 자체는 _nodes에 유지)"""
+        parent = node.parent_event_id
+        if self._last_thinking_by_parent.get(parent) == node.event_id:
+            del self._last_thinking_by_parent[parent]
+        if node.tool_use_id:
+            self._tool_use_index.pop(node.tool_use_id, None)
+
     def mark_completed(self, event_id: int) -> Optional[SlackNode]:
         """노드를 완료 상태로 마킹"""
         node = self._nodes.get(event_id)
@@ -125,14 +133,25 @@ class SlackNodeMap:
             node.completed = True
         return node
 
+    def mark_completed_and_remove(self, event_id: int) -> Optional[SlackNode]:
+        """노드를 완료 상태로 마킹하고 룩업 인덱스에서 즉시 제거
+
+        SSE 재연결 시 이미 처리한 이벤트가 재생되는 경우,
+        룩업 인덱스에 노드가 남아 있으면 중복 삭제 시도가 발생합니다.
+        완료 즉시 인덱스에서 제거하여 find_thinking_for_text, find_tool_by_use_id가
+        이미 처리된 노드를 반환하지 않도록 합니다.
+        """
+        node = self._nodes.get(event_id)
+        if not node:
+            return None
+        node.completed = True
+        self._remove_from_indexes(node)
+        return node
+
     def clear_completed(self) -> int:
         """완료된 노드를 정리. 정리된 노드 수를 반환."""
         completed_ids = [eid for eid, node in self._nodes.items() if node.completed]
         for eid in completed_ids:
             node = self._nodes.pop(eid)
-            if node.tool_use_id:
-                self._tool_use_index.pop(node.tool_use_id, None)
-            parent = node.parent_event_id
-            if self._last_thinking_by_parent.get(parent) == eid:
-                del self._last_thinking_by_parent[parent]
+            self._remove_from_indexes(node)
         return len(completed_ids)

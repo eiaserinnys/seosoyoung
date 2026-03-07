@@ -30,9 +30,19 @@ PROGRESS_MAX_LEN = 3800
 DM_MSG_MAX_LEN = 3000
 _TOOL_INPUT_MAX_LEN = 200
 
-# 이벤트 이모지 (선택적 오버라이드 — 없으면 슬랙 기본 이모지 사용)
-EMOJI_THINKING = os.environ.get("SOULSTREAM_EMOJI_THINKING", "\U0001f4ad")
-EMOJI_TOOL = os.environ.get("SOULSTREAM_EMOJI_TOOL", "\U0001f527")
+# 이벤트 이모지 기본값 (슬랙 유니코드 폴백)
+_EMOJI_THINKING_DEFAULT = "\U0001f4ad"
+_EMOJI_TOOL_DEFAULT = "\U0001f527"
+
+
+def _emoji_thinking() -> str:
+    """thinking 이모지 — 호출 시점에 환경변수를 읽어 dotenv 로딩 순서에 무관하게 동작"""
+    return os.environ.get("SOULSTREAM_EMOJI_THINKING", _EMOJI_THINKING_DEFAULT)
+
+
+def _emoji_tool() -> str:
+    """tool 이모지 — 호출 시점에 환경변수를 읽어 dotenv 로딩 순서에 무관하게 동작"""
+    return os.environ.get("SOULSTREAM_EMOJI_TOOL", _EMOJI_TOOL_DEFAULT)
 
 
 # --- 함수 ---
@@ -95,7 +105,7 @@ def format_dm_progress(text: str, max_len: int = DM_MSG_MAX_LEN) -> str:
 
 def format_thinking_initial() -> str:
     """thinking 메시지 초기 포맷"""
-    return f"{EMOJI_THINKING} *생각합니다...*"
+    return f"{_emoji_thinking()} *생각합니다...*"
 
 
 def format_thinking_text(text: str) -> str:
@@ -107,7 +117,7 @@ def format_thinking_text(text: str) -> str:
     if len(escaped) > PROGRESS_MAX_LEN:
         escaped = "...\n" + escaped[-PROGRESS_MAX_LEN:]
     quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
-    return f"{EMOJI_THINKING} *생각합니다...*\n{quoted}"
+    return f"{_emoji_thinking()} *생각합니다...*\n{quoted}"
 
 
 def _summarize_tool_input(tool_input: Any) -> str:
@@ -136,7 +146,7 @@ def format_tool_initial(tool_name: str, tool_input: Any = None) -> str:
     이모지 + bold tool_name 헤더를 표시하고,
     tool_input이 있으면 blockquote로 요약을 덧붙입니다.
     """
-    header = f"{EMOJI_TOOL} *{tool_name}*"
+    header = f"{_emoji_tool()} *{tool_name}*"
     if tool_input:
         summary = _summarize_tool_input(tool_input)
         if summary:
@@ -146,10 +156,10 @@ def format_tool_initial(tool_name: str, tool_input: Any = None) -> str:
 
 def format_tool_complete(tool_name: str) -> str:
     """tool 메시지 완료 포맷 (keep 모드)"""
-    return f"{EMOJI_TOOL} *{tool_name}* (done)"
+    return f"{_emoji_tool()} *{tool_name}* (done)"
 
 
 def format_tool_error(tool_name: str, error: str) -> str:
     """tool 메시지 에러 포맷 (keep 모드)"""
     escaped_error = escape_backticks(error)
-    return f"{EMOJI_TOOL} *{tool_name}* :x: {escaped_error}"
+    return f"{_emoji_tool()} *{tool_name}* :x: {escaped_error}"
