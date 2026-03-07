@@ -165,9 +165,12 @@ def process_thread_message(
         is_thread_reply=True,
     )
 
-    # 세분화 이벤트 콜백 (build_progress_callbacks 대체)
+    # 초기 placeholder 게시 + 세분화 이벤트 콜백
+    from seosoyoung.slackbot.presentation.progress import post_initial_placeholder
+
+    placeholder_ts = post_initial_placeholder(client, channel, thread_ts)
     node_map = SlackNodeMap()
-    event_cbs = build_event_callbacks(pctx, node_map, "clean")
+    event_cbs = build_event_callbacks(pctx, node_map, "clean", initial_placeholder_ts=placeholder_ts)
     on_compact = event_cbs["on_compact"]
 
     # Plugin: before_execute hook — memory injection

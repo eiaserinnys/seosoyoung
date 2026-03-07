@@ -15,11 +15,14 @@ from seosoyoung.slackbot.formatting import (
     format_as_blockquote,
     format_trello_progress,
     format_dm_progress,
+    format_initial_placeholder,
     format_thinking_initial,
     format_thinking_text,
+    format_thinking_complete,
     format_tool_initial,
     format_tool_complete,
     format_tool_error,
+    format_tool_result,
 )
 from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
 from seosoyoung.slackbot.presentation.types import PresentationContext
@@ -32,6 +35,24 @@ CompactCallback = Callable   # async (str, str) -> None
 
 # stale 사고 과정 체크 간격 (초)
 _STALE_CHECK_INTERVAL = 10.0
+
+def post_initial_placeholder(client, channel: str, thread_ts: str) -> str | None:
+    """초기 placeholder 메시지를 게시하고 ts를 반환
+
+    실패 시 None을 반환합니다. 호출자는 이 ts를 build_event_callbacks의
+    initial_placeholder_ts 파라미터로 전달합니다.
+    """
+    try:
+        reply = client.chat_postMessage(
+            channel=channel,
+            thread_ts=thread_ts,
+            text=format_initial_placeholder(),
+        )
+        return reply["ts"]
+    except Exception as e:
+        logger.warning(f"placeholder 게시 실패: {e}")
+        return None
+
 
 def _event_delete_delay() -> float:
     """이벤트 메시지 삭제 전 대기 시간 (초) — 호출 시점에 환경변수를 읽음"""
@@ -175,13 +196,15 @@ def build_event_callbacks(
     pctx: PresentationContext,
     node_map: SlackNodeMap,
     mode: str = "clean",
+    initial_placeholder_ts: str | None = None,
 ) -> dict:
     """세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
 
     Args:
         pctx: 프레젠테이션 컨텍스트
         node_map: 이벤트-메시지 매핑
-        mode: "clean" (삭제) 또는 "keep" (유지)
+        mode: "clean" (갱신 후 삭제) 또는 "keep" (갱신 후 유지)
+        initial_placeholder_ts: 초기 placeholder 메시지의 ts (있으면 첫 이벤트에서 삭제)
 
     Returns:
         {
@@ -197,33 +220,38 @@ def build_event_callbacks(
         }
     """
 
-    async def _delete_or_update_complete(msg_ts: str) -> None:
-        """메시지 삭제, 실패 시 "(완료)"로 갱신 (S5)
+    # placeholder 삭제 상태 관리
+    _placeholder_ts: list[str | None] = [initial_placeholder_ts]
 
-        삭제 전 _EVENT_DELETE_DELAY초 대기하여 사용자가 내용을 확인할 여유를 줍니다.
+    async def _delete_placeholder():
+        """초기 placeholder 메시지를 삭제 (idempotent)"""
+        ts = _placeholder_ts[0]
+        if ts:
+            _placeholder_ts[0] = None
+            try:
+                pctx.client.chat_delete(channel=pctx.channel, ts=ts)
+            except Exception as e:
+                logger.debug(f"placeholder 삭제 실패: {e}")
+
+    async def _schedule_delete(msg_ts: str) -> None:
+        """clean 모드 전용: 설정된 시간 후 메시지 삭제
+
+        삭제 실패 시 폴백 없음 — 이 함수 호출 전에 메시지는 이미
+        format_thinking_complete / format_tool_result로 최종 상태로
+        갱신된 상태이므로, 삭제 실패 시 완료된 메시지가 남을 뿐이다.
         """
         delay = _event_delete_delay()
         if delay > 0:
             await asyncio.sleep(delay)
         try:
-            pctx.client.chat_delete(
-                channel=pctx.channel,
-                ts=msg_ts,
-            )
+            pctx.client.chat_delete(channel=pctx.channel, ts=msg_ts)
             logger.debug(f"이벤트 메시지 삭제 성공: ts={msg_ts}")
-        except Exception as del_err:
-            logger.info(f"이벤트 메시지 삭제 실패 (폴백 시도): ts={msg_ts}, err={del_err}")
-            try:
-                pctx.client.chat_update(
-                    channel=pctx.channel,
-                    ts=msg_ts,
-                    text="(done)",
-                )
-            except Exception as e:
-                logger.warning(f"삭제/갱신 폴백 실패: ts={msg_ts}, err={e}")
+        except Exception as e:
+            logger.debug(f"이벤트 메시지 삭제 실패 (무시): ts={msg_ts}, err={e}")
 
     async def on_thinking(thinking_text: str, event_id, parent_event_id):
         try:
+            await _delete_placeholder()
             # thinking 메시지가 progress를 대체하므로 progress 메시지 정리
             await _cleanup_progress()
 
@@ -242,6 +270,7 @@ def build_event_callbacks(
 
     async def on_text_start(event_id, parent_event_id):
         try:
+            await _delete_placeholder()
             node = node_map.find_thinking_for_text(parent_event_id)
             if node:
                 # thinking 노드가 있으면 text_buffer 초기화
@@ -261,6 +290,7 @@ def build_event_callbacks(
 
     async def on_text_delta(text: str, event_id, parent_event_id):
         try:
+            await _delete_placeholder()
             node = node_map.find_thinking_for_text(parent_event_id)
             if not node:
                 logger.debug(f"text_delta: thinking 노드 없음 (parent_event_id={parent_event_id})")
@@ -288,24 +318,26 @@ def build_event_callbacks(
             logger.debug(f"text_end: 노드 발견 (node.event_id={node.event_id}, node.msg_ts={node.msg_ts}, mode={mode})")
             node_map.mark_completed_and_remove(node.event_id)
 
+            # [공통] 이모지를 done으로 변경 + 내용 갱신
+            display_text = format_thinking_complete(node.text_buffer or "")
+            try:
+                pctx.client.chat_update(
+                    channel=pctx.channel,
+                    ts=node.msg_ts,
+                    text=display_text,
+                )
+            except Exception as e:
+                logger.warning(f"text_end 갱신 실패: {e}")
+
+            # [clean 모드만] 설정된 시간 후 삭제
             if mode == "clean":
-                await _delete_or_update_complete(node.msg_ts)
-            else:
-                # keep 모드: 최종 텍스트로 갱신 후 유지
-                display_text = format_thinking_text(node.text_buffer) if node.text_buffer else "(done)"
-                try:
-                    pctx.client.chat_update(
-                        channel=pctx.channel,
-                        ts=node.msg_ts,
-                        text=display_text,
-                    )
-                except Exception as e:
-                    logger.warning(f"text_end keep 갱신 실패: {e}")
+                await _schedule_delete(node.msg_ts)
         except Exception as e:
             logger.warning(f"text_end 처리 실패: {e}")
 
     async def on_tool_start(tool_name: str, tool_input, tool_use_id: str, event_id, parent_event_id):
         try:
+            await _delete_placeholder()
             # tool 메시지가 progress를 대체하므로 progress 메시지 정리
             await _cleanup_progress()
 
@@ -332,22 +364,20 @@ def build_event_callbacks(
             node_map.mark_completed_and_remove(node.event_id)
             tool_name = node.tool_name or "tool"
 
+            # [공통] 결과 내용으로 교체 + 완료 이모지
+            display_text = format_tool_result(tool_name, result, is_error=is_error)
+            try:
+                pctx.client.chat_update(
+                    channel=pctx.channel,
+                    ts=node.msg_ts,
+                    text=display_text,
+                )
+            except Exception as e:
+                logger.warning(f"tool_result 갱신 실패: {e}")
+
+            # [clean 모드만] 설정된 시간 후 삭제
             if mode == "clean":
-                await _delete_or_update_complete(node.msg_ts)
-            else:
-                # keep 모드: 결과 반영
-                if is_error:
-                    text = format_tool_error(tool_name, str(result)[:200])
-                else:
-                    text = format_tool_complete(tool_name)
-                try:
-                    pctx.client.chat_update(
-                        channel=pctx.channel,
-                        ts=node.msg_ts,
-                        text=text,
-                    )
-                except Exception as e:
-                    logger.warning(f"tool_result keep 갱신 실패: {e}")
+                await _schedule_delete(node.msg_ts)
         except Exception as e:
             logger.warning(f"tool_result 처리 실패: {e}")
 
@@ -356,6 +386,7 @@ def build_event_callbacks(
 
     async def on_progress(current_text: str):
         try:
+            await _delete_placeholder()
             display_text = truncate_progress_text(current_text)
             if not display_text:
                 return

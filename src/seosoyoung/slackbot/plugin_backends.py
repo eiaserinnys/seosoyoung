@@ -379,9 +379,16 @@ class SoulstreamBackendImpl(SoulstreamBackend):
 
                 # Auto-build event callbacks when not provided
                 if on_progress is None and self._update_message_fn is not None:
-                    from seosoyoung.slackbot.presentation.progress import build_event_callbacks
+                    from seosoyoung.slackbot.presentation.progress import (
+                        build_event_callbacks,
+                        post_initial_placeholder,
+                    )
+
+                    _placeholder_ts = post_initial_placeholder(
+                        self._slack_client, channel, thread_ts,
+                    )
                     _node_map = SlackNodeMap()
-                    _event_cbs = build_event_callbacks(presentation, _node_map, "clean")
+                    _event_cbs = build_event_callbacks(presentation, _node_map, "clean", initial_placeholder_ts=_placeholder_ts)
                     on_compact = _event_cbs["on_compact"]
 
             # 세분화 콜백 구성

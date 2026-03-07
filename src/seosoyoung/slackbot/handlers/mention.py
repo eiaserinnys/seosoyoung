@@ -340,9 +340,12 @@ def create_session_and_run_claude(
         is_thread_reply=session.message_count > 0 or is_existing_thread,
     )
 
-    # 세분화 이벤트 콜백 (build_progress_callbacks 대체)
+    # 초기 placeholder 게시 + 세분화 이벤트 콜백
+    from seosoyoung.slackbot.presentation.progress import post_initial_placeholder
+
+    placeholder_ts = post_initial_placeholder(client, channel, session_thread_ts)
     node_map = SlackNodeMap()
-    event_cbs = build_event_callbacks(pctx, node_map, "clean")
+    event_cbs = build_event_callbacks(pctx, node_map, "clean", initial_placeholder_ts=placeholder_ts)
     on_compact = event_cbs["on_compact"]
 
     # 채널 컨텍스트 포맷팅

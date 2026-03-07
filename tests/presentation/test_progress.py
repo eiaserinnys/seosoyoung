@@ -1,14 +1,18 @@
-"""build_progress_callbacks 유닛 테스트
+"""build_progress_callbacks / build_event_callbacks 유닛 테스트
 
-PresentationContext를 캡처하는 on_progress/on_compact 콜백 쌍의
-동작을 검증합니다.
+PresentationContext를 캡처하는 콜백의 동작을 검증합니다.
 """
 
 import time
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch, call
 from seosoyoung.slackbot.presentation.types import PresentationContext
-from seosoyoung.slackbot.presentation.progress import build_progress_callbacks, _STALE_CHECK_INTERVAL
+from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
+from seosoyoung.slackbot.presentation.progress import (
+    build_progress_callbacks,
+    build_event_callbacks,
+    _STALE_CHECK_INTERVAL,
+)
 
 
 def _make_pctx(**overrides) -> PresentationContext:
@@ -504,3 +508,266 @@ class TestStaleThinkingRecovery:
         update_fn.assert_not_called()
         # chat_postMessage도 호출되지 않아야 함 (DM 채널 없음)
         client.chat_postMessage.assert_not_called()
+
+
+# ============================================================================
+# build_event_callbacks 테스트 (Phase 2)
+# ============================================================================
+
+
+def _make_event_cbs(mode="clean", placeholder_ts=None, **pctx_overrides):
+    """테스트용 build_event_callbacks 호출 헬퍼
+
+    Returns:
+        (event_cbs dict, pctx, node_map, client)
+    """
+    pctx = _make_pctx(**pctx_overrides)
+    node_map = SlackNodeMap()
+    cbs = build_event_callbacks(pctx, node_map, mode, initial_placeholder_ts=placeholder_ts)
+    return cbs, pctx, node_map, pctx.client
+
+
+class TestPlaceholder:
+    """초기 placeholder 메시지 라이프사이클 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_placeholder_deleted_on_first_thinking(self):
+        """첫 on_thinking 호출 시 placeholder가 삭제된다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "thinking_ts"}
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_001", client=client,
+        )
+
+        await cbs["on_thinking"]("analyzing...", "evt1", None)
+
+        # placeholder 삭제 호출
+        client.chat_delete.assert_any_call(channel="C123", ts="ph_ts_001")
+
+    @pytest.mark.asyncio
+    async def test_placeholder_deleted_on_first_progress(self):
+        """첫 on_progress 호출 시 placeholder가 삭제된다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "progress_ts"}
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_002", client=client,
+        )
+
+        await cbs["on_progress"]("working...")
+
+        # placeholder 삭제 호출
+        client.chat_delete.assert_any_call(channel="C123", ts="ph_ts_002")
+
+    @pytest.mark.asyncio
+    async def test_placeholder_deleted_on_first_tool_start(self):
+        """첫 on_tool_start 호출 시 placeholder가 삭제된다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "tool_ts"}
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_003", client=client,
+        )
+
+        await cbs["on_tool_start"]("Grep", {"pattern": "foo"}, "tu1", "evt1", None)
+
+        # placeholder 삭제 호출
+        client.chat_delete.assert_any_call(channel="C123", ts="ph_ts_003")
+
+    @pytest.mark.asyncio
+    async def test_placeholder_not_double_deleted(self):
+        """두 번째 콜백에서는 placeholder 삭제를 시도하지 않는다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "msg_ts"}
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_004", client=client,
+        )
+
+        # 첫 번째 콜백: placeholder 삭제
+        await cbs["on_thinking"]("first", "evt1", None)
+        delete_calls_after_first = client.chat_delete.call_count
+
+        # 두 번째 콜백: placeholder 삭제하지 않음
+        client.chat_delete.reset_mock()
+        await cbs["on_thinking"]("second", "evt2", None)
+
+        # chat_delete가 호출되지 않아야 함 (cleanup_progress의 삭제도 없어야 함)
+        # cleanup_progress는 _progress_msg_ts가 None이므로 호출되지 않음
+        assert not any(
+            c == call(channel="C123", ts="ph_ts_004")
+            for c in client.chat_delete.call_args_list
+        )
+
+    @pytest.mark.asyncio
+    async def test_placeholder_delete_failure_does_not_break_callback(self):
+        """placeholder 삭제 실패 시 콜백이 정상 진행된다"""
+        client = MagicMock()
+        client.chat_delete.side_effect = Exception("message_not_found")
+        client.chat_postMessage.return_value = {"ts": "msg_ts"}
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_fail", client=client,
+        )
+
+        # 예외가 전파되지 않고 thinking 메시지가 게시되어야 함
+        await cbs["on_thinking"]("analyzing...", "evt1", None)
+        client.chat_postMessage.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_placeholder_no_delete(self):
+        """placeholder_ts가 None이면 삭제를 시도하지 않는다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "msg_ts"}
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts=None, client=client,
+        )
+
+        await cbs["on_thinking"]("thinking", "evt1", None)
+
+        # chat_delete가 호출되어도 placeholder 관련은 아님
+        for c in client.chat_delete.call_args_list:
+            assert c != call(channel="C123", ts=None)
+
+
+class TestThinkingComplete:
+    """on_text_end 재설계: 공통 갱신 + 모드별 삭제 테스트
+
+    SSE 이벤트 모델: thinking과 text는 같은 parent를 공유한다.
+    - on_thinking(text, event_id=T, parent_event_id=P) → node 생성
+    - on_text_end(event_id=TE, parent_event_id=P) → find_thinking_for_text(P)로 노드 검색
+    """
+
+    @pytest.mark.asyncio
+    @patch("seosoyoung.slackbot.presentation.progress._event_delete_delay", return_value=0)
+    async def test_emoji_changes_on_text_end_clean(self, mock_delay):
+        """clean 모드: text_end 시 이모지 변경 + 내용 갱신 후 삭제"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "thinking_msg_ts"}
+        cbs, pctx, node_map, _ = _make_event_cbs(mode="clean", client=client)
+
+        # thinking 시작 (parent_event_id=None)
+        await cbs["on_thinking"]("analyzing code...", "evt_t1", None)
+
+        # text_end 트리거 — thinking과 같은 parent_event_id=None
+        await cbs["on_text_end"]("evt_text_end", None)
+
+        # chat_update가 format_thinking_complete() 결과로 호출됨
+        update_calls = [
+            c for c in client.chat_update.call_args_list
+            if c[1].get("ts") == "thinking_msg_ts"
+        ]
+        assert len(update_calls) >= 1
+        last_update = update_calls[-1]
+        # format_thinking_complete는 done 이모지를 포함
+        assert "생각합니다" in last_update[1]["text"]
+
+        # _schedule_delete로 삭제됨
+        delete_calls = [
+            c for c in client.chat_delete.call_args_list
+            if c[1].get("ts") == "thinking_msg_ts"
+        ]
+        assert len(delete_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_emoji_changes_on_text_end_keep(self):
+        """keep 모드: text_end 시 이모지 변경, 삭제 안 함"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "thinking_msg_ts"}
+        cbs, pctx, node_map, _ = _make_event_cbs(mode="keep", client=client)
+
+        # thinking 시작 (parent_event_id=None)
+        await cbs["on_thinking"]("analyzing...", "evt_t1", None)
+
+        # text_end 트리거 — thinking과 같은 parent_event_id=None
+        await cbs["on_text_end"]("evt_text_end", None)
+
+        # chat_update가 format_thinking_complete() 결과로 호출됨
+        update_calls = [
+            c for c in client.chat_update.call_args_list
+            if c[1].get("ts") == "thinking_msg_ts"
+        ]
+        assert len(update_calls) >= 1
+
+        # chat_delete가 이 메시지에 대해 호출되지 않음
+        delete_calls = [
+            c for c in client.chat_delete.call_args_list
+            if c[1].get("ts") == "thinking_msg_ts"
+        ]
+        assert len(delete_calls) == 0
+
+
+class TestToolResult:
+    """on_tool_result 재설계: 공통 갱신 + 모드별 삭제 테스트"""
+
+    @pytest.mark.asyncio
+    @patch("seosoyoung.slackbot.presentation.progress._event_delete_delay", return_value=0)
+    async def test_content_replaced_on_result_clean(self, mock_delay):
+        """clean 모드: tool_result 시 결과 교체 후 삭제"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "tool_msg_ts"}
+        cbs, pctx, node_map, _ = _make_event_cbs(mode="clean", client=client)
+
+        # tool 시작
+        await cbs["on_tool_start"]("Grep", {"pattern": "error"}, "tu_001", "evt_t1", None)
+
+        # tool 결과 수신
+        await cbs["on_tool_result"]("3 matches found", "tu_001", False, "evt_result", "evt_t1")
+
+        # chat_update가 format_tool_result() 결과로 호출됨
+        update_calls = [
+            c for c in client.chat_update.call_args_list
+            if c[1].get("ts") == "tool_msg_ts"
+        ]
+        assert len(update_calls) >= 1
+        last_update = update_calls[-1]
+        assert "Grep" in last_update[1]["text"]
+
+        # _schedule_delete로 삭제됨
+        delete_calls = [
+            c for c in client.chat_delete.call_args_list
+            if c[1].get("ts") == "tool_msg_ts"
+        ]
+        assert len(delete_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_content_replaced_on_result_keep(self):
+        """keep 모드: tool_result 시 결과 교체, 삭제 안 함"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "tool_msg_ts"}
+        cbs, pctx, node_map, _ = _make_event_cbs(mode="keep", client=client)
+
+        # tool 시작
+        await cbs["on_tool_start"]("Read", {"file_path": "/a/b.py"}, "tu_002", "evt_t2", None)
+
+        # tool 결과 수신
+        await cbs["on_tool_result"]("file content here", "tu_002", False, "evt_result", "evt_t2")
+
+        # chat_update가 format_tool_result() 결과로 호출됨
+        update_calls = [
+            c for c in client.chat_update.call_args_list
+            if c[1].get("ts") == "tool_msg_ts"
+        ]
+        assert len(update_calls) >= 1
+
+        # chat_delete가 이 메시지에 대해 호출되지 않음
+        delete_calls = [
+            c for c in client.chat_delete.call_args_list
+            if c[1].get("ts") == "tool_msg_ts"
+        ]
+        assert len(delete_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_tool_error_result_displays_error(self):
+        """tool_result에서 is_error=True일 때 에러 포맷으로 표시"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "tool_msg_ts"}
+        cbs, pctx, node_map, _ = _make_event_cbs(mode="keep", client=client)
+
+        await cbs["on_tool_start"]("Bash", {"command": "exit 1"}, "tu_003", "evt_t3", None)
+        await cbs["on_tool_result"]("command failed", "tu_003", True, "evt_result", "evt_t3")
+
+        update_calls = [
+            c for c in client.chat_update.call_args_list
+            if c[1].get("ts") == "tool_msg_ts"
+        ]
+        assert len(update_calls) >= 1
+        last_text = update_calls[-1][1]["text"]
+        # format_tool_result(is_error=True)는 :x: 이모지를 사용
+        assert ":x:" in last_text
