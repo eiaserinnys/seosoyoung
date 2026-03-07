@@ -629,6 +629,7 @@ def list_credential_profiles(
             rate = rate_map.get(name, {})
             merged_profiles.append({
                 "name": name,
+                "expires_at": p.get("expiresAt"),
                 "five_hour": rate.get(
                     "five_hour", {"utilization": "unknown", "resets_at": None},
                 ),

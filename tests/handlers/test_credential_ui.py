@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from seosoyoung.slackbot.handlers.credential_ui import (
     render_gauge,
     format_time_remaining,
+    format_expiry_date,
     render_rate_limit_line,
     render_profile_section,
     build_credential_alert_blocks,
@@ -101,6 +102,84 @@ class TestFormatTimeRemaining:
         assert "초기화까지" in result
 
 
+# ── format_expiry_date ───────────────────────────────────────
+
+
+class TestFormatExpiryDate:
+    def test_none(self):
+        result = format_expiry_date(None)
+        assert "알 수 없음" in result
+
+    def test_valid_ms_timestamp(self):
+        """미래 밀리초 타임스탬프 → 유효 표시"""
+        future_ms = int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp() * 1000)
+        result = format_expiry_date(future_ms)
+        assert ":white_check_mark:" in result
+        assert "인증 유효 기간:" in result
+        assert "년" in result
+        assert "월" in result
+        assert "일" in result
+
+    def test_expired_ms_timestamp(self):
+        """과거 밀리초 타임스탬프 → 무효 표시"""
+        past_ms = int((datetime.now(timezone.utc) - timedelta(days=1)).timestamp() * 1000)
+        result = format_expiry_date(past_ms)
+        assert ":warning:" in result
+        assert "(무효)" in result
+
+    def test_valid_iso_string(self):
+        """미래 ISO 문자열 → 유효 표시"""
+        future = (datetime.now(timezone.utc) + timedelta(days=10)).isoformat()
+        result = format_expiry_date(future)
+        assert ":white_check_mark:" in result
+
+    def test_expired_iso_string(self):
+        """과거 ISO 문자열 → 무효 표시"""
+        past = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        result = format_expiry_date(past)
+        assert ":warning:" in result
+        assert "(무효)" in result
+
+    def test_invalid_string(self):
+        result = format_expiry_date("invalid")
+        assert "알 수 없음" in result
+
+    def test_zero_timestamp(self):
+        """expires_at=0 은 Unix epoch(1970) 으로 만료 처리"""
+        result = format_expiry_date(0)
+        assert ":warning:" in result
+        assert "(무효)" in result
+
+    def test_negative_timestamp(self):
+        """음수 타임스탬프는 과거 날짜로 만료 처리"""
+        result = format_expiry_date(-1000)
+        # epoch 이전이므로 만료, 또는 OSError 시 알 수 없음
+        assert ":warning:" in result or "알 수 없음" in result
+
+    def test_real_credential_timestamp(self):
+        """실제 크레덴셜 형식의 밀리초 타임스탬프"""
+        # 2026-02-05 경 (1770300031040ms)
+        result = format_expiry_date(1770300031040)
+        assert "인증 유효 기간:" in result
+        assert "2026년" in result
+        assert "2월" in result
+
+    def test_float_timestamp(self):
+        """float 타임스탬프도 정상 처리"""
+        future_ms = (datetime.now(timezone.utc) + timedelta(days=5)).timestamp() * 1000
+        result = format_expiry_date(future_ms)
+        assert ":white_check_mark:" in result
+
+    def test_kst_date_display(self):
+        """KST 기준 날짜가 표시되는지 확인"""
+        # UTC 2026-03-06 20:00:00 → KST 2026-03-07 05:00:00
+        utc_dt = datetime(2026, 3, 6, 20, 0, 0, tzinfo=timezone.utc)
+        ms = int(utc_dt.timestamp() * 1000)
+        result = format_expiry_date(ms)
+        # KST로는 3월 7일
+        assert "3월 7일" in result
+
+
 # ── render_rate_limit_line ───────────────────────────────────
 
 
@@ -159,9 +238,62 @@ class TestRenderProfileSection:
         assert "(활성)" not in result
 
     def test_missing_state_defaults_to_unknown(self):
+        """rate limit 데이터 없으면 unknown 표시 (expires_at 키도 없는 경우)"""
         profile = {"name": "empty"}
         result = render_profile_section(profile, is_active=False)
         assert "unknown" in result
+
+    def test_with_expiry_valid(self):
+        """expires_at이 있으면 만료일 표시 (유효)"""
+        future_ms = int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp() * 1000)
+        profile = {
+            "name": "linegames",
+            "expires_at": future_ms,
+            "five_hour": {"utilization": 0.5, "resets_at": None},
+            "seven_day": {"utilization": 0.3, "resets_at": None},
+        }
+        result = render_profile_section(profile, is_active=True)
+        assert "*linegames*" in result
+        assert "(활성)" in result
+        assert "인증 유효 기간:" in result
+        assert ":white_check_mark:" in result
+        # rate limit 게이지가 아닌 만료일 표시
+        assert "5시간" not in result
+        assert "주간" not in result
+
+    def test_with_expiry_expired(self):
+        """expires_at이 과거이면 무효 표시"""
+        past_ms = int((datetime.now(timezone.utc) - timedelta(days=1)).timestamp() * 1000)
+        profile = {
+            "name": "personal",
+            "expires_at": past_ms,
+        }
+        result = render_profile_section(profile, is_active=False)
+        assert ":warning:" in result
+        assert "(무효)" in result
+
+    def test_with_expiry_none(self):
+        """expires_at이 None이면 알 수 없음 표시"""
+        profile = {
+            "name": "unknown_expiry",
+            "expires_at": None,
+        }
+        result = render_profile_section(profile, is_active=False)
+        assert "알 수 없음" in result
+        # rate limit은 표시하지 않음
+        assert "5시간" not in result
+
+    def test_without_expiry_shows_rate_limits(self):
+        """expires_at 키가 없으면 기존 rate limit 게이지 표시"""
+        profile = {
+            "name": "legacy",
+            "five_hour": {"utilization": 0.8, "resets_at": None},
+            "seven_day": {"utilization": 0.2, "resets_at": None},
+        }
+        result = render_profile_section(profile, is_active=False)
+        assert "5시간" in result
+        assert "주간" in result
+        assert "인증 유효 기간" not in result
 
 
 # ── build_credential_alert_blocks ────────────────────────────
