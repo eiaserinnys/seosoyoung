@@ -239,7 +239,7 @@ def process_thread_message(
         prompt=effective_prompt,
         thread_ts=thread_ts,
         msg_ts=ts,
-        on_progress=None,  # 세분화 콜백이 대체
+        on_progress=event_cbs["on_progress"],
         on_compact=on_compact,
         presentation=pctx,
         session_id=session.session_id,
@@ -253,6 +253,14 @@ def process_thread_message(
         on_tool_start=event_cbs["on_tool_start"],
         on_tool_result=event_cbs["on_tool_result"],
     )
+
+    # 실행 완료 후 남은 progress 메시지 정리
+    try:
+        from seosoyoung.utils.async_bridge import run_in_new_loop
+        run_in_new_loop(event_cbs["_cleanup_progress"]())
+    except Exception as e:
+        logger.warning(f"progress 메시지 정리 실패 (무시): {e}")
+
     return True
 
 

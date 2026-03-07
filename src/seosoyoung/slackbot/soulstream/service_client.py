@@ -516,8 +516,6 @@ class SoulServiceClient:
         result_claude_session_id = None
         error_message = None
 
-        has_granular = any([on_thinking, on_text_start, on_text_delta, on_text_end, on_tool_start, on_tool_result])
-
         try:
             async for event in self._parse_sse_stream(response):
                 if event.event == "init":
@@ -535,10 +533,9 @@ class SoulServiceClient:
                             await on_session(session_id)
 
                 elif event.event == "progress":
-                    if not has_granular:
-                        text = event.data.get("text", "")
-                        if on_progress and text:
-                            await on_progress(text)
+                    text = event.data.get("text", "")
+                    if on_progress and text:
+                        await on_progress(text)
 
                 elif event.event == "compact":
                     if on_compact:

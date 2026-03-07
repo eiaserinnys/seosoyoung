@@ -185,6 +185,7 @@ def build_event_callbacks(
 
     Returns:
         {
+            "on_progress": ...,
             "on_thinking": ...,
             "on_text_start": ...,
             "on_text_delta": ...,
@@ -192,6 +193,7 @@ def build_event_callbacks(
             "on_tool_start": ...,
             "on_tool_result": ...,
             "on_compact": ...,
+            "_cleanup_progress": ...,
         }
     """
 
@@ -222,6 +224,9 @@ def build_event_callbacks(
 
     async def on_thinking(thinking_text: str, event_id, parent_event_id):
         try:
+            # thinking 메시지가 progress를 대체하므로 progress 메시지 정리
+            await _cleanup_progress()
+
             text = format_thinking_text(thinking_text) if thinking_text else format_thinking_initial()
             reply = pctx.client.chat_postMessage(
                 channel=pctx.channel,
@@ -301,6 +306,9 @@ def build_event_callbacks(
 
     async def on_tool_start(tool_name: str, tool_input, tool_use_id: str, event_id, parent_event_id):
         try:
+            # tool 메시지가 progress를 대체하므로 progress 메시지 정리
+            await _cleanup_progress()
+
             text = format_tool_initial(tool_name, tool_input)
             reply = pctx.client.chat_postMessage(
                 channel=pctx.channel,
@@ -343,6 +351,66 @@ def build_event_callbacks(
         except Exception as e:
             logger.warning(f"tool_result 처리 실패: {e}")
 
+    # on_progress 콜백: 진행 상황 메시지 표시 (이전 progress는 즉시 교체)
+    _progress_msg_ts: list[str | None] = [None]  # mutable container for nonlocal
+
+    async def on_progress(current_text: str):
+        try:
+            display_text = truncate_progress_text(current_text)
+            if not display_text:
+                return
+            quote_text = format_as_blockquote(display_text)
+
+            prev_ts = _progress_msg_ts[0]
+            if prev_ts:
+                # 이전 progress 메시지를 새 내용으로 갱신 (삭제 대신 update로 깜빡임 방지)
+                try:
+                    pctx.client.chat_update(
+                        channel=pctx.channel,
+                        ts=prev_ts,
+                        text=quote_text,
+                    )
+                    return
+                except Exception as e:
+                    logger.debug(f"progress 메시지 갱신 실패, 새 메시지로 대체: {e}")
+                    _progress_msg_ts[0] = None
+
+            # 새 progress 메시지 게시
+            reply = pctx.client.chat_postMessage(
+                channel=pctx.channel,
+                thread_ts=pctx.thread_ts,
+                text=quote_text,
+            )
+            _progress_msg_ts[0] = reply["ts"]
+        except Exception as e:
+            logger.warning(f"progress 메시지 전송 실패: {e}")
+
+    async def _cleanup_progress():
+        """턴 종료 시 남은 progress 메시지 삭제
+
+        Thread safety: _progress_msg_ts는 두 컨텍스트에서 접근됩니다.
+        1. 스트림 내 콜백 (on_progress, on_thinking, on_tool_start) — 단일 async 루프
+        2. 실행 완료 후 정리 (run_in_new_loop) — 스트림 종료 후 호출 (겹치지 않음)
+        """
+        prev_ts = _progress_msg_ts[0]
+        if prev_ts:
+            _progress_msg_ts[0] = None
+            try:
+                pctx.client.chat_delete(
+                    channel=pctx.channel,
+                    ts=prev_ts,
+                )
+            except Exception as del_err:
+                logger.debug(f"progress 메시지 삭제 실패: {del_err}")
+                try:
+                    pctx.client.chat_update(
+                        channel=pctx.channel,
+                        ts=prev_ts,
+                        text="(done)",
+                    )
+                except Exception as upd_err:
+                    logger.debug(f"progress 폴백 갱신 실패: {upd_err}")
+
     # on_compact 콜백 (build_progress_callbacks와 동일 텍스트)
     async def on_compact(trigger: str, message: str):
         try:
@@ -371,11 +439,13 @@ def build_event_callbacks(
             logger.warning(f"컴팩션 알림 전송 실패: {e}")
 
     return {
+        "on_progress": on_progress,
         "on_thinking": on_thinking,
         "on_text_start": on_text_start,
         "on_text_delta": on_text_delta,
         "on_text_end": on_text_end,
         "on_tool_start": on_tool_start,
         "on_tool_result": on_tool_result,
+        "_cleanup_progress": _cleanup_progress,
         "on_compact": on_compact,
     }

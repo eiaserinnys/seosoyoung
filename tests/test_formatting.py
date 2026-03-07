@@ -46,32 +46,43 @@ class TestFormatThinkingInitial:
 class TestFormatThinkingText:
     """format_thinking_text 테스트"""
 
-    def test_contains_header_and_quoted_text(self):
+    def test_contains_header_and_code_block(self):
         result = format_thinking_text("I need to analyze this")
         assert "*생각합니다...*" in result
-        assert "> I need to analyze this" in result
+        assert "```" in result
+        assert "I need to analyze this" in result
 
-    def test_multiline_text_each_line_quoted(self):
+    def test_multiline_text_in_code_block(self):
         result = format_thinking_text("line1\nline2\nline3")
-        assert "> line1" in result
-        assert "> line2" in result
-        assert "> line3" in result
+        assert "```" in result
+        assert "line1\nline2\nline3" in result
 
-    def test_backticks_escaped(self):
+    def test_single_backticks_preserved_in_code_block(self):
+        """code block 내부의 single/double 백틱은 원문 그대로 유지된다"""
         result = format_thinking_text("use `grep` command")
-        assert "`" not in result
-        assert "grep" in result
+        assert "use `grep` command" in result
+
+    def test_triple_backticks_escaped_in_code_block(self):
+        """code block 내부의 triple backtick은 이스케이프되어 외부 fence를 닫지 않는다"""
+        result = format_thinking_text("code:\n```python\nprint('hi')\n```")
+        # triple backtick이 유사 문자로 이스케이프되어 원본 ```가 없어야 함
+        # 단, 외부 fence의 ```은 제외하고 카운트
+        content = result.split("*생각합니다...*\n", 1)[1]
+        inner = content[3:-3]  # 외부 fence ```...``` 제거
+        assert "```" not in inner
+        assert "ˋˋˋ" in inner  # 이스케이프된 형태
+        assert "python" in result
+        assert "print" in result
 
     def test_long_text_truncated(self):
         long_text = "x" * (PROGRESS_MAX_LEN + 500)
         result = format_thinking_text(long_text)
-        # 헤더 + quote prefix가 추가되므로 원본보다 길지만, 본문은 truncate됨
         assert "..." in result
 
     def test_empty_text(self):
         result = format_thinking_text("")
         assert "*생각합니다...*" in result
-        assert "> " in result
+        assert "```" in result
 
 
 class TestSummarizeToolInput:

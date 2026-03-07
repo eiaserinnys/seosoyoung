@@ -111,13 +111,17 @@ def format_thinking_initial() -> str:
 def format_thinking_text(text: str) -> str:
     """thinking 메시지 텍스트 갱신 포맷
 
-    이모지 + bold 헤더 + blockquote로 thinking 내용을 표시합니다.
+    이모지 + bold 헤더 + code block으로 thinking 내용을 표시합니다.
+    슬랙에서 code block은 길어지면 자동 접힘(collapse)이 되어 스레드를 깔끔하게 유지합니다.
+
+    code block 내부에서 triple backtick(```)이 나타나면 외부 fence를 닫아 포맷이 깨지므로,
+    내부의 triple backtick은 유사 문자로 이스케이프합니다.
     """
-    escaped = escape_backticks(text)
-    if len(escaped) > PROGRESS_MAX_LEN:
-        escaped = "...\n" + escaped[-PROGRESS_MAX_LEN:]
-    quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
-    return f"{_emoji_thinking()} *생각합니다...*\n{quoted}"
+    if len(text) > PROGRESS_MAX_LEN:
+        text = "...\n" + text[-PROGRESS_MAX_LEN:]
+    # code block 내부의 triple backtick만 이스케이프 (single/double은 안전)
+    escaped = text.replace("```", "ˋˋˋ")
+    return f"{_emoji_thinking()} *생각합니다...*\n```\n{escaped}\n```"
 
 
 def _summarize_tool_input(tool_input: Any) -> str:

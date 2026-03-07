@@ -401,7 +401,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 prompt=prompt,
                 thread_ts=thread_ts,
                 msg_ts=kwargs.get("msg_ts", thread_ts),
-                on_progress=None if _event_cbs else on_progress,
+                on_progress=_event_cbs["on_progress"] if _event_cbs else on_progress,
                 on_compact=on_compact,
                 presentation=presentation,
                 session_id=session_id,
@@ -409,6 +409,14 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 on_result=on_result_fn,
                 **event_kwargs,
             )
+
+            # 실행 완료 후 남은 progress 메시지 정리
+            if _event_cbs:
+                try:
+                    from seosoyoung.utils.async_bridge import run_in_new_loop
+                    run_in_new_loop(_event_cbs["_cleanup_progress"]())
+                except Exception as e:
+                    logger.warning(f"progress 메시지 정리 실패 (무시): {e}")
 
             # Get updated session_id
             session = self._session_manager.get(thread_ts)

@@ -86,5 +86,5 @@ agent_session_id가 유일한 식별자입니다.
 - `async delete_profile(self, name)` (줄 456): 프로필 삭제 (DELETE /profiles/{name})
 - `async get_current_email(self)` (줄 473): 현재 크레덴셜의 계정 이메일 조회 (GET /profiles/email)
 - `async _handle_sse_events(self, response, on_progress, on_compact, on_debug, on_session, on_credential_alert, on_thinking, on_text_start, on_text_delta, on_text_end, on_tool_start, on_tool_result)` (줄 493): SSE 이벤트 스트림 처리
-- `async _parse_sse_stream(self, response)` (줄 643): SSE 스트림 파싱
-- `async _parse_error(self, response)` (줄 704): 에러 응답 파싱
+- `async _parse_sse_stream(self, response)` (줄 640): SSE 스트림 파싱
+- `async _parse_error(self, response)` (줄 701): 에러 응답 파싱

@@ -223,8 +223,9 @@ class TestRunAutoProgressCallbacks:
         on_thinking = call_kwargs.kwargs.get("on_thinking")
         on_tool_start = call_kwargs.kwargs.get("on_tool_start")
 
-        # 세분화 콜백이 on_progress를 대체하므로 on_progress는 None
-        assert on_progress is None, "on_progress should be None (replaced by event callbacks)"
+        # 세분화 콜백의 on_progress가 전달됨
+        assert on_progress is not None, "on_progress should be auto-built from event callbacks"
+        assert callable(on_progress)
         assert on_compact is not None, "on_compact should be auto-built"
         assert callable(on_compact)
         # 세분화 콜백이 자동 구성됨

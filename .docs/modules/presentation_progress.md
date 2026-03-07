@@ -37,6 +37,7 @@ Args:
 
 Returns:
     {
+        "on_progress": ...,
         "on_thinking": ...,
         "on_text_start": ...,
         "on_text_delta": ...,
@@ -44,6 +45,7 @@ Returns:
         "on_tool_start": ...,
         "on_tool_result": ...,
         "on_compact": ...,
+        "_cleanup_progress": ...,
     }
 
 ## 내부 의존성
