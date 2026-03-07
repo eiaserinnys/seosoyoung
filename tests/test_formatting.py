@@ -19,6 +19,8 @@ from seosoyoung.slackbot.formatting import (
     _emoji_tool,
     _emoji_tool_done,
     _format_tool_input_readable,
+    _normalize_newlines,
+    _quote_lines,
     format_initial_placeholder,
     format_thinking_complete,
     format_thinking_initial,
@@ -365,5 +367,108 @@ class TestFormatToolComplete:
         with patch.dict(os.environ, {"SOULSTREAM_EMOJI_TOOL_DONE": ":ssy-done:"}):
             result = format_tool_complete("Read")
             assert ":ssy-done:" in result
+
+
+class TestNormalizeNewlines:
+    """_normalize_newlines 테스트"""
+
+    def test_no_change_for_single_newline(self):
+        assert _normalize_newlines("a\nb") == "a\nb"
+
+    def test_no_change_for_double_newline(self):
+        assert _normalize_newlines("a\n\nb") == "a\n\nb"
+
+    def test_triple_newline_reduced_to_double(self):
+        assert _normalize_newlines("a\n\n\nb") == "a\n\nb"
+
+    def test_many_newlines_reduced(self):
+        assert _normalize_newlines("a\n\n\n\n\n\nb") == "a\n\nb"
+
+    def test_multiple_groups_normalized(self):
+        result = _normalize_newlines("a\n\n\nb\n\n\n\nc")
+        assert result == "a\n\nb\n\nc"
+
+    def test_empty_string(self):
+        assert _normalize_newlines("") == ""
+
+    def test_no_newlines(self):
+        assert _normalize_newlines("hello world") == "hello world"
+
+
+class TestQuoteLinesNewlineNormalization:
+    """_quote_lines의 줄바꿈 정규화 통합 테스트"""
+
+    def test_consecutive_blank_lines_normalized_in_blockquote(self):
+        """연속 빈 줄이 단일 빈 줄로 정규화된 후 blockquote 처리됨"""
+        result = _quote_lines("line1\n\n\n\nline2")
+        assert result == "> line1\n> \n> line2"
+
+    def test_single_blank_line_preserved(self):
+        """단일 빈 줄은 유지됨"""
+        result = _quote_lines("para1\n\npara2")
+        assert result == "> para1\n> \n> para2"
+
+    def test_all_lines_have_prefix(self):
+        """모든 줄에 > prefix가 붙음"""
+        result = _quote_lines("a\nb\nc")
+        for line in result.split("\n"):
+            assert line.startswith("> ")
+
+
+class TestMultilineToolInputBlockquote:
+    """에이전트(Task) 호출 시 멀티라인 tool_input blockquote 이탈 방지 테스트"""
+
+    def test_multiline_value_all_lines_quoted(self):
+        """dict value에 줄바꿈이 포함되면 모든 줄에 > prefix 적용"""
+        result = _format_tool_input_readable({"prompt": "line1\nline2\nline3"})
+        for line in result.split("\n"):
+            assert line.startswith(">"), f"blockquote 이탈: {line!r}"
+
+    def test_multiline_value_with_blank_lines(self):
+        """빈 줄 포함된 value도 모든 줄이 blockquote 안에 있음"""
+        result = _format_tool_input_readable({"prompt": "step1\n\nstep2"})
+        for line in result.split("\n"):
+            assert line.startswith(">"), f"blockquote 이탈: {line!r}"
+
+    def test_consecutive_newlines_normalized(self):
+        """연속 줄바꿈이 정규화되어 3줄 이상의 빈 blockquote가 없음"""
+        result = _format_tool_input_readable({"prompt": "a\n\n\n\nb"})
+        # 연속 빈 > 줄이 2개 이상 나오면 안됨
+        lines = result.split("\n")
+        consecutive_empty = 0
+        for line in lines:
+            if line.strip() == ">":
+                consecutive_empty += 1
+                assert consecutive_empty <= 1, "연속 빈 blockquote 줄이 2개 이상"
+            else:
+                consecutive_empty = 0
+
+    def test_non_dict_multiline_all_quoted(self):
+        """non-dict 멀티라인 입력도 모든 줄에 > prefix 적용"""
+        result = _format_tool_input_readable("line1\nline2\nline3")
+        for line in result.split("\n"):
+            assert line.startswith(">"), f"blockquote 이탈: {line!r}"
+
+    def test_format_tool_initial_multiline_prompt(self):
+        """format_tool_initial에서 멀티라인 prompt가 blockquote에서 이탈하지 않음"""
+        result = format_tool_initial("Task", {"prompt": "step1\nstep2\nstep3"})
+        lines = result.split("\n")
+        # 첫 줄은 헤더 (> 없음), 나머지는 모두 blockquote
+        for line in lines[1:]:
+            assert line.startswith(">"), f"blockquote 이탈: {line!r}"
+
+    def test_tool_result_multiline_all_quoted(self):
+        """format_tool_result에서 멀티라인 결과도 모든 줄이 blockquote"""
+        result = format_tool_result("Bash", "output1\noutput2\n\noutput3")
+        lines = result.split("\n")
+        for line in lines[1:]:
+            assert line.startswith(">"), f"blockquote 이탈: {line!r}"
+
+    def test_thinking_text_multiline_all_quoted(self):
+        """format_thinking_text에서 멀티라인 thinking도 모든 줄이 blockquote"""
+        result = format_thinking_text("thought1\n\nthought2\nthought3")
+        lines = result.split("\n")
+        for line in lines[1:]:  # 첫 줄은 헤더
+            assert line.startswith(">"), f"blockquote 이탈: {line!r}"
 
 

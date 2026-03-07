@@ -8,6 +8,7 @@ claude/, presentation/ 등 여러 패키지에서 공통으로 사용합니다.
 
 import json
 import os
+import re
 from typing import Any, Callable, Protocol
 
 
@@ -81,9 +82,22 @@ def truncate_progress_text(text: str) -> str:
     return display_text
 
 
+def _normalize_newlines(text: str) -> str:
+    """연속 빈 줄을 단일 빈 줄로 정규화
+
+    3줄 이상의 연속 줄바꿈을 2줄(= 빈 줄 하나)로 줄입니다.
+    슬랙 mrkdwn에서 연속 빈 줄이 blockquote 구조를 깨뜨리는 것을 방지합니다.
+    """
+    return re.sub(r'\n{3,}', '\n\n', text)
+
+
 def _quote_lines(text: str) -> str:
-    """이미 escape된 텍스트를 슬랙 blockquote로 변환 (> prefix per line)"""
-    return "\n".join(f"> {line}" for line in text.split("\n"))
+    """이미 escape된 텍스트를 슬랙 blockquote로 변환 (> prefix per line)
+
+    연속 빈 줄을 정규화한 후, 모든 줄에 ``> `` prefix를 붙입니다.
+    """
+    normalized = _normalize_newlines(text)
+    return "\n".join(f"> {line}" for line in normalized.split("\n"))
 
 
 def format_as_blockquote(text: str) -> str:
@@ -165,6 +179,9 @@ def _format_tool_input_readable(tool_input: Any) -> str:
 
     dict이면 key/value 쌍을 개별 줄로 나열하고,
     그 외에는 str 변환 후 단일 blockquote로 표시합니다.
+
+    value에 줄바꿈이 포함되어 있으면 모든 줄에 ``> `` prefix를 붙여서
+    슬랙 blockquote가 중간에 끊기지 않도록 합니다.
     """
     if tool_input is None:
         return ""
@@ -172,7 +189,7 @@ def _format_tool_input_readable(tool_input: Any) -> str:
         s = str(tool_input)
         if len(s) > TOOL_INPUT_QUOTE_MAX_LEN:
             s = s[:TOOL_INPUT_QUOTE_MAX_LEN] + "..."
-        return f"> {escape_backticks(s)}"
+        return _quote_lines(escape_backticks(s))
 
     lines: list[str] = []
     for key, value in tool_input.items():
@@ -181,7 +198,8 @@ def _format_tool_input_readable(tool_input: Any) -> str:
             val_str = val_str[:TOOL_INPUT_QUOTE_MAX_LEN] + "..."
         escaped_val = escape_backticks(val_str)
         lines.append(f"> *{escape_backticks(str(key))}*")
-        lines.append(f"> {escaped_val}")
+        # 줄바꿈이 포함된 value는 모든 줄에 > prefix 적용
+        lines.append(_quote_lines(escaped_val))
         lines.append(">")
     # 마지막 빈 > 제거
     if lines and lines[-1] == ">":
