@@ -284,9 +284,9 @@
 - `main()` (seosoyoung/slackbot/main.py:312): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:509): Initialize plugin SDK backends.
-- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:39): 초기 placeholder 메시지를 게시하고 ts를 반환
-- `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:62): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
-- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:195): 세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
+- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:37): 초기 placeholder 메시지를 게시하고 ts를 반환
+- `build_progress_callbacks()` (seosoyoung/slackbot/presentation/progress.py:60): PresentationContext를 캡처하는 on_progress/on_compact 클로저 쌍을 생성
+- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:193): 세분화 이벤트 콜백 + on_compact 팩토리 (build_progress_callbacks 대체)
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slackbot/slack/file_handler.py:67): 스레드별 임시 폴더 생성

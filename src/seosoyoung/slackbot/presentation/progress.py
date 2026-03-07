@@ -20,8 +20,6 @@ from seosoyoung.slackbot.formatting import (
     format_thinking_text,
     format_thinking_complete,
     format_tool_initial,
-    format_tool_complete,
-    format_tool_error,
     format_tool_result,
 )
 from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
@@ -203,7 +201,8 @@ def build_event_callbacks(
     Args:
         pctx: 프레젠테이션 컨텍스트
         node_map: 이벤트-메시지 매핑
-        mode: "clean" (갱신 후 삭제) 또는 "keep" (갱신 후 유지)
+        mode: "clean" = 일반 채널(갱신 모드, 완료 후 삭제),
+              "keep" = DM 채널(풀 덤프 모드, 완료 후 유지)
         initial_placeholder_ts: 초기 placeholder 메시지의 ts (있으면 첫 이벤트에서 삭제)
 
     Returns:
@@ -255,7 +254,7 @@ def build_event_callbacks(
             # thinking 메시지가 progress를 대체하므로 progress 메시지 정리
             await _cleanup_progress()
 
-            text = format_thinking_text(thinking_text) if thinking_text else format_thinking_initial()
+            text = format_thinking_text(thinking_text)
             reply = pctx.client.chat_postMessage(
                 channel=pctx.channel,
                 thread_ts=pctx.thread_ts,

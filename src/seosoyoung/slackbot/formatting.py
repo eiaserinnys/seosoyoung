@@ -8,7 +8,7 @@ claude/, presentation/ 등 여러 패키지에서 공통으로 사용합니다.
 
 import json
 import os
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 
 # --- Protocols ---
@@ -127,7 +127,7 @@ def format_thinking_initial() -> str:
     return f"{_emoji_thinking()} *생각합니다...*"
 
 
-def _format_thinking_body(text: str | None, emoji_fn: "callable") -> str:
+def _format_thinking_body(text: str | None, emoji_fn: Callable[[], str]) -> str:
     """thinking 포맷 공통 로직 — 이모지 함수만 다름"""
     display = text.strip() if text else ""
     if not display:
