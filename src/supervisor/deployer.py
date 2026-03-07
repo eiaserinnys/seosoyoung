@@ -48,6 +48,10 @@ class SupervisorRestartRequired(Exception):
     """supervisor 자체 코드 변경으로 프로세스 재시작이 필요할 때 발생."""
 
 
+class DeployUpdateError(Exception):
+    """git 업데이트 실패로 배포를 중단해야 할 때 발생."""
+
+
 class DeployState(enum.Enum):
     """배포 상태"""
     IDLE = "idle"
@@ -230,6 +234,7 @@ class Deployer:
 
         # runtime git pull
         logger.info("업데이트: runtime git pull")
+        self._ensure_repo_clean(runtime, "runtime")
         result = subprocess.run(
             ["git", "pull", "origin", "main"],
             cwd=str(runtime),
@@ -237,10 +242,12 @@ class Deployer:
             text=True,
         )
         if result.returncode != 0:
-            logger.warning("runtime git pull 실패, stash 재시도")
-            subprocess.run(["git", "stash"], cwd=str(runtime))
-            subprocess.run(["git", "pull", "origin", "main"], cwd=str(runtime))
-            subprocess.run(["git", "stash", "pop"], cwd=str(runtime))
+            logger.warning(
+                "runtime git pull 실패 (rc=%d): %s, fetch + reset 시도",
+                result.returncode,
+                result.stderr.strip()[:500],
+            )
+            self._force_reset_to_origin(runtime, "runtime")
 
         # pip install
         if requirements.exists():
@@ -255,6 +262,7 @@ class Deployer:
             old_head = self._get_repo_head(dev_seosoyoung)
 
             logger.info("업데이트: seosoyoung 개발 소스 동기화")
+            self._ensure_repo_clean(dev_seosoyoung, "seosoyoung")
             pull_result = subprocess.run(
                 ["git", "pull", "origin", "main"],
                 cwd=str(dev_seosoyoung),
@@ -263,10 +271,14 @@ class Deployer:
             )
             if pull_result.returncode != 0:
                 logger.warning(
-                    "seosoyoung git pull 실패 (rc=%d): %s",
+                    "seosoyoung git pull 실패 (rc=%d): %s, fetch + reset 시도",
                     pull_result.returncode,
                     pull_result.stderr.strip()[:500],
                 )
+                try:
+                    self._force_reset_to_origin(dev_seosoyoung, "seosoyoung")
+                except DeployUpdateError:
+                    logger.exception("seosoyoung 동기화 실패")
 
             new_head = self._get_repo_head(dev_seosoyoung)
 
@@ -276,6 +288,7 @@ class Deployer:
             plugins_old_head = self._get_repo_head(dev_plugins)
 
             logger.info("업데이트: seosoyoung-plugins 동기화")
+            self._ensure_repo_clean(dev_plugins, "seosoyoung-plugins")
             pull_result = subprocess.run(
                 ["git", "pull", "origin", "main"],
                 cwd=str(dev_plugins),
@@ -284,15 +297,14 @@ class Deployer:
             )
             if pull_result.returncode != 0:
                 logger.warning(
-                    "seosoyoung-plugins git pull 실패 (rc=%d): %s, stash 재시도",
+                    "seosoyoung-plugins git pull 실패 (rc=%d): %s, fetch + reset 시도",
                     pull_result.returncode,
                     pull_result.stderr.strip()[:500],
                 )
-                subprocess.run(["git", "stash"], cwd=str(dev_plugins))
-                subprocess.run(
-                    ["git", "pull", "origin", "main"], cwd=str(dev_plugins),
-                )
-                subprocess.run(["git", "stash", "pop"], cwd=str(dev_plugins))
+                try:
+                    self._force_reset_to_origin(dev_plugins, "seosoyoung-plugins")
+                except DeployUpdateError:
+                    logger.exception("seosoyoung-plugins 동기화 실패")
 
             plugins_new_head = self._get_repo_head(dev_plugins)
 
@@ -323,6 +335,7 @@ class Deployer:
             old_head = self._get_repo_head(soulstream_dir)
 
             logger.info("업데이트: soulstream 소스 동기화")
+            self._ensure_repo_clean(soulstream_dir, "soulstream")
             pull_result = subprocess.run(
                 ["git", "pull", "origin", "main"],
                 cwd=str(soulstream_dir),
@@ -331,28 +344,14 @@ class Deployer:
             )
             if pull_result.returncode != 0:
                 logger.warning(
-                    "soulstream git pull 실패 (rc=%d): %s, stash 재시도",
+                    "soulstream git pull 실패 (rc=%d): %s, fetch + reset 시도",
                     pull_result.returncode,
                     pull_result.stderr.strip()[:500],
                 )
-                subprocess.run(["git", "stash"], cwd=str(soulstream_dir))
-                retry_result = subprocess.run(
-                    ["git", "pull", "origin", "main"],
-                    cwd=str(soulstream_dir),
-                    capture_output=True,
-                    text=True,
-                )
-                if retry_result.returncode != 0:
-                    # stash로도 해결 안 되면 강제 리셋
-                    logger.warning(
-                        "soulstream stash 후에도 pull 실패, reset --hard 수행"
-                    )
-                    subprocess.run(
-                        ["git", "reset", "--hard", "origin/main"],
-                        cwd=str(soulstream_dir),
-                    )
-                else:
-                    subprocess.run(["git", "stash", "pop"], cwd=str(soulstream_dir))
+                try:
+                    self._force_reset_to_origin(soulstream_dir, "soulstream")
+                except DeployUpdateError:
+                    logger.exception("soulstream 동기화 실패")
 
             new_head = self._get_repo_head(soulstream_dir)
 
@@ -400,6 +399,100 @@ class Deployer:
                         )
 
         logger.info("업데이트 완료")
+
+    @staticmethod
+    def _ensure_repo_clean(repo_path: Path, label: str) -> None:
+        """리포가 clean 상태인지 확인하고, dirty/unmerged면 강제 복구한다.
+
+        런타임 리포는 원격의 복제본이므로 로컬 수정이 존재해서는 안 된다.
+        unmerged/dirty 상태가 감지되면 origin/main으로 강제 리셋한다.
+
+        Note: reset --hard 실패 시에도 예외를 발생시키지 않는다.
+        후속 git pull이 실패하면 _force_reset_to_origin이 최종 복구를 시도한다.
+        """
+        try:
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+            )
+        except (subprocess.SubprocessError, OSError) as exc:
+            logger.warning("%s: git status 실패: %s", label, exc)
+            return
+
+        if result.returncode != 0:
+            logger.warning(
+                "%s: git status 비정상 종료 (rc=%d), reset --hard 시도",
+                label, result.returncode,
+            )
+            subprocess.run(
+                ["git", "reset", "--hard", "origin/main"],
+                cwd=str(repo_path),
+                capture_output=True,
+            )
+            return
+
+        status_output = result.stdout.strip()
+        if not status_output:
+            return  # clean
+
+        logger.warning(
+            "%s: dirty/unmerged 상태 감지, reset --hard origin/main 실행\n%s",
+            label, status_output[:500],
+        )
+        reset_result = subprocess.run(
+            ["git", "reset", "--hard", "origin/main"],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+        )
+        if reset_result.returncode != 0:
+            logger.error(
+                "%s: reset --hard 실패 (rc=%d): %s",
+                label, reset_result.returncode, reset_result.stderr.strip()[:500],
+            )
+
+    @staticmethod
+    def _force_reset_to_origin(repo_path: Path, label: str) -> None:
+        """fetch + reset --hard origin/main으로 강제 동기화.
+
+        git pull 실패 시 대체 전략으로 사용한다.
+        실패하면 DeployUpdateError를 발생시킨다.
+        """
+        try:
+            fetch_result = subprocess.run(
+                ["git", "fetch", "origin", "main"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+            )
+        except (subprocess.SubprocessError, OSError) as exc:
+            raise DeployUpdateError(
+                f"{label} git fetch 예외: {exc}"
+            ) from exc
+        if fetch_result.returncode != 0:
+            raise DeployUpdateError(
+                f"{label} git fetch 실패 (rc={fetch_result.returncode}): "
+                f"{fetch_result.stderr.strip()[:500]}"
+            )
+
+        try:
+            reset_result = subprocess.run(
+                ["git", "reset", "--hard", "origin/main"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+            )
+        except (subprocess.SubprocessError, OSError) as exc:
+            raise DeployUpdateError(
+                f"{label} git reset 예외: {exc}"
+            ) from exc
+        if reset_result.returncode != 0:
+            raise DeployUpdateError(
+                f"{label} git reset --hard 실패 (rc={reset_result.returncode}): "
+                f"{reset_result.stderr.strip()[:500]}"
+            )
 
     @staticmethod
     def _get_repo_head(repo_path: Path) -> str | None:

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch, call
 
 import pytest
 
-from supervisor.deployer import Deployer, DeployState
+from supervisor.deployer import Deployer, DeployState, DeployUpdateError
 
 
 class TestDeployState:
@@ -36,6 +36,7 @@ def deployer(mock_pm, mock_session_monitor, tmp_path):
         "runtime": tmp_path / "runtime",
         "workspace": tmp_path / "workspace",
         "logs": tmp_path / "logs",
+        "soulstream_runtime": tmp_path / "soulstream_runtime",
     }
     for p in paths.values():
         p.mkdir(parents=True, exist_ok=True)
@@ -593,5 +594,255 @@ class TestBuildSoulDashboard:
             result = deployer._build_soul_dashboard(dashboard_dir)
 
         assert result is False
+
+
+class TestEnsureRepoClean:
+    """_ensure_repo_clean 테스트"""
+
+    def test_clean_repo_does_nothing(self, deployer, tmp_path):
+        """clean 상태면 reset을 호출하지 않는다."""
+        with patch("supervisor.deployer.subprocess.run") as mock_run:
+            # git status --porcelain → 빈 출력 (clean)
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="",
+            )
+            deployer._ensure_repo_clean(tmp_path, "test-repo")
+
+        # status 한 번만 호출, reset은 호출 안 됨
+        mock_run.assert_called_once()
+        assert mock_run.call_args[0][0] == ["git", "status", "--porcelain"]
+
+    def test_dirty_repo_resets(self, deployer, tmp_path):
+        """dirty 상태면 reset --hard origin/main을 실행한다."""
+        calls = []
+
+        def side_effect(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd == ["git", "status", "--porcelain"]:
+                return MagicMock(returncode=0, stdout=" M some_file.py\n")
+            if cmd == ["git", "reset", "--hard", "origin/main"]:
+                return MagicMock(returncode=0, stdout="", stderr="")
+            return MagicMock(returncode=0)
+
+        with patch("supervisor.deployer.subprocess.run", side_effect=side_effect):
+            deployer._ensure_repo_clean(tmp_path, "test-repo")
+
+        assert ["git", "status", "--porcelain"] in calls
+        assert ["git", "reset", "--hard", "origin/main"] in calls
+
+    def test_unmerged_repo_resets(self, deployer, tmp_path):
+        """unmerged 상태면 reset --hard origin/main을 실행한다."""
+        calls = []
+
+        def side_effect(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd == ["git", "status", "--porcelain"]:
+                return MagicMock(returncode=0, stdout="UU conflicted_file.py\n")
+            if cmd == ["git", "reset", "--hard", "origin/main"]:
+                return MagicMock(returncode=0, stdout="", stderr="")
+            return MagicMock(returncode=0)
+
+        with patch("supervisor.deployer.subprocess.run", side_effect=side_effect):
+            deployer._ensure_repo_clean(tmp_path, "test-repo")
+
+        assert ["git", "reset", "--hard", "origin/main"] in calls
+
+    def test_status_failure_attempts_reset(self, deployer, tmp_path):
+        """git status가 비정상 종료하면 reset을 시도한다."""
+        calls = []
+
+        def side_effect(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd == ["git", "status", "--porcelain"]:
+                return MagicMock(returncode=128, stdout="", stderr="fatal: error")
+            return MagicMock(returncode=0)
+
+        with patch("supervisor.deployer.subprocess.run", side_effect=side_effect):
+            deployer._ensure_repo_clean(tmp_path, "test-repo")
+
+        assert ["git", "reset", "--hard", "origin/main"] in calls
+
+    def test_status_exception_does_not_raise(self, deployer, tmp_path):
+        """subprocess 예외가 발생해도 전파하지 않는다."""
+        with patch(
+            "supervisor.deployer.subprocess.run",
+            side_effect=OSError("git not found"),
+        ):
+            # 예외 없이 반환해야 한다
+            deployer._ensure_repo_clean(tmp_path, "test-repo")
+
+
+class TestForceResetToOrigin:
+    """_force_reset_to_origin 테스트"""
+
+    def test_success(self, deployer, tmp_path):
+        """fetch + reset 성공 시 정상 반환."""
+        with patch("supervisor.deployer.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            deployer._force_reset_to_origin(tmp_path, "test-repo")
+
+        assert mock_run.call_count == 2
+        assert mock_run.call_args_list[0][0][0] == ["git", "fetch", "origin", "main"]
+        assert mock_run.call_args_list[1][0][0] == [
+            "git", "reset", "--hard", "origin/main",
+        ]
+
+    def test_fetch_failure_raises(self, deployer, tmp_path):
+        """fetch 실패 시 DeployUpdateError 발생."""
+        with patch("supervisor.deployer.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1,
+                stdout="",
+                stderr="fatal: Could not read from remote repository.",
+            )
+            with pytest.raises(DeployUpdateError, match="git fetch 실패"):
+                deployer._force_reset_to_origin(tmp_path, "test-repo")
+
+    def test_reset_failure_raises(self, deployer, tmp_path):
+        """reset 실패 시 DeployUpdateError 발생."""
+        call_count = [0]
+
+        def side_effect(cmd, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # fetch 성공
+                return MagicMock(returncode=0, stdout="", stderr="")
+            # reset 실패
+            return MagicMock(returncode=1, stdout="", stderr="error: could not reset")
+
+        with patch("supervisor.deployer.subprocess.run", side_effect=side_effect):
+            with pytest.raises(DeployUpdateError, match="git reset.*실패"):
+                deployer._force_reset_to_origin(tmp_path, "test-repo")
+
+    def test_fetch_oserror_raises_deploy_error(self, deployer, tmp_path):
+        """fetch 중 OSError 발생 시 DeployUpdateError로 변환."""
+        with patch(
+            "supervisor.deployer.subprocess.run",
+            side_effect=OSError("git not found"),
+        ):
+            with pytest.raises(DeployUpdateError, match="git fetch 예외"):
+                deployer._force_reset_to_origin(tmp_path, "test-repo")
+
+    def test_reset_oserror_raises_deploy_error(self, deployer, tmp_path):
+        """reset 중 OSError 발생 시 DeployUpdateError로 변환."""
+        call_count = [0]
+
+        def side_effect(cmd, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return MagicMock(returncode=0, stdout="", stderr="")
+            raise OSError("filesystem error")
+
+        with patch("supervisor.deployer.subprocess.run", side_effect=side_effect):
+            with pytest.raises(DeployUpdateError, match="git reset 예외"):
+                deployer._force_reset_to_origin(tmp_path, "test-repo")
+
+
+class TestDoUpdateGitRecovery:
+    """_do_update()의 git 충돌 복구 로직 테스트"""
+
+    def test_runtime_pull_failure_triggers_force_reset(self, deployer):
+        """runtime git pull 실패 시 _force_reset_to_origin을 호출한다."""
+        with patch.object(deployer, "_ensure_repo_clean"), \
+             patch.object(deployer, "_force_reset_to_origin") as mock_force, \
+             patch("supervisor.deployer.subprocess.run") as mock_run:
+            # git pull 실패
+            mock_run.return_value = MagicMock(
+                returncode=1, stdout="", stderr="error: merge conflict",
+            )
+            try:
+                deployer._do_update()
+            except Exception:
+                pass
+
+        # runtime에 대한 force_reset이 포함되어야 함
+        runtime_calls = [
+            c for c in mock_force.call_args_list
+            if c[0][1] == "runtime"
+        ]
+        assert len(runtime_calls) == 1
+        assert str(runtime_calls[0][0][0]).endswith("runtime")
+
+    def test_runtime_pull_success_no_force_reset(self, deployer):
+        """runtime git pull 성공 시 runtime에 대한 _force_reset_to_origin을 호출하지 않는다."""
+        with patch.object(deployer, "_ensure_repo_clean"), \
+             patch.object(deployer, "_force_reset_to_origin") as mock_force, \
+             patch("supervisor.deployer.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout="Already up to date.", stderr="",
+            )
+            try:
+                deployer._do_update()
+            except Exception:
+                pass
+
+        # runtime에 대한 force_reset은 없어야 함
+        runtime_calls = [
+            c for c in mock_force.call_args_list
+            if c[0][1] == "runtime"
+        ]
+        assert len(runtime_calls) == 0
+
+    def test_runtime_force_reset_failure_raises(self, deployer):
+        """runtime force reset 실패 시 DeployUpdateError가 전파된다."""
+        with patch.object(deployer, "_ensure_repo_clean"), \
+             patch.object(
+                 deployer, "_force_reset_to_origin",
+                 side_effect=DeployUpdateError("runtime git fetch 실패"),
+             ), \
+             patch("supervisor.deployer.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1, stdout="", stderr="conflict",
+            )
+            with pytest.raises(DeployUpdateError):
+                deployer._do_update()
+
+    def test_no_stash_commands_in_runtime_update(self, deployer):
+        """runtime 업데이트에서 git stash 명령이 사용되지 않는다."""
+        all_commands = []
+
+        def capture_run(cmd, **kwargs):
+            all_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch.object(deployer, "_ensure_repo_clean"), \
+             patch("supervisor.deployer.subprocess.run", side_effect=capture_run):
+            try:
+                deployer._do_update()
+            except Exception:
+                pass
+
+        stash_cmds = [c for c in all_commands if "stash" in str(c)]
+        assert stash_cmds == [], f"stash 명령이 발견됨: {stash_cmds}"
+
+    def test_ensure_repo_clean_called_before_pull(self, deployer):
+        """_do_update() 시작 시 _ensure_repo_clean이 호출된다."""
+        call_order = []
+
+        def track_ensure_clean(repo_path, label):
+            call_order.append(("ensure_clean", label))
+
+        def track_run(cmd, **kwargs):
+            if "pull" in cmd:
+                call_order.append(("pull", cmd))
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch.object(
+            deployer, "_ensure_repo_clean", side_effect=track_ensure_clean,
+        ), patch("supervisor.deployer.subprocess.run", side_effect=track_run):
+            try:
+                deployer._do_update()
+            except Exception:
+                pass
+
+        # ensure_clean이 pull보다 먼저 호출됨
+        ensure_idx = next(
+            i for i, (name, _) in enumerate(call_order) if name == "ensure_clean"
+        )
+        pull_idx = next(
+            i for i, (name, _) in enumerate(call_order) if name == "pull"
+        )
+        assert ensure_idx < pull_idx
 
 

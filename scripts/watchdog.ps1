@@ -382,22 +382,20 @@ while ($true) {
         Write-Log "코드 변경 감지, 업데이트 중..."
         $beforeCommits = Get-CurrentCommits
 
-        git -C $runtimeDir pull origin main
+        # runtime은 원격의 복제본이므로 fetch + reset --hard로 동기화
+        git -C $runtimeDir fetch origin main
         if ($LASTEXITCODE -ne 0) {
-            Write-Log "runtime git pull 실패, stash 후 재시도"
-            git -C $runtimeDir stash
-            git -C $runtimeDir pull origin main
-            if ($LASTEXITCODE -ne 0) {
-                Write-Log "runtime git pull stash 재시도도 실패"
-                Send-SlackNotification ":warning: runtime git pull 실패. 수동 확인 필요."
-                git -C $runtimeDir stash pop 2>$null
-                Start-Sleep -Seconds $BASE_DELAY
-                continue
-            }
-            git -C $runtimeDir stash pop 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                Write-Log "stash pop 충돌 (로컬 변경 손실 가능, 계속 진행)"
-            }
+            Write-Log "runtime git fetch 실패"
+            Send-SlackNotification ":warning: runtime git fetch 실패. 수동 확인 필요."
+            Start-Sleep -Seconds $BASE_DELAY
+            continue
+        }
+        git -C $runtimeDir reset --hard origin/main
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "runtime git reset --hard 실패"
+            Send-SlackNotification ":warning: runtime git reset --hard origin/main 실패. 수동 확인 필요."
+            Start-Sleep -Seconds $BASE_DELAY
+            continue
         }
 
         $pipLog = Join-Path $logsDir "pip_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
@@ -411,9 +409,14 @@ while ($true) {
             if ($LASTEXITCODE -ne 0) { Write-Log "mcp pip install 실패, 로그: $pipLog" }
         }
 
-        git -C $devCloneDir pull origin main
+        git -C $devCloneDir fetch origin main 2>$null
         if ($LASTEXITCODE -ne 0) {
-            Write-Log "devClone git pull 실패 (비치명적, 계속 진행)"
+            Write-Log "devClone git fetch 실패 (비치명적, 계속 진행)"
+        } else {
+            git -C $devCloneDir reset --hard origin/main 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Log "devClone git reset 실패 (비치명적, 계속 진행)"
+            }
         }
 
         $state.lastUpdateCommit = Get-CurrentCommits
