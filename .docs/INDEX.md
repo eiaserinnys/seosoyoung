@@ -221,17 +221,20 @@
 - `update_message()` (seosoyoung/rescue/slack_utils.py:17): 슬랙 메시지를 업데이트합니다.
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
-- `escape_backticks()` (seosoyoung/slackbot/formatting.py:50): 텍스트 내 모든 백틱을 이스케이프
-- `truncate_progress_text()` (seosoyoung/slackbot/formatting.py:60): 진행 상황 텍스트를 표시용으로 정리
-- `format_as_blockquote()` (seosoyoung/slackbot/formatting.py:70): 텍스트를 슬랙 blockquote 형식으로 변환
-- `build_trello_header()` (seosoyoung/slackbot/formatting.py:77): 트렐로 카드용 슬랙 메시지 헤더 생성
-- `format_trello_progress()` (seosoyoung/slackbot/formatting.py:89): 트렐로 모드 채널 진행 상황 포맷
-- `format_dm_progress()` (seosoyoung/slackbot/formatting.py:96): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
-- `format_thinking_initial()` (seosoyoung/slackbot/formatting.py:106): thinking 메시지 초기 포맷
-- `format_thinking_text()` (seosoyoung/slackbot/formatting.py:111): thinking 메시지 텍스트 갱신 포맷
-- `format_tool_initial()` (seosoyoung/slackbot/formatting.py:147): tool 메시지 초기 포맷
-- `format_tool_complete()` (seosoyoung/slackbot/formatting.py:161): tool 메시지 완료 포맷 (keep 모드)
-- `format_tool_error()` (seosoyoung/slackbot/formatting.py:166): tool 메시지 에러 포맷 (keep 모드)
+- `escape_backticks()` (seosoyoung/slackbot/formatting.py:64): 텍스트 내 모든 백틱을 이스케이프
+- `truncate_progress_text()` (seosoyoung/slackbot/formatting.py:74): 진행 상황 텍스트를 표시용으로 정리
+- `format_as_blockquote()` (seosoyoung/slackbot/formatting.py:84): 텍스트를 슬랙 blockquote 형식으로 변환
+- `build_trello_header()` (seosoyoung/slackbot/formatting.py:91): 트렐로 카드용 슬랙 메시지 헤더 생성
+- `format_trello_progress()` (seosoyoung/slackbot/formatting.py:103): 트렐로 모드 채널 진행 상황 포맷
+- `format_dm_progress()` (seosoyoung/slackbot/formatting.py:110): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
+- `format_initial_placeholder()` (seosoyoung/slackbot/formatting.py:120): 소울스트림 요청 전송 직후 표시할 대기 메시지
+- `format_thinking_initial()` (seosoyoung/slackbot/formatting.py:125): thinking 메시지 초기 포맷
+- `format_thinking_text()` (seosoyoung/slackbot/formatting.py:142): thinking 메시지 텍스트 갱신 포맷
+- `format_thinking_complete()` (seosoyoung/slackbot/formatting.py:151): thinking 완료 포맷 — done 이모지로 교체한 최종 상태
+- `format_tool_initial()` (seosoyoung/slackbot/formatting.py:189): tool 메시지 초기 포맷
+- `format_tool_result()` (seosoyoung/slackbot/formatting.py:217): tool result 도착 시 표시 포맷
+- `format_tool_complete()` (seosoyoung/slackbot/formatting.py:240): tool 메시지 완료 포맷 (결과 없이 이름만)
+- `format_tool_error()` (seosoyoung/slackbot/formatting.py:245): tool 메시지 에러 포맷
 - `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:11): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:15): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `send_deploy_shutdown_popup()` (seosoyoung/slackbot/handlers/actions.py:83): 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송

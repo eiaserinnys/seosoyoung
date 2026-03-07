@@ -28,11 +28,15 @@ class _CardLike(Protocol):
 SLACK_MSG_MAX_LEN = 3900
 PROGRESS_MAX_LEN = 3800
 DM_MSG_MAX_LEN = 3000
-_TOOL_INPUT_MAX_LEN = 200
+THINKING_QUOTE_MAX_LEN = 500   # blockquote 표시용 thinking 텍스트 최대 길이
+TOOL_INPUT_QUOTE_MAX_LEN = 300 # blockquote 표시용 tool input 값 최대 길이
+TOOL_RESULT_MAX_LEN = 300      # tool result 요약 최대 길이
 
-# 이벤트 이모지 기본값 (슬랙 유니코드 폴백)
-_EMOJI_THINKING_DEFAULT = "\U0001f4ad"
-_EMOJI_TOOL_DEFAULT = "\U0001f527"
+# 이모지 기본값 — 슬랙 표준 이모지 (프로덕션 .env에서 ssy- 커스텀으로 오버라이드)
+_EMOJI_THINKING_DEFAULT = ":thought_balloon:"
+_EMOJI_TOOL_DEFAULT = ":hammer:"
+_EMOJI_THINKING_DONE_DEFAULT = ":white_check_mark:"
+_EMOJI_TOOL_DONE_DEFAULT = ":white_check_mark:"
 
 
 def _emoji_thinking() -> str:
@@ -43,6 +47,16 @@ def _emoji_thinking() -> str:
 def _emoji_tool() -> str:
     """tool 이모지 — 호출 시점에 환경변수를 읽어 dotenv 로딩 순서에 무관하게 동작"""
     return os.environ.get("SOULSTREAM_EMOJI_TOOL", _EMOJI_TOOL_DEFAULT)
+
+
+def _emoji_thinking_done() -> str:
+    """thinking 완료 이모지"""
+    return os.environ.get("SOULSTREAM_EMOJI_THINKING_DONE", _EMOJI_THINKING_DONE_DEFAULT)
+
+
+def _emoji_tool_done() -> str:
+    """tool 완료 이모지"""
+    return os.environ.get("SOULSTREAM_EMOJI_TOOL_DONE", _EMOJI_TOOL_DONE_DEFAULT)
 
 
 # --- 함수 ---
@@ -103,67 +117,133 @@ def format_dm_progress(text: str, max_len: int = DM_MSG_MAX_LEN) -> str:
 
 # --- 세분화 이벤트 메시지 포맷 ---
 
+def format_initial_placeholder() -> str:
+    """소울스트림 요청 전송 직후 표시할 대기 메시지"""
+    return f"> {_emoji_thinking()} *소영이 생각합니다...*"
+
+
 def format_thinking_initial() -> str:
     """thinking 메시지 초기 포맷"""
     return f"{_emoji_thinking()} *생각합니다...*"
 
 
-def format_thinking_text(text: str) -> str:
+def _format_thinking_body(text: str | None, emoji_fn: "callable") -> str:
+    """thinking 포맷 공통 로직 — 이모지 함수만 다름"""
+    display = text.strip() if text else ""
+    if not display:
+        return f"{emoji_fn()} *생각합니다...*"
+    if len(display) > THINKING_QUOTE_MAX_LEN:
+        display = "..." + display[-THINKING_QUOTE_MAX_LEN:]
+    escaped = escape_backticks(display)
+    quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
+    return f"{emoji_fn()} *생각합니다...*\n{quoted}"
+
+
+def format_thinking_text(text: str | None) -> str:
     """thinking 메시지 텍스트 갱신 포맷
 
-    이모지 + bold 헤더 + code block으로 thinking 내용을 표시합니다.
-    슬랙에서 code block은 길어지면 자동 접힘(collapse)이 되어 스레드를 깔끔하게 유지합니다.
-
-    code block 내부에서 triple backtick(```)이 나타나면 외부 fence를 닫아 포맷이 깨지므로,
-    내부의 triple backtick은 유사 문자로 이스케이프합니다.
+    이모지 + bold 헤더 + blockquote로 thinking 내용을 표시합니다.
+    길이 초과 시 뒤에서 잘라서 최신 내용을 표시합니다.
     """
-    if len(text) > PROGRESS_MAX_LEN:
-        text = "...\n" + text[-PROGRESS_MAX_LEN:]
-    # code block 내부의 triple backtick만 이스케이프 (single/double은 안전)
-    escaped = text.replace("```", "ˋˋˋ")
-    return f"{_emoji_thinking()} *생각합니다...*\n```\n{escaped}\n```"
+    return _format_thinking_body(text, _emoji_thinking)
 
 
-def _summarize_tool_input(tool_input: Any) -> str:
-    """tool_input을 간결한 한 줄 문자열로 요약
+def format_thinking_complete(text: str | None) -> str:
+    """thinking 완료 포맷 — done 이모지로 교체한 최종 상태
 
-    dict이면 주요 필드를 compact JSON으로,
-    그 외에는 str 변환 후 truncate합니다.
+    빈 텍스트도 처리하므로 호출자는 text_buffer 유무를 검사하지 않고
+    항상 format_thinking_complete(text) 호출 가능.
+    """
+    return _format_thinking_body(text, _emoji_thinking_done)
+
+
+def _format_tool_input_readable(tool_input: Any) -> str:
+    """tool_input을 human-readable blockquote로 변환
+
+    dict이면 key/value 쌍을 개별 줄로 나열하고,
+    그 외에는 str 변환 후 단일 blockquote로 표시합니다.
     """
     if tool_input is None:
         return ""
-    if isinstance(tool_input, dict):
-        try:
-            compact = json.dumps(tool_input, ensure_ascii=False, separators=(",", ":"))
-        except (TypeError, ValueError):
-            compact = str(tool_input)
-    else:
-        compact = str(tool_input)
-    if len(compact) > _TOOL_INPUT_MAX_LEN:
-        compact = compact[:_TOOL_INPUT_MAX_LEN] + "..."
-    return compact
+    if not isinstance(tool_input, dict):
+        s = str(tool_input)
+        if len(s) > TOOL_INPUT_QUOTE_MAX_LEN:
+            s = s[:TOOL_INPUT_QUOTE_MAX_LEN] + "..."
+        return f"> {escape_backticks(s)}"
+
+    lines: list[str] = []
+    for key, value in tool_input.items():
+        val_str = str(value) if not isinstance(value, str) else value
+        if len(val_str) > TOOL_INPUT_QUOTE_MAX_LEN:
+            val_str = val_str[:TOOL_INPUT_QUOTE_MAX_LEN] + "..."
+        escaped_val = escape_backticks(val_str)
+        lines.append(f"> *{escape_backticks(str(key))}*")
+        lines.append(f"> {escaped_val}")
+        lines.append(">")
+    # 마지막 빈 > 제거
+    if lines and lines[-1] == ">":
+        lines.pop()
+    return "\n".join(lines)
 
 
 def format_tool_initial(tool_name: str, tool_input: Any = None) -> str:
     """tool 메시지 초기 포맷
 
     이모지 + bold tool_name 헤더를 표시하고,
-    tool_input이 있으면 blockquote로 요약을 덧붙입니다.
+    tool_input이 있으면 human-readable blockquote로 key/value를 나열합니다.
     """
     header = f"{_emoji_tool()} *{tool_name}*"
     if tool_input:
-        summary = _summarize_tool_input(tool_input)
-        if summary:
-            return f"{header}\n> {summary}"
+        readable = _format_tool_input_readable(tool_input)
+        if readable:
+            return f"{header}\n{readable}"
     return header
 
 
+def _stringify_result(result: Any) -> str:
+    """result를 읽기 쉬운 문자열로 변환"""
+    if result is None:
+        return ""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, (dict, list)):
+        try:
+            return json.dumps(result, ensure_ascii=False, indent=2)
+        except (TypeError, ValueError):
+            return str(result)
+    return str(result)
+
+
+def format_tool_result(tool_name: str, result: Any, is_error: bool = False) -> str:
+    """tool result 도착 시 표시 포맷
+
+    성공 시 done 이모지 + 결과 blockquote,
+    에러 시 :x: + 에러 메시지 blockquote.
+    """
+    if is_error:
+        raw = str(result)
+        result_str = raw[:TOOL_RESULT_MAX_LEN] + ("..." if len(raw) > TOOL_RESULT_MAX_LEN else "")
+        escaped = escape_backticks(result_str)
+        quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
+        return f":x: *{tool_name}*\n{quoted}"
+
+    result_str = _stringify_result(result)
+    if len(result_str) > TOOL_RESULT_MAX_LEN:
+        result_str = result_str[:TOOL_RESULT_MAX_LEN] + "..."
+    if result_str:
+        escaped = escape_backticks(result_str)
+        quoted = "\n".join(f"> {line}" for line in escaped.split("\n"))
+        return f"{_emoji_tool_done()} *{tool_name}*\n{quoted}"
+    return f"{_emoji_tool_done()} *{tool_name}*"
+
+
 def format_tool_complete(tool_name: str) -> str:
-    """tool 메시지 완료 포맷 (keep 모드)"""
-    return f"{_emoji_tool()} *{tool_name}* (done)"
+    """tool 메시지 완료 포맷 (결과 없이 이름만)"""
+    return f"{_emoji_tool_done()} *{tool_name}*"
 
 
 def format_tool_error(tool_name: str, error: str) -> str:
-    """tool 메시지 에러 포맷 (keep 모드)"""
+    """tool 메시지 에러 포맷"""
     escaped_error = escape_backticks(error)
-    return f"{_emoji_tool()} *{tool_name}* :x: {escaped_error}"
+    quoted = "\n".join(f"> {line}" for line in escaped_error.split("\n"))
+    return f":x: *{tool_name}*\n{quoted}"

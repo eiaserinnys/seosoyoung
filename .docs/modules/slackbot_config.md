@@ -60,8 +60,9 @@ per-session 아키텍처: agent_session_id가 유일한 식별자.
 - `get_glossary_path()` (줄 155): 용어집 경로 (번역 시 고유명사 참조)
 - `get_narrative_path()` (줄 160): 대사 데이터 경로
 - `get_search_index_path()` (줄 165): 검색 인덱스 경로
-- `get_memory_path()` (줄 170): 관찰 로그 저장 경로
-- `validate(cls)` (줄 178): 필수 환경변수 검증
+- `get_web_cache_path()` (줄 170): 웹 콘텐츠 캐시 경로
+- `get_memory_path()` (줄 175): 관찰 로그 저장 경로
+- `validate(cls)` (줄 183): 필수 환경변수 검증
 
 ## 함수
 
