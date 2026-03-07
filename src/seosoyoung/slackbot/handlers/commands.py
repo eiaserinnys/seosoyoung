@@ -14,6 +14,7 @@ import psutil
 
 from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.restart import RestartType
+from seosoyoung.slackbot.slack.formatting import update_message
 
 logger = logging.getLogger(__name__)
 
@@ -532,24 +533,12 @@ def handle_compact(*, say, ts, thread_ts, channel, client, session_manager, **_)
         if result.success:
             if result.agent_session_id:
                 session_manager.update_session_id(thread_ts, result.agent_session_id)
-            client.chat_update(
-                channel=channel,
-                ts=progress_ts,
-                text=":white_check_mark: *컴팩트가 완료됐습니다.*",
-            )
+            update_message(client, channel, progress_ts, ":white_check_mark: *컴팩트가 완료됐습니다.*")
         else:
-            client.chat_update(
-                channel=channel,
-                ts=progress_ts,
-                text=f":x: *컴팩트에 실패했습니다:* {result.error}",
-            )
+            update_message(client, channel, progress_ts, f":x: *컴팩트에 실패했습니다:* {result.error}")
     except Exception as e:
         logger.exception(f"compact 명령어 오류: {e}")
-        client.chat_update(
-            channel=channel,
-            ts=progress_ts,
-            text=f":x: *컴팩트 중 오류가 발생했습니다:* {e}",
-        )
+        update_message(client, channel, progress_ts, f":x: *컴팩트 중 오류가 발생했습니다:* {e}")
 
 
 _VALID_PROFILE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")

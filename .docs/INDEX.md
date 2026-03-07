@@ -120,9 +120,9 @@
 - `Config` (seosoyoung/slackbot/config.py:115): 애플리케이션 설정
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:20): 멘션으로 처리 중인 스레드를 추적 (TTL 기반 자동 만료)
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
-- `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:52): Slack backend implementation using slack_sdk client.
-- `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:241): Soulstream backend implementation using ClaudeExecutor.
-- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:482): Mention tracking backend wrapping the existing MentionTracker.
+- `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:53): Slack backend implementation using slack_sdk client.
+- `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:247): Soulstream backend implementation using ClaudeExecutor.
+- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:488): Mention tracking backend wrapping the existing MentionTracker.
 - `SlackNode` (seosoyoung/slackbot/presentation/node_map.py:12): 이벤트 노드에 대응하는 슬랙 메시지
 - `InputRequestNode` (seosoyoung/slackbot/presentation/node_map.py:25): AskUserQuestion 이벤트에 대응하는 슬랙 메시지
 - `SlackNodeMap` (seosoyoung/slackbot/presentation/node_map.py:34): 이벤트 노드 <-> 슬랙 메시지 ts 매핑
@@ -247,19 +247,19 @@
 - `delete_credential_profile()` (seosoyoung/slackbot/handlers/actions.py:524): 크레덴셜 프로필 삭제 처리
 - `list_credential_profiles()` (seosoyoung/slackbot/handlers/actions.py:578): 크레덴셜 프로필 목록 조회 및 관리 UI 표시
 - `register_credential_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:664): 크레덴셜 프로필 관리 액션 핸들러 등록
-- `get_ancestors()` (seosoyoung/slackbot/handlers/commands.py:24): PID의 조상 체인(ancestor chain)을 반환
-- `format_elapsed()` (seosoyoung/slackbot/handlers/commands.py:38): 경과 시간을 사람이 읽기 쉬운 형태로 포맷
-- `handle_help()` (seosoyoung/slackbot/handlers/commands.py:162): help 명령어 핸들러
-- `handle_status()` (seosoyoung/slackbot/handlers/commands.py:183): status 명령어 핸들러 - 시스템 상태 및 프로세스 트리 표시
-- `handle_cleanup()` (seosoyoung/slackbot/handlers/commands.py:235): cleanup 명령어 핸들러 - 고아 프로세스 및 오래된 세션 정리
-- `handle_log()` (seosoyoung/slackbot/handlers/commands.py:383): log 명령어 핸들러 - 오늘자 로그 파일 첨부
-- `handle_translate()` (seosoyoung/slackbot/handlers/commands.py:419): 번역 명령어 핸들러
-- `handle_update_restart()` (seosoyoung/slackbot/handlers/commands.py:462): update/restart 명령어 핸들러
-- `handle_compact()` (seosoyoung/slackbot/handlers/commands.py:500): compact 명령어 핸들러 - Soulstream 서비스에 compact 요청
-- `handle_profile()` (seosoyoung/slackbot/handlers/commands.py:700): profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
-- `handle_plugins()` (seosoyoung/slackbot/handlers/commands.py:783): plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드
-- `handle_resume_list_run()` (seosoyoung/slackbot/handlers/commands.py:854): 정주행 재개 명령어 핸들러
-- `handle_session_info()` (seosoyoung/slackbot/handlers/commands.py:882): session-info 명령어 핸들러 - 현재 스레드의 세션 정보 표시
+- `get_ancestors()` (seosoyoung/slackbot/handlers/commands.py:25): PID의 조상 체인(ancestor chain)을 반환
+- `format_elapsed()` (seosoyoung/slackbot/handlers/commands.py:39): 경과 시간을 사람이 읽기 쉬운 형태로 포맷
+- `handle_help()` (seosoyoung/slackbot/handlers/commands.py:163): help 명령어 핸들러
+- `handle_status()` (seosoyoung/slackbot/handlers/commands.py:184): status 명령어 핸들러 - 시스템 상태 및 프로세스 트리 표시
+- `handle_cleanup()` (seosoyoung/slackbot/handlers/commands.py:236): cleanup 명령어 핸들러 - 고아 프로세스 및 오래된 세션 정리
+- `handle_log()` (seosoyoung/slackbot/handlers/commands.py:384): log 명령어 핸들러 - 오늘자 로그 파일 첨부
+- `handle_translate()` (seosoyoung/slackbot/handlers/commands.py:420): 번역 명령어 핸들러
+- `handle_update_restart()` (seosoyoung/slackbot/handlers/commands.py:463): update/restart 명령어 핸들러
+- `handle_compact()` (seosoyoung/slackbot/handlers/commands.py:501): compact 명령어 핸들러 - Soulstream 서비스에 compact 요청
+- `handle_profile()` (seosoyoung/slackbot/handlers/commands.py:689): profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
+- `handle_plugins()` (seosoyoung/slackbot/handlers/commands.py:772): plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드
+- `handle_resume_list_run()` (seosoyoung/slackbot/handlers/commands.py:843): 정주행 재개 명령어 핸들러
+- `handle_session_info()` (seosoyoung/slackbot/handlers/commands.py:871): session-info 명령어 핸들러 - 현재 스레드의 세션 정보 표시
 - `render_gauge()` (seosoyoung/slackbot/handlers/credential_ui.py:36): 사용량을 이모지 게이지 바로 렌더링
 - `format_time_remaining()` (seosoyoung/slackbot/handlers/credential_ui.py:54): 리셋까지 남은 시간을 포맷
 - `render_rate_limit_line()` (seosoyoung/slackbot/handlers/credential_ui.py:98): 단일 rate limit 라인 렌더링
@@ -286,11 +286,11 @@
 - `init_bot_user_id()` (seosoyoung/slackbot/main.py:297): 봇 사용자 ID 초기화
 - `main()` (seosoyoung/slackbot/main.py:307): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
-- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:503): Initialize plugin SDK backends.
+- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:509): Initialize plugin SDK backends.
 - `run_with_event_callbacks()` (seosoyoung/slackbot/presentation/execution.py:23): placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
 - `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:95): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
-- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:28): 초기 placeholder 메시지를 게시하고 ts를 반환
-- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:51): 세분화 이벤트 콜백 + on_compact 팩토리
+- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:29): 초기 placeholder 메시지를 게시하고 ts를 반환
+- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:52): 세분화 이벤트 콜백 + on_compact 팩토리
 - `redact_sensitive()` (seosoyoung/slackbot/presentation/redact.py:75): 텍스트에서 민감 정보를 [REDACTED]로 대체합니다.
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류

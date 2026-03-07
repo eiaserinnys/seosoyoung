@@ -21,6 +21,7 @@ from seosoyoung.slackbot.formatting import (
 from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
 from seosoyoung.slackbot.presentation.redact import redact_sensitive
 from seosoyoung.slackbot.presentation.types import PresentationContext
+from seosoyoung.slackbot.slack.formatting import update_message
 
 logger = logging.getLogger(__name__)
 
@@ -110,11 +111,7 @@ def build_event_callbacks(
 
         try:
             display = format_progress_placeholder(text)
-            pctx.client.chat_update(
-                channel=pctx.channel,
-                ts=ts,
-                text=display,
-            )
+            update_message(pctx.client, pctx.channel, ts, display)
         except Exception as e:
             logger.debug(f"placeholder 진행 상태 갱신 실패: {e}")
 
@@ -176,11 +173,7 @@ def build_event_callbacks(
                 return
             node.text_buffer += text
             display_text = format_thinking_text(node.text_buffer)
-            pctx.client.chat_update(
-                channel=pctx.channel,
-                ts=node.msg_ts,
-                text=display_text,
-            )
+            update_message(pctx.client, pctx.channel, node.msg_ts, display_text)
         except Exception as e:
             logger.warning(f"text_delta 갱신 실패: {e}")
 
@@ -200,11 +193,7 @@ def build_event_callbacks(
             # [공통] 이모지를 done으로 변경 + 내용 갱신
             display_text = format_thinking_complete(node.text_buffer or "")
             try:
-                pctx.client.chat_update(
-                    channel=pctx.channel,
-                    ts=node.msg_ts,
-                    text=display_text,
-                )
+                update_message(pctx.client, pctx.channel, node.msg_ts, display_text)
             except Exception as e:
                 logger.warning(f"text_end 갱신 실패: {e}")
 
@@ -245,11 +234,7 @@ def build_event_callbacks(
             # [공통] 결과 내용으로 교체 + 완료 이모지
             display_text = format_tool_result(tool_name, safe_result, is_error=is_error)
             try:
-                pctx.client.chat_update(
-                    channel=pctx.channel,
-                    ts=node.msg_ts,
-                    text=display_text,
-                )
+                update_message(pctx.client, pctx.channel, node.msg_ts, display_text)
             except Exception as e:
                 logger.warning(f"tool_result 갱신 실패: {e}")
 
@@ -291,11 +276,7 @@ def build_event_callbacks(
             # 이전 compact 메시지가 있으면 완료로 갱신
             if pctx.compact_msg_ts:
                 try:
-                    pctx.client.chat_update(
-                        channel=pctx.channel,
-                        ts=pctx.compact_msg_ts,
-                        text="✅ 컴팩트가 완료됐습니다",
-                    )
+                    update_message(pctx.client, pctx.channel, pctx.compact_msg_ts, "✅ 컴팩트가 완료됐습니다")
                 except Exception as e:
                     logger.warning(f"이전 컴팩트 완료 메시지 갱신 실패: {e}")
 

@@ -22,6 +22,7 @@ from seosoyoung.plugin_sdk.slack import (
     SlackBackend,
     UserInfo,
 )
+from seosoyoung.slackbot.slack.formatting import build_section_blocks
 from seosoyoung.plugin_sdk.soulstream import (
     CompactResult,
     RunResult,
@@ -91,7 +92,12 @@ class SlackBackendImpl(SlackBackend):
         text: str,
         **kwargs: Any,
     ) -> SendMessageResult:
-        """Update an existing message."""
+        """Update an existing message.
+
+        blocks를 명시적으로 전달하지 않으면 text를 mrkdwn section block으로 자동 감싸서 전달합니다.
+        """
+        if "blocks" not in kwargs:
+            kwargs["blocks"] = build_section_blocks(text)
         try:
             result = self._client.chat_update(
                 channel=channel,
