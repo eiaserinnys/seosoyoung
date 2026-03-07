@@ -64,9 +64,10 @@ class TestProcessThreadMessageThinking:
         assert "소영이 생각합니다" in call_kwargs["text"]
 
     @patch("seosoyoung.slackbot.handlers.message.Config")
-    def test_sends_readonly_thinking_for_viewer(self, mock_config):
-        """viewer 역할일 때 '조회 전용 모드로 생각합니다...' 메시지 전송"""
+    def test_sends_placeholder_for_viewer(self, mock_config):
+        """viewer 역할일 때도 placeholder가 정상 전송됨 (Phase 2: 역할별 분기 제거)"""
         from seosoyoung.slackbot.handlers.message import process_thread_message
+        from seosoyoung.slackbot.formatting import format_initial_placeholder
 
         client = MagicMock()
         client.chat_postMessage.return_value = {"ts": "thinking_ts"}
@@ -94,16 +95,15 @@ class TestProcessThreadMessageThinking:
         )
 
         call_kwargs = client.chat_postMessage.call_args[1]
-        assert "조회 전용 모드" in call_kwargs["text"]
+        assert call_kwargs["text"] == format_initial_placeholder()
 
     @patch("seosoyoung.slackbot.handlers.message.Config")
-    def test_last_msg_ts_set_in_presentation_context(self, mock_config):
-        """PresentationContext.last_msg_ts에 thinking 메시지 ts가 설정됨"""
+    def test_pctx_last_msg_ts_is_none_initially(self, mock_config):
+        """PresentationContext.last_msg_ts는 None (Phase 2: placeholder ts는 내부에서 관리)"""
         from seosoyoung.slackbot.handlers.message import process_thread_message
 
-        thinking_ts = "thinking_1234.5678"
         client = MagicMock()
-        client.chat_postMessage.return_value = {"ts": thinking_ts}
+        client.chat_postMessage.return_value = {"ts": "placeholder_ts"}
 
         say = MagicMock()
         session = _make_session()
@@ -131,7 +131,9 @@ class TestProcessThreadMessageThinking:
         run_claude.assert_called_once()
         call_kwargs = run_claude.call_args[1]
         pctx = call_kwargs["presentation"]
-        assert pctx.last_msg_ts == thinking_ts
+        # Phase 2 이후: last_msg_ts는 None으로 초기화되고,
+        # placeholder ts는 build_event_callbacks 내부에서 관리됨
+        assert pctx.last_msg_ts is None
 
     @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_empty_message_skips_thinking(self, mock_config):

@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from seosoyoung.plugin_sdk import slack, soulstream, mention
-from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
 from seosoyoung.plugin_sdk.slack import (
     Message,
     ReactionResult,
@@ -339,7 +338,6 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 on_result 콜백으로 출력 텍스트를 캡처하여 RunResult.output에 담아 반환합니다.
         """
         text_only = kwargs.pop("text_only", False)
-        _event_cbs = None  # 세분화 콜백 초기값
 
         try:
             # Get or use provided session_id
@@ -358,10 +356,17 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 def capture_result(result, _thread_ts, _user_message):
                     captured_output.append(result.output or "")
 
-                presentation = None
-                on_progress = _noop_progress
-                on_compact = _noop_compact
-                on_result_fn = capture_result
+                self._executor(
+                    prompt=prompt,
+                    thread_ts=thread_ts,
+                    msg_ts=kwargs.get("msg_ts", thread_ts),
+                    on_progress=_noop_progress,
+                    on_compact=_noop_compact,
+                    presentation=None,
+                    session_id=session_id,
+                    role=role,
+                    on_result=capture_result,
+                )
             else:
                 # Resolve presentation context
                 presentation = kwargs.get("presentation")
@@ -379,52 +384,38 @@ class SoulstreamBackendImpl(SoulstreamBackend):
 
                 # Auto-build event callbacks when update_message_fn is available
                 if self._update_message_fn is not None:
-                    from seosoyoung.slackbot.presentation.progress import (
-                        build_event_callbacks,
-                        post_initial_placeholder,
+                    from seosoyoung.slackbot.presentation.execution import (
+                        run_with_event_callbacks,
                     )
 
-                    _placeholder_ts = post_initial_placeholder(
-                        self._slack_client, channel, thread_ts,
+                    run_with_event_callbacks(
+                        presentation,
+                        self._executor,
+                        dict(
+                            prompt=prompt,
+                            thread_ts=thread_ts,
+                            msg_ts=kwargs.get("msg_ts", thread_ts),
+                            on_progress=on_progress,
+                            presentation=presentation,
+                            session_id=session_id,
+                            role=role,
+                            on_result=on_result_fn,
+                        ),
+                        on_compact_override=on_compact,
                     )
-                    _node_map = SlackNodeMap()
-                    _event_cbs = build_event_callbacks(presentation, _node_map, "clean", initial_placeholder_ts=_placeholder_ts)
-                    if on_compact is None:
-                        on_compact = _event_cbs["on_compact"]
-
-            # 세분화 콜백 구성
-            event_kwargs = {}
-            if _event_cbs:
-                event_kwargs = {
-                    "on_thinking": _event_cbs["on_thinking"],
-                    "on_text_start": _event_cbs["on_text_start"],
-                    "on_text_delta": _event_cbs["on_text_delta"],
-                    "on_text_end": _event_cbs["on_text_end"],
-                    "on_tool_start": _event_cbs["on_tool_start"],
-                    "on_tool_result": _event_cbs["on_tool_result"],
-                }
-
-            # Run executor (this is synchronous internally)
-            self._executor(
-                prompt=prompt,
-                thread_ts=thread_ts,
-                msg_ts=kwargs.get("msg_ts", thread_ts),
-                on_progress=on_progress,
-                on_compact=on_compact,
-                presentation=presentation,
-                session_id=session_id,
-                role=role,
-                on_result=on_result_fn,
-                **event_kwargs,
-            )
-
-            # 실행 완료 후 placeholder 삭제
-            if _event_cbs:
-                try:
-                    from seosoyoung.utils.async_bridge import run_in_new_loop
-                    run_in_new_loop(_event_cbs["cleanup"]())
-                except Exception as e:
-                    logger.warning(f"placeholder 삭제 실패 (무시): {e}")
+                else:
+                    # update_message_fn 없음 — 세분화 콜백 없이 실행
+                    self._executor(
+                        prompt=prompt,
+                        thread_ts=thread_ts,
+                        msg_ts=kwargs.get("msg_ts", thread_ts),
+                        on_progress=on_progress,
+                        on_compact=on_compact,
+                        presentation=presentation,
+                        session_id=session_id,
+                        role=role,
+                        on_result=on_result_fn,
+                    )
 
             # Get updated session_id
             session = self._session_manager.get(thread_ts)

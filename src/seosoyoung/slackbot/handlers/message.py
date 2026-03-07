@@ -64,8 +64,10 @@ def process_thread_message(
         True if processed, False if skipped (empty message)
     """
     from seosoyoung.slackbot.presentation.types import PresentationContext
-    from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
-    from seosoyoung.slackbot.presentation.progress import build_event_callbacks
+    from seosoyoung.slackbot.presentation.execution import (
+        run_with_event_callbacks,
+        wrap_on_compact_with_memory,
+    )
 
     pm = plugin_manager
     user_id = event["user"]
@@ -165,14 +167,6 @@ def process_thread_message(
         is_thread_reply=True,
     )
 
-    # 초기 placeholder 게시 + 세분화 이벤트 콜백
-    from seosoyoung.slackbot.presentation.progress import post_initial_placeholder
-
-    placeholder_ts = post_initial_placeholder(client, channel, thread_ts)
-    node_map = SlackNodeMap()
-    event_cbs = build_event_callbacks(pctx, node_map, "clean", initial_placeholder_ts=placeholder_ts)
-    on_compact = event_cbs["on_compact"]
-
     # Plugin: before_execute hook — memory injection
     effective_prompt = prompt
     if pm:
@@ -194,22 +188,6 @@ def process_thread_message(
                         pctx.om_anchor_ts = result["anchor_ts"]
         except Exception as e:
             logger.warning(f"before_execute hook 실패 (무시): {e}")
-
-    # Plugin: on_compact에 MemoryPlugin compact 플래그 래핑
-    memory_plugin = _get_plugin_instance(pm, "memory")
-    if memory_plugin:
-        original_on_compact = on_compact
-
-        async def on_compact_with_om(trigger, message):
-            try:
-                memory_plugin.on_compact_flag(thread_ts)
-            except Exception as e:
-                logger.warning(
-                    f"OM inject 플래그 설정 실패 (PreCompact, 무시): {e}"
-                )
-            await original_on_compact(trigger, message)
-
-        on_compact = on_compact_with_om
 
     # Plugin: after_execute hook — observation trigger
     def on_result(result, thread_ts_arg, user_message_arg):
@@ -238,30 +216,24 @@ def process_thread_message(
             except Exception as e:
                 logger.warning(f"after_execute hook 실패 (무시): {e}")
 
-    run_claude_in_session(
-        prompt=effective_prompt,
-        thread_ts=thread_ts,
-        msg_ts=ts,
-        on_compact=on_compact,
-        presentation=pctx,
-        session_id=session.session_id,
-        role=user_info["role"],
-        user_message=clean_text,
-        on_result=on_result,
-        on_thinking=event_cbs["on_thinking"],
-        on_text_start=event_cbs["on_text_start"],
-        on_text_delta=event_cbs["on_text_delta"],
-        on_text_end=event_cbs["on_text_end"],
-        on_tool_start=event_cbs["on_tool_start"],
-        on_tool_result=event_cbs["on_tool_result"],
+    # Claude 실행 (placeholder → 콜백 빌드 → executor → cleanup)
+    run_with_event_callbacks(
+        pctx,
+        run_claude_in_session,
+        dict(
+            prompt=effective_prompt,
+            thread_ts=thread_ts,
+            msg_ts=ts,
+            presentation=pctx,
+            session_id=session.session_id,
+            role=user_info["role"],
+            user_message=clean_text,
+            on_result=on_result,
+        ),
+        on_compact_wrapper=lambda cb: wrap_on_compact_with_memory(
+            cb, pm, thread_ts,
+        ),
     )
-
-    # 실행 완료 후 placeholder 삭제
-    try:
-        from seosoyoung.utils.async_bridge import run_in_new_loop
-        run_in_new_loop(event_cbs["cleanup"]())
-    except Exception as e:
-        logger.warning(f"placeholder 삭제 실패 (무시): {e}")
 
     return True
 
