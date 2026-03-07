@@ -497,20 +497,66 @@ def handle_update_restart(
     restart_manager.force_restart(restart_type)
 
 
-def handle_compact(*, say, ts, thread_ts, **_):
-    """compact 명령어 핸들러 - 안내 메시지"""
-    reply_ts = thread_ts or ts
-    say(
-        text="compact는 Soulstream 서버에서 실행 중 자동으로 처리됩니다.",
-        thread_ts=reply_ts,
-    )
+def handle_compact(*, say, ts, thread_ts, channel, client, session_manager, **_):
+    """compact 명령어 핸들러 - Soulstream 서비스에 compact 요청"""
+    if not thread_ts:
+        say(text="스레드에서 사용해주세요.", thread_ts=ts)
+        return
+
+    session = session_manager.get(thread_ts)
+    if not session or not session.session_id:
+        say(text="활성 세션이 없습니다.", thread_ts=thread_ts)
+        return
+
+    # 진행 메시지 표시
+    try:
+        progress = client.chat_postMessage(
+            channel=channel,
+            text=":arrows_counterclockwise: *컴팩트를 진행합니다...*",
+            thread_ts=thread_ts,
+        )
+        progress_ts = progress["ts"]
+    except Exception as e:
+        logger.exception(f"compact 진행 메시지 전송 실패: {e}")
+        say(text=f":x: *컴팩트 요청에 실패했습니다:* {e}", thread_ts=thread_ts)
+        return
+
+    try:
+        result = _run_soul_api(
+            lambda soul: soul.execute(
+                prompt="/compact",
+                agent_session_id=session.session_id,
+            )
+        )
+
+        if result.success:
+            if result.agent_session_id:
+                session_manager.update_session_id(thread_ts, result.agent_session_id)
+            client.chat_update(
+                channel=channel,
+                ts=progress_ts,
+                text=":white_check_mark: *컴팩트가 완료됐습니다.*",
+            )
+        else:
+            client.chat_update(
+                channel=channel,
+                ts=progress_ts,
+                text=f":x: *컴팩트에 실패했습니다:* {result.error}",
+            )
+    except Exception as e:
+        logger.exception(f"compact 명령어 오류: {e}")
+        client.chat_update(
+            channel=channel,
+            ts=progress_ts,
+            text=f":x: *컴팩트 중 오류가 발생했습니다:* {e}",
+        )
 
 
 _VALID_PROFILE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 
-def _run_soul_profile_api(async_fn):
-    """SoulServiceClient 프로필 API를 동기적으로 호출
+def _run_soul_api(async_fn):
+    """SoulServiceClient API를 동기적으로 호출
 
     slack_bolt sync mode에서 핸들러 스레드에는 이벤트 루프가 없으므로
     asyncio.run()으로 새 루프를 생성하여 호출합니다.
@@ -519,7 +565,7 @@ def _run_soul_profile_api(async_fn):
         async_fn: SoulServiceClient 인스턴스를 받아 코루틴을 반환하는 함수
 
     Returns:
-        API 응답 딕셔너리
+        API 응답
     """
     from seosoyoung.slackbot.soulstream.service_client import SoulServiceClient
 
@@ -574,7 +620,7 @@ def _fetch_profiles_with_rates():
             rate_limits = {"active_profile": None, "profiles": []}
         return profiles_data, rate_limits
 
-    profiles_data, rate_limits = _run_soul_profile_api(_fetch)
+    profiles_data, rate_limits = _run_soul_api(_fetch)
     active = profiles_data.get("active") or ""
     profiles = profiles_data.get("profiles", [])
 
@@ -669,7 +715,7 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
             _handle_profile_list(say, reply_ts)
         elif subcmd == "save" and not arg:
             # 이름 미입력 → credentials.json의 이메일 자동 추출 후 저장
-            email = _run_soul_profile_api(lambda soul: soul.get_current_email())
+            email = _run_soul_api(lambda soul: soul.get_current_email())
             if not email:
                 say(
                     text=(
@@ -689,7 +735,7 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
                     thread_ts=reply_ts,
                 )
                 return
-            _run_soul_profile_api(lambda soul: soul.save_profile(name))
+            _run_soul_api(lambda soul: soul.save_profile(name))
             say(
                 text=f"✅ 프로필 '{name}'을(를) 저장했습니다. (이메일: {email})",
                 thread_ts=reply_ts,
@@ -711,7 +757,7 @@ def handle_profile(*, command, say, thread_ts, client, user_id, check_permission
                     thread_ts=reply_ts,
                 )
                 return
-            _run_soul_profile_api(lambda soul: _PROFILE_SUBCMD_API[subcmd](soul, arg))
+            _run_soul_api(lambda soul: _PROFILE_SUBCMD_API[subcmd](soul, arg))
             say(text=_PROFILE_SUBCMD_RESULT[subcmd](arg), thread_ts=reply_ts)
         else:
             say(

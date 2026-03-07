@@ -43,8 +43,8 @@ def _register_and_get_handler(dependencies):
 class TestCompactCommand:
     """compact 커맨드 테스트"""
 
-    def test_compact_shows_auto_message(self):
-        """compact 호출 시 Soulstream 자동 처리 안내"""
+    def test_compact_without_thread_shows_guide(self):
+        """스레드 밖에서 compact 호출 시 안내 메시지"""
         deps = _make_dependencies()
         handler = _register_and_get_handler(deps)
 
@@ -61,11 +61,12 @@ class TestCompactCommand:
 
         say.assert_called_once()
         call_kwargs = say.call_args[1]
-        assert "Soulstream" in call_kwargs["text"]
+        assert "스레드에서 사용" in call_kwargs["text"]
 
-    def test_compact_in_thread_shows_auto_message(self):
-        """스레드에서 compact 호출해도 동일한 안내"""
+    def test_compact_in_thread_without_session(self):
+        """스레드에서 compact 호출했지만 세션이 없을 때"""
         deps = _make_dependencies()
+        deps["session_manager"].get.return_value = None
         handler = _register_and_get_handler(deps)
 
         event = {
@@ -82,7 +83,7 @@ class TestCompactCommand:
 
         say.assert_called_once()
         call_kwargs = say.call_args[1]
-        assert "Soulstream" in call_kwargs["text"]
+        assert "활성 세션" in call_kwargs["text"]
 
     def test_compact_in_help_text(self):
         """help 메시지에 compact 포함 확인"""

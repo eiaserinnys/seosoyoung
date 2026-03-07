@@ -261,16 +261,158 @@ class TestHandleUpdateRestart:
 
 
 class TestHandleCompact:
-    def test_shows_auto_message(self):
+    def test_no_thread_ts_shows_guide(self):
+        """스레드 밖에서 호출 시 안내 메시지"""
         say = MagicMock()
-        handle_compact(say=say, ts="ts1", thread_ts=None)
-        assert "Soulstream" in say.call_args[1]["text"]
+        handle_compact(
+            say=say, ts="ts1", thread_ts=None,
+            channel="C1", client=MagicMock(), session_manager=MagicMock(),
+        )
+        assert "스레드에서 사용" in say.call_args[1]["text"]
 
-    def test_shows_auto_message_in_thread(self):
+    def test_no_session_shows_guide(self):
+        """활성 세션이 없을 때 안내 메시지"""
         say = MagicMock()
-        handle_compact(say=say, ts="ts1", thread_ts="thread1")
-        assert "Soulstream" in say.call_args[1]["text"]
-        assert say.call_args[1]["thread_ts"] == "thread1"
+        sm = MagicMock()
+        sm.get.return_value = None
+        handle_compact(
+            say=say, ts="ts1", thread_ts="thread1",
+            channel="C1", client=MagicMock(), session_manager=sm,
+        )
+        assert "활성 세션" in say.call_args[1]["text"]
+
+    def test_no_session_id_shows_guide(self):
+        """세션은 있지만 session_id가 없을 때 안내 메시지"""
+        say = MagicMock()
+        sm = MagicMock()
+        session = MagicMock()
+        session.session_id = None
+        sm.get.return_value = session
+        handle_compact(
+            say=say, ts="ts1", thread_ts="thread1",
+            channel="C1", client=MagicMock(), session_manager=sm,
+        )
+        assert "활성 세션" in say.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_compact_success(self, mock_compact):
+        """compact 성공 시 완료 메시지로 교체"""
+        say = MagicMock()
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "progress_ts"}
+        sm = MagicMock()
+        session = MagicMock()
+        session.session_id = "agent-session-123"
+        sm.get.return_value = session
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.agent_session_id = "agent-session-123"
+        mock_compact.return_value = mock_result
+
+        handle_compact(
+            say=say, ts="ts1", thread_ts="thread1",
+            channel="C1", client=client, session_manager=sm,
+        )
+
+        # 진행 메시지 전송 확인
+        client.chat_postMessage.assert_called_once()
+        assert "진행" in client.chat_postMessage.call_args[1]["text"]
+
+        # 완료 메시지로 업데이트 확인
+        client.chat_update.assert_called_once()
+        assert "완료" in client.chat_update.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_compact_failure(self, mock_compact):
+        """compact 실패 시 실패 메시지로 교체"""
+        say = MagicMock()
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "progress_ts"}
+        sm = MagicMock()
+        session = MagicMock()
+        session.session_id = "agent-session-123"
+        sm.get.return_value = session
+
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.error = "세션을 찾을 수 없습니다"
+        mock_compact.return_value = mock_result
+
+        handle_compact(
+            say=say, ts="ts1", thread_ts="thread1",
+            channel="C1", client=client, session_manager=sm,
+        )
+
+        client.chat_update.assert_called_once()
+        assert "실패" in client.chat_update.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_compact_exception(self, mock_compact):
+        """compact 중 예외 발생 시 오류 메시지로 교체"""
+        say = MagicMock()
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "progress_ts"}
+        sm = MagicMock()
+        session = MagicMock()
+        session.session_id = "agent-session-123"
+        sm.get.return_value = session
+
+        mock_compact.side_effect = RuntimeError("connection refused")
+
+        handle_compact(
+            say=say, ts="ts1", thread_ts="thread1",
+            channel="C1", client=client, session_manager=sm,
+        )
+
+        client.chat_update.assert_called_once()
+        assert "오류" in client.chat_update.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_compact_updates_session_id(self, mock_compact):
+        """compact 후 세션 ID 업데이트 확인"""
+        say = MagicMock()
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "progress_ts"}
+        sm = MagicMock()
+        session = MagicMock()
+        session.session_id = "old-session-id"
+        sm.get.return_value = session
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.agent_session_id = "new-session-id"
+        mock_compact.return_value = mock_result
+
+        handle_compact(
+            say=say, ts="ts1", thread_ts="thread1",
+            channel="C1", client=client, session_manager=sm,
+        )
+
+        sm.update_session_id.assert_called_once_with("thread1", "new-session-id")
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_compact_success_no_new_session_id(self, mock_api):
+        """compact 성공이지만 session_id 변경 없을 때 update_session_id 미호출"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "progress_ts"}
+        sm = MagicMock()
+        session = MagicMock()
+        session.session_id = "agent-session-123"
+        sm.get.return_value = session
+
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.agent_session_id = None
+        mock_api.return_value = mock_result
+
+        handle_compact(
+            say=MagicMock(), ts="ts1", thread_ts="thread1",
+            channel="C1", client=client, session_manager=sm,
+        )
+
+        sm.update_session_id.assert_not_called()
+        assert "완료" in client.chat_update.call_args[1]["text"]
 
 
 class TestHandleProfile:
@@ -314,7 +456,7 @@ class TestHandleProfile:
         )
         mock_list.assert_called_once_with(say, "ts1")
 
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
     def test_profile_save(self, mock_api):
         """profile save → Soul API 호출"""
         say = MagicMock()
@@ -327,7 +469,7 @@ class TestHandleProfile:
         assert "저장" in say.call_args[1]["text"]
         assert "work" in say.call_args[1]["text"]
 
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
     def test_profile_delete(self, mock_api):
         """profile delete → Soul API 호출"""
         say = MagicMock()
@@ -340,7 +482,7 @@ class TestHandleProfile:
         assert "삭제" in say.call_args[1]["text"]
         assert "old" in say.call_args[1]["text"]
 
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
     def test_profile_change(self, mock_api):
         """profile change → Soul API activate 호출"""
         say = MagicMock()
@@ -353,7 +495,7 @@ class TestHandleProfile:
         assert "전환" in say.call_args[1]["text"]
         assert "personal" in say.call_args[1]["text"]
 
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
     def test_profile_save_no_arg_email_found(self, mock_api):
         """profile save (인자 없음) + 이메일 찾음 → 자동 저장"""
         # 첫 호출: get_current_email → "user@example.com"
@@ -369,7 +511,7 @@ class TestHandleProfile:
         assert "user" in say.call_args[1]["text"]
         assert "저장" in say.call_args[1]["text"]
 
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
     def test_profile_save_no_arg_email_not_found(self, mock_api):
         """profile save (인자 없음) + 이메일 없음 → 이름 입력 안내"""
         mock_api.return_value = None
@@ -403,7 +545,7 @@ class TestHandleProfile:
         )
         assert "이름을 입력" in say.call_args[1]["text"]
 
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
     def test_soul_service_error_handled(self, mock_api):
         """SoulServiceError 발생 시 에러 메시지 표시"""
         from seosoyoung.slackbot.soulstream.service_client import SoulServiceError
@@ -417,7 +559,7 @@ class TestHandleProfile:
         assert "❌" in say.call_args[1]["text"]
         assert "프로필을 찾을 수 없습니다" in say.call_args[1]["text"]
 
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_profile_api")
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
     def test_generic_exception_handled(self, mock_api):
         """예상치 못한 예외 시 에러 메시지 표시"""
         mock_api.side_effect = ConnectionError("network down")
