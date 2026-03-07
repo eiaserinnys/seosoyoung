@@ -346,6 +346,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 if session:
                     session_id = session.session_id
 
+            # on_result_fn은 text_only 모드에서만 사용 (capture_result).
+            # text_only=False일 때는 None이 정상 — executor가 _process_result()로 자체 처리.
             on_result_fn = None
 
             if text_only:

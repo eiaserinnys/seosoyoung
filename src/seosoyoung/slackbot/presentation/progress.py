@@ -41,7 +41,7 @@ def post_initial_placeholder(client, channel: str, thread_ts: str) -> str | None
 
 def _event_delete_delay() -> float:
     """이벤트 메시지 삭제 전 대기 시간 (초) — 호출 시점에 환경변수를 읽음"""
-    return float(os.environ.get("SOULSTREAM_EVENT_DELETE_DELAY", "5"))
+    return float(os.environ["SOULSTREAM_EVENT_DELETE_DELAY"])
 
 
 def build_event_callbacks(

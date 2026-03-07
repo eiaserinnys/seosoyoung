@@ -121,7 +121,7 @@
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
 - `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:52): Slack backend implementation using slack_sdk client.
 - `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:241): Soulstream backend implementation using ClaudeExecutor.
-- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:480): Mention tracking backend wrapping the existing MentionTracker.
+- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:482): Mention tracking backend wrapping the existing MentionTracker.
 - `SlackNode` (seosoyoung/slackbot/presentation/node_map.py:12): 이벤트 노드에 대응하는 슬랙 메시지
 - `SlackNodeMap` (seosoyoung/slackbot/presentation/node_map.py:24): 이벤트 노드 <-> 슬랙 메시지 ts 매핑
 - `PresentationContext` (seosoyoung/slackbot/presentation/types.py:12): 프레젠테이션 레이어가 관리하는 실행 컨텍스트
@@ -283,9 +283,9 @@
 - `init_bot_user_id()` (seosoyoung/slackbot/main.py:302): 봇 사용자 ID 초기화
 - `main()` (seosoyoung/slackbot/main.py:312): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
-- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:501): Initialize plugin SDK backends.
-- `run_with_event_callbacks()` (seosoyoung/slackbot/presentation/execution.py:20): placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
-- `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:81): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
+- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:503): Initialize plugin SDK backends.
+- `run_with_event_callbacks()` (seosoyoung/slackbot/presentation/execution.py:23): placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
+- `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:85): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
 - `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:24): 초기 placeholder 메시지를 게시하고 ts를 반환
 - `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:47): 세분화 이벤트 콜백 + on_compact 팩토리
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.

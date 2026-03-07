@@ -5,7 +5,7 @@ on_compact 래핑 보일러플레이트를 캡슐화합니다.
 """
 
 import logging
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 
 from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
 from seosoyoung.slackbot.presentation.progress import (
@@ -13,6 +13,9 @@ from seosoyoung.slackbot.presentation.progress import (
     post_initial_placeholder,
 )
 from seosoyoung.slackbot.presentation.types import PresentationContext
+
+if TYPE_CHECKING:
+    from seosoyoung.core.plugin_manager import PluginManager
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ def run_with_event_callbacks(
     mode: str = "clean",
     on_compact_override: Callable | None = None,
     on_compact_wrapper: Callable[[Callable], Callable] | None = None,
-) -> dict:
+) -> None:
     """placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
 
     Args:
@@ -39,8 +42,11 @@ def run_with_event_callbacks(
         on_compact_wrapper: on_compact를 래핑하는 함수 (예: 메모리 플래그 래핑).
             override와 함께 사용 시, override된 콜백에 wrapper가 적용됩니다.
 
-    Returns:
-        build_event_callbacks가 반환한 event_cbs dict
+    Note:
+        mention.py/message.py는 on_progress를 executor_kwargs에 포함하지 않습니다.
+        executor.run()의 on_progress 기본값이 None이므로 동작은 동일합니다.
+        plugin_backends만 명시적으로 전달하는 이유: 외부 호출자(워처 등)가
+        커스텀 on_progress를 넘길 수 있기 때문입니다.
     """
     placeholder_ts = post_initial_placeholder(
         pctx.client, pctx.channel, pctx.thread_ts,
@@ -75,12 +81,10 @@ def run_with_event_callbacks(
     except Exception as e:
         logger.warning(f"placeholder 삭제 실패 (무시): {e}")
 
-    return event_cbs
-
 
 def wrap_on_compact_with_memory(
     on_compact: Callable,
-    pm: object | None,
+    pm: "PluginManager | None",
     thread_ts: str,
 ) -> Callable:
     """on_compact 콜백에 MemoryPlugin compact 플래그를 래핑

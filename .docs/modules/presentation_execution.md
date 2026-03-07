@@ -12,7 +12,7 @@ on_compact 래핑 보일러플레이트를 캡슐화합니다.
 ## 함수
 
 ### `run_with_event_callbacks(pctx, executor_fn, executor_kwargs)`
-- 위치: 줄 20
+- 위치: 줄 23
 - 설명: placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
 
 Args:
@@ -26,11 +26,14 @@ Args:
     on_compact_wrapper: on_compact를 래핑하는 함수 (예: 메모리 플래그 래핑).
         override와 함께 사용 시, override된 콜백에 wrapper가 적용됩니다.
 
-Returns:
-    build_event_callbacks가 반환한 event_cbs dict
+Note:
+    mention.py/message.py는 on_progress를 executor_kwargs에 포함하지 않습니다.
+    executor.run()의 on_progress 기본값이 None이므로 동작은 동일합니다.
+    plugin_backends만 명시적으로 전달하는 이유: 외부 호출자(워처 등)가
+    커스텀 on_progress를 넘길 수 있기 때문입니다.
 
 ### `wrap_on_compact_with_memory(on_compact, pm, thread_ts)`
-- 위치: 줄 81
+- 위치: 줄 85
 - 설명: on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
 
 MemoryPlugin이 없으면 원본 콜백을 그대로 반환합니다.
