@@ -631,6 +631,7 @@ def _fetch_profiles_with_rates():
         rate = rate_map.get(name, {})
         merged.append({
             "name": name,
+            "expires_at": p.get("expiresAt"),
             "five_hour": rate.get("five_hour", {"utilization": "unknown", "resets_at": None}),
             "seven_day": rate.get("seven_day", {"utilization": "unknown", "resets_at": None}),
         })

@@ -7,7 +7,7 @@
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,9 @@ _GAUGE_FILLED = "🟧"
 _GAUGE_EMPTY = "🟦"
 _GAUGE_UNKNOWN = "❓"
 _GAUGE_LENGTH = 10
+
+# KST (UTC+9) — 인증 만료일 표시에 사용
+_KST = timezone(timedelta(hours=9))
 
 # rate limit 타입 → 표시 레이블
 _RATE_TYPE_LABELS = {
@@ -116,25 +119,72 @@ def render_rate_limit_line(
     return f"{gauge} {label}: {pct}%"
 
 
+def format_expiry_date(expires_at: int | str | None) -> str:
+    """인증 만료일을 포맷
+
+    Args:
+        expires_at: 만료 시각. Unix 밀리초 타임스탬프(int), ISO 8601 문자열(str), 또는 None
+
+    Returns:
+        "인증 유효 기간: :white_check_mark: 2026년 3월 6일" (유효)
+        "인증 유효 기간: :warning: 2026년 3월 6일 (무효)" (만료)
+        "인증 유효 기간: 알 수 없음" (None)
+    """
+    if expires_at is None:
+        return "인증 유효 기간: 알 수 없음"
+
+    try:
+        if isinstance(expires_at, (int, float)):
+            # 밀리초 → 초 변환
+            ts_sec = expires_at / 1000.0
+            expiry_dt = datetime.fromtimestamp(ts_sec, tz=timezone.utc)
+        else:
+            expiry_dt = datetime.fromisoformat(str(expires_at))
+            if expiry_dt.tzinfo is None:
+                expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError, OSError):
+        return "인증 유효 기간: 알 수 없음"
+
+    # 로컬 시간(KST) 기준 날짜 표시
+    local_dt = expiry_dt.astimezone(_KST)
+    date_str = f"{local_dt.year}년 {local_dt.month}월 {local_dt.day}일"
+
+    now = datetime.now(timezone.utc)
+    if now < expiry_dt:
+        return f"인증 유효 기간: :white_check_mark: {date_str}"
+    else:
+        return f"인증 유효 기간: :warning: {date_str} (무효)"
+
+
 def render_profile_section(profile: dict, is_active: bool) -> str:
     """프로필 섹션 렌더링
 
+    프로필 데이터에 expires_at이 포함되어 있으면 인증 유효 기간을 표시하고,
+    없으면 rate limit 게이지 바를 표시합니다.
+
     Args:
-        profile: {"name": str, "five_hour": {...}, "seven_day": {...}}
+        profile: 프로필 데이터. 다음 두 형태를 모두 지원:
+            - 프로필 목록: {"name": str, "expires_at": int|None, ...}
+            - rate limit: {"name": str, "five_hour": {...}, "seven_day": {...}}
         is_active: 활성 프로필 여부
 
     Returns:
-        "*linegames* (활성)\\n🟧🟧... 5시간: 95%...\\n🟧🟧... 주간: 51%..."
+        프로필 섹션 문자열
     """
     name = profile["name"]
     header = f"*{name}*" + (" (활성)" if is_active else "")
 
     lines = [header]
-    for rate_type in ("five_hour", "seven_day"):
-        state = profile.get(rate_type, {})
-        utilization = state.get("utilization", "unknown")
-        resets_at = state.get("resets_at")
-        lines.append(render_rate_limit_line(rate_type, utilization, resets_at))
+
+    # expires_at 키가 있으면 유효 기간 표시, 없으면 rate limit 게이지 표시
+    if "expires_at" in profile:
+        lines.append(format_expiry_date(profile["expires_at"]))
+    else:
+        for rate_type in ("five_hour", "seven_day"):
+            state = profile.get(rate_type, {})
+            utilization = state.get("utilization", "unknown")
+            resets_at = state.get("resets_at")
+            lines.append(render_rate_limit_line(rate_type, utilization, resets_at))
 
     return "\n".join(lines)
 
