@@ -42,9 +42,12 @@ Thumbs.db
 # Claude Code temp files
 tmpclaude-*
 
-# Plugin configs (environment-specific)
-config/*.yaml
-!config/*.example
+# Claude Code project settings
+.claude/
+CLAUDE.md
+
+# Plugin configs
+config/
 
 # Runtime data
 data/*.json
