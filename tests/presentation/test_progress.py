@@ -69,10 +69,11 @@ def _make_event_cbs(mode="clean", placeholder_ts=None, **pctx_overrides):
 class TestReturnInterface:
     """build_event_callbacks 반환 인터페이스 검증"""
 
-    def test_no_on_progress_key(self):
-        """반환 dict에 on_progress 키가 없다"""
+    def test_has_on_progress_key(self):
+        """반환 dict에 on_progress 키가 있다"""
         cbs, _, _, _ = _make_event_cbs()
-        assert "on_progress" not in cbs
+        assert "on_progress" in cbs
+        assert callable(cbs["on_progress"])
 
     def test_no_cleanup_progress_key(self):
         """반환 dict에 _cleanup_progress 키가 없다"""
@@ -89,11 +90,108 @@ class TestReturnInterface:
         """반환 dict에 모든 이벤트 콜백이 있다"""
         cbs, _, _, _ = _make_event_cbs()
         expected_keys = {
+            "on_progress",
             "on_thinking", "on_text_start", "on_text_delta",
             "on_text_end", "on_tool_start", "on_tool_result",
             "on_input_request", "on_compact", "cleanup",
         }
         assert set(cbs.keys()) == expected_keys
+
+
+class TestOnProgress:
+    """on_progress 콜백 테스트: placeholder를 진행 텍스트로 갱신"""
+
+    @pytest.mark.asyncio
+    async def test_updates_placeholder_with_progress_text(self):
+        """on_progress가 placeholder를 chat_update로 갱신한다"""
+        client = MagicMock()
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_progress", client=client,
+        )
+
+        await cbs["on_progress"]("코드를 분석합니다...")
+
+        client.chat_update.assert_called_once()
+        call_kwargs = client.chat_update.call_args[1]
+        assert call_kwargs["channel"] == "C123"
+        assert call_kwargs["ts"] == "ph_ts_progress"
+        assert "코드를 분석합니다..." in call_kwargs["text"]
+
+    @pytest.mark.asyncio
+    async def test_no_update_without_placeholder(self):
+        """placeholder_ts가 None이면 chat_update를 호출하지 않는다"""
+        client = MagicMock()
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts=None, client=client,
+        )
+
+        await cbs["on_progress"]("progress text")
+
+        client.chat_update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_throttles_rapid_updates(self):
+        """스로틀로 빠른 연속 호출 시 첫 번째만 갱신한다"""
+        client = MagicMock()
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_throttle", client=client,
+        )
+
+        # 첫 번째 호출: 갱신됨
+        await cbs["on_progress"]("step 1")
+        assert client.chat_update.call_count == 1
+
+        # 즉시 두 번째 호출: 스로틀에 의해 무시됨
+        await cbs["on_progress"]("step 2")
+        assert client.chat_update.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_update_after_throttle_interval(self):
+        """스로틀 간격이 지나면 다시 갱신한다"""
+        import time
+        client = MagicMock()
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_interval", client=client,
+        )
+
+        # 첫 호출
+        await cbs["on_progress"]("step 1")
+        assert client.chat_update.call_count == 1
+
+        # time.monotonic을 모킹하여 간격 경과를 시뮬레이션
+        original_monotonic = time.monotonic
+        try:
+            time.monotonic = lambda: original_monotonic() + 2.0
+            await cbs["on_progress"]("step 2")
+            assert client.chat_update.call_count == 2
+        finally:
+            time.monotonic = original_monotonic
+
+    @pytest.mark.asyncio
+    async def test_update_failure_does_not_raise(self):
+        """chat_update 실패 시 예외가 전파되지 않는다"""
+        client = MagicMock()
+        client.chat_update.side_effect = Exception("Slack API error")
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_fail", client=client,
+        )
+
+        # 예외가 전파되지 않아야 함
+        await cbs["on_progress"]("some progress")
+
+    @pytest.mark.asyncio
+    async def test_no_update_after_cleanup(self):
+        """cleanup() 후에는 on_progress가 갱신하지 않는다"""
+        client = MagicMock()
+        cbs, pctx, _, _ = _make_event_cbs(
+            placeholder_ts="ph_ts_post_cleanup", client=client,
+        )
+
+        await cbs["cleanup"]()
+        client.chat_update.reset_mock()
+
+        await cbs["on_progress"]("late progress")
+        client.chat_update.assert_not_called()
 
 
 class TestPlaceholder:

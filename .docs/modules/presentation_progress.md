@@ -12,18 +12,18 @@ PresentationContext를 캡처하는 클로저 집합을 반환합니다.
 ## 함수
 
 ### `post_initial_placeholder(client, channel, thread_ts)`
-- 위치: 줄 25
+- 위치: 줄 27
 - 설명: 초기 placeholder 메시지를 게시하고 ts를 반환
 
 실패 시 None을 반환합니다. 호출자는 이 ts를 build_event_callbacks의
 initial_placeholder_ts 파라미터로 전달합니다.
 
 ### `_event_delete_delay()`
-- 위치: 줄 43
+- 위치: 줄 45
 - 설명: 이벤트 메시지 삭제 전 대기 시간 (초) — 호출 시점에 환경변수를 읽음
 
 ### `build_event_callbacks(pctx, node_map, mode, initial_placeholder_ts)`
-- 위치: 줄 48
+- 위치: 줄 50
 - 설명: 세분화 이벤트 콜백 + on_compact 팩토리
 
 Args:
@@ -35,6 +35,7 @@ Args:
 
 Returns:
     {
+        "on_progress": ...,
         "on_thinking": ...,
         "on_text_start": ...,
         "on_text_delta": ...,
@@ -49,6 +50,7 @@ Returns:
 
 - `seosoyoung.slackbot.formatting.build_input_request_blocks`
 - `seosoyoung.slackbot.formatting.format_initial_placeholder`
+- `seosoyoung.slackbot.formatting.format_progress_placeholder`
 - `seosoyoung.slackbot.formatting.format_thinking_complete`
 - `seosoyoung.slackbot.formatting.format_thinking_initial`
 - `seosoyoung.slackbot.formatting.format_thinking_text`

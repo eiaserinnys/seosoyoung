@@ -7,8 +7,10 @@ PresentationContext를 캡처하는 클로저 집합을 반환합니다.
 import asyncio
 import logging
 import os
+import time
 from seosoyoung.slackbot.formatting import (
     format_initial_placeholder,
+    format_progress_placeholder,
     format_thinking_initial,
     format_thinking_text,
     format_thinking_complete,
@@ -62,6 +64,7 @@ def build_event_callbacks(
 
     Returns:
         {
+            "on_progress": ...,
             "on_thinking": ...,
             "on_text_start": ...,
             "on_text_delta": ...,
@@ -75,6 +78,9 @@ def build_event_callbacks(
 
     # placeholder 삭제 상태 관리
     _placeholder_ts: list[str | None] = [initial_placeholder_ts]
+    # on_progress 스로틀 상태 (Slack API rate limit 방지)
+    _PROGRESS_MIN_INTERVAL = 1.0  # 초
+    _last_progress_time: list[float] = [0.0]
 
     async def cleanup():
         """실행 완료 후 placeholder 삭제"""
@@ -85,6 +91,31 @@ def build_event_callbacks(
                 pctx.client.chat_delete(channel=pctx.channel, ts=ts)
             except Exception as e:
                 logger.debug(f"placeholder 삭제 실패: {e}")
+
+    async def on_progress(text: str) -> None:
+        """placeholder를 현재 진행 텍스트로 갱신
+
+        Slack API rate limit 방지를 위해 최소 갱신 간격을 적용합니다.
+        placeholder가 없으면 무시합니다.
+        """
+        ts = _placeholder_ts[0]
+        if not ts:
+            return
+
+        now = time.monotonic()
+        if now - _last_progress_time[0] < _PROGRESS_MIN_INTERVAL:
+            return
+        _last_progress_time[0] = now
+
+        try:
+            display = format_progress_placeholder(text)
+            pctx.client.chat_update(
+                channel=pctx.channel,
+                ts=ts,
+                text=display,
+            )
+        except Exception as e:
+            logger.debug(f"placeholder 진행 상태 갱신 실패: {e}")
 
     async def _schedule_delete(msg_ts: str) -> None:
         """clean 모드 전용: 설정된 시간 후 메시지 삭제
@@ -276,6 +307,7 @@ def build_event_callbacks(
             logger.warning(f"컴팩션 알림 전송 실패: {e}")
 
     return {
+        "on_progress": on_progress,
         "on_thinking": on_thinking,
         "on_text_start": on_text_start,
         "on_text_delta": on_text_delta,

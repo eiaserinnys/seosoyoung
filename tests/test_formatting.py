@@ -22,6 +22,7 @@ from seosoyoung.slackbot.formatting import (
     _normalize_newlines,
     _quote_lines,
     format_initial_placeholder,
+    format_progress_placeholder,
     format_thinking_complete,
     format_thinking_initial,
     format_thinking_text,
@@ -94,6 +95,27 @@ class TestFormatInitialPlaceholder:
     def test_custom_emoji_via_env(self):
         with patch.dict(os.environ, {"SOULSTREAM_EMOJI_THINKING": ":ssy-thinking:"}):
             result = format_initial_placeholder()
+            assert ":ssy-thinking:" in result
+
+
+class TestFormatProgressPlaceholder:
+    """format_progress_placeholder 테스트"""
+
+    def test_is_blockquote(self):
+        result = format_progress_placeholder("analyzing...")
+        assert result.startswith("> ")
+
+    def test_contains_thinking_emoji(self):
+        result = format_progress_placeholder("analyzing...")
+        assert _emoji_thinking() in result
+
+    def test_contains_progress_text(self):
+        result = format_progress_placeholder("코드를 분석합니다...")
+        assert "*코드를 분석합니다...*" in result
+
+    def test_custom_emoji_via_env(self):
+        with patch.dict(os.environ, {"SOULSTREAM_EMOJI_THINKING": ":ssy-thinking:"}):
+            result = format_progress_placeholder("working")
             assert ":ssy-thinking:" in result
 
 

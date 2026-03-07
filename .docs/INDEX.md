@@ -230,14 +230,15 @@
 - `format_trello_progress()` (seosoyoung/slackbot/formatting.py:120): 트렐로 모드 채널 진행 상황 포맷
 - `format_dm_progress()` (seosoyoung/slackbot/formatting.py:127): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
 - `format_initial_placeholder()` (seosoyoung/slackbot/formatting.py:137): 소울스트림 요청 전송 직후 표시할 대기 메시지
-- `format_thinking_initial()` (seosoyoung/slackbot/formatting.py:142): thinking 메시지 초기 포맷
-- `format_thinking_text()` (seosoyoung/slackbot/formatting.py:159): thinking 메시지 텍스트 갱신 포맷
-- `format_thinking_complete()` (seosoyoung/slackbot/formatting.py:168): thinking 완료 포맷 — done 이모지로 교체한 최종 상태
-- `format_tool_initial()` (seosoyoung/slackbot/formatting.py:210): tool 메시지 초기 포맷
-- `format_tool_result()` (seosoyoung/slackbot/formatting.py:238): tool result 도착 시 표시 포맷
-- `format_tool_complete()` (seosoyoung/slackbot/formatting.py:261): tool 메시지 완료 포맷 (결과 없이 이름만)
-- `build_input_request_blocks()` (seosoyoung/slackbot/formatting.py:268): AskUserQuestion 이벤트를 Slack Block Kit으로 변환
-- `format_input_request_answered()` (seosoyoung/slackbot/formatting.py:345): 응답 완료된 AskUserQuestion을 텍스트로 변환
+- `format_progress_placeholder()` (seosoyoung/slackbot/formatting.py:142): 진행 상태로 갱신된 플레이스홀더 포맷
+- `format_thinking_initial()` (seosoyoung/slackbot/formatting.py:157): thinking 메시지 초기 포맷
+- `format_thinking_text()` (seosoyoung/slackbot/formatting.py:174): thinking 메시지 텍스트 갱신 포맷
+- `format_thinking_complete()` (seosoyoung/slackbot/formatting.py:183): thinking 완료 포맷 — done 이모지로 교체한 최종 상태
+- `format_tool_initial()` (seosoyoung/slackbot/formatting.py:225): tool 메시지 초기 포맷
+- `format_tool_result()` (seosoyoung/slackbot/formatting.py:253): tool result 도착 시 표시 포맷
+- `format_tool_complete()` (seosoyoung/slackbot/formatting.py:276): tool 메시지 완료 포맷 (결과 없이 이름만)
+- `build_input_request_blocks()` (seosoyoung/slackbot/formatting.py:283): AskUserQuestion 이벤트를 Slack Block Kit으로 변환
+- `format_input_request_answered()` (seosoyoung/slackbot/formatting.py:360): 응답 완료된 AskUserQuestion을 텍스트로 변환
 - `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:11): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:15): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `send_deploy_shutdown_popup()` (seosoyoung/slackbot/handlers/actions.py:83): 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
@@ -288,9 +289,9 @@
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:503): Initialize plugin SDK backends.
 - `run_with_event_callbacks()` (seosoyoung/slackbot/presentation/execution.py:23): placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
-- `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:86): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
-- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:25): 초기 placeholder 메시지를 게시하고 ts를 반환
-- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:48): 세분화 이벤트 콜백 + on_compact 팩토리
+- `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:95): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
+- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:27): 초기 placeholder 메시지를 게시하고 ts를 반환
+- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:50): 세분화 이벤트 콜백 + on_compact 팩토리
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slackbot/slack/file_handler.py:67): 스레드별 임시 폴더 생성

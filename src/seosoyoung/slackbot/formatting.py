@@ -139,6 +139,21 @@ def format_initial_placeholder() -> str:
     return f"> {_emoji_thinking()} *소영이 생각합니다...*"
 
 
+def format_progress_placeholder(text: str) -> str:
+    """진행 상태로 갱신된 플레이스홀더 포맷
+
+    on_progress 콜백이 전달하는 현재 진행 텍스트를 플레이스홀더 형태로 포맷합니다.
+    빈 텍스트가 오면 초기 플레이스홀더로 폴백합니다.
+    """
+    display = text.strip() if text else ""
+    if not display:
+        return format_initial_placeholder()
+    if len(display) > PROGRESS_MAX_LEN:
+        display = "..." + display[-PROGRESS_MAX_LEN:]
+    escaped = escape_backticks(display)
+    return f"> {_emoji_thinking()} *{escaped}*"
+
+
 def format_thinking_initial() -> str:
     """thinking 메시지 초기 포맷"""
     return f"{_emoji_thinking()} *생각합니다...*"

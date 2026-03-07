@@ -43,10 +43,10 @@ def run_with_event_callbacks(
             override와 함께 사용 시, override된 콜백에 wrapper가 적용됩니다.
 
     Note:
-        mention.py/message.py는 on_progress를 executor_kwargs에 포함하지 않습니다.
-        executor.run()의 on_progress 기본값이 None이므로 동작은 동일합니다.
-        plugin_backends만 명시적으로 전달하는 이유: 외부 호출자(워처 등)가
-        커스텀 on_progress를 넘길 수 있기 때문입니다.
+        on_progress는 executor_kwargs에 포함되어 있으면 그것을 사용하고,
+        없으면 placeholder를 진행 텍스트로 갱신하는 기본 콜백을 주입합니다.
+        mention.py/message.py는 on_progress를 포함하지 않으므로 기본 콜백이 사용됩니다.
+        plugin_backends는 외부 호출자(워처 등)의 커스텀 on_progress를 전달할 수 있습니다.
     """
     placeholder_ts = post_initial_placeholder(
         pctx.client, pctx.channel, pctx.thread_ts,
@@ -64,8 +64,17 @@ def run_with_event_callbacks(
     if on_compact_wrapper is not None:
         on_compact = on_compact_wrapper(on_compact)
 
+    # on_progress: caller가 제공하지 않았으면 placeholder 갱신용 콜백 주입
+    _caller_progress = executor_kwargs.pop("on_progress", None)
+    on_progress = (
+        _caller_progress
+        if _caller_progress is not None
+        else event_cbs["on_progress"]
+    )
+
     executor_fn(
         **executor_kwargs,
+        on_progress=on_progress,
         on_compact=on_compact,
         on_thinking=event_cbs["on_thinking"],
         on_text_start=event_cbs["on_text_start"],

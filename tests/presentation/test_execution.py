@@ -46,6 +46,7 @@ class TestRunWithEventCallbacks:
         mock_cleanup = MagicMock()
         mock_on_compact = MagicMock()
         mock_build_cbs.return_value = {
+            "on_progress": MagicMock(),
             "on_compact": mock_on_compact,
             "on_thinking": MagicMock(),
             "on_text_start": MagicMock(),
@@ -87,6 +88,7 @@ class TestRunWithEventCallbacks:
         mock_post_placeholder.return_value = "ph_ts"
         default_on_compact = MagicMock(name="default_on_compact")
         mock_build_cbs.return_value = {
+            "on_progress": MagicMock(),
             "on_compact": default_on_compact,
             "on_thinking": MagicMock(),
             "on_text_start": MagicMock(),
@@ -122,6 +124,7 @@ class TestRunWithEventCallbacks:
         """override + wrapper 동시 사용 시 wrapper가 override에 적용됨"""
         mock_post_placeholder.return_value = "ph_ts"
         mock_build_cbs.return_value = {
+            "on_progress": MagicMock(),
             "on_compact": MagicMock(name="default"),
             "on_thinking": MagicMock(),
             "on_text_start": MagicMock(),
@@ -165,6 +168,7 @@ class TestRunWithEventCallbacks:
         wrapped_result = MagicMock(name="wrapped_result")
         wrapper = MagicMock(return_value=wrapped_result)
         mock_build_cbs.return_value = {
+            "on_progress": MagicMock(),
             "on_compact": default_on_compact,
             "on_thinking": MagicMock(),
             "on_text_start": MagicMock(),
@@ -200,6 +204,7 @@ class TestRunWithEventCallbacks:
         """cleanup 실패 시 예외가 전파되지 않음 (warning 로그만)"""
         mock_post_placeholder.return_value = "ph_ts"
         mock_build_cbs.return_value = {
+            "on_progress": MagicMock(),
             "on_compact": MagicMock(),
             "on_thinking": MagicMock(),
             "on_text_start": MagicMock(),
@@ -238,6 +243,7 @@ class TestRunWithEventCallbacks:
         mock_tool_result = MagicMock(name="on_tool_result")
         mock_input_request = MagicMock(name="on_input_request")
         mock_build_cbs.return_value = {
+            "on_progress": MagicMock(),
             "on_compact": MagicMock(),
             "on_thinking": mock_thinking,
             "on_text_start": mock_text_start,
@@ -276,6 +282,7 @@ class TestRunWithEventCallbacks:
         """executor_kwargs의 추가 파라미터가 executor에 전달됨"""
         mock_post_placeholder.return_value = "ph_ts"
         mock_build_cbs.return_value = {
+            "on_progress": MagicMock(),
             "on_compact": MagicMock(),
             "on_thinking": MagicMock(),
             "on_text_start": MagicMock(),
@@ -302,6 +309,112 @@ class TestRunWithEventCallbacks:
         assert call_kwargs["prompt"] == "hello"
         assert call_kwargs["thread_ts"] == "ts1"
         assert call_kwargs["extra_arg"] == 42
+
+
+    @patch("seosoyoung.slackbot.presentation.execution.build_event_callbacks")
+    @patch("seosoyoung.slackbot.presentation.execution.post_initial_placeholder")
+    def test_on_progress_injected_from_event_cbs(
+        self, mock_post_placeholder, mock_build_cbs,
+    ):
+        """executor_kwargs에 on_progress가 없으면 event_cbs의 것이 주입됨"""
+        mock_post_placeholder.return_value = "ph_ts"
+        mock_on_progress = MagicMock(name="on_progress")
+        mock_build_cbs.return_value = {
+            "on_progress": mock_on_progress,
+            "on_compact": MagicMock(),
+            "on_thinking": MagicMock(),
+            "on_text_start": MagicMock(),
+            "on_text_delta": MagicMock(),
+            "on_text_end": MagicMock(),
+            "on_tool_start": MagicMock(),
+            "on_tool_result": MagicMock(),
+            "on_input_request": MagicMock(),
+            "cleanup": MagicMock(),
+        }
+
+        pctx = _make_pctx()
+        executor_fn = MagicMock()
+
+        with patch(
+            "seosoyoung.utils.async_bridge.run_in_new_loop"
+        ):
+            run_with_event_callbacks(
+                pctx, executor_fn, {"prompt": "hello"},
+            )
+
+        call_kwargs = executor_fn.call_args[1]
+        assert call_kwargs["on_progress"] is mock_on_progress
+
+    @patch("seosoyoung.slackbot.presentation.execution.build_event_callbacks")
+    @patch("seosoyoung.slackbot.presentation.execution.post_initial_placeholder")
+    def test_on_progress_from_kwargs_takes_precedence(
+        self, mock_post_placeholder, mock_build_cbs,
+    ):
+        """executor_kwargs에 on_progress가 있으면 event_cbs 대신 그것을 사용"""
+        mock_post_placeholder.return_value = "ph_ts"
+        mock_event_progress = MagicMock(name="event_on_progress")
+        mock_build_cbs.return_value = {
+            "on_progress": mock_event_progress,
+            "on_compact": MagicMock(),
+            "on_thinking": MagicMock(),
+            "on_text_start": MagicMock(),
+            "on_text_delta": MagicMock(),
+            "on_text_end": MagicMock(),
+            "on_tool_start": MagicMock(),
+            "on_tool_result": MagicMock(),
+            "on_input_request": MagicMock(),
+            "cleanup": MagicMock(),
+        }
+
+        pctx = _make_pctx()
+        custom_progress = MagicMock(name="custom_on_progress")
+        executor_fn = MagicMock()
+
+        with patch(
+            "seosoyoung.utils.async_bridge.run_in_new_loop"
+        ):
+            run_with_event_callbacks(
+                pctx, executor_fn,
+                {"prompt": "hello", "on_progress": custom_progress},
+            )
+
+        call_kwargs = executor_fn.call_args[1]
+        assert call_kwargs["on_progress"] is custom_progress
+
+    @patch("seosoyoung.slackbot.presentation.execution.build_event_callbacks")
+    @patch("seosoyoung.slackbot.presentation.execution.post_initial_placeholder")
+    def test_on_progress_none_in_kwargs_uses_event_cbs(
+        self, mock_post_placeholder, mock_build_cbs,
+    ):
+        """executor_kwargs에 on_progress=None이면 event_cbs의 것이 사용됨"""
+        mock_post_placeholder.return_value = "ph_ts"
+        mock_event_progress = MagicMock(name="event_on_progress")
+        mock_build_cbs.return_value = {
+            "on_progress": mock_event_progress,
+            "on_compact": MagicMock(),
+            "on_thinking": MagicMock(),
+            "on_text_start": MagicMock(),
+            "on_text_delta": MagicMock(),
+            "on_text_end": MagicMock(),
+            "on_tool_start": MagicMock(),
+            "on_tool_result": MagicMock(),
+            "on_input_request": MagicMock(),
+            "cleanup": MagicMock(),
+        }
+
+        pctx = _make_pctx()
+        executor_fn = MagicMock()
+
+        with patch(
+            "seosoyoung.utils.async_bridge.run_in_new_loop"
+        ):
+            run_with_event_callbacks(
+                pctx, executor_fn,
+                {"prompt": "hello", "on_progress": None},
+            )
+
+        call_kwargs = executor_fn.call_args[1]
+        assert call_kwargs["on_progress"] is mock_event_progress
 
 
 class TestWrapOnCompactWithMemory:
