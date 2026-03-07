@@ -243,8 +243,8 @@ class TestRenderProfileSection:
         result = render_profile_section(profile, is_active=False)
         assert "unknown" in result
 
-    def test_with_expiry_valid(self):
-        """expires_at이 있으면 만료일 표시 (유효)"""
+    def test_with_expiry_shows_both(self):
+        """expires_at과 rate limit이 모두 표시됨"""
         future_ms = int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp() * 1000)
         profile = {
             "name": "linegames",
@@ -255,36 +255,42 @@ class TestRenderProfileSection:
         result = render_profile_section(profile, is_active=True)
         assert "*linegames*" in result
         assert "(활성)" in result
+        # 만료일 표시
         assert "인증 유효 기간:" in result
         assert ":white_check_mark:" in result
-        # rate limit 게이지가 아닌 만료일 표시
-        assert "5시간" not in result
-        assert "주간" not in result
+        # rate limit 게이지도 함께 표시
+        assert "5시간" in result
+        assert "주간" in result
 
     def test_with_expiry_expired(self):
-        """expires_at이 과거이면 무효 표시"""
+        """expires_at이 과거이면 무효 표시, rate limit도 표시"""
         past_ms = int((datetime.now(timezone.utc) - timedelta(days=1)).timestamp() * 1000)
         profile = {
             "name": "personal",
             "expires_at": past_ms,
+            "five_hour": {"utilization": "unknown", "resets_at": None},
+            "seven_day": {"utilization": "unknown", "resets_at": None},
         }
         result = render_profile_section(profile, is_active=False)
         assert ":warning:" in result
         assert "(무효)" in result
+        assert "5시간" in result
 
     def test_with_expiry_none(self):
-        """expires_at이 None이면 알 수 없음 표시"""
+        """expires_at이 None이면 알 수 없음 표시, rate limit도 표시"""
         profile = {
             "name": "unknown_expiry",
             "expires_at": None,
+            "five_hour": {"utilization": 0.5, "resets_at": None},
+            "seven_day": {"utilization": 0.2, "resets_at": None},
         }
         result = render_profile_section(profile, is_active=False)
         assert "알 수 없음" in result
-        # rate limit은 표시하지 않음
-        assert "5시간" not in result
+        assert "5시간" in result
+        assert "주간" in result
 
     def test_without_expiry_shows_rate_limits(self):
-        """expires_at 키가 없으면 기존 rate limit 게이지 표시"""
+        """expires_at 키가 없으면 rate limit만 표시 (알림 컨텍스트)"""
         profile = {
             "name": "legacy",
             "five_hour": {"utilization": 0.8, "resets_at": None},
