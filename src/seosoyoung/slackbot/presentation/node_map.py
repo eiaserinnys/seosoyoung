@@ -37,13 +37,13 @@ class SlackNodeMap:
     대시보드의 ProcessingContext를 슬랙에 맞게 번안.
     - _nodes: event_id -> SlackNode
     - _tool_use_index: tool_use_id -> event_id (tool_result 매칭용)
-    - _last_thinking_by_parent: parent_event_id -> event_id (text가 병합할 대상)
+    - _last_text_by_parent: parent_event_id -> event_id (text_delta/text_end가 찾을 대상)
     """
 
     def __init__(self):
         self._nodes: dict[int, SlackNode] = {}
         self._tool_use_index: dict[str, int] = {}
-        self._last_thinking_by_parent: dict[Optional[int], int] = {}
+        self._last_text_by_parent: dict[Optional[int], int] = {}
         self._input_requests: dict[str, InputRequestNode] = {}  # request_id -> InputRequestNode
 
     def add_thinking(
@@ -60,7 +60,6 @@ class SlackNodeMap:
             parent_event_id=parent_event_id,
         )
         self._nodes[event_id] = node
-        self._last_thinking_by_parent[parent_event_id] = event_id
         return node
 
     def add_text(
@@ -69,10 +68,10 @@ class SlackNodeMap:
         msg_ts: str,
         parent_event_id: Optional[int] = None,
     ) -> SlackNode:
-        """독립 text 노드 등록 (thinking 없이 text_start가 도착한 경우, S6)
+        """text 노드 등록
 
-        _last_thinking_by_parent에 등록하여 find_thinking_for_text가
-        thinking과 독립 text를 동일하게 찾도록 한다.
+        _last_text_by_parent에 등록하여 find_text_node가
+        text_delta/text_end에서 대상 노드를 찾도록 한다.
         """
         node = SlackNode(
             event_id=event_id,
@@ -81,7 +80,7 @@ class SlackNodeMap:
             parent_event_id=parent_event_id,
         )
         self._nodes[event_id] = node
-        self._last_thinking_by_parent[parent_event_id] = event_id
+        self._last_text_by_parent[parent_event_id] = event_id
         return node
 
     def add_tool(
@@ -106,15 +105,15 @@ class SlackNodeMap:
             self._tool_use_index[tool_use_id] = event_id
         return node
 
-    def find_thinking_for_text(
+    def find_text_node(
         self,
         parent_event_id: Optional[int],
     ) -> Optional[SlackNode]:
-        """text 이벤트가 병합할 대상 노드 검색
+        """parent_event_id에 대응하는 text 노드 검색
 
-        thinking 노드와 독립 text 노드 모두 동일하게 찾는다 (S6).
+        text_start에서 등록한 text 노드를 text_delta/text_end에서 찾는다.
         """
-        event_id = self._last_thinking_by_parent.get(parent_event_id)
+        event_id = self._last_text_by_parent.get(parent_event_id)
         if event_id is None:
             return None
         return self._nodes.get(event_id)
@@ -132,8 +131,8 @@ class SlackNodeMap:
     def _remove_from_indexes(self, node: SlackNode) -> None:
         """완료된 노드를 룩업 인덱스에서 제거 (노드 자체는 _nodes에 유지)"""
         parent = node.parent_event_id
-        if self._last_thinking_by_parent.get(parent) == node.event_id:
-            del self._last_thinking_by_parent[parent]
+        if self._last_text_by_parent.get(parent) == node.event_id:
+            del self._last_text_by_parent[parent]
         if node.tool_use_id:
             self._tool_use_index.pop(node.tool_use_id, None)
 
@@ -149,7 +148,7 @@ class SlackNodeMap:
 
         SSE 재연결 시 이미 처리한 이벤트가 재생되는 경우,
         룩업 인덱스에 노드가 남아 있으면 중복 삭제 시도가 발생합니다.
-        완료 즉시 인덱스에서 제거하여 find_thinking_for_text, find_tool_by_use_id가
+        완료 즉시 인덱스에서 제거하여 find_text_node, find_tool_by_use_id가
         이미 처리된 노드를 반환하지 않도록 합니다.
         """
         node = self._nodes.get(event_id)

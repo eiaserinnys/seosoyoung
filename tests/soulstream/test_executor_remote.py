@@ -50,10 +50,6 @@ def _make_pctx(**overrides) -> PresentationContext:
     return PresentationContext(**defaults)
 
 
-def _noop_progress(text):
-    pass
-
-
 async def _noop_compact(trigger, message):
     pass
 
@@ -83,7 +79,6 @@ class TestExecutorRemoteBranch:
         with patch.object(executor, "_execute_remote") as mock_execute_remote:
             executor._execute_once(
                 "1234.5678", "hello", "1234.0001",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="sess-001",
@@ -104,7 +99,6 @@ class TestExecutorRemoteBranch:
         with patch.object(executor, "_execute_remote") as mock_remote:
             executor._execute_once(
                 "1234.5678", "hello", "1234.0001",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="sess-001",
@@ -129,7 +123,6 @@ class TestExecutorRemoteBranch:
         with patch.object(executor, "_execute_remote") as mock_remote:
             executor._execute_once(
                 "1234.5678", "hello", "1234.0001",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="sess-001",
@@ -177,7 +170,6 @@ class TestExecutorRemoteDebug:
             with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
                 executor._execute_remote(
                     "1234.5678", "hello",
-                    on_progress=_noop_progress,
                     on_compact=_noop_compact,
                     presentation=pctx,
                     session_id="sess-001",
@@ -211,7 +203,6 @@ class TestExecutorRemoteDebug:
         with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
             executor._execute_remote(
                 "1234.5678", "hello",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="sess-001",
@@ -287,7 +278,6 @@ class TestInterventionDualPath:
                 mock_run.return_value = True
                 executor._handle_intervention(
                     "1234.5678", "new prompt", "1234.0001",
-                    on_progress=_noop_progress,
                     on_compact=_noop_compact,
                     presentation=pctx,
                     role="admin",
@@ -302,7 +292,6 @@ class TestInterventionDualPath:
         pctx = _make_pctx()
         executor._handle_intervention(
             "1234.5678", "new prompt", "1234.0001",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=pctx,
             role="admin",

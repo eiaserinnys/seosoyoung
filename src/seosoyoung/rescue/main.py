@@ -6,7 +6,6 @@ soul 서버를 경유하지 않는 독립 경량 봇입니다.
 메인 봇에서 복제한 기능:
 - SessionManager 기반 세션 관리
 - 인터벤션 (interrupt → pending prompt → while loop)
-- on_progress 사고 과정 표시
 - on_compact 컴팩션 알림
 - help/status/compact 명령어
 - 슬랙 컨텍스트 블록 (채널/스레드/파일 정보)
@@ -54,9 +53,6 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from seosoyoung.rescue.config import RescueConfig
-from seosoyoung.rescue.message_formatter import (
-    escape_backticks,
-)
 from seosoyoung.rescue.engine_adapter import create_runner, interrupt, compact_session_sync
 from seosoyoung.rescue.claude.engine_types import EngineResult
 from seosoyoung.rescue.session import Session, SessionManager
@@ -306,23 +302,6 @@ class RescueBotApp:
         )
         last_msg_ts = initial_msg["ts"]
 
-        # on_progress 콜백
-        async def on_progress(current_text: str):
-            nonlocal last_msg_ts
-            try:
-                display_text = current_text.lstrip("\n")
-                if not display_text:
-                    return
-                if len(display_text) > 3800:
-                    display_text = "...\n" + display_text[-3800:]
-
-                escaped_text = escape_backticks(display_text)
-                quote_lines = [f"> {line}" for line in escaped_text.split("\n")]
-                quote_text = "\n".join(quote_lines)
-                update_message(client, channel, last_msg_ts, quote_text)
-            except Exception as e:
-                logger.warning(f"사고 과정 메시지 전송 실패: {e}")
-
         # on_compact 콜백
         async def on_compact(trigger: str, message: str):
             try:
@@ -347,7 +326,6 @@ class RescueBotApp:
             result = runner.run_sync(runner.run(
                 prompt=full_prompt,
                 session_id=session.session_id,
-                on_progress=on_progress,
                 on_compact=on_compact,
             ))
 

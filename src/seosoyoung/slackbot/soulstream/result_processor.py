@@ -7,7 +7,6 @@ import logging
 from typing import Any, Callable, Optional
 
 from seosoyoung.slackbot.soulstream.message_formatter import (
-    PROGRESS_MAX_LEN,
     SLACK_MSG_MAX_LEN,
     build_trello_header,
 )
@@ -120,7 +119,7 @@ class ResultProcessor:
         """트렐로 모드 성공 처리"""
         if pctx.dm_channel_id and pctx.dm_last_reply_ts:
             try:
-                dm_final = response[:PROGRESS_MAX_LEN] if len(response) > PROGRESS_MAX_LEN else response
+                dm_final = response[:SLACK_MSG_MAX_LEN] if len(response) > SLACK_MSG_MAX_LEN else response
                 self.update_message_fn(pctx.client, pctx.dm_channel_id, pctx.dm_last_reply_ts, dm_final)
             except Exception as e:
                 logger.warning(f"DM 스레드 최종 메시지 업데이트 실패: {e}")

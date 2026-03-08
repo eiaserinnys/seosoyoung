@@ -626,7 +626,6 @@ class ClaudeRunner:
         client: "ClaudeSDKClient",
         compact_state: CompactRetryState,
         msg_state: MessageState,
-        on_progress: Optional[Callable[[str], Awaitable[None]]],
         on_compact: Optional[Callable[[str, str], Awaitable[None]]],
         on_intervention: Optional[InterventionCallback] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
@@ -697,15 +696,6 @@ class ClaudeRunner:
                                 "content": block.text,
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
                             })
-
-                            if on_progress:
-                                try:
-                                    display_text = msg_state.current_text
-                                    if len(display_text) > 1000:
-                                        display_text = "...\n" + display_text[-1000:]
-                                    await on_progress(display_text)
-                                except Exception as e:
-                                    logger.warning(f"진행 상황 콜백 오류: {e}")
 
                             if on_event:
                                 try:
@@ -877,7 +867,6 @@ class ClaudeRunner:
         self,
         prompt: str,
         session_id: Optional[str] = None,
-        on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_intervention: Optional[InterventionCallback] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
@@ -888,7 +877,6 @@ class ClaudeRunner:
         Args:
             prompt: 실행할 프롬프트
             session_id: 기존 세션 ID (resume)
-            on_progress: 진행 상황 콜백
             on_compact: 컴팩션 이벤트 콜백
             on_intervention: 인터벤션 폴링 콜백.
                 호출 시 Optional[str]을 반환하며, 문자열이면 실행 중인
@@ -917,13 +905,12 @@ class ClaudeRunner:
                     error=validation_error,
                 )
 
-        return await self._execute(prompt, session_id, on_progress, on_compact, on_intervention, on_session, on_event)
+        return await self._execute(prompt, session_id, on_compact, on_intervention, on_session, on_event)
 
     async def _execute(
         self,
         prompt: str,
         session_id: Optional[str] = None,
-        on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_intervention: Optional[InterventionCallback] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
@@ -967,7 +954,7 @@ class ClaudeRunner:
                 before = compact_state.snapshot()
 
                 await self._receive_messages(
-                    client, compact_state, msg_state, on_progress, on_compact,
+                    client, compact_state, msg_state, on_compact,
                     on_intervention, on_session, on_event,
                 )
 

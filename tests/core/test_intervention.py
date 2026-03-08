@@ -73,10 +73,6 @@ def _make_pctx(**overrides) -> PresentationContext:
     return PresentationContext(**defaults)
 
 
-def _noop_progress(text):
-    pass
-
-
 async def _noop_compact(trigger, message):
     pass
 
@@ -96,7 +92,7 @@ class TestPendingPrompts:
         executor = make_executor()
         pending = PendingPrompt(
             prompt="test", msg_ts="msg_1",
-            on_progress=_noop_progress, on_compact=_noop_compact,
+            on_compact=_noop_compact,
             presentation=_make_pctx(),
         )
         executor._pending_prompts["thread_123"] = pending
@@ -110,12 +106,12 @@ class TestPendingPrompts:
         executor = make_executor()
         p1 = PendingPrompt(
             prompt="first", msg_ts="msg_1",
-            on_progress=_noop_progress, on_compact=_noop_compact,
+            on_compact=_noop_compact,
             presentation=_make_pctx(),
         )
         p2 = PendingPrompt(
             prompt="second", msg_ts="msg_2",
-            on_progress=_noop_progress, on_compact=_noop_compact,
+            on_compact=_noop_compact,
             presentation=_make_pctx(),
         )
         executor._pending_prompts["t1"] = p1
@@ -136,7 +132,6 @@ class TestInterventionHandling:
 
         executor._handle_intervention(
             "thread_123", "새 질문", "msg_456",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=pctx,
             role="admin",
@@ -155,7 +150,6 @@ class TestInterventionHandling:
 
         executor._handle_intervention(
             "thread_123", "새 질문", "msg_456",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=pctx,
             role="admin",
@@ -178,7 +172,6 @@ class TestInterventionHandling:
             with patch.object(executor, "_get_service_adapter"):
                 executor._handle_intervention(
                     "thread_123", "새 질문", "msg_456",
-                    on_progress=_noop_progress,
                     on_compact=_noop_compact,
                     presentation=pctx,
                     role="admin",
@@ -196,7 +189,6 @@ class TestInterventionHandling:
 
         executor._handle_intervention(
             "thread_123", "새 질문", "msg_456",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=pctx,
             role="admin",
@@ -228,7 +220,6 @@ class TestInterventionViaRun:
             prompt="새 질문",
             thread_ts="thread_123",
             msg_ts="msg_456",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=pctx,
         )
@@ -323,7 +314,6 @@ class TestExecuteOnceWithInterruption:
                 with patch.object(executor._result_processor, "handle_interrupted") as mock_interrupted:
                     executor._execute_once(
                         "thread_123", "test", "msg_456",
-                        on_progress=_noop_progress,
                         on_compact=_noop_compact,
                         presentation=pctx,
                         session_id="session_abc",
@@ -346,7 +336,6 @@ class TestExecuteOnceWithInterruption:
                 with patch.object(executor._result_processor, "handle_success") as mock_success:
                     executor._execute_once(
                         "thread_123", "test", "msg_456",
-                        on_progress=_noop_progress,
                         on_compact=_noop_compact,
                         presentation=pctx,
                         session_id="session_abc",
@@ -365,7 +354,6 @@ class TestExecuteOnceWithInterruption:
         with patch.object(executor, "_execute_remote") as mock_remote:
             executor._execute_once(
                 "thread_123", "test", "msg_456",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="session_abc",
@@ -388,7 +376,6 @@ class TestRunWithLockPendingLoop:
         with patch.object(executor, "_execute_once") as mock_execute:
             executor._run_with_lock(
                 "thread_123", "first prompt", "msg_456",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="session_abc",
@@ -408,7 +395,6 @@ class TestRunWithLockPendingLoop:
         pending = PendingPrompt(
             prompt="second prompt",
             msg_ts="msg_2",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=_make_pctx(),
         )
@@ -417,7 +403,6 @@ class TestRunWithLockPendingLoop:
         with patch.object(executor, "_execute_once") as mock_execute:
             executor._run_with_lock(
                 "thread_123", "first prompt", "msg_456",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="session_abc",
@@ -444,7 +429,6 @@ class TestRunWithLockPendingLoop:
         with patch.object(executor, "_execute_once"):
             executor._run_with_lock(
                 "thread_123", "test", "msg_456",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="session_abc",
@@ -471,7 +455,6 @@ class TestConsecutiveInterventions:
                     pctx = _make_pctx(msg_ts=f"msg_{i}")
                     executor._handle_intervention(
                         "thread_123", prompt, f"msg_{i}",
-                        on_progress=_noop_progress,
                         on_compact=_noop_compact,
                         presentation=pctx,
                         role="admin",
@@ -513,7 +496,6 @@ class TestRemoteInterruptPath:
             with patch.object(executor, "_get_service_adapter"):
                 executor._handle_intervention(
                     "thread_abc", "interrupt me", "msg_456",
-                    on_progress=_noop_progress,
                     on_compact=_noop_compact,
                     presentation=pctx,
                     role="admin",
@@ -531,7 +513,6 @@ class TestRemoteInterruptPath:
 
         executor._handle_intervention(
             "thread_123", "no runner", "msg_456",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=pctx,
             role="admin",
@@ -696,7 +677,6 @@ class TestIntegrationInterventionFinalResponse:
         pending = PendingPrompt(
             prompt="B 질문",
             msg_ts="msg_B",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=_make_pctx(),
         )
@@ -707,7 +687,6 @@ class TestIntegrationInterventionFinalResponse:
         with patch.object(executor, "_execute_once") as mock_execute:
             executor._run_with_lock(
                 "thread_123", "A 질문", "msg_A",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="session_abc",
@@ -727,7 +706,6 @@ class TestIntegrationInterventionFinalResponse:
         pending_c = PendingPrompt(
             prompt="C 질문",
             msg_ts="msg_C",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=_make_pctx(),
         )
@@ -738,7 +716,6 @@ class TestIntegrationInterventionFinalResponse:
         with patch.object(executor, "_execute_once") as mock_execute:
             executor._run_with_lock(
                 "thread_123", "A 질문", "msg_A",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id="session_abc",

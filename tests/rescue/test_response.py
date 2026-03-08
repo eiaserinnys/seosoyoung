@@ -58,22 +58,23 @@ class TestLongMessageSplit:
         assert say.call_count == 1
 
 
-class TestProgressCallback:
-    """on_progress 콜백 테스트"""
+class TestCompactCallback:
+    """on_compact 콜백 테스트"""
 
-    def test_progress_callback_updates(self):
-        """on_progress는 ClaudeRunner.run()에 전달 가능"""
+    def test_compact_callback_in_signature(self):
+        """on_compact는 ClaudeRunner.run()에 전달 가능"""
         from seosoyoung.rescue.claude.agent_runner import ClaudeRunner
 
         runner = ClaudeRunner()
 
-        # on_progress, on_compact 콜백을 run()에 전달할 수 있는지 확인
+        # on_compact 콜백을 run()에 전달할 수 있는지 확인
         # (실제 SDK 호출 없이 시그니처 확인)
         import inspect
         sig = inspect.signature(runner.run)
         param_names = list(sig.parameters.keys())
-        assert "on_progress" in param_names
         assert "on_compact" in param_names
+        # on_progress는 Phase 4에서 제거됨
+        assert "on_progress" not in param_names
 
 
 class TestErrorResultDisplay:

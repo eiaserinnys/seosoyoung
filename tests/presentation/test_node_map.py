@@ -23,16 +23,23 @@ class TestSlackNodeMap:
         assert node.tool_use_id == "tu_123"
         assert node.tool_name == "Bash"
 
-    def test_find_thinking_for_text(self):
+    def test_find_text_node(self):
         nm = SlackNodeMap()
-        nm.add_thinking(event_id=1, msg_ts="ts1", parent_event_id=100)
-        node = nm.find_thinking_for_text(parent_event_id=100)
+        nm.add_text(event_id=1, msg_ts="ts1", parent_event_id=100)
+        node = nm.find_text_node(parent_event_id=100)
         assert node is not None
         assert node.event_id == 1
 
-    def test_find_thinking_for_text_not_found(self):
+    def test_find_text_node_not_found(self):
         nm = SlackNodeMap()
-        node = nm.find_thinking_for_text(parent_event_id=999)
+        node = nm.find_text_node(parent_event_id=999)
+        assert node is None
+
+    def test_thinking_not_in_text_index(self):
+        """Phase 3: add_thinking은 _last_text_by_parent에 등록하지 않는다"""
+        nm = SlackNodeMap()
+        nm.add_thinking(event_id=1, msg_ts="ts1", parent_event_id=100)
+        node = nm.find_text_node(parent_event_id=100)
         assert node is None
 
     def test_find_tool_by_use_id(self):
@@ -60,10 +67,10 @@ class TestSlackNodeMap:
         assert node is None
 
     def test_add_text_independent(self):
-        """독립 text 노드가 _last_thinking_by_parent에 등록되는지 (S6)"""
+        """독립 text 노드가 _last_text_by_parent에 등록되는지 (S6)"""
         nm = SlackNodeMap()
         nm.add_text(event_id=10, msg_ts="ts10", parent_event_id=5)
-        node = nm.find_thinking_for_text(parent_event_id=5)
+        node = nm.find_text_node(parent_event_id=5)
         assert node is not None
         assert node.event_id == 10
         assert node.node_type == "text"
@@ -80,12 +87,12 @@ class TestSlackNodeMap:
     def test_clear_completed(self):
         """완료된 노드 정리 (C1 수정)"""
         nm = SlackNodeMap()
-        nm.add_thinking(event_id=1, msg_ts="ts1", parent_event_id=100)
+        nm.add_text(event_id=1, msg_ts="ts1", parent_event_id=100)
         nm.add_tool(event_id=2, msg_ts="ts2", tool_use_id="tu_1", parent_event_id=100)
         nm.mark_completed(1)
         count = nm.clear_completed()
         assert count == 1
-        assert nm.find_thinking_for_text(parent_event_id=100) is None
+        assert nm.find_text_node(parent_event_id=100) is None
         # tool은 아직 있어야 함
         assert nm.find_tool_by_use_id("tu_1") is not None
 

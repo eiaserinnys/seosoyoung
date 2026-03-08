@@ -36,17 +36,11 @@ def run_with_event_callbacks(
         executor_fn: run_claude_in_session 또는 SoulstreamBackendImpl._executor
         executor_kwargs: executor에 전달할 키워드 인자 (prompt, thread_ts 등).
             on_compact와 세분화 이벤트 콜백(on_thinking 등)은 이 헬퍼가 주입합니다.
-            on_progress 등 다른 executor 파라미터는 executor_kwargs에 포함할 수 있습니다.
         mode: "clean" (일반 채널, 완료 후 삭제) 또는 "keep" (DM, 유지)
         on_compact_override: 외부에서 제공된 on_compact — None이면 event_cbs 기본값 사용
         on_compact_wrapper: on_compact를 래핑하는 함수 (예: 메모리 플래그 래핑).
             override와 함께 사용 시, override된 콜백에 wrapper가 적용됩니다.
 
-    Note:
-        on_progress는 executor_kwargs에 포함되어 있으면 그것을 사용하고,
-        없으면 placeholder를 진행 텍스트로 갱신하는 기본 콜백을 주입합니다.
-        mention.py/message.py는 on_progress를 포함하지 않으므로 기본 콜백이 사용됩니다.
-        plugin_backends는 외부 호출자(워처 등)의 커스텀 on_progress를 전달할 수 있습니다.
     """
     placeholder_ts = post_initial_placeholder(
         pctx.client, pctx.channel, pctx.thread_ts,
@@ -64,17 +58,11 @@ def run_with_event_callbacks(
     if on_compact_wrapper is not None:
         on_compact = on_compact_wrapper(on_compact)
 
-    # on_progress: caller가 제공하지 않았으면 placeholder 갱신용 콜백 주입
-    _caller_progress = executor_kwargs.pop("on_progress", None)
-    on_progress = (
-        _caller_progress
-        if _caller_progress is not None
-        else event_cbs["on_progress"]
-    )
+    # on_progress가 executor_kwargs에 포함되어 있으면 제거 (더 이상 사용하지 않음)
+    executor_kwargs.pop("on_progress", None)
 
     executor_fn(
         **executor_kwargs,
-        on_progress=on_progress,
         on_compact=on_compact,
         on_thinking=event_cbs["on_thinking"],
         on_text_start=event_cbs["on_text_start"],

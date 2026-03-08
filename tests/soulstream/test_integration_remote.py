@@ -60,10 +60,6 @@ def _make_pctx(**overrides) -> PresentationContext:
     return PresentationContext(**defaults)
 
 
-def _noop_progress(text):
-    pass
-
-
 async def _noop_compact(trigger, message):
     pass
 
@@ -105,7 +101,6 @@ class TestIntegrationBasicFlow:
         with patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop", return_value=mock_result):
             executor._execute_once(
                 "1234.5678", "안녕", "1234.0001",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id=None,
@@ -134,7 +129,6 @@ class TestIntegrationBasicFlow:
         with patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop", return_value=mock_result):
             executor._execute_once(
                 "1234.5678", "hello", "1234.0001",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id=None,
@@ -144,32 +138,6 @@ class TestIntegrationBasicFlow:
             )
 
         on_result.assert_called_once_with(mock_result, "1234.5678", "사용자 원본")
-
-    def test_progress_callback_reaches_adapter(self, executor, session):
-        """on_progress 콜백이 adapter.execute에 전달되는지 확인"""
-        pctx = _make_pctx()
-        captured_kwargs = {}
-
-        async def mock_execute(**kwargs):
-            captured_kwargs.update(kwargs)
-            return ClaudeResult(success=True, output="done", session_id="sess-p")
-
-        mock_adapter = MagicMock()
-        mock_adapter.execute = mock_execute
-
-        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
-            executor._execute_remote(
-                "1234.5678", "hello",
-                on_progress=_noop_progress,
-                on_compact=_noop_compact,
-                presentation=pctx,
-                session_id=None,
-                user_message=None,
-                on_result=None,
-            )
-
-        assert "on_progress" in captured_kwargs
-        assert captured_kwargs["on_progress"] is _noop_progress
 
 
 # === 2. 인터벤션 테스트 ===
@@ -215,7 +183,6 @@ class TestIntegrationIntervention:
 
         executor._execute_remote(
             "1234.5678", "hello",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=pctx,
             session_id=None,
@@ -238,7 +205,6 @@ class TestIntegrationIntervention:
             mock_run.return_value = True
             executor._handle_intervention(
                 "1234.5678", "추가 지시", "1234.0002",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 role="admin",
@@ -259,7 +225,6 @@ class TestIntegrationIntervention:
 
         executor._handle_intervention(
             "1234.5678", "빨리 해줘", "1234.0002",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=pctx,
             role="admin",
@@ -308,14 +273,12 @@ class TestIntegrationIntervention:
             executor._intervention.save_pending("1234.5678", PendingPrompt(
                 prompt="후속 질문",
                 msg_ts="1234.0002",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
             ))
 
             executor._run_with_lock(
                 "1234.5678", "첫 질문", "1234.0001",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id=None,
@@ -360,7 +323,6 @@ class TestIntegrationRoleTools:
         with patch.object(executor, "_execute_remote") as mock_remote:
             executor._execute_once(
                 "1234.5678", "hello", "1234.0001",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id=None,
@@ -381,7 +343,6 @@ class TestIntegrationRoleTools:
         with patch.object(executor, "_execute_remote") as mock_remote:
             executor._execute_once(
                 "1234.5678", "hello", "1234.0001",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id=None,
@@ -404,7 +365,6 @@ class TestIntegrationRoleTools:
         with patch.object(executor, "_execute_remote") as mock_remote:
             executor._execute_once(
                 "1234.5678", "hello", "1234.0001",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id=None,
@@ -458,7 +418,6 @@ class TestIntegrationDebugEvents:
         with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
             executor._execute_remote(
                 "1234.5678", "hello",
-                on_progress=_noop_progress,
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id=None,
@@ -494,7 +453,6 @@ class TestIntegrationDebugEvents:
         # 예외 없이 정상 완료되어야 함
         executor._execute_remote(
             "1234.5678", "hello",
-            on_progress=_noop_progress,
             on_compact=_noop_compact,
             presentation=pctx,
             session_id=None,
@@ -548,7 +506,6 @@ class TestIntegrationCompaction:
         with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
             executor._execute_remote(
                 "1234.5678", "hello",
-                on_progress=_noop_progress,
                 on_compact=on_compact,
                 presentation=pctx,
                 session_id=None,

@@ -110,10 +110,10 @@ class TestRoleConfig:
 class TestCallbackTypes:
     """엔진 전용 콜백 타입 테스트"""
 
-    def test_progress_callback_type_exists(self):
-        """ProgressCallback 타입이 engine_types에 존재"""
-        from seosoyoung.slackbot.soulstream.engine_types import ProgressCallback
-        assert ProgressCallback is not None
+    def test_progress_callback_type_removed(self):
+        """ProgressCallback 타입이 Phase 4에서 제거됨"""
+        with pytest.raises(ImportError):
+            from seosoyoung.slackbot.soulstream.engine_types import ProgressCallback
 
     def test_compact_callback_type_exists(self):
         """CompactCallback 타입이 engine_types에 존재"""
@@ -261,11 +261,10 @@ class TestEventCallback:
             CompactCallback,
             EventCallback,
             InterventionCallback,
-            ProgressCallback,
         )
         # 모두 None이 아니어야 하고, 서로 다른 객체여야 함
-        callbacks = [ProgressCallback, CompactCallback, InterventionCallback, EventCallback]
+        callbacks = [CompactCallback, InterventionCallback, EventCallback]
         assert all(cb is not None for cb in callbacks)
         # 이름 기준으로 서로 다른지 확인 (typing alias는 동등 비교가 복잡하므로 repr 활용)
         reprs = [repr(cb) for cb in callbacks]
-        assert len(set(reprs)) == 4
+        assert len(set(reprs)) == 3

@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult, ProgressCallback, CompactCallback
+from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult, CompactCallback
 from seosoyoung.slackbot.soulstream.intervention import InterventionManager, PendingPrompt
 from seosoyoung.slackbot.soulstream.result_processor import ResultProcessor
 from seosoyoung.slackbot.soulstream.session import SessionManager, SessionRuntime
@@ -128,7 +128,6 @@ class ClaudeExecutor:
         thread_ts: str,
         msg_ts: str,
         *,
-        on_progress: ProgressCallback | None = None,
         on_compact: CompactCallback,
         presentation: Any,         # PresentationContext (opaque)
         session_id: Optional[str] = None,
@@ -154,7 +153,6 @@ class ClaudeExecutor:
             prompt: Claude에 전달할 프롬프트
             thread_ts: 세션의 스레드 타임스탬프
             msg_ts: 원본 메시지 타임스탬프
-            on_progress: 진행 상태 콜백
             on_compact: 컴팩션 알림 콜백
             presentation: PresentationContext (opaque - ResultProcessor에 전달)
             session_id: Claude 세션 ID (이어서 실행용)
@@ -168,7 +166,6 @@ class ClaudeExecutor:
             # 인터벤션: pending에 저장 후 interrupt
             self._handle_intervention(
                 thread_ts, prompt, msg_ts,
-                on_progress=on_progress,
                 on_compact=on_compact,
                 presentation=presentation,
                 role=role,
@@ -188,7 +185,6 @@ class ClaudeExecutor:
         try:
             self._run_with_lock(
                 thread_ts, prompt, msg_ts,
-                on_progress=on_progress,
                 on_compact=on_compact,
                 presentation=presentation,
                 session_id=session_id,
@@ -212,7 +208,6 @@ class ClaudeExecutor:
         prompt: str,
         msg_ts: str,
         *,
-        on_progress,
         on_compact,
         presentation,
         role,
@@ -234,7 +229,6 @@ class ClaudeExecutor:
         pending = PendingPrompt(
             prompt=prompt,
             msg_ts=msg_ts,
-            on_progress=on_progress,
             on_compact=on_compact,
             presentation=presentation,
             role=role,
@@ -265,7 +259,6 @@ class ClaudeExecutor:
         prompt: str,
         msg_ts: str,
         *,
-        on_progress,
         on_compact,
         presentation,
         session_id,
@@ -289,7 +282,6 @@ class ClaudeExecutor:
             # 첫 번째 실행
             self._execute_once(
                 thread_ts, prompt, msg_ts,
-                on_progress=on_progress,
                 on_compact=on_compact,
                 presentation=presentation,
                 session_id=session_id,
@@ -315,7 +307,6 @@ class ClaudeExecutor:
 
                 self._execute_once(
                     thread_ts, pending.prompt, pending.msg_ts,
-                    on_progress=pending.on_progress,
                     on_compact=pending.on_compact,
                     presentation=pending.presentation,
                     session_id=pending.session_id,
@@ -340,7 +331,6 @@ class ClaudeExecutor:
         prompt: str,
         msg_ts: str,
         *,
-        on_progress,
         on_compact,
         presentation,
         session_id,
@@ -363,7 +353,6 @@ class ClaudeExecutor:
         logger.info(f"Claude 실행: thread={thread_ts}, role={effective_role}")
         self._execute_remote(
             thread_ts, prompt,
-            on_progress=on_progress,
             on_compact=on_compact,
             presentation=presentation,
             session_id=session_id,
@@ -447,7 +436,6 @@ class ClaudeExecutor:
         thread_ts: str,
         prompt: str,
         *,
-        on_progress,
         on_compact,
         presentation,
         session_id,
@@ -497,7 +485,6 @@ class ClaudeExecutor:
                 adapter.execute(
                     prompt=prompt,
                     agent_session_id=session_id,
-                    on_progress=on_progress,
                     on_compact=on_compact,
                     on_debug=on_debug,
                     on_session=on_session_callback,

@@ -28,12 +28,10 @@ class TestServiceClientSessionEvent:
         client = SoulServiceClient(base_url="http://localhost:3105")
 
         on_session = AsyncMock()
-        on_progress = AsyncMock()
 
         # SSE 이벤트 시뮬레이션
         events = [
             SSEEvent(event="session", data={"session_id": "sess-abc123"}),
-            SSEEvent(event="progress", data={"text": "working..."}),
             SSEEvent(event="complete", data={"result": "done", "claude_session_id": "sess-abc123"}),
         ]
 
@@ -46,12 +44,10 @@ class TestServiceClientSessionEvent:
             mock_response = MagicMock()
             result = await client._handle_sse_events(
                 response=mock_response,
-                on_progress=on_progress,
                 on_session=on_session,
             )
 
         on_session.assert_called_once_with("sess-abc123")
-        on_progress.assert_called_once_with("working...")
         assert result.success is True
         assert result.result == "done"
 

@@ -188,17 +188,6 @@ class TestExecute:
         assert "원격 실행 오류" in result.error
 
     @pytest.mark.asyncio
-    async def test_progress_callback_forwarded(self, adapter, mock_client):
-        """on_progress 콜백이 전달되는지 확인"""
-        mock_client.execute.return_value = ExecuteResult(success=True, result="done")
-
-        on_progress = AsyncMock()
-        await adapter.execute(prompt="hello", on_progress=on_progress)
-
-        call_kwargs = mock_client.execute.call_args.kwargs
-        assert call_kwargs["on_progress"] is on_progress
-
-    @pytest.mark.asyncio
     async def test_tool_settings_forwarded(self, adapter, mock_client):
         """allowed_tools/disallowed_tools/use_mcp가 SoulServiceClient에 전달되는지 확인"""
         mock_client.execute.return_value = ExecuteResult(success=True, result="done")
