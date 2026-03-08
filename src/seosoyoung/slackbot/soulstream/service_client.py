@@ -633,51 +633,57 @@ class SoulServiceClient:
 
                 elif event.event == "thinking":
                     if on_thinking:
+                        eid = int(event.id) if event.id is not None else None
                         await on_thinking(
                             event.data.get("thinking", ""),
-                            event.data.get("_event_id"),
+                            eid,
                             event.data.get("parent_event_id"),
                         )
 
                 elif event.event == "text_start":
                     if on_text_start:
+                        eid = int(event.id) if event.id is not None else None
                         await on_text_start(
-                            event.data.get("_event_id"),
+                            eid,
                             event.data.get("parent_event_id"),
                         )
 
                 elif event.event == "text_delta":
                     if on_text_delta:
+                        eid = int(event.id) if event.id is not None else None
                         await on_text_delta(
                             event.data.get("text", ""),
-                            event.data.get("_event_id"),
+                            eid,
                             event.data.get("parent_event_id"),
                         )
 
                 elif event.event == "text_end":
                     if on_text_end:
+                        eid = int(event.id) if event.id is not None else None
                         await on_text_end(
-                            event.data.get("_event_id"),
+                            eid,
                             event.data.get("parent_event_id"),
                         )
 
                 elif event.event == "tool_start":
                     if on_tool_start:
+                        eid = int(event.id) if event.id is not None else None
                         await on_tool_start(
                             event.data.get("tool_name", ""),
                             event.data.get("tool_input", {}),
                             event.data.get("tool_use_id", ""),
-                            event.data.get("_event_id"),
+                            eid,
                             event.data.get("parent_event_id"),
                         )
 
                 elif event.event == "tool_result":
                     if on_tool_result:
+                        eid = int(event.id) if event.id is not None else None
                         await on_tool_result(
                             event.data.get("result", ""),
                             event.data.get("tool_use_id", ""),
                             event.data.get("is_error", False),
-                            event.data.get("_event_id"),
+                            eid,
                             event.data.get("parent_event_id"),
                         )
 
