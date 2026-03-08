@@ -4,7 +4,6 @@ from seosoyoung.slackbot.soulstream.types import (
     CardInfo,
     SlackClient,
     SayFunction,
-    ProgressCallback,
     CompactCallback,
 )
 from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
@@ -21,7 +20,6 @@ __all__ = [
     "CardInfo",
     "SlackClient",
     "SayFunction",
-    "ProgressCallback",
     "CompactCallback",
     "get_claude_runner",
 ]

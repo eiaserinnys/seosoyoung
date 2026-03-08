@@ -24,7 +24,6 @@ class PendingPrompt:
     """
     prompt: str
     msg_ts: str
-    on_progress: Any = None    # ProgressCallback
     on_compact: Any = None     # CompactCallback
     presentation: Any = None   # PresentationContext (opaque)
     role: Optional[str] = None

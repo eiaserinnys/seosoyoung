@@ -399,9 +399,6 @@ class TestSoulServiceClientReconnect:
     async def test_reconnect_success(self, client):
         """재연결 + complete 이벤트"""
         sse_data = (
-            b"event:reconnected\n"
-            b'data:{"type":"reconnected","status":"running","last_progress":"working..."}\n'
-            b"\n"
             b"event:complete\n"
             b'data:{"type":"complete","result":"reconnect done","claude_session_id":"sess-r"}\n'
             b"\n"
@@ -411,14 +408,9 @@ class TestSoulServiceClientReconnect:
         mock_response.content = _make_stream_reader(sse_data)
         client._session = _mock_session(mock_response, method="get")
 
-        progress_texts = []
-        async def on_progress(text):
-            progress_texts.append(text)
-
-        result = await client.reconnect_stream("sess-123", on_progress=on_progress)
+        result = await client.reconnect_stream("sess-123")
         assert result.success is True
         assert result.result == "reconnect done"
-        assert "[재연결됨]" in progress_texts[0]
 
     @pytest.mark.asyncio
     async def test_reconnect_url(self, client):
@@ -504,30 +496,6 @@ class TestHandleSSEEvents:
         result = await client._handle_sse_events(mock_response)
         assert result.success is False
         assert "something went wrong" in result.result
-
-    @pytest.mark.asyncio
-    async def test_progress_callback(self, client):
-        """progress 이벤트가 콜백을 호출하는지 확인"""
-        sse_data = (
-            b"event:progress\n"
-            b'data:{"type":"progress","text":"thinking..."}\n'
-            b"\n"
-            b"event:complete\n"
-            b'data:{"type":"complete","result":"done"}\n'
-            b"\n"
-        )
-
-        mock_response = AsyncMock()
-        mock_response.content = _make_stream_reader(sse_data)
-
-        progress_texts = []
-
-        async def on_progress(text):
-            progress_texts.append(text)
-
-        result = await client._handle_sse_events(mock_response, on_progress=on_progress)
-        assert result.success is True
-        assert "thinking..." in progress_texts
 
     @pytest.mark.asyncio
     async def test_compact_callback(self, client):

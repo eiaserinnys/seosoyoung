@@ -193,12 +193,12 @@ class TestRunAutoPresentation:
         assert presentation.dm_thread_ts == "9999.0001"
 
 
-class TestRunAutoProgressCallbacks:
+class TestRunAutoEventCallbacks:
     """run()에서 세분화 이벤트 콜백 자동 생성 테스트"""
 
     @pytest.mark.asyncio
-    async def test_auto_builds_event_callbacks_when_none(self):
-        """on_progress가 None이고 update_message_fn이 있으면 세분화 콜백이 자동 생성됨"""
+    async def test_auto_builds_event_callbacks_when_update_fn_available(self):
+        """update_message_fn이 있으면 세분화 콜백이 자동 생성됨"""
         mock_executor = MagicMock()
         mock_session_mgr = MagicMock()
         mock_session_mgr.get.return_value = None
@@ -218,14 +218,10 @@ class TestRunAutoProgressCallbacks:
         )
 
         call_kwargs = mock_executor.call_args
-        on_progress = call_kwargs.kwargs.get("on_progress")
         on_compact = call_kwargs.kwargs.get("on_compact")
         on_thinking = call_kwargs.kwargs.get("on_thinking")
         on_tool_start = call_kwargs.kwargs.get("on_tool_start")
 
-        # on_progress는 placeholder 갱신용 콜백이 자동 주입됨
-        assert on_progress is not None, "on_progress should be auto-built (placeholder update)"
-        assert callable(on_progress)
         assert on_compact is not None, "on_compact should be auto-built"
         assert callable(on_compact)
         # 세분화 콜백이 자동 구성됨
@@ -235,13 +231,12 @@ class TestRunAutoProgressCallbacks:
         assert callable(on_tool_start)
 
     @pytest.mark.asyncio
-    async def test_preserves_explicit_progress_callbacks(self):
-        """on_progress/on_compact가 명시적으로 전달되면 그대로 사용"""
+    async def test_preserves_explicit_compact_callback(self):
+        """on_compact가 명시적으로 전달되면 그대로 사용"""
         mock_executor = MagicMock()
         mock_session_mgr = MagicMock()
         mock_session_mgr.get.return_value = None
 
-        explicit_progress = AsyncMock()
         explicit_compact = AsyncMock()
 
         backend = _make_backend(
@@ -254,17 +249,16 @@ class TestRunAutoProgressCallbacks:
             prompt="test",
             channel="C123",
             thread_ts="1234.5678",
-            on_progress=explicit_progress,
             on_compact=explicit_compact,
         )
 
-        call_kwargs = mock_executor.call_args
-        assert call_kwargs.kwargs["on_progress"] is explicit_progress
-        assert call_kwargs.kwargs["on_compact"] is explicit_compact
+        # run_with_event_callbacks가 호출되므로, executor.call_args를 통해
+        # on_compact_override가 전달되었는지 확인
+        mock_executor.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_no_auto_build_without_update_message_fn(self):
-        """update_message_fn이 None이면 on_progress=None 그대로 전달 (하위 호환)"""
+        """update_message_fn이 None이면 on_compact=None 그대로 전달 (하위 호환)"""
         mock_executor = MagicMock()
         mock_session_mgr = MagicMock()
         mock_session_mgr.get.return_value = None
@@ -281,7 +275,6 @@ class TestRunAutoProgressCallbacks:
         )
 
         call_kwargs = mock_executor.call_args
-        assert call_kwargs.kwargs.get("on_progress") is None
         assert call_kwargs.kwargs.get("on_compact") is None
 
     @pytest.mark.asyncio

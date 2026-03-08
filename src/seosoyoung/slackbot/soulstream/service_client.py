@@ -174,7 +174,6 @@ class SoulServiceClient:
         self,
         prompt: str,
         agent_session_id: Optional[str] = None,
-        on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
@@ -199,7 +198,6 @@ class SoulServiceClient:
         Args:
             prompt: 실행할 프롬프트
             agent_session_id: 기존 세션 ID (없으면 새 세션 생성, 있으면 resume)
-            on_progress: 진행 상황 콜백
             on_compact: 컴팩션 콜백
             on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
             on_session: 세션 ID 조기 통지 콜백 (agent_session_id: str)
@@ -240,7 +238,6 @@ class SoulServiceClient:
             try:
                 result = await self._handle_sse_events(
                     response=response,
-                    on_progress=on_progress,
                     on_compact=on_compact,
                     on_debug=on_debug,
                     on_session=on_session,
@@ -281,7 +278,7 @@ class SoulServiceClient:
 
             try:
                 return await self.reconnect_stream(
-                    resolved_session_id, on_progress, on_compact, on_debug,
+                    resolved_session_id, on_compact, on_debug,
                     on_credential_alert,
                     on_thinking=on_thinking,
                     on_text_start=on_text_start,
@@ -345,7 +342,6 @@ class SoulServiceClient:
     async def reconnect_stream(
         self,
         agent_session_id: str,
-        on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
@@ -377,7 +373,6 @@ class SoulServiceClient:
 
             return await self._handle_sse_events(
                 response=response,
-                on_progress=on_progress,
                 on_compact=on_compact,
                 on_debug=on_debug,
                 on_credential_alert=on_credential_alert,
@@ -557,7 +552,6 @@ class SoulServiceClient:
     async def _handle_sse_events(
         self,
         response: aiohttp.ClientResponse,
-        on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
@@ -598,11 +592,6 @@ class SoulServiceClient:
                         if on_session:
                             await on_session(session_id)
 
-                elif event.event == "progress":
-                    text = event.data.get("text", "")
-                    if on_progress and text:
-                        await on_progress(text)
-
                 elif event.event == "compact":
                     if on_compact:
                         await on_compact(
@@ -625,11 +614,6 @@ class SoulServiceClient:
                 elif event.event == "credential_alert":
                     if on_credential_alert:
                         await on_credential_alert(event.data)
-
-                elif event.event == "reconnected":
-                    last_progress = event.data.get("last_progress", "")
-                    if last_progress and on_progress:
-                        await on_progress(f"[재연결됨] {last_progress}")
 
                 elif event.event == "thinking":
                     if on_thinking:

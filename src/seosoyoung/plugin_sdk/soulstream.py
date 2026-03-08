@@ -77,7 +77,6 @@ class CompactResult:
 # Callback types
 # ============================================================================
 
-ProgressCallback = Callable[[str], None]
 CompactCallback = Callable[[str], None]
 
 
@@ -99,7 +98,6 @@ class SoulstreamBackend(Protocol):
         thread_ts: str,
         role: str = "admin",
         session_id: str | None = None,
-        on_progress: ProgressCallback | None = None,
         on_compact: CompactCallback | None = None,
         **kwargs: Any,
     ) -> RunResult:
@@ -111,7 +109,6 @@ class SoulstreamBackend(Protocol):
             thread_ts: Thread timestamp for output
             role: User role (affects permissions)
             session_id: Existing session ID to resume
-            on_progress: Progress callback
             on_compact: Compact notification callback
             **kwargs: Additional arguments
 
@@ -201,7 +198,6 @@ async def run(
     thread_ts: str,
     role: str = "admin",
     session_id: str | None = None,
-    on_progress: ProgressCallback | None = None,
     on_compact: CompactCallback | None = None,
     **kwargs: Any,
 ) -> RunResult:
@@ -215,7 +211,6 @@ async def run(
         thread_ts: Thread timestamp for output
         role: User role (affects permissions)
         session_id: Existing session ID to resume
-        on_progress: Callback for progress updates
         on_compact: Callback for compact notifications
         **kwargs: Additional arguments
 
@@ -238,7 +233,6 @@ async def run(
         thread_ts=thread_ts,
         role=role,
         session_id=session_id,
-        on_progress=on_progress,
         on_compact=on_compact,
         **kwargs,
     )

@@ -48,6 +48,6 @@ class SlackClient(Protocol):
 
 
 # Callback 타입 별칭 (engine_types에서 정의, 여기서 re-export)
-from seosoyoung.slackbot.soulstream.engine_types import ProgressCallback, CompactCallback
+from seosoyoung.slackbot.soulstream.engine_types import CompactCallback
 SayFunction = Callable[..., Any]
 UpdateMessageFn = Callable[..., None]  # (client, channel, ts, text, *, blocks=None) -> None

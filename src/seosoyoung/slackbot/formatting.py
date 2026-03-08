@@ -27,7 +27,6 @@ class _CardLike(Protocol):
 # --- 상수 ---
 
 SLACK_MSG_MAX_LEN = 3900
-PROGRESS_MAX_LEN = 3800
 DM_MSG_MAX_LEN = 3000
 THINKING_QUOTE_MAX_LEN = 500   # blockquote 표시용 thinking 텍스트 최대 길이
 TOOL_INPUT_QUOTE_MAX_LEN = 300 # blockquote 표시용 tool input 값 최대 길이
@@ -70,16 +69,6 @@ def escape_backticks(text: str) -> str:
     모든 백틱을 유사 문자(ˋ, modifier letter grave accent)로 대체합니다.
     """
     return text.replace('`', 'ˋ')
-
-
-def truncate_progress_text(text: str) -> str:
-    """진행 상황 텍스트를 표시용으로 정리"""
-    display_text = text.lstrip("\n")
-    if not display_text:
-        return ""
-    if len(display_text) > PROGRESS_MAX_LEN:
-        display_text = "...\n" + display_text[-PROGRESS_MAX_LEN:]
-    return display_text
 
 
 def _normalize_newlines(text: str) -> str:
@@ -137,21 +126,6 @@ def format_dm_progress(text: str, max_len: int = DM_MSG_MAX_LEN) -> str:
 def format_initial_placeholder() -> str:
     """소울스트림 요청 전송 직후 표시할 대기 메시지"""
     return f"> {_emoji_thinking()} *소영이 생각합니다...*"
-
-
-def format_progress_placeholder(text: str) -> str:
-    """진행 상태로 갱신된 플레이스홀더 포맷
-
-    on_progress 콜백이 전달하는 현재 진행 텍스트를 플레이스홀더 형태로 포맷합니다.
-    빈 텍스트가 오면 초기 플레이스홀더로 폴백합니다.
-    """
-    display = text.strip() if text else ""
-    if not display:
-        return format_initial_placeholder()
-    if len(display) > PROGRESS_MAX_LEN:
-        display = "..." + display[-PROGRESS_MAX_LEN:]
-    escaped = escape_backticks(display)
-    return f"> {_emoji_thinking()} *{escaped}*"
 
 
 def format_thinking_initial() -> str:

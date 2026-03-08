@@ -7,10 +7,8 @@ PresentationContext를 캡처하는 클로저 집합을 반환합니다.
 import asyncio
 import logging
 import os
-import time
 from seosoyoung.slackbot.formatting import (
     format_initial_placeholder,
-    format_progress_placeholder,
     format_thinking_initial,
     format_thinking_text,
     format_thinking_complete,
@@ -66,7 +64,6 @@ def build_event_callbacks(
 
     Returns:
         {
-            "on_progress": ...,
             "on_thinking": ...,
             "on_text_start": ...,
             "on_text_delta": ...,
@@ -80,9 +77,8 @@ def build_event_callbacks(
 
     # placeholder 삭제 상태 관리
     _placeholder_ts: list[str | None] = [initial_placeholder_ts]
-    # on_progress 스로틀 상태 (Slack API rate limit 방지)
-    _PROGRESS_MIN_INTERVAL = 1.0  # 초
-    _last_progress_time: list[float] = [0.0]
+    # text 누적 버퍼 (clean 모드에서 placeholder에 텍스트를 누적)
+    _text_buffer: list[str] = [""]
 
     async def cleanup():
         """실행 완료 후 placeholder 삭제"""
@@ -93,27 +89,6 @@ def build_event_callbacks(
                 pctx.client.chat_delete(channel=pctx.channel, ts=ts)
             except Exception as e:
                 logger.debug(f"placeholder 삭제 실패: {e}")
-
-    async def on_progress(text: str) -> None:
-        """placeholder를 현재 진행 텍스트로 갱신
-
-        Slack API rate limit 방지를 위해 최소 갱신 간격을 적용합니다.
-        placeholder가 없으면 무시합니다.
-        """
-        ts = _placeholder_ts[0]
-        if not ts:
-            return
-
-        now = time.monotonic()
-        if now - _last_progress_time[0] < _PROGRESS_MIN_INTERVAL:
-            return
-        _last_progress_time[0] = now
-
-        try:
-            display = format_progress_placeholder(text)
-            update_message(pctx.client, pctx.channel, ts, display)
-        except Exception as e:
-            logger.debug(f"placeholder 진행 상태 갱신 실패: {e}")
 
     async def _schedule_delete(msg_ts: str) -> None:
         """clean 모드 전용: 설정된 시간 후 메시지 삭제
@@ -148,12 +123,11 @@ def build_event_callbacks(
 
     async def on_text_start(event_id, parent_event_id):
         try:
-            node = node_map.find_thinking_for_text(parent_event_id)
-            if node:
-                # thinking 노드가 있으면 text_buffer 초기화
-                node.text_buffer = ""
+            if mode == "clean":
+                # clean 모드: placeholder를 재사용하여 텍스트 누적 시작
+                _text_buffer[0] = ""
             else:
-                # 독립 text 노드: 새 스레드 메시지 생성 (S6)
+                # full dump 모드: 새 슬랙 메시지를 생성하여 text 노드로 등록
                 text = format_thinking_initial()
                 reply = pctx.client.chat_postMessage(
                     channel=pctx.channel,
@@ -167,39 +141,54 @@ def build_event_callbacks(
 
     async def on_text_delta(text: str, event_id, parent_event_id):
         try:
-            node = node_map.find_thinking_for_text(parent_event_id)
-            if not node:
-                logger.debug(f"text_delta: thinking 노드 없음 (parent_event_id={parent_event_id})")
-                return
-            node.text_buffer += text
-            display_text = format_thinking_text(node.text_buffer)
-            update_message(pctx.client, pctx.channel, node.msg_ts, display_text)
+            if mode == "clean":
+                # clean 모드: placeholder에 누적 텍스트 갱신
+                _text_buffer[0] += text
+                ts = _placeholder_ts[0]
+                if ts:
+                    display_text = format_thinking_text(_text_buffer[0])
+                    update_message(pctx.client, pctx.channel, ts, display_text)
+            else:
+                # full dump 모드: text 노드 찾아서 갱신
+                node = node_map.find_text_node(parent_event_id)
+                if not node:
+                    logger.debug(f"text_delta: text 노드 없음 (parent_event_id={parent_event_id})")
+                    return
+                node.text_buffer += text
+                display_text = format_thinking_text(node.text_buffer)
+                update_message(pctx.client, pctx.channel, node.msg_ts, display_text)
         except Exception as e:
             logger.warning(f"text_delta 갱신 실패: {e}")
 
     async def on_text_end(event_id, parent_event_id):
         try:
-            node = node_map.find_thinking_for_text(parent_event_id)
-            if not node:
-                logger.debug(f"text_end: thinking 노드 없음 (event_id={event_id}, parent_event_id={parent_event_id})")
-                return
-            # SSE 재연결 시 이미 처리한 이벤트가 재생될 수 있음 — 중복 방지
-            if node.completed:
-                logger.debug(f"text_end: 이미 완료된 노드 (event_id={node.event_id}), skip")
-                return
-            logger.debug(f"text_end: 노드 발견 (node.event_id={node.event_id}, node.msg_ts={node.msg_ts}, mode={mode})")
-            node_map.mark_completed_and_remove(node.event_id)
-
-            # [공통] 이모지를 done으로 변경 + 내용 갱신
-            display_text = format_thinking_complete(node.text_buffer or "")
-            try:
-                update_message(pctx.client, pctx.channel, node.msg_ts, display_text)
-            except Exception as e:
-                logger.warning(f"text_end 갱신 실패: {e}")
-
-            # [clean 모드만] 설정된 시간 후 삭제
             if mode == "clean":
-                await _schedule_delete(node.msg_ts)
+                # clean 모드: placeholder의 텍스트를 완료 상태로 갱신
+                ts = _placeholder_ts[0]
+                if ts:
+                    display_text = format_thinking_complete(_text_buffer[0])
+                    try:
+                        update_message(pctx.client, pctx.channel, ts, display_text)
+                    except Exception as e:
+                        logger.warning(f"text_end 갱신 실패: {e}")
+            else:
+                # full dump 모드: text 노드를 완료 처리
+                node = node_map.find_text_node(parent_event_id)
+                if not node:
+                    logger.debug(f"text_end: text 노드 없음 (event_id={event_id}, parent_event_id={parent_event_id})")
+                    return
+                # SSE 재연결 시 이미 처리한 이벤트가 재생될 수 있음 — 중복 방지
+                if node.completed:
+                    logger.debug(f"text_end: 이미 완료된 노드 (event_id={node.event_id}), skip")
+                    return
+                logger.debug(f"text_end: 노드 발견 (node.event_id={node.event_id}, node.msg_ts={node.msg_ts}, mode={mode})")
+                node_map.mark_completed_and_remove(node.event_id)
+
+                display_text = format_thinking_complete(node.text_buffer or "")
+                try:
+                    update_message(pctx.client, pctx.channel, node.msg_ts, display_text)
+                except Exception as e:
+                    logger.warning(f"text_end 갱신 실패: {e}")
         except Exception as e:
             logger.warning(f"text_end 처리 실패: {e}")
 
@@ -292,7 +281,6 @@ def build_event_callbacks(
             logger.warning(f"컴팩션 알림 전송 실패: {e}")
 
     return {
-        "on_progress": on_progress,
         "on_thinking": on_thinking,
         "on_text_start": on_text_start,
         "on_text_delta": on_text_delta,

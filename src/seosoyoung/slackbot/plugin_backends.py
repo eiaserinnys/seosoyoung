@@ -37,10 +37,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def _noop_progress(_msg: str) -> None:
-    """text_only 모드용 no-op progress 콜백."""
-
-
 async def _noop_compact(_session_id: str, _msg: str) -> None:
     """text_only 모드용 no-op compact 콜백."""
 
@@ -265,7 +261,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             data_dir: Data directory for plugin storage
             slack_client: Slack WebClient instance (for auto-constructing PresentationContext)
             update_message_fn: (client, channel, ts, text, *, blocks=None) -> None
-                               전달하면 on_progress/on_compact가 None일 때 자동 생성됨
+                               전달하면 on_compact가 None일 때 자동 생성됨
         """
         self._executor = executor
         self._session_manager = session_manager
@@ -332,7 +328,6 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         thread_ts: str,
         role: str = "admin",
         session_id: str | None = None,
-        on_progress=None,
         on_compact=None,
         **kwargs: Any,
     ) -> RunResult:
@@ -368,7 +363,6 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                     prompt=prompt,
                     thread_ts=thread_ts,
                     msg_ts=kwargs.get("msg_ts", thread_ts),
-                    on_progress=_noop_progress,
                     on_compact=_noop_compact,
                     presentation=None,
                     session_id=session_id,
@@ -403,7 +397,6 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                             prompt=prompt,
                             thread_ts=thread_ts,
                             msg_ts=kwargs.get("msg_ts", thread_ts),
-                            on_progress=on_progress,
                             presentation=presentation,
                             session_id=session_id,
                             role=role,
@@ -417,7 +410,6 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         prompt=prompt,
                         thread_ts=thread_ts,
                         msg_ts=kwargs.get("msg_ts", thread_ts),
-                        on_progress=on_progress,
                         on_compact=on_compact,
                         presentation=presentation,
                         session_id=session_id,
@@ -526,7 +518,7 @@ def init_plugin_backends(
         restart_manager: RestartManager instance
         data_dir: Data directory for plugin storage
         update_message_fn: (client, channel, ts, text, *, blocks=None) -> None
-                           전달하면 워처 등에서 on_progress/on_compact가 자동 생성됨
+                           전달하면 워처 등에서 on_compact가 자동 생성됨
         mention_tracker: MentionTracker instance for mention tracking backend
     """
     # Initialize Slack backend

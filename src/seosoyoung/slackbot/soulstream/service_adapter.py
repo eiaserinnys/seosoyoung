@@ -41,7 +41,6 @@ class ClaudeServiceAdapter:
         self,
         prompt: str,
         agent_session_id: Optional[str] = None,
-        on_progress: Optional[Callable[[str], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
@@ -64,7 +63,6 @@ class ClaudeServiceAdapter:
         Args:
             prompt: 실행할 프롬프트
             agent_session_id: 기존 세션 ID (없으면 새 세션, 있으면 resume)
-            on_progress: 진행 상황 콜백
             on_compact: 컴팩션 콜백
             on_debug: 디버그 메시지 콜백 (rate_limit 경고 등)
             on_session: 세션 ID 조기 통지 콜백 (agent_session_id: str)
@@ -80,7 +78,6 @@ class ClaudeServiceAdapter:
             result = await self._client.execute(
                 prompt=prompt,
                 agent_session_id=agent_session_id,
-                on_progress=on_progress,
                 on_compact=on_compact,
                 on_debug=on_debug,
                 on_session=on_session,

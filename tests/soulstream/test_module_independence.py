@@ -271,12 +271,8 @@ class TestEndToEndFlow:
     def test_message_formatter_independence(self):
         """message_formatter 함수들이 독립적으로 동작한다"""
         from seosoyoung.slackbot.soulstream.message_formatter import (
-            truncate_progress_text,
             format_as_blockquote,
         )
-
-        truncated = truncate_progress_text("Hello " * 1000)
-        assert len(truncated) > 0
 
         quoted = format_as_blockquote("test message")
         assert ">" in quoted
