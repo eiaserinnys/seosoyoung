@@ -28,16 +28,16 @@ per-session 아키텍처: agent_session_id가 유일한 식별자.
 
 - `__init__(self, session_manager, session_runtime, restart_manager, send_long_message, send_restart_confirmation, update_message_fn)` (줄 66): 
 - `run(self, prompt, thread_ts, msg_ts)` (줄 125): 세션 내에서 Claude Code 실행 (공통 로직)
-- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 209): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
-- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 262): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
-- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 337): 단일 Claude 실행 -- Soulstream 서버에 위임
-- `_get_role_config(self, role)` (줄 384): 역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)
-- `_get_service_adapter(self)` (줄 388): Remote 모드용 ClaudeServiceAdapter를 생성하여 반환 (호출마다 새 인스턴스)
-- `_register_session_id(self, thread_ts, session_id)` (줄 407): thread_ts <-> agent_session_id 매핑 등록 및 버퍼된 인터벤션 flush
-- `_unregister_session_id(self, thread_ts)` (줄 431): thread_ts <-> agent_session_id 매핑 해제
-- `get_session_id(self, thread_ts)` (줄 440): thread_ts에 대응하는 agent_session_id 조회
-- `_execute_remote(self, thread_ts, prompt)` (줄 445): Remote 모드: Soulstream 서버에 실행을 위임 (per-session)
-- `_process_result(self, presentation, result, thread_ts)` (줄 534): 실행 결과 처리
+- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 205): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
+- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 256): 락을 보유한 상태에서 실행 (while 루프로 pending 처리)
+- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 328): 단일 Claude 실행 -- Soulstream 서버에 위임
+- `_get_role_config(self, role)` (줄 373): 역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)
+- `_get_service_adapter(self)` (줄 377): Remote 모드용 ClaudeServiceAdapter를 생성하여 반환 (호출마다 새 인스턴스)
+- `_register_session_id(self, thread_ts, session_id)` (줄 396): thread_ts <-> agent_session_id 매핑 등록 및 버퍼된 인터벤션 flush
+- `_unregister_session_id(self, thread_ts)` (줄 420): thread_ts <-> agent_session_id 매핑 해제
+- `get_session_id(self, thread_ts)` (줄 429): thread_ts에 대응하는 agent_session_id 조회
+- `_execute_remote(self, thread_ts, prompt)` (줄 434): Remote 모드: Soulstream 서버에 실행을 위임 (per-session)
+- `_process_result(self, presentation, result, thread_ts)` (줄 521): 실행 결과 처리
 
 ## 함수
 
@@ -60,7 +60,6 @@ Returns:
 
 - `seosoyoung.slackbot.soulstream.engine_types.ClaudeResult`
 - `seosoyoung.slackbot.soulstream.engine_types.CompactCallback`
-- `seosoyoung.slackbot.soulstream.engine_types.ProgressCallback`
 - `seosoyoung.slackbot.soulstream.intervention.InterventionManager`
 - `seosoyoung.slackbot.soulstream.intervention.PendingPrompt`
 - `seosoyoung.slackbot.soulstream.result_processor.ResultProcessor`

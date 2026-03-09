@@ -37,7 +37,7 @@ EngineResult를 상속하며, 응용 마커 필드를 추가합니다.
 호출자가 역할 이름 → RoleConfig 매핑을 담당합니다.
 
 ### `EngineEventType` (Enum)
-- 위치: 줄 85
+- 위치: 줄 84
 - 설명: 엔진 이벤트 타입
 
 Soul Dashboard가 구독하는 세분화 이벤트 종류.
@@ -51,7 +51,7 @@ ThinkingBlock(extended thinking)과는 다릅니다.
 text_start → text_delta → text_end 카드 시퀀스로 변환합니다.
 
 ### `EngineEvent`
-- 위치: 줄 106
+- 위치: 줄 105
 - 설명: 엔진에서 발행하는 단일 이벤트
 
 type: 이벤트 종류 (EngineEventType)

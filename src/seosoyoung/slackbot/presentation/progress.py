@@ -47,6 +47,11 @@ def _event_delete_delay() -> float:
     return float(os.environ["SOULSTREAM_EVENT_DELETE_DELAY"])
 
 
+def _thinking_delete_delay() -> float:
+    """thinking 메시지 삭제 전 대기 시간 (초) — 호출 시점에 환경변수를 읽음"""
+    return float(os.environ["SOULSTREAM_THINKING_DELETE_DELAY"])
+
+
 def build_event_callbacks(
     pctx: PresentationContext,
     node_map: SlackNodeMap,
@@ -106,6 +111,21 @@ def build_event_callbacks(
         except Exception as e:
             logger.debug(f"이벤트 메시지 삭제 실패 (무시): ts={msg_ts}, err={e}")
 
+    async def _schedule_thinking_delete(msg_ts: str) -> None:
+        """clean 모드 전용: thinking 메시지를 설정된 시간 후 삭제
+
+        create_task로 호출되므로 예외가 호출자에게 전파되지 않는다.
+        delay 읽기를 포함한 전체를 try/except로 감싸서 조용히 처리한다.
+        """
+        try:
+            delay = _thinking_delete_delay()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            pctx.client.chat_delete(channel=pctx.channel, ts=msg_ts)
+            logger.debug(f"thinking 메시지 삭제 성공: ts={msg_ts}")
+        except Exception as e:
+            logger.debug(f"thinking 메시지 삭제 실패 (무시): ts={msg_ts}, err={e}")
+
     async def on_thinking(thinking_text: str, event_id, parent_event_id):
         try:
             text = format_thinking_text(thinking_text)
@@ -118,6 +138,9 @@ def build_event_callbacks(
             node = node_map.add_thinking(event_id, msg_ts, parent_event_id)
             if thinking_text:
                 node.text_buffer = thinking_text
+            # [clean 모드만] 설정된 시간 후 자동 삭제
+            if mode == "clean":
+                asyncio.create_task(_schedule_thinking_delete(msg_ts))
         except Exception as e:
             logger.warning(f"thinking 메시지 생성 실패: {e}")
 

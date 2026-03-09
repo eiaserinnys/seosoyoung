@@ -95,20 +95,20 @@
 - `RunRequest` (seosoyoung/plugin_sdk/soulstream.py:41): Request to run Claude Code.
 - `RunResult` (seosoyoung/plugin_sdk/soulstream.py:57): Result of a Soulstream run.
 - `CompactResult` (seosoyoung/plugin_sdk/soulstream.py:68): Result of a session compact operation.
-- `SoulstreamBackend` (seosoyoung/plugin_sdk/soulstream.py:89): Protocol for Soulstream backend implementation.
+- `SoulstreamBackend` (seosoyoung/plugin_sdk/soulstream.py:88): Protocol for Soulstream backend implementation.
 - `ClaudeResult` (seosoyoung/rescue/claude/agent_runner.py:83): Claude Code 실행 결과 (하위호환 레이어)
 - `CompactRetryState` (seosoyoung/rescue/claude/agent_runner.py:205): Compact retry 외부 루프 상태
 - `MessageState` (seosoyoung/rescue/claude/agent_runner.py:227): 메시지 수신 루프 상태
 - `ClaudeRunner` (seosoyoung/rescue/claude/agent_runner.py:259): Claude Code SDK 기반 실행기
 - `EngineResult` (seosoyoung/rescue/claude/engine_types.py:15): Claude Code 엔진의 순수 실행 결과
 - `RoleConfig` (seosoyoung/rescue/claude/engine_types.py:33): 역할별 도구 접근 설정
-- `EngineEventType` (seosoyoung/rescue/claude/engine_types.py:51): 엔진 이벤트 타입
-- `EngineEvent` (seosoyoung/rescue/claude/engine_types.py:61): 엔진에서 발행하는 단일 이벤트
+- `EngineEventType` (seosoyoung/rescue/claude/engine_types.py:50): 엔진 이벤트 타입
+- `EngineEvent` (seosoyoung/rescue/claude/engine_types.py:60): 엔진에서 발행하는 단일 이벤트
 - `InstrumentedClaudeClient` (seosoyoung/rescue/claude/instrumented_client.py:39): rate_limit_event 등 SDK가 skip하는 이벤트를 관찰할 수 있는 확장 클라이언트.
 - `ParseAction` (seosoyoung/rescue/claude/sdk_compat.py:13): MessageParseError 처리 결과
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
-- `PendingPrompt` (seosoyoung/rescue/main.py:75): 인터벤션 대기 중인 프롬프트 정보
-- `RescueBotApp` (seosoyoung/rescue/main.py:84): rescue-bot 애플리케이션
+- `PendingPrompt` (seosoyoung/rescue/main.py:71): 인터벤션 대기 중인 프롬프트 정보
+- `RescueBotApp` (seosoyoung/rescue/main.py:80): rescue-bot 애플리케이션
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
 - `ConfigurationError` (seosoyoung/slackbot/config.py:18): 설정 오류 예외
@@ -120,9 +120,9 @@
 - `Config` (seosoyoung/slackbot/config.py:115): 애플리케이션 설정
 - `MentionTracker` (seosoyoung/slackbot/handlers/mention_tracker.py:20): 멘션으로 처리 중인 스레드를 추적 (TTL 기반 자동 만료)
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
-- `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:53): Slack backend implementation using slack_sdk client.
-- `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:247): Soulstream backend implementation using ClaudeExecutor.
-- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:488): Mention tracking backend wrapping the existing MentionTracker.
+- `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:49): Slack backend implementation using slack_sdk client.
+- `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:243): Soulstream backend implementation using ClaudeExecutor.
+- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:480): Mention tracking backend wrapping the existing MentionTracker.
 - `SlackNode` (seosoyoung/slackbot/presentation/node_map.py:12): 이벤트 노드에 대응하는 슬랙 메시지
 - `InputRequestNode` (seosoyoung/slackbot/presentation/node_map.py:25): AskUserQuestion 이벤트에 대응하는 슬랙 메시지
 - `SlackNodeMap` (seosoyoung/slackbot/presentation/node_map.py:34): 이벤트 노드 <-> 슬랙 메시지 ts 매핑
@@ -135,12 +135,12 @@
 - `EngineResult` (seosoyoung/slackbot/soulstream/engine_types.py:15): Claude Code 엔진의 순수 실행 결과
 - `ClaudeResult` (seosoyoung/slackbot/soulstream/engine_types.py:33): Claude Code 실행 결과 (응용 마커 포함)
 - `RoleConfig` (seosoyoung/slackbot/soulstream/engine_types.py:67): 역할별 도구 접근 설정
-- `EngineEventType` (seosoyoung/slackbot/soulstream/engine_types.py:85): 엔진 이벤트 타입
-- `EngineEvent` (seosoyoung/slackbot/soulstream/engine_types.py:106): 엔진에서 발행하는 단일 이벤트
+- `EngineEventType` (seosoyoung/slackbot/soulstream/engine_types.py:84): 엔진 이벤트 타입
+- `EngineEvent` (seosoyoung/slackbot/soulstream/engine_types.py:105): 엔진에서 발행하는 단일 이벤트
 - `ClaudeExecutor` (seosoyoung/slackbot/soulstream/executor.py:57): Claude Code 실행기
 - `PendingPrompt` (seosoyoung/slackbot/soulstream/intervention.py:19): 인터벤션 대기 중인 프롬프트 정보
-- `InterventionManager` (seosoyoung/slackbot/soulstream/intervention.py:44): 인터벤션 관리자
-- `ResultProcessor` (seosoyoung/slackbot/soulstream/result_processor.py:19): Claude 실행 결과를 처리하여 슬랙에 응답
+- `InterventionManager` (seosoyoung/slackbot/soulstream/intervention.py:43): 인터벤션 관리자
+- `ResultProcessor` (seosoyoung/slackbot/soulstream/result_processor.py:18): Claude 실행 결과를 처리하여 슬랙에 응답
 - `ClaudeServiceAdapter` (seosoyoung/slackbot/soulstream/service_adapter.py:25): Soulstream 서버 어댑터
 - `SSEEvent` (seosoyoung/slackbot/soulstream/service_client.py:29): Server-Sent Event 데이터
 - `ExecuteResult` (seosoyoung/slackbot/soulstream/service_client.py:37): Soulstream 서버 실행 결과
@@ -193,19 +193,19 @@
 - `async get_thread_replies()` (seosoyoung/plugin_sdk/slack.py:271): Get replies in a thread.
 - `async get_channel_history()` (seosoyoung/plugin_sdk/slack.py:290): Get recent messages in a channel.
 - `async open_dm()` (seosoyoung/plugin_sdk/slack.py:307): Open a DM channel with a user.
-- `set_backend()` (seosoyoung/plugin_sdk/soulstream.py:169): Set the Soulstream backend implementation.
-- `get_backend()` (seosoyoung/plugin_sdk/soulstream.py:178): Get the current Soulstream backend.
-- `async run()` (seosoyoung/plugin_sdk/soulstream.py:198): Execute Claude Code with the given prompt.
-- `async compact()` (seosoyoung/plugin_sdk/soulstream.py:247): Compact a Claude Code session to reduce context size.
-- `get_session_id()` (seosoyoung/plugin_sdk/soulstream.py:268): Get the Claude Code session ID for a thread.
-- `is_restart_pending()` (seosoyoung/plugin_sdk/soulstream.py:286): Check if a system restart is pending.
-- `get_data_dir()` (seosoyoung/plugin_sdk/soulstream.py:306): Get the data directory for plugin storage.
+- `set_backend()` (seosoyoung/plugin_sdk/soulstream.py:166): Set the Soulstream backend implementation.
+- `get_backend()` (seosoyoung/plugin_sdk/soulstream.py:175): Get the current Soulstream backend.
+- `async run()` (seosoyoung/plugin_sdk/soulstream.py:195): Execute Claude Code with the given prompt.
+- `async compact()` (seosoyoung/plugin_sdk/soulstream.py:241): Compact a Claude Code session to reduce context size.
+- `get_session_id()` (seosoyoung/plugin_sdk/soulstream.py:262): Get the Claude Code session ID for a thread.
+- `is_restart_pending()` (seosoyoung/plugin_sdk/soulstream.py:280): Check if a system restart is pending.
+- `get_data_dir()` (seosoyoung/plugin_sdk/soulstream.py:300): Get the data directory for plugin storage.
 - `get_runner()` (seosoyoung/rescue/claude/agent_runner.py:128): 레지스트리에서 러너 조회
 - `register_runner()` (seosoyoung/rescue/claude/agent_runner.py:134): 레지스트리에 러너 등록
 - `remove_runner()` (seosoyoung/rescue/claude/agent_runner.py:140): 레지스트리에서 러너 제거
 - `async shutdown_all()` (seosoyoung/rescue/claude/agent_runner.py:146): 모든 등록된 러너의 클라이언트를 종료
 - `shutdown_all_sync()` (seosoyoung/rescue/claude/agent_runner.py:181): 모든 등록된 러너의 클라이언트를 종료 (동기 버전)
-- `async main()` (seosoyoung/rescue/claude/agent_runner.py:1111): 
+- `async main()` (seosoyoung/rescue/claude/agent_runner.py:1098): 
 - `read_stderr_tail()` (seosoyoung/rescue/claude/diagnostics.py:24): 세션별 cli_stderr 로그의 마지막 N줄 읽기
 - `build_session_dump()` (seosoyoung/rescue/claude/diagnostics.py:47): 세션 종료 진단 덤프 메시지 생성
 - `classify_process_error()` (seosoyoung/rescue/claude/diagnostics.py:87): ProcessError를 사용자 친화적 메시지로 변환.
@@ -216,28 +216,26 @@
 - `create_runner()` (seosoyoung/rescue/engine_adapter.py:27): rescue-bot용 ClaudeRunner를 생성합니다.
 - `interrupt()` (seosoyoung/rescue/engine_adapter.py:41): 실행 중인 스레드에 인터럽트 전송
 - `compact_session_sync()` (seosoyoung/rescue/engine_adapter.py:49): 세션 컴팩트 (동기)
-- `main()` (seosoyoung/rescue/main.py:630): rescue-bot 진입점
+- `main()` (seosoyoung/rescue/main.py:608): rescue-bot 진입점
 - `escape_backticks()` (seosoyoung/rescue/message_formatter.py:6): 텍스트 내 모든 백틱을 이스케이프
 - `start_shutdown_server()` (seosoyoung/rescue/shutdown.py:32): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `build_section_blocks()` (seosoyoung/rescue/slack_utils.py:9): mrkdwn section block 리스트 생성
 - `update_message()` (seosoyoung/rescue/slack_utils.py:17): 슬랙 메시지를 업데이트합니다.
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
 - `get_user_role()` (seosoyoung/slackbot/auth.py:26): 사용자 역할 정보 반환
-- `escape_backticks()` (seosoyoung/slackbot/formatting.py:65): 텍스트 내 모든 백틱을 이스케이프
-- `truncate_progress_text()` (seosoyoung/slackbot/formatting.py:75): 진행 상황 텍스트를 표시용으로 정리
-- `format_as_blockquote()` (seosoyoung/slackbot/formatting.py:103): 텍스트를 슬랙 blockquote 형식으로 변환
-- `build_trello_header()` (seosoyoung/slackbot/formatting.py:108): 트렐로 카드용 슬랙 메시지 헤더 생성
-- `format_trello_progress()` (seosoyoung/slackbot/formatting.py:120): 트렐로 모드 채널 진행 상황 포맷
-- `format_dm_progress()` (seosoyoung/slackbot/formatting.py:127): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
-- `format_initial_placeholder()` (seosoyoung/slackbot/formatting.py:137): 소울스트림 요청 전송 직후 표시할 대기 메시지
-- `format_progress_placeholder()` (seosoyoung/slackbot/formatting.py:142): 진행 상태로 갱신된 플레이스홀더 포맷
-- `format_thinking_initial()` (seosoyoung/slackbot/formatting.py:157): thinking 메시지 초기 포맷
-- `format_thinking_text()` (seosoyoung/slackbot/formatting.py:174): thinking 메시지 텍스트 갱신 포맷
-- `format_thinking_complete()` (seosoyoung/slackbot/formatting.py:183): thinking 완료 포맷 — done 이모지로 교체한 최종 상태
-- `format_tool_initial()` (seosoyoung/slackbot/formatting.py:225): tool 메시지 초기 포맷
-- `format_tool_result()` (seosoyoung/slackbot/formatting.py:253): tool result 도착 시 표시 포맷
-- `build_input_request_blocks()` (seosoyoung/slackbot/formatting.py:278): AskUserQuestion 이벤트를 Slack Block Kit으로 변환
-- `format_input_request_answered()` (seosoyoung/slackbot/formatting.py:355): 응답 완료된 AskUserQuestion을 텍스트로 변환
+- `escape_backticks()` (seosoyoung/slackbot/formatting.py:64): 텍스트 내 모든 백틱을 이스케이프
+- `format_as_blockquote()` (seosoyoung/slackbot/formatting.py:92): 텍스트를 슬랙 blockquote 형식으로 변환
+- `build_trello_header()` (seosoyoung/slackbot/formatting.py:97): 트렐로 카드용 슬랙 메시지 헤더 생성
+- `format_trello_progress()` (seosoyoung/slackbot/formatting.py:109): 트렐로 모드 채널 진행 상황 포맷
+- `format_dm_progress()` (seosoyoung/slackbot/formatting.py:116): DM 스레드 진행 상황 포맷 (blockquote, 길이 제한)
+- `format_initial_placeholder()` (seosoyoung/slackbot/formatting.py:126): 소울스트림 요청 전송 직후 표시할 대기 메시지
+- `format_thinking_initial()` (seosoyoung/slackbot/formatting.py:131): thinking 메시지 초기 포맷
+- `format_thinking_text()` (seosoyoung/slackbot/formatting.py:148): thinking 메시지 텍스트 갱신 포맷
+- `format_thinking_complete()` (seosoyoung/slackbot/formatting.py:157): thinking 완료 포맷 — done 이모지로 교체한 최종 상태
+- `format_tool_initial()` (seosoyoung/slackbot/formatting.py:199): tool 메시지 초기 포맷
+- `format_tool_result()` (seosoyoung/slackbot/formatting.py:227): tool result 도착 시 표시 포맷
+- `build_input_request_blocks()` (seosoyoung/slackbot/formatting.py:252): AskUserQuestion 이벤트를 Slack Block Kit으로 변환
+- `format_input_request_answered()` (seosoyoung/slackbot/formatting.py:329): 응답 완료된 AskUserQuestion을 텍스트로 변환
 - `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:11): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:15): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `send_deploy_shutdown_popup()` (seosoyoung/slackbot/handlers/actions.py:83): 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
@@ -286,11 +284,11 @@
 - `init_bot_user_id()` (seosoyoung/slackbot/main.py:297): 봇 사용자 ID 초기화
 - `main()` (seosoyoung/slackbot/main.py:307): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
-- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:509): Initialize plugin SDK backends.
+- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:501): Initialize plugin SDK backends.
 - `run_with_event_callbacks()` (seosoyoung/slackbot/presentation/execution.py:23): placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
-- `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:95): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
-- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:29): 초기 placeholder 메시지를 게시하고 ts를 반환
-- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:52): 세분화 이벤트 콜백 + on_compact 팩토리
+- `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:83): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
+- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:27): 초기 placeholder 메시지를 게시하고 ts를 반환
+- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:55): 세분화 이벤트 콜백 + on_compact 팩토리
 - `redact_sensitive()` (seosoyoung/slackbot/presentation/redact.py:75): 텍스트에서 민감 정보를 [REDACTED]로 대체합니다.
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
@@ -306,7 +304,7 @@
 - `upload_file_to_slack()` (seosoyoung/slackbot/slack/helpers.py:12): 파일을 슬랙에 첨부
 - `send_long_message()` (seosoyoung/slackbot/slack/helpers.py:47): 긴 메시지를 분할해서 전송 (thread_ts가 None이면 채널에 응답)
 - `format_slack_message()` (seosoyoung/slackbot/slack/message_formatter.py:8): 슬랙 메시지를 프롬프트 주입용 텍스트로 포맷합니다.
-- `get_claude_runner()` (seosoyoung/slackbot/soulstream/__init__.py:13): rescue 모듈의 ClaudeRunner 인스턴스를 생성하여 반환합니다.
+- `get_claude_runner()` (seosoyoung/slackbot/soulstream/__init__.py:12): rescue 모듈의 ClaudeRunner 인스턴스를 생성하여 반환합니다.
 - `build_initial_context()` (seosoyoung/slackbot/soulstream/session_context.py:23): 세션 최초 생성 시 채널 컨텍스트를 구성합니다.
 - `build_followup_context()` (seosoyoung/slackbot/soulstream/session_context.py:75): 후속 요청 시 last_seen_ts 이후 미전송 메시지를 구성합니다.
 - `format_hybrid_context()` (seosoyoung/slackbot/soulstream/session_context.py:142): hybrid 세션용 채널 컨텍스트를 프롬프트 텍스트로 포맷합니다.
