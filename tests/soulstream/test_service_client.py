@@ -844,6 +844,92 @@ class TestSSEReconnection:
             async for _ in client._parse_sse_stream(mock_response):
                 pass
 
+    @pytest.mark.asyncio
+    async def test_parse_sse_stream_chunk_too_big_raises_connection_lost(self, client):
+        """readline()이 ValueError('Chunk too big')를 raise하면 ConnectionLostError로 변환"""
+        broken_reader = AsyncMock()
+        broken_reader.readline = AsyncMock(
+            side_effect=ValueError("Chunk too big")
+        )
+        mock_response = MagicMock()
+        mock_response.content = broken_reader
+
+        with pytest.raises(ConnectionLostError, match="SSE 라인 크기 초과"):
+            async for _ in client._parse_sse_stream(mock_response):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_parse_sse_stream_other_value_error_propagates(self, client):
+        """Chunk too big이 아닌 ValueError는 그대로 전파된다"""
+        broken_reader = AsyncMock()
+        broken_reader.readline = AsyncMock(
+            side_effect=ValueError("some other value error")
+        )
+        mock_response = MagicMock()
+        mock_response.content = broken_reader
+
+        with pytest.raises(ValueError, match="some other value error"):
+            async for _ in client._parse_sse_stream(mock_response):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_chunk_too_big_triggers_reconnect(self, client):
+        """init 이벤트 수신 후 ValueError('Chunk too big') 발생 시 재연결"""
+        init_line = b"event:init\n"
+        init_data = b'data:{"agent_session_id":"sess-chunk"}\n'
+        init_end = b"\n"
+        lines = [init_line, init_data, init_end]
+
+        reader = AsyncMock()
+        call_count = 0
+
+        async def readline_side_effect():
+            nonlocal call_count
+            if call_count < len(lines):
+                result = lines[call_count]
+                call_count += 1
+                return result
+            raise ValueError("Chunk too big")
+
+        reader.readline = AsyncMock(side_effect=readline_side_effect)
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = reader
+        client._session = _mock_session(mock_response)
+
+        # reconnect_stream mock: 성공 결과 반환
+        reconnect_result = ExecuteResult(
+            success=True,
+            result="reconnected after chunk error",
+            agent_session_id="sess-chunk",
+            claude_session_id="sess-chunk-r",
+        )
+        client.reconnect_stream = AsyncMock(return_value=reconnect_result)
+
+        result = await client.execute("hello")
+
+        assert result.success is True
+        assert result.result == "reconnected after chunk error"
+        client.reconnect_stream.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_session_uses_large_read_bufsize(self, client):
+        """_get_session()이 aiohttp.ClientSession에 read_bufsize=2**20을 전달하는지 확인"""
+        with patch("aiohttp.ClientSession") as mock_cls:
+            mock_instance = MagicMock()
+            mock_instance.closed = False
+            mock_cls.return_value = mock_instance
+
+            # 기존 세션을 제거하여 새로 생성하도록 강제
+            client._session = None
+
+            session = await client._get_session()
+
+            mock_cls.assert_called_once()
+            call_kwargs = mock_cls.call_args.kwargs
+            assert call_kwargs["read_bufsize"] == 2**20
+
 
 class TestCredentialProfileAPI:
     """SoulServiceClient 크레덴셜 프로필 API 테스트"""

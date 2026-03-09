@@ -80,21 +80,21 @@ agent_session_id가 유일한 식별자입니다.
 - `__init__(self, base_url, token)` (줄 129): 
 - `is_configured(self)` (줄 135): 
 - `async _get_session(self)` (줄 138): 
-- `_build_headers(self)` (줄 151): 
-- `async close(self)` (줄 160): 
-- `async __aenter__(self)` (줄 165): 
-- `async __aexit__(self, exc_type, exc_val, exc_tb)` (줄 168): 
-- `async execute(self, prompt, agent_session_id, on_compact, on_debug, on_session, on_credential_alert)` (줄 173): Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
-- `async intervene(self, agent_session_id, text, user)` (줄 306): 세션에 개입 메시지 전송
-- `async reconnect_stream(self, agent_session_id, on_compact, on_debug, on_credential_alert)` (줄 342): 세션 SSE 스트림에 재연결
-- `async respond_to_input_request(self, agent_session_id, request_id, answers)` (줄 388): AskUserQuestion에 대한 사용자 응답 전달
-- `async health_check(self)` (줄 437): 헬스 체크
-- `async list_profiles(self)` (줄 450): 프로필 목록 조회 (GET /profiles)
-- `async get_rate_limits(self)` (줄 465): 전체 프로필 rate limit 조회 (GET /profiles/rate-limits)
-- `async save_profile(self, name)` (줄 483): 현재 크레덴셜을 프로필로 저장 (POST /profiles/{name})
-- `async activate_profile(self, name)` (줄 498): 프로필 활성화 (POST /profiles/{name}/activate)
-- `async delete_profile(self, name)` (줄 515): 프로필 삭제 (DELETE /profiles/{name})
-- `async get_current_email(self)` (줄 532): 현재 크레덴셜의 계정 이메일 조회 (GET /profiles/email)
-- `async _handle_sse_events(self, response, on_compact, on_debug, on_session, on_credential_alert, on_thinking, on_text_start, on_text_delta, on_text_end, on_tool_start, on_tool_result, on_input_request)` (줄 552): SSE 이벤트 스트림 처리
-- `async _parse_sse_stream(self, response)` (줄 709): SSE 스트림 파싱
-- `async _parse_error(self, response)` (줄 770): 에러 응답 파싱
+- `_build_headers(self)` (줄 152): 
+- `async close(self)` (줄 161): 
+- `async __aenter__(self)` (줄 166): 
+- `async __aexit__(self, exc_type, exc_val, exc_tb)` (줄 169): 
+- `async execute(self, prompt, agent_session_id, on_compact, on_debug, on_session, on_credential_alert)` (줄 174): Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
+- `async intervene(self, agent_session_id, text, user)` (줄 307): 세션에 개입 메시지 전송
+- `async reconnect_stream(self, agent_session_id, on_compact, on_debug, on_credential_alert)` (줄 343): 세션 SSE 스트림에 재연결
+- `async respond_to_input_request(self, agent_session_id, request_id, answers)` (줄 389): AskUserQuestion에 대한 사용자 응답 전달
+- `async health_check(self)` (줄 438): 헬스 체크
+- `async list_profiles(self)` (줄 451): 프로필 목록 조회 (GET /profiles)
+- `async get_rate_limits(self)` (줄 466): 전체 프로필 rate limit 조회 (GET /profiles/rate-limits)
+- `async save_profile(self, name)` (줄 484): 현재 크레덴셜을 프로필로 저장 (POST /profiles/{name})
+- `async activate_profile(self, name)` (줄 499): 프로필 활성화 (POST /profiles/{name}/activate)
+- `async delete_profile(self, name)` (줄 516): 프로필 삭제 (DELETE /profiles/{name})
+- `async get_current_email(self)` (줄 533): 현재 크레덴셜의 계정 이메일 조회 (GET /profiles/email)
+- `async _handle_sse_events(self, response, on_compact, on_debug, on_session, on_credential_alert, on_thinking, on_text_start, on_text_delta, on_text_end, on_tool_start, on_tool_result, on_input_request)` (줄 553): SSE 이벤트 스트림 처리
+- `async _parse_sse_stream(self, response)` (줄 710): SSE 스트림 파싱
+- `async _parse_error(self, response)` (줄 785): 에러 응답 파싱

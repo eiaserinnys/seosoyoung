@@ -145,6 +145,7 @@ class SoulServiceClient:
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
                 headers=self._build_headers(),
+                read_bufsize=2**20,  # 1MB (기본 64KB → 1MB, _high_water = 2MB)
             )
         return self._session
 
@@ -752,6 +753,20 @@ class SoulServiceClient:
                         current_event = "message"
                         current_data = []
                         current_id = None
+
+            except ValueError as e:
+                # aiohttp.streams.StreamReader.readline()이 _high_water(= read_bufsize * 2)를
+                # 초과하는 라인을 만나면 ValueError("Chunk too big")를 raise한다.
+                # See: aiohttp/streams.py, StreamReader.readline()
+                if "Chunk too big" in str(e):
+                    logger.error(
+                        f"[SSE] SSE 라인이 버퍼 크기를 초과했습니다 "
+                        f"(마지막 이벤트: {last_event_name}): {e}"
+                    )
+                    raise ConnectionLostError(
+                        f"SSE 라인 크기 초과: {e}"
+                    )
+                raise  # Chunk too big이 아닌 ValueError는 그대로 전파
 
             except asyncio.TimeoutError:
                 logger.error(
