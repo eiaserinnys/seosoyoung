@@ -41,4 +41,3 @@ claude/ 모듈이 사용하는 Slack API 메서드만 정의합니다.
 ## 내부 의존성
 
 - `seosoyoung.slackbot.soulstream.engine_types.CompactCallback`
-- `seosoyoung.slackbot.soulstream.engine_types.ProgressCallback`

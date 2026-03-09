@@ -3,6 +3,7 @@
 PresentationContext를 캡처하는 콜백의 동작을 검증합니다.
 """
 
+import asyncio
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch, call
 from seosoyoung.slackbot.presentation.types import PresentationContext
@@ -506,3 +507,66 @@ class TestOnInputRequest:
         questions = [{"question": "Q", "options": [{"label": "A"}]}]
         # 예외가 전파되지 않아야 함
         await cbs["on_input_request"]("req-004", questions, "sess-004")
+
+
+class TestThinkingDelete:
+    """clean 모드에서 thinking 메시지 자동 삭제 테스트"""
+
+    @pytest.mark.asyncio
+    @patch("seosoyoung.slackbot.presentation.progress._thinking_delete_delay", return_value=0)
+    async def test_thinking_deleted_in_clean_mode(self, mock_delay):
+        """clean 모드: on_thinking이 thinking 메시지를 삭제 예약한다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "thinking_msg_ts"}
+        cbs, pctx, node_map, _ = _make_event_cbs(
+            mode="clean", client=client, placeholder_ts="ph_ts",
+        )
+
+        await cbs["on_thinking"]("analyzing...", "evt1", None)
+        # create_task가 예약한 코루틴을 실행시킨다
+        await asyncio.sleep(0)
+
+        delete_calls = [
+            c for c in client.chat_delete.call_args_list
+            if c[1].get("ts") == "thinking_msg_ts"
+        ]
+        assert len(delete_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_thinking_not_deleted_in_keep_mode(self):
+        """keep 모드: on_thinking이 thinking 메시지를 삭제하지 않는다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "thinking_msg_ts"}
+        cbs, pctx, node_map, _ = _make_event_cbs(
+            mode="keep", client=client,
+        )
+
+        await cbs["on_thinking"]("analyzing...", "evt1", None)
+        await asyncio.sleep(0)
+
+        delete_calls = [
+            c for c in client.chat_delete.call_args_list
+            if c[1].get("ts") == "thinking_msg_ts"
+        ]
+        assert len(delete_calls) == 0
+
+    @pytest.mark.asyncio
+    @patch("seosoyoung.slackbot.presentation.progress._thinking_delete_delay", side_effect=KeyError("SOULSTREAM_THINKING_DELETE_DELAY"))
+    async def test_thinking_delete_env_missing_no_crash(self, mock_delay):
+        """환경변수 누락 시 create_task 예외가 전파되지 않는다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "thinking_msg_ts"}
+        cbs, pctx, node_map, _ = _make_event_cbs(
+            mode="clean", client=client, placeholder_ts="ph_ts",
+        )
+
+        await cbs["on_thinking"]("analyzing...", "evt1", None)
+        # 예약된 태스크가 실행 — 예외가 조용히 처리되어야 함
+        await asyncio.sleep(0)
+
+        # chat_delete는 호출되지 않아야 함 (delay 읽기에서 실패)
+        delete_calls = [
+            c for c in client.chat_delete.call_args_list
+            if c[1].get("ts") == "thinking_msg_ts"
+        ]
+        assert len(delete_calls) == 0
