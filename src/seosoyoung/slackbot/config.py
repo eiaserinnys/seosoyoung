@@ -89,7 +89,7 @@ class ClaudeConfig:
     """
 
     soul_url: str = os.environ["SEOSOYOUNG_SOUL_URL"]
-    soul_token: str = os.getenv("SEOSOYOUNG_SOUL_TOKEN", "")
+    soul_token: str = os.environ["SEOSOYOUNG_SOUL_TOKEN"]
     credential_alert_channel: str = os.getenv("CREDENTIAL_ALERT_CHANNEL", "")
 
 

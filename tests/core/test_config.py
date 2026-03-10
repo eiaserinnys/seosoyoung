@@ -12,6 +12,7 @@ _MINIMAL_ENV = {
     "NOTIFY_CHANNEL": "",
     "GEMINI_MODEL": "gemini-test",
     "SEOSOYOUNG_SOUL_URL": "http://localhost:4105",
+    "SEOSOYOUNG_SOUL_TOKEN": "test-token",
     "EXECUTE_EMOJI": "rocket",
     "EMOJI_TRANSLATE_PROGRESS": "hourglass_flowing_sand",
     "EMOJI_TRANSLATE_DONE": "ssy-happy",
