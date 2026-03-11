@@ -16,6 +16,7 @@ from seosoyoung.slackbot.formatting import (
     format_tool_result,
     build_input_request_blocks,
 )
+from seosoyoung.slackbot.presentation.activity_board import ActivityBoard
 from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
 from seosoyoung.slackbot.presentation.redact import redact_sensitive
 from seosoyoung.slackbot.presentation.types import PresentationContext
@@ -57,6 +58,7 @@ def build_event_callbacks(
     node_map: SlackNodeMap,
     mode: str = "clean",
     initial_placeholder_ts: str | None = None,
+    initial_board: "ActivityBoard | None" = None,
 ) -> dict:
     """세분화 이벤트 콜백 + on_compact 팩토리
 
@@ -66,6 +68,7 @@ def build_event_callbacks(
         mode: "clean" = 일반 채널(갱신 모드, 완료 후 삭제),
               "keep" = DM 채널(풀 덤프 모드, 완료 후 유지)
         initial_placeholder_ts: 초기 placeholder 메시지의 ts (cleanup()에서 삭제)
+        initial_board: ActivityBoard 인스턴스 (clean 모드에서 B placeholder 관리용)
 
     Returns:
         {
@@ -84,16 +87,34 @@ def build_event_callbacks(
     _placeholder_ts: list[str | None] = [initial_placeholder_ts]
     # text 누적 버퍼 (clean 모드에서 placeholder에 텍스트를 누적)
     _text_buffer: list[str] = [""]
+    # ActivityBoard (clean 모드에서만 사용)
+    _board: list[ActivityBoard | None] = [initial_board]
+    # compact 항목 ID 추적
+    _compact_item_id: list[str | None] = [None]
+    _compact_counter: list[int] = [0]
+
+    def _next_compact_id() -> str:
+        _compact_counter[0] += 1
+        return f"compact_{_compact_counter[0]}"
 
     async def cleanup():
-        """실행 완료 후 placeholder 삭제"""
+        """실행 완료 후 placeholder A·B 삭제"""
+        # A 삭제
         ts = _placeholder_ts[0]
         if ts:
             _placeholder_ts[0] = None
             try:
                 pctx.client.chat_delete(channel=pctx.channel, ts=ts)
             except Exception as e:
-                logger.debug(f"placeholder 삭제 실패: {e}")
+                logger.debug(f"placeholder A 삭제 실패: {e}")
+        # B 삭제 (pending tasks 취소 후)
+        board = _board[0]
+        if board:
+            board.cancel_all_pending()
+            try:
+                pctx.client.chat_delete(channel=pctx.channel, ts=board.msg_ts)
+            except Exception as e:
+                logger.debug(f"placeholder B 삭제 실패: {e}")
 
     async def _schedule_delete(msg_ts: str) -> None:
         """clean 모드 전용: 설정된 시간 후 메시지 삭제
@@ -128,19 +149,27 @@ def build_event_callbacks(
 
     async def on_thinking(thinking_text: str, event_id, parent_event_id):
         try:
-            text = format_thinking_text(thinking_text)
-            reply = pctx.client.chat_postMessage(
-                channel=pctx.channel,
-                thread_ts=pctx.thread_ts,
-                text=text,
-            )
-            msg_ts = reply["ts"]
-            node = node_map.add_thinking(event_id, msg_ts, parent_event_id)
-            if thinking_text:
-                node.text_buffer = thinking_text
-            # [clean 모드만] 설정된 시간 후 자동 삭제
-            if mode == "clean":
-                asyncio.create_task(_schedule_thinking_delete(msg_ts))
+            if mode == "clean" and _board[0] is not None:
+                item_id = f"thinking_{event_id}"
+                content = format_thinking_text(thinking_text)
+                delay = _thinking_delete_delay()  # add 전에 읽어서 실패 시 항목이 남지 않게
+                _board[0].add(item_id, content)
+                _board[0].schedule_remove(item_id, delay)
+            else:
+                # keep 모드 또는 board 생성 실패 시: 기존 로직 그대로
+                text = format_thinking_text(thinking_text)
+                reply = pctx.client.chat_postMessage(
+                    channel=pctx.channel,
+                    thread_ts=pctx.thread_ts,
+                    text=text,
+                )
+                msg_ts = reply["ts"]
+                node = node_map.add_thinking(event_id, msg_ts, parent_event_id)
+                if thinking_text:
+                    node.text_buffer = thinking_text
+                # [clean 모드만] 설정된 시간 후 자동 삭제
+                if mode == "clean":
+                    asyncio.create_task(_schedule_thinking_delete(msg_ts))
         except Exception as e:
             logger.warning(f"thinking 메시지 생성 실패: {e}")
 
@@ -217,14 +246,21 @@ def build_event_callbacks(
 
     async def on_tool_start(tool_name: str, tool_input, tool_use_id: str, event_id, parent_event_id):
         try:
-            text = format_tool_initial(tool_name, tool_input)
-            reply = pctx.client.chat_postMessage(
-                channel=pctx.channel,
-                thread_ts=pctx.thread_ts,
-                text=text,
-            )
-            msg_ts = reply["ts"]
-            node_map.add_tool(event_id, msg_ts, tool_use_id, parent_event_id, tool_name)
+            if mode == "clean" and _board[0] is not None:
+                item_id = f"tool_{event_id}"
+                content = format_tool_initial(tool_name, tool_input)
+                _board[0].add(item_id, content)
+                node_map.add_tool(event_id, "", tool_use_id, parent_event_id, tool_name)
+            else:
+                # keep 모드 또는 board 생성 실패 시: 기존 로직 그대로
+                text = format_tool_initial(tool_name, tool_input)
+                reply = pctx.client.chat_postMessage(
+                    channel=pctx.channel,
+                    thread_ts=pctx.thread_ts,
+                    text=text,
+                )
+                msg_ts = reply["ts"]
+                node_map.add_tool(event_id, msg_ts, tool_use_id, parent_event_id, tool_name)
         except Exception as e:
             logger.warning(f"tool_start 메시지 생성 실패: {e}")
 
@@ -245,14 +281,21 @@ def build_event_callbacks(
 
             # [공통] 결과 내용으로 교체 + 완료 이모지
             display_text = format_tool_result(tool_name, safe_result, is_error=is_error)
-            try:
-                update_message(pctx.client, pctx.channel, node.msg_ts, display_text)
-            except Exception as e:
-                logger.warning(f"tool_result 갱신 실패: {e}")
 
-            # [clean 모드만] 설정된 시간 후 삭제
-            if mode == "clean":
-                await _schedule_delete(node.msg_ts)
+            if mode == "clean" and _board[0] is not None:
+                item_id = f"tool_{node.event_id}"
+                delay = _event_delete_delay()  # update 전에 읽어서 실패 시 항목이 갱신되지 않게
+                _board[0].update(item_id, display_text)
+                _board[0].schedule_remove(item_id, delay)
+            else:
+                # keep 모드 또는 board 생성 실패 시: 기존 로직 그대로
+                try:
+                    update_message(pctx.client, pctx.channel, node.msg_ts, display_text)
+                except Exception as e:
+                    logger.warning(f"tool_result 갱신 실패: {e}")
+                # [clean 모드만] 설정된 시간 후 삭제
+                if mode == "clean":
+                    await _schedule_delete(node.msg_ts)
         except Exception as e:
             logger.warning(f"tool_result 처리 실패: {e}")
 
@@ -285,21 +328,34 @@ def build_event_callbacks(
     # on_compact 콜백
     async def on_compact(trigger: str, message: str):
         try:
-            # 이전 compact 메시지가 있으면 완료로 갱신
-            if pctx.compact_msg_ts:
-                try:
-                    update_message(pctx.client, pctx.channel, pctx.compact_msg_ts, "✅ 컴팩트가 완료됐습니다")
-                except Exception as e:
-                    logger.warning(f"이전 컴팩트 완료 메시지 갱신 실패: {e}")
+            if mode == "clean" and _board[0] is not None:
+                # 이전 compact 항목이 있으면 제거
+                old_id = _compact_item_id[0]
+                if old_id:
+                    _board[0].remove(old_id)
+                # 새 compact 항목 추가 (schedule_remove 없음 — 다음 compact 또는
+                # cleanup이 제거. 압축 진행 중임을 사용자에게 계속 보여주기 위함)
+                new_id = _next_compact_id()
+                text = ("🔄 컨텍스트가 자동 압축됩니다..." if trigger == "auto"
+                        else "📦 컨텍스트를 압축하는 중입니다...")
+                _board[0].add(new_id, text)
+                _compact_item_id[0] = new_id
+            else:
+                # keep 모드 또는 board 생성 실패 시: 기존 로직 그대로
+                if pctx.compact_msg_ts:
+                    try:
+                        update_message(pctx.client, pctx.channel, pctx.compact_msg_ts, "✅ 컴팩트가 완료됐습니다")
+                    except Exception as e:
+                        logger.warning(f"이전 컴팩트 완료 메시지 갱신 실패: {e}")
 
-            text = ("🔄 컨텍스트가 자동 압축됩니다..." if trigger == "auto"
-                    else "📦 컨텍스트를 압축하는 중입니다...")
-            reply = pctx.client.chat_postMessage(
-                channel=pctx.channel,
-                thread_ts=pctx.thread_ts,
-                text=text,
-            )
-            pctx.compact_msg_ts = reply["ts"]
+                text = ("🔄 컨텍스트가 자동 압축됩니다..." if trigger == "auto"
+                        else "📦 컨텍스트를 압축하는 중입니다...")
+                reply = pctx.client.chat_postMessage(
+                    channel=pctx.channel,
+                    thread_ts=pctx.thread_ts,
+                    text=text,
+                )
+                pctx.compact_msg_ts = reply["ts"]
         except Exception as e:
             logger.warning(f"컴팩션 알림 전송 실패: {e}")
 

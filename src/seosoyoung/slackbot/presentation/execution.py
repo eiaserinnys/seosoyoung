@@ -7,6 +7,7 @@ on_compact 래핑 보일러플레이트를 캡슐화합니다.
 import logging
 from typing import Callable, TYPE_CHECKING
 
+from seosoyoung.slackbot.presentation.activity_board import ActivityBoard, BOARD_EMPTY_TEXT
 from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
 from seosoyoung.slackbot.presentation.progress import (
     build_event_callbacks,
@@ -45,9 +46,25 @@ def run_with_event_callbacks(
     placeholder_ts = post_initial_placeholder(
         pctx.client, pctx.channel, pctx.thread_ts,
     )
+
+    # clean 모드: B placeholder 생성
+    board = None
+    if mode == "clean":
+        try:
+            reply = pctx.client.chat_postMessage(
+                channel=pctx.channel,
+                thread_ts=pctx.thread_ts,
+                text=BOARD_EMPTY_TEXT,
+            )
+            board = ActivityBoard(pctx.client, pctx.channel, reply["ts"])
+        except Exception as e:
+            logger.warning(f"placeholder B 게시 실패: {e}")
+
     node_map = SlackNodeMap()
     event_cbs = build_event_callbacks(
-        pctx, node_map, mode, initial_placeholder_ts=placeholder_ts,
+        pctx, node_map, mode,
+        initial_placeholder_ts=placeholder_ts,
+        initial_board=board,
     )
 
     on_compact = (

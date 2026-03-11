@@ -55,7 +55,7 @@ class TestPresentationContextMutation:
 # ============================================================================
 
 
-def _make_event_cbs(mode="clean", placeholder_ts=None, **pctx_overrides):
+def _make_event_cbs(mode="clean", placeholder_ts=None, initial_board=None, **pctx_overrides):
     """테스트용 build_event_callbacks 호출 헬퍼
 
     Returns:
@@ -63,7 +63,11 @@ def _make_event_cbs(mode="clean", placeholder_ts=None, **pctx_overrides):
     """
     pctx = _make_pctx(**pctx_overrides)
     node_map = SlackNodeMap()
-    cbs = build_event_callbacks(pctx, node_map, mode, initial_placeholder_ts=placeholder_ts)
+    cbs = build_event_callbacks(
+        pctx, node_map, mode,
+        initial_placeholder_ts=placeholder_ts,
+        initial_board=initial_board,
+    )
     return cbs, pctx, node_map, pctx.client
 
 
@@ -105,15 +109,25 @@ class TestPlaceholder:
     """
 
     @pytest.mark.asyncio
-    async def test_placeholder_not_deleted_on_thinking(self):
-        """on_thinking 호출 시 placeholder가 삭제되지 않는다"""
+    @patch("seosoyoung.slackbot.presentation.progress._thinking_delete_delay", return_value=0)
+    async def test_placeholder_not_deleted_on_thinking(self, mock_delay):
+        """on_thinking 호출 시 placeholder가 삭제되지 않고, board를 통해 처리된다"""
         client = MagicMock()
-        client.chat_postMessage.return_value = {"ts": "thinking_ts"}
+        board = MagicMock()
         cbs, pctx, _, _ = _make_event_cbs(
-            placeholder_ts="ph_ts_001", client=client,
+            placeholder_ts="ph_ts_001", client=client, initial_board=board,
         )
 
         await cbs["on_thinking"]("analyzing...", "evt1", None)
+
+        # board.add와 schedule_remove가 호출됨
+        board.add.assert_called_once()
+        assert board.add.call_args[0][0] == "thinking_evt1"
+        board.schedule_remove.assert_called_once()
+        assert board.schedule_remove.call_args[0][0] == "thinking_evt1"
+
+        # chat_postMessage가 thinking에 대해 호출되지 않아야 함
+        client.chat_postMessage.assert_not_called()
 
         # placeholder 삭제가 호출되지 않아야 함
         for c in client.chat_delete.call_args_list:
@@ -288,6 +302,37 @@ class TestCompactCompletion:
         assert pctx.compact_msg_ts == "new_compact_ts"
 
     @pytest.mark.asyncio
+    async def test_compact_board_adds_item(self):
+        """clean 모드 + board: on_compact가 board에 항목을 추가한다"""
+        board = MagicMock()
+        cbs, pctx, _, client = _make_event_cbs(initial_board=board)
+
+        await cbs["on_compact"]("auto", "compacting")
+
+        board.add.assert_called_once()
+        item_id = board.add.call_args[0][0]
+        assert item_id.startswith("compact_")
+        assert "자동 압축" in board.add.call_args[0][1]
+        # chat_postMessage가 compact에 대해 호출되지 않음
+        client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_compact_board_replaces_previous(self):
+        """clean 모드 + board: 두 번째 compact 시 이전 항목을 제거한다"""
+        board = MagicMock()
+        cbs, pctx, _, _ = _make_event_cbs(initial_board=board)
+
+        await cbs["on_compact"]("auto", "first")
+        first_id = board.add.call_args[0][0]
+
+        await cbs["on_compact"]("manual", "second")
+
+        # 이전 compact 항목이 제거됨
+        board.remove.assert_called_once_with(first_id)
+        # 새 항목이 추가됨
+        assert board.add.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_compact_error_handled_gracefully(self):
         """on_compact 에러가 예외를 전파하지 않는다"""
         client = MagicMock()
@@ -373,32 +418,29 @@ class TestToolResult:
     @pytest.mark.asyncio
     @patch("seosoyoung.slackbot.presentation.progress._event_delete_delay", return_value=0)
     async def test_content_replaced_on_result_clean(self, mock_delay):
-        """clean 모드: tool_result 시 결과 교체 후 삭제"""
+        """clean 모드 + board: tool_result 시 board.update + schedule_remove 호출"""
         client = MagicMock()
-        client.chat_postMessage.return_value = {"ts": "tool_msg_ts"}
-        cbs, pctx, node_map, _ = _make_event_cbs(mode="clean", client=client)
+        board = MagicMock()
+        cbs, pctx, node_map, _ = _make_event_cbs(
+            mode="clean", client=client, initial_board=board,
+        )
 
-        # tool 시작
+        # tool 시작 → board.add 호출
         await cbs["on_tool_start"]("Grep", {"pattern": "error"}, "tu_001", "evt_t1", None)
+        board.add.assert_called_once()
+        assert board.add.call_args[0][0] == "tool_evt_t1"
 
-        # tool 결과 수신
+        # tool 결과 수신 → board.update + schedule_remove 호출
         await cbs["on_tool_result"]("3 matches found", "tu_001", False, "evt_result", "evt_t1")
+        board.update.assert_called_once()
+        assert board.update.call_args[0][0] == "tool_evt_t1"
+        assert "Grep" in board.update.call_args[0][1]
+        board.schedule_remove.assert_called_once()
+        assert board.schedule_remove.call_args[0][0] == "tool_evt_t1"
+        assert board.schedule_remove.call_args[0][1] == 0  # delay = 0
 
-        # chat_update가 format_tool_result() 결과로 호출됨
-        update_calls = [
-            c for c in client.chat_update.call_args_list
-            if c[1].get("ts") == "tool_msg_ts"
-        ]
-        assert len(update_calls) >= 1
-        last_update = update_calls[-1]
-        assert "Grep" in last_update[1]["text"]
-
-        # _schedule_delete로 삭제됨
-        delete_calls = [
-            c for c in client.chat_delete.call_args_list
-            if c[1].get("ts") == "tool_msg_ts"
-        ]
-        assert len(delete_calls) == 1
+        # chat_postMessage가 tool에 대해 호출되지 않음
+        client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_content_replaced_on_result_keep(self):
@@ -515,22 +557,25 @@ class TestThinkingDelete:
     @pytest.mark.asyncio
     @patch("seosoyoung.slackbot.presentation.progress._thinking_delete_delay", return_value=0)
     async def test_thinking_deleted_in_clean_mode(self, mock_delay):
-        """clean 모드: on_thinking이 thinking 메시지를 삭제 예약한다"""
+        """clean 모드 + board: on_thinking이 board.add + schedule_remove를 호출한다"""
         client = MagicMock()
-        client.chat_postMessage.return_value = {"ts": "thinking_msg_ts"}
+        board = MagicMock()
         cbs, pctx, node_map, _ = _make_event_cbs(
             mode="clean", client=client, placeholder_ts="ph_ts",
+            initial_board=board,
         )
 
         await cbs["on_thinking"]("analyzing...", "evt1", None)
-        # create_task가 예약한 코루틴을 실행시킨다
-        await asyncio.sleep(0)
 
-        delete_calls = [
-            c for c in client.chat_delete.call_args_list
-            if c[1].get("ts") == "thinking_msg_ts"
-        ]
-        assert len(delete_calls) == 1
+        # board.add와 schedule_remove가 호출됨
+        board.add.assert_called_once()
+        assert board.add.call_args[0][0] == "thinking_evt1"
+        board.schedule_remove.assert_called_once()
+        assert board.schedule_remove.call_args[0][0] == "thinking_evt1"
+        assert board.schedule_remove.call_args[0][1] == 0  # delay = 0
+
+        # chat_postMessage가 호출되지 않음 (board를 통해 처리)
+        client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_thinking_not_deleted_in_keep_mode(self):

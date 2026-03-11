@@ -51,6 +51,7 @@
 - [`slackbot/main.py`](modules/slackbot_main.md): SeoSoyoung 슬랙 봇 메인
 - [`slackbot/marker_parser.py`](modules/slackbot_marker_parser.md): 응용 마커 파서
 - [`slackbot/plugin_backends.py`](modules/slackbot_plugin_backends.md): Plugin SDK backend implementations.
+- [`presentation/activity_board.py`](modules/presentation_activity_board.md): ActivityBoard: 플레이스홀더 B 항목 관리
 - [`presentation/execution.py`](modules/presentation_execution.md): 실행 오케스트레이션 헬퍼
 - [`presentation/node_map.py`](modules/presentation_node_map.md): 이벤트 노드 <-> 슬랙 메시지 매핑
 - [`presentation/progress.py`](modules/presentation_progress.md): 진행 상태 콜백 팩토리
@@ -123,6 +124,8 @@
 - `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:49): Slack backend implementation using slack_sdk client.
 - `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:243): Soulstream backend implementation using ClaudeExecutor.
 - `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:480): Mention tracking backend wrapping the existing MentionTracker.
+- `ActivityItem` (seosoyoung/slackbot/presentation/activity_board.py:19): 
+- `ActivityBoard` (seosoyoung/slackbot/presentation/activity_board.py:24): 플레이스홀더 B의 항목 리스트를 관리하고 슬랙 메시지를 갱신
 - `SlackNode` (seosoyoung/slackbot/presentation/node_map.py:12): 이벤트 노드에 대응하는 슬랙 메시지
 - `InputRequestNode` (seosoyoung/slackbot/presentation/node_map.py:25): AskUserQuestion 이벤트에 대응하는 슬랙 메시지
 - `SlackNodeMap` (seosoyoung/slackbot/presentation/node_map.py:34): 이벤트 노드 <-> 슬랙 메시지 ts 매핑
@@ -285,10 +288,10 @@
 - `main()` (seosoyoung/slackbot/main.py:307): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:501): Initialize plugin SDK backends.
-- `run_with_event_callbacks()` (seosoyoung/slackbot/presentation/execution.py:23): placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
-- `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:83): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
-- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:27): 초기 placeholder 메시지를 게시하고 ts를 반환
-- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:55): 세분화 이벤트 콜백 + on_compact 팩토리
+- `run_with_event_callbacks()` (seosoyoung/slackbot/presentation/execution.py:24): placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
+- `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:100): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
+- `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:28): 초기 placeholder 메시지를 게시하고 ts를 반환
+- `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:56): 세분화 이벤트 콜백 + on_compact 팩토리
 - `redact_sensitive()` (seosoyoung/slackbot/presentation/redact.py:75): 텍스트에서 민감 정보를 [REDACTED]로 대체합니다.
 - `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류

@@ -12,7 +12,7 @@ on_compact 래핑 보일러플레이트를 캡슐화합니다.
 ## 함수
 
 ### `run_with_event_callbacks(pctx, executor_fn, executor_kwargs)`
-- 위치: 줄 23
+- 위치: 줄 24
 - 설명: placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
 
 Args:
@@ -26,7 +26,7 @@ Args:
         override와 함께 사용 시, override된 콜백에 wrapper가 적용됩니다.
 
 ### `wrap_on_compact_with_memory(on_compact, pm, thread_ts)`
-- 위치: 줄 83
+- 위치: 줄 100
 - 설명: on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
 
 MemoryPlugin이 없으면 원본 콜백을 그대로 반환합니다.
@@ -41,6 +41,8 @@ Returns:
 
 ## 내부 의존성
 
+- `seosoyoung.slackbot.presentation.activity_board.ActivityBoard`
+- `seosoyoung.slackbot.presentation.activity_board.BOARD_EMPTY_TEXT`
 - `seosoyoung.slackbot.presentation.node_map.SlackNodeMap`
 - `seosoyoung.slackbot.presentation.progress.build_event_callbacks`
 - `seosoyoung.slackbot.presentation.progress.post_initial_placeholder`
