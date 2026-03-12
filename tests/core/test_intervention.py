@@ -1,14 +1,8 @@
 """인터벤션(intervention) 기능 테스트
 
 실행 중 새 메시지 도착 시:
-1. interrupt fire → 현재 실행 중단 → pending 실행
-2. 연속 인터벤션 정상 처리
-3. 중단된 실행의 사고 과정 메시지 정리
-
-NOTE: bot-refactor 이후 executor는 _active_runners dict 대신
-모듈 레벨 get_runner()을 사용하여 러너를 조회합니다.
-get_runner_for_role() 대신 ClaudeRunner를 직접 생성합니다.
-interrupt()는 인자 없이 호출됩니다.
+1. Soulstream에 interrupt 전송 → 현재 실행 중단
+2. 중단된 실행의 사고 과정 메시지 정리
 """
 
 import threading
@@ -20,7 +14,6 @@ from unittest.mock import MagicMock, patch, call
 import pytest
 
 from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
-from seosoyoung.slackbot.soulstream.intervention import PendingPrompt
 from seosoyoung.slackbot.presentation.types import PresentationContext
 from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
 
@@ -77,52 +70,8 @@ async def _noop_compact(trigger, message):
     pass
 
 
-class TestPendingPrompts:
-    """_pending_prompts dict 기본 동작"""
-
-    def test_initial_empty(self):
-        executor = make_executor()
-        assert executor._pending_prompts == {}
-
-    def test_pop_pending_empty(self):
-        executor = make_executor()
-        assert executor._intervention.pop_pending("thread_123") is None
-
-    def test_pop_pending_returns_and_removes(self):
-        executor = make_executor()
-        pending = PendingPrompt(
-            prompt="test", msg_ts="msg_1",
-            on_compact=_noop_compact,
-            presentation=_make_pctx(),
-        )
-        executor._pending_prompts["thread_123"] = pending
-
-        result = executor._intervention.pop_pending("thread_123")
-        assert result is pending
-        assert "thread_123" not in executor._pending_prompts
-
-    def test_pending_overwrite(self):
-        """연속 인터벤션 시 pending은 최신 것으로 덮어쓰기"""
-        executor = make_executor()
-        p1 = PendingPrompt(
-            prompt="first", msg_ts="msg_1",
-            on_compact=_noop_compact,
-            presentation=_make_pctx(),
-        )
-        p2 = PendingPrompt(
-            prompt="second", msg_ts="msg_2",
-            on_compact=_noop_compact,
-            presentation=_make_pctx(),
-        )
-        executor._pending_prompts["t1"] = p1
-        executor._pending_prompts["t1"] = p2
-
-        result = executor._intervention.pop_pending("t1")
-        assert result.prompt == "second"
-
-
 class TestInterventionHandling:
-    """인터벤션 시 pending 저장 + interrupt"""
+    """인터벤션 시 remote interrupt 전송"""
 
     def test_intervention_no_message(self):
         """락 실패 시 텍스트 메시지 없음"""
@@ -143,26 +92,6 @@ class TestInterventionHandling:
         # say (텍스트 메시지)는 호출되지 않음
         say.assert_not_called()
 
-    def test_intervention_saves_pending(self):
-        """인터벤션 시 pending에 프롬프트 저장"""
-        executor = make_executor()
-        pctx = _make_pctx()
-
-        executor._handle_intervention(
-            "thread_123", "새 질문", "msg_456",
-            on_compact=_noop_compact,
-            presentation=pctx,
-            role="admin",
-            user_message=None,
-            on_result=None,
-            session_id="session_abc",
-        )
-
-        pending = executor._pending_prompts.get("thread_123")
-        assert pending is not None
-        assert pending.prompt == "새 질문"
-        assert pending.msg_ts == "msg_456"
-
     def test_intervention_fires_remote_interrupt(self):
         """인터벤션 시 fire_interrupt_remote가 호출됨"""
         executor = make_executor()
@@ -182,24 +111,6 @@ class TestInterventionHandling:
 
         mock_fire.assert_called_once()
 
-    def test_intervention_saves_pending(self):
-        """인터벤션 시 pending에 저장됨 (remote interrupt 실패해도)"""
-        executor = make_executor()
-        pctx = _make_pctx()
-
-        executor._handle_intervention(
-            "thread_123", "새 질문", "msg_456",
-            on_compact=_noop_compact,
-            presentation=pctx,
-            role="admin",
-            user_message=None,
-            on_result=None,
-            session_id="session_abc",
-        )
-
-        # pending에는 저장됨
-        assert "thread_123" in executor._pending_prompts
-
 
 class TestInterventionViaRun:
     """executor.run을 통한 인터벤션 흐름"""
@@ -216,19 +127,20 @@ class TestInterventionViaRun:
         say = MagicMock()
         pctx = _make_pctx(say=say)
 
-        executor.run(
-            prompt="새 질문",
-            thread_ts="thread_123",
-            msg_ts="msg_456",
-            on_compact=_noop_compact,
-            presentation=pctx,
-        )
+        with patch.object(executor._intervention, "fire_interrupt_remote") as mock_fire:
+            with patch.object(executor, "_get_service_adapter"):
+                executor.run(
+                    prompt="새 질문",
+                    thread_ts="thread_123",
+                    msg_ts="msg_456",
+                    on_compact=_noop_compact,
+                    presentation=pctx,
+                )
 
         # say는 호출되지 않아야 함
         say.assert_not_called()
-
-        # pending에 저장됨
-        assert "thread_123" in executor._pending_prompts
+        # fire_interrupt_remote가 호출됨
+        mock_fire.assert_called_once()
 
 
 class TestInterruptedExecution:
@@ -365,11 +277,11 @@ class TestExecuteOnceWithInterruption:
         mock_remote.assert_called_once()
 
 
-class TestRunWithLockPendingLoop:
-    """_run_with_lock의 while 루프로 pending 처리"""
+class TestRunWithLock:
+    """_run_with_lock 단일 실행"""
 
-    def test_no_pending_single_execution(self):
-        """pending 없으면 한 번만 실행"""
+    def test_single_execution(self):
+        """_run_with_lock은 한 번만 실행"""
         executor = make_executor()
         pctx = _make_pctx()
 
@@ -385,36 +297,6 @@ class TestRunWithLockPendingLoop:
             )
 
         assert mock_execute.call_count == 1
-
-    def test_pending_triggers_second_execution(self):
-        """pending이 있으면 두 번 실행"""
-        executor = make_executor()
-        pctx = _make_pctx()
-
-        # 첫 실행 후 pending이 있도록 설정
-        pending = PendingPrompt(
-            prompt="second prompt",
-            msg_ts="msg_2",
-            on_compact=_noop_compact,
-            presentation=_make_pctx(),
-        )
-        executor._pending_prompts["thread_123"] = pending
-
-        with patch.object(executor, "_execute_once") as mock_execute:
-            executor._run_with_lock(
-                "thread_123", "first prompt", "msg_456",
-                on_compact=_noop_compact,
-                presentation=pctx,
-                session_id="session_abc",
-                role="admin",
-                user_message=None,
-                on_result=None,
-            )
-
-        # _execute_once가 두 번 호출됨 (첫 번째 + pending)
-        assert mock_execute.call_count == 2
-        # pending이 비워짐
-        assert "thread_123" not in executor._pending_prompts
 
     def test_session_running_stopped_called(self):
         """mark_session_running/stopped이 호출됨"""
@@ -442,15 +324,15 @@ class TestRunWithLockPendingLoop:
 
 
 class TestConsecutiveInterventions:
-    """연속 인터벤션 (A→B→C) 처리"""
+    """연속 인터벤션 (A->B->C) 처리"""
 
-    def test_multiple_interventions_keep_latest(self):
-        """연속 인터벤션 시 pending은 마지막 것만 유지"""
+    def test_multiple_interventions_all_fire_remote(self):
+        """연속 인터벤션 시 매번 fire_interrupt_remote가 호출됨"""
         executor = make_executor()
 
         with patch.object(executor._intervention, "fire_interrupt_remote") as mock_fire:
             with patch.object(executor, "_get_service_adapter"):
-                # A → B → C 순서로 인터벤션
+                # A -> B -> C 순서로 인터벤션
                 for i, prompt in enumerate(["A", "B", "C"]):
                     pctx = _make_pctx(msg_ts=f"msg_{i}")
                     executor._handle_intervention(
@@ -463,12 +345,7 @@ class TestConsecutiveInterventions:
                         session_id="session_abc",
                     )
 
-        # pending에는 C만 남아있어야 함
-        pending = executor._pending_prompts.get("thread_123")
-        assert pending is not None
-        assert pending.prompt == "C"
-
-        # fire_interrupt_remote도 3번 호출됨
+        # fire_interrupt_remote가 3번 호출됨
         assert mock_fire.call_count == 3
 
 
@@ -505,24 +382,6 @@ class TestRemoteInterruptPath:
                 )
 
         mock_fire.assert_called_once()
-
-    def test_intervention_always_saves_pending(self):
-        """인터벤션 시 pending에 항상 저장됨"""
-        executor = make_executor()
-        pctx = _make_pctx()
-
-        executor._handle_intervention(
-            "thread_123", "no runner", "msg_456",
-            on_compact=_noop_compact,
-            presentation=pctx,
-            role="admin",
-            user_message=None,
-            on_result=None,
-            session_id="session_abc",
-        )
-
-        # pending에는 저장됨
-        assert "thread_123" in executor._pending_prompts
 
 
 class TestNormalSuccessWithReplace:
@@ -664,67 +523,3 @@ class TestListRunTrelloSuccessNoDelete:
         mock_trello_success.assert_called_once()
         call_kwargs = mock_trello_success.call_args
         assert call_kwargs[1].get("is_list_run") is True or (len(call_kwargs[0]) >= 4 and call_kwargs[0][3] is True)
-
-
-class TestIntegrationInterventionFinalResponse:
-    """인터벤션 후 최종 응답 위치 통합 테스트"""
-
-    def test_interrupted_then_pending_success(self):
-        """A 중단 → B 실행 → _execute_once가 2번 호출됨"""
-        executor = make_executor()
-
-        # B를 pending에 넣어둠
-        pending = PendingPrompt(
-            prompt="B 질문",
-            msg_ts="msg_B",
-            on_compact=_noop_compact,
-            presentation=_make_pctx(),
-        )
-        executor._pending_prompts["thread_123"] = pending
-
-        pctx = _make_pctx()
-
-        with patch.object(executor, "_execute_once") as mock_execute:
-            executor._run_with_lock(
-                "thread_123", "A 질문", "msg_A",
-                on_compact=_noop_compact,
-                presentation=pctx,
-                session_id="session_abc",
-                role="admin",
-                user_message=None,
-                on_result=None,
-            )
-
-        # A + B = 2번 호출
-        assert mock_execute.call_count == 2
-
-    def test_triple_intervention_only_last_executes(self):
-        """A→B→C 연속 인터벤션: B는 C에 의해 덮어씌워지므로 A + C = 2번 실행"""
-        executor = make_executor()
-
-        # C를 pending에 (B는 C에 의해 덮어씌워진 상태)
-        pending_c = PendingPrompt(
-            prompt="C 질문",
-            msg_ts="msg_C",
-            on_compact=_noop_compact,
-            presentation=_make_pctx(),
-        )
-        executor._pending_prompts["thread_123"] = pending_c
-
-        pctx = _make_pctx()
-
-        with patch.object(executor, "_execute_once") as mock_execute:
-            executor._run_with_lock(
-                "thread_123", "A 질문", "msg_A",
-                on_compact=_noop_compact,
-                presentation=pctx,
-                session_id="session_abc",
-                role="admin",
-                user_message=None,
-                on_result=None,
-            )
-
-        # A + C = 2번 호출
-        assert mock_execute.call_count == 2
-        # pending은 비워짐
-        assert "thread_123" not in executor._pending_prompts

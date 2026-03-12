@@ -186,7 +186,7 @@ class TestInstantiation:
         """InterventionManager 생성 시 외부 의존성 불필요"""
         from seosoyoung.slackbot.soulstream.intervention import InterventionManager
         mgr = InterventionManager()
-        assert mgr.pop_pending("nonexistent") is None
+        assert mgr is not None
 
     def test_exponential_backoff_creation(self):
         """ExponentialBackoff 생성 시 외부 의존성 불필요"""

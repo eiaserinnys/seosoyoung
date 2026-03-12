@@ -9,7 +9,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
 from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
-from seosoyoung.slackbot.soulstream.intervention import PendingPrompt
 from seosoyoung.slackbot.presentation.types import PresentationContext
 from seosoyoung.slackbot.soulstream.session import Session, SessionManager, SessionRuntime
 
@@ -286,23 +285,6 @@ class TestInterventionDualPath:
                     session_id="sess-001",
                 )
                 mock_run.assert_called_once()
-
-    def test_pending_prompt_saved_on_intervention(self, executor, session):
-        """인터벤션 시 pending에 프롬프트가 저장되는지 확인"""
-        pctx = _make_pctx()
-        executor._handle_intervention(
-            "1234.5678", "new prompt", "1234.0001",
-            on_compact=_noop_compact,
-            presentation=pctx,
-            role="admin",
-            user_message=None,
-            on_result=None,
-            session_id="sess-001",
-        )
-
-        assert "1234.5678" in executor._pending_prompts
-        assert executor._pending_prompts["1234.5678"].prompt == "new prompt"
-
 
 class TestConfigEnvVars:
     """Config에 추가된 env 변수 테스트"""

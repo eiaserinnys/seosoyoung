@@ -26,7 +26,11 @@ class TestProcessThreadMessageThinking:
 
     @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_sends_thinking_message_for_admin(self, mock_config):
-        """admin 역할일 때 '소영이 생각합니다...' 메시지 전송"""
+        """admin 역할일 때 '소영이 생각합니다...' 메시지 전송
+
+        run_with_event_callbacks가 placeholder + activity board 두 메시지를
+        순서대로 게시하므로, 첫 번째 호출이 thinking placeholder인지 검증합니다.
+        """
         from seosoyoung.slackbot.handlers.message import process_thread_message
 
         client = MagicMock()
@@ -56,16 +60,19 @@ class TestProcessThreadMessageThinking:
 
         assert result is True
 
-        # thinking 메시지가 전송되어야 함
-        client.chat_postMessage.assert_called_once()
-        call_kwargs = client.chat_postMessage.call_args[1]
-        assert call_kwargs["channel"] == "C_TEST"
-        assert call_kwargs["thread_ts"] == "1234.5678"
-        assert "소영이 생각합니다" in call_kwargs["text"]
+        # 첫 번째 호출: thinking placeholder, 두 번째: activity board
+        assert client.chat_postMessage.call_count >= 1
+        first_call_kwargs = client.chat_postMessage.call_args_list[0][1]
+        assert first_call_kwargs["channel"] == "C_TEST"
+        assert first_call_kwargs["thread_ts"] == "1234.5678"
+        assert "소영이 생각합니다" in first_call_kwargs["text"]
 
     @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_sends_placeholder_for_viewer(self, mock_config):
-        """viewer 역할일 때도 placeholder가 정상 전송됨 (Phase 2: 역할별 분기 제거)"""
+        """viewer 역할일 때도 placeholder가 정상 전송됨 (Phase 2: 역할별 분기 제거)
+
+        첫 번째 chat_postMessage 호출이 thinking placeholder인지 검증합니다.
+        """
         from seosoyoung.slackbot.handlers.message import process_thread_message
         from seosoyoung.slackbot.formatting import format_initial_placeholder
 
@@ -94,8 +101,8 @@ class TestProcessThreadMessageThinking:
             get_user_role, run_claude,
         )
 
-        call_kwargs = client.chat_postMessage.call_args[1]
-        assert call_kwargs["text"] == format_initial_placeholder()
+        first_call_kwargs = client.chat_postMessage.call_args_list[0][1]
+        assert first_call_kwargs["text"] == format_initial_placeholder()
 
     @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_pctx_last_msg_ts_is_none_initially(self, mock_config):

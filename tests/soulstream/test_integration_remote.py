@@ -17,7 +17,6 @@ import pytest
 
 from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
 from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
-from seosoyoung.slackbot.soulstream.intervention import PendingPrompt
 from seosoyoung.slackbot.soulstream.session import SessionManager, SessionRuntime
 from seosoyoung.slackbot.presentation.types import PresentationContext
 
@@ -258,8 +257,8 @@ class TestIntegrationIntervention:
         # 버퍼가 비어졌는지 확인
         assert "1234.5678" not in executor._pending_session_interventions
 
-    def test_pending_consumed_after_execution(self, executor, session):
-        """실행 완료 후 pending이 있으면 이어서 실행"""
+    def test_run_with_lock_single_execution(self, executor, session):
+        """_run_with_lock은 한 번만 실행"""
         pctx = _make_pctx()
 
         call_count = 0
@@ -269,14 +268,6 @@ class TestIntegrationIntervention:
             call_count += 1
 
         with patch.object(executor, "_execute_once", side_effect=mock_execute_once):
-            # pending에 프롬프트 저장
-            executor._intervention.save_pending("1234.5678", PendingPrompt(
-                prompt="후속 질문",
-                msg_ts="1234.0002",
-                on_compact=_noop_compact,
-                presentation=pctx,
-            ))
-
             executor._run_with_lock(
                 "1234.5678", "첫 질문", "1234.0001",
                 on_compact=_noop_compact,
@@ -287,8 +278,7 @@ class TestIntegrationIntervention:
                 on_result=None,
             )
 
-        # 첫 실행 + pending 이어서 실행 = 2회
-        assert call_count == 2
+        assert call_count == 1
 
 
 # === 3. 역할별 도구 테스트 ===

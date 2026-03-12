@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
 
-from seosoyoung.slackbot.soulstream.intervention import InterventionManager, PendingPrompt
+from seosoyoung.slackbot.soulstream.intervention import InterventionManager
 from seosoyoung.slackbot.soulstream.service_client import SoulServiceClient, SSEEvent
 
 

@@ -140,9 +140,8 @@
 - `RoleConfig` (seosoyoung/slackbot/soulstream/engine_types.py:67): 역할별 도구 접근 설정
 - `EngineEventType` (seosoyoung/slackbot/soulstream/engine_types.py:84): 엔진 이벤트 타입
 - `EngineEvent` (seosoyoung/slackbot/soulstream/engine_types.py:105): 엔진에서 발행하는 단일 이벤트
-- `ClaudeExecutor` (seosoyoung/slackbot/soulstream/executor.py:57): Claude Code 실행기
-- `PendingPrompt` (seosoyoung/slackbot/soulstream/intervention.py:19): 인터벤션 대기 중인 프롬프트 정보
-- `InterventionManager` (seosoyoung/slackbot/soulstream/intervention.py:43): 인터벤션 관리자
+- `ClaudeExecutor` (seosoyoung/slackbot/soulstream/executor.py:56): Claude Code 실행기
+- `InterventionManager` (seosoyoung/slackbot/soulstream/intervention.py:15): 인터벤션 관리자
 - `ResultProcessor` (seosoyoung/slackbot/soulstream/result_processor.py:18): Claude 실행 결과를 처리하여 슬랙에 응답
 - `ClaudeServiceAdapter` (seosoyoung/slackbot/soulstream/service_adapter.py:25): Soulstream 서버 어댑터
 - `SSEEvent` (seosoyoung/slackbot/soulstream/service_client.py:29): Server-Sent Event 데이터

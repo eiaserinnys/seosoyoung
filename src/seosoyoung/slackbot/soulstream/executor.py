@@ -1,10 +1,9 @@
 """Claude Code 실행 로직
 
-_run_claude_in_session 함수를 캡슐화한 모듈입니다.
+Soulstream 서버에 HTTP/SSE로 위임하여 Claude Code를 실행합니다.
 인터벤션(intervention) 기능을 지원하여, 실행 중 새 메시지가 도착하면
-현재 실행을 중단하고 새 프롬프트로 이어서 실행합니다.
+Soulstream에 interrupt를 전송하여 현재 실행을 중단시킵니다.
 
-Soulstream 서버(독립 soul-server)에 HTTP/SSE로 위임하여 실행합니다.
 per-session 아키텍처: agent_session_id가 유일한 식별자.
 """
 
@@ -14,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult, CompactCallback
-from seosoyoung.slackbot.soulstream.intervention import InterventionManager, PendingPrompt
+from seosoyoung.slackbot.soulstream.intervention import InterventionManager
 from seosoyoung.slackbot.soulstream.result_processor import ResultProcessor
 from seosoyoung.slackbot.soulstream.session import SessionManager, SessionRuntime
 from seosoyoung.slackbot.soulstream.types import UpdateMessageFn
@@ -102,8 +101,6 @@ class ClaudeExecutor:
 
         # 인터벤션 관리자
         self._intervention = InterventionManager()
-        # 하위 호환 프로퍼티 (테스트에서 직접 접근)
-        self._pending_prompts = self._intervention.pending_prompts
         # 결과 처리자
         self._result_processor = ResultProcessor(
             send_long_message=send_long_message,
@@ -146,8 +143,7 @@ class ClaudeExecutor:
         """세션 내에서 Claude Code 실행 (공통 로직)
 
         인터벤션 지원:
-        - 락 획득 실패 시 pending 저장 + interrupt
-        - 실행 완료 후 pending이 있으면 이어서 실행
+        - 락 획득 실패 시 Soulstream에 interrupt 전송
 
         Args:
             prompt: Claude에 전달할 프롬프트
@@ -223,27 +219,12 @@ class ClaudeExecutor:
         on_tool_result=None,
         on_input_request=None,
     ):
-        """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우"""
-        logger.info(f"인터벤션 발생: thread={thread_ts}")
+        """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
 
-        pending = PendingPrompt(
-            prompt=prompt,
-            msg_ts=msg_ts,
-            on_compact=on_compact,
-            presentation=presentation,
-            role=role,
-            user_message=user_message,
-            on_result=on_result,
-            session_id=session_id,
-            on_thinking=on_thinking,
-            on_text_start=on_text_start,
-            on_text_delta=on_text_delta,
-            on_text_end=on_text_end,
-            on_tool_start=on_tool_start,
-            on_tool_result=on_tool_result,
-            on_input_request=on_input_request,
-        )
-        self._intervention.save_pending(thread_ts, pending)
+        Soulstream에 interrupt를 전송하여 현재 실행을 중단시킵니다.
+        Soulstream 측에서 interrupt를 받으면 새 프롬프트로 이어서 실행합니다.
+        """
+        logger.info(f"인터벤션 발생: thread={thread_ts}")
 
         self._intervention.fire_interrupt_remote(
             thread_ts, prompt,
@@ -274,12 +255,11 @@ class ClaudeExecutor:
         on_tool_result=None,
         on_input_request=None,
     ):
-        """락을 보유한 상태에서 실행 (while 루프로 pending 처리)"""
+        """락을 보유한 상태에서 실행"""
         # 실행 중 세션으로 표시
         self.mark_session_running(thread_ts)
 
         try:
-            # 첫 번째 실행
             self._execute_once(
                 thread_ts, prompt, msg_ts,
                 on_compact=on_compact,
@@ -296,32 +276,6 @@ class ClaudeExecutor:
                 on_tool_result=on_tool_result,
                 on_input_request=on_input_request,
             )
-
-            # pending 확인 → while 루프
-            while True:
-                pending = self._intervention.pop_pending(thread_ts)
-                if not pending:
-                    break
-
-                logger.info(f"인터벤션 이어가기: thread={thread_ts}")
-
-                self._execute_once(
-                    thread_ts, pending.prompt, pending.msg_ts,
-                    on_compact=pending.on_compact,
-                    presentation=pending.presentation,
-                    session_id=pending.session_id,
-                    role=pending.role,
-                    user_message=pending.user_message,
-                    on_result=pending.on_result,
-                    on_thinking=pending.on_thinking,
-                    on_text_start=pending.on_text_start,
-                    on_text_delta=pending.on_text_delta,
-                    on_text_end=pending.on_text_end,
-                    on_tool_start=pending.on_tool_start,
-                    on_tool_result=pending.on_tool_result,
-                    on_input_request=pending.on_input_request,
-                )
-
         finally:
             self.mark_session_stopped(thread_ts)
 
@@ -456,7 +410,7 @@ class ClaudeExecutor:
         """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
 
-        # debug 콜백: 로컬 모드의 debug_send_fn과 동등한 동작
+        # debug 콜백: rate_limit 경고 등을 슬랙 스레드에 전송
         async def on_debug(message: str) -> None:
             if presentation is None:
                 return
