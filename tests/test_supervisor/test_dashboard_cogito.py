@@ -39,6 +39,10 @@ def pm():
 
 @pytest.fixture
 def client(pm, tmp_path):
+    # deployer.py는 TYPE_CHECKING 뒤에서만 임포트되므로,
+    # @reflect.capability 데코레이터가 등록되려면 명시적 임포트가 필요하다.
+    import supervisor.deployer  # noqa: F401
+
     app = create_app(
         process_manager=pm,
         deployer=MagicMock(
@@ -74,23 +78,24 @@ class TestSupervisorReflectEndpoints:
         resp = client.get("/reflect/config")
         assert resp.status_code == 200
         data = resp.json()
-        # deployment: GIT_POLL_INTERVAL
-        assert len(data["configs"]) == 1
+        # @reflect.config()는 별도 태스크에서 추가 예정
+        assert len(data["configs"]) == 0
 
     def test_config_deployment(self, client):
         resp = client.get("/reflect/config/deployment")
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["configs"]) == 1
-        assert data["configs"][0]["key"] == "GIT_POLL_INTERVAL"
-        assert data["configs"][0]["required"] is False
+        # @reflect.config()는 별도 태스크에서 추가 예정
+        assert len(data["configs"]) == 0
 
     def test_source(self, client):
-        """declare_capability (함수 없음)이므로 source는 빈 리스트."""
+        """@reflect.capability 데코레이터로 전환 후, 소스가 추적된다."""
         resp = client.get("/reflect/source")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["sources"] == []
+        assert len(data["sources"]) == 2
+        source_caps = {s["capability"] for s in data["sources"]}
+        assert source_caps == {"process_management", "deployment"}
 
     def test_runtime(self, client):
         resp = client.get("/reflect/runtime")

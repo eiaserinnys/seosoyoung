@@ -11,8 +11,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from cogito import Reflector
 from cogito.endpoint import mount_cogito
+
+from .reflect import reflect
 
 if TYPE_CHECKING:
     from .deployer import Deployer
@@ -94,26 +95,7 @@ def create_app(
 
     # --- Cogito reflection ---
 
-    _reflect = Reflector(
-        name="supervisor",
-        description="seosoyoung 프로세스 관리자",
-        version_from="git",
-        source_root=str(Path(__file__).resolve().parent),
-        port=8042,
-    )
-
-    _reflect.declare_capability(
-        name="process_management",
-        description="bot, MCP 서버 등 자식 프로세스의 생명주기 관리",
-    )
-
-    _reflect.declare_capability(
-        name="deployment",
-        description="Git 변경 감지 및 자동 배포 (롤링 업데이트)",
-        configs=[{"key": "GIT_POLL_INTERVAL", "source": "env", "required": False}],
-    )
-
-    mount_cogito(app, _reflect)
+    mount_cogito(app, reflect)
 
     # --- API ---
 

@@ -55,6 +55,7 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 from seosoyoung.rescue.config import RescueConfig
 from seosoyoung.rescue.engine_adapter import create_runner, interrupt, compact_session_sync
 from seosoyoung.rescue.claude.engine_types import EngineResult
+from seosoyoung.rescue.reflect import reflect
 from seosoyoung.rescue.session import Session, SessionManager
 from seosoyoung.rescue.slack_utils import update_message
 
@@ -219,6 +220,13 @@ class RescueBotApp:
 
     # === 메시지 처리 핵심 로직 ===
 
+    @reflect.capability(
+        name="emergency_execution",
+        description=(
+            "Claude Code SDK를 직접 호출하여 "
+            "soulstream 장애 시에도 명령을 처리"
+        ),
+    )
     def _process_message(
         self,
         prompt: str,
@@ -605,6 +613,13 @@ class RescueBotApp:
 
 # === 모듈 레벨 진입점 ===
 
+@reflect.capability(
+    name="standalone_operation",
+    description=(
+        "메인 봇과 독립된 Slack App으로 동작하여 "
+        "메인 봇 장애와 무관하게 가용"
+    ),
+)
 def main():
     """rescue-bot 진입점"""
     import os
@@ -613,32 +628,15 @@ def main():
     RescueConfig.validate()
 
     # Management 서버 시작 (cogito /reflect + supervisor graceful shutdown)
-    from cogito import Reflector
     from seosoyoung.rescue.shutdown import create_management_app, start_management_server
 
     _SHUTDOWN_PORT = int(os.environ["RESCUE_SHUTDOWN_PORT"])
-
-    _reflect = Reflector(
-        name="rescue-bot",
-        description="서소영 긴급 복구용 봇. soulstream 없이 Claude Code SDK를 직접 실행하여 장애 시에도 슬랙 명령을 처리한다.",
-        version_from="1.0.0",
-        language="python",
-        port=_SHUTDOWN_PORT,
-    )
-    _reflect.declare_capability(
-        name="emergency_execution",
-        description="Claude Code SDK를 직접 호출하여 soulstream 장애 시에도 명령을 처리",
-    )
-    _reflect.declare_capability(
-        name="standalone_operation",
-        description="메인 봇과 독립된 Slack App으로 동작하여 메인 봇 장애와 무관하게 가용",
-    )
 
     def _on_shutdown():
         logger.info("rescue-bot: graceful shutdown")
         os._exit(0)
 
-    _app = create_management_app(_reflect, _on_shutdown)
+    _app = create_management_app(reflect, _on_shutdown)
     start_management_server(_app, _SHUTDOWN_PORT)
 
     # Slack 앱 초기화

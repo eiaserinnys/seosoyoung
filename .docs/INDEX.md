@@ -34,6 +34,7 @@
 - [`rescue/engine_adapter.py`](modules/rescue_engine_adapter.md): rescue-bot 엔진 어댑터
 - [`rescue/main.py`](modules/rescue_main.md): rescue-bot 메인 모듈 (메인 봇 기본 대화 기능 완전 복제)
 - [`rescue/message_formatter.py`](modules/rescue_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티 (rescue-bot 경량 버전)
+- [`rescue/reflect.py`](modules/rescue_reflect.md): rescue-bot 서비스 cogito Reflector 싱글톤
 - [`rescue/session.py`](modules/rescue_session.md): rescue-bot 세션 관리 (경량 in-memory 버전)
 - [`rescue/shutdown.py`](modules/rescue_shutdown.md): Management 서버 (cogito /reflect + /shutdown)
 - [`rescue/slack_utils.py`](modules/rescue_slack_utils.md): rescue-bot용 슬랙 메시지 포맷팅 헬퍼
@@ -57,6 +58,7 @@
 - [`presentation/progress.py`](modules/presentation_progress.md): 진행 상태 콜백 팩토리
 - [`presentation/redact.py`](modules/presentation_redact.md): 민감 정보 REDACT 유틸리티
 - [`presentation/types.py`](modules/presentation_types.md): 프레젠테이션 컨텍스트 타입 정의
+- [`slackbot/reflect.py`](modules/slackbot_reflect.md): bot 서비스 cogito Reflector 싱글톤
 - [`slackbot/restart.py`](modules/slackbot_restart.md): 재시작 관리
 - [`slackbot/shutdown.py`](modules/slackbot_shutdown.md): Management 서버 (cogito /reflect + /shutdown)
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
@@ -108,8 +110,8 @@
 - `InstrumentedClaudeClient` (seosoyoung/rescue/claude/instrumented_client.py:39): rate_limit_event 등 SDK가 skip하는 이벤트를 관찰할 수 있는 확장 클라이언트.
 - `ParseAction` (seosoyoung/rescue/claude/sdk_compat.py:13): MessageParseError 처리 결과
 - `RescueConfig` (seosoyoung/rescue/config.py:14): rescue-bot 설정
-- `PendingPrompt` (seosoyoung/rescue/main.py:71): 인터벤션 대기 중인 프롬프트 정보
-- `RescueBotApp` (seosoyoung/rescue/main.py:80): rescue-bot 애플리케이션
+- `PendingPrompt` (seosoyoung/rescue/main.py:72): 인터벤션 대기 중인 프롬프트 정보
+- `RescueBotApp` (seosoyoung/rescue/main.py:81): rescue-bot 애플리케이션
 - `Session` (seosoyoung/rescue/session.py:14): 세션 정보
 - `SessionManager` (seosoyoung/rescue/session.py:27): 경량 세션 매니저 (in-memory)
 - `ConfigurationError` (seosoyoung/slackbot/config.py:18): 설정 오류 예외
@@ -140,7 +142,7 @@
 - `RoleConfig` (seosoyoung/slackbot/soulstream/engine_types.py:67): 역할별 도구 접근 설정
 - `EngineEventType` (seosoyoung/slackbot/soulstream/engine_types.py:84): 엔진 이벤트 타입
 - `EngineEvent` (seosoyoung/slackbot/soulstream/engine_types.py:105): 엔진에서 발행하는 단일 이벤트
-- `ClaudeExecutor` (seosoyoung/slackbot/soulstream/executor.py:56): Claude Code 실행기
+- `ClaudeExecutor` (seosoyoung/slackbot/soulstream/executor.py:57): Claude Code 실행기
 - `InterventionManager` (seosoyoung/slackbot/soulstream/intervention.py:15): 인터벤션 관리자
 - `ResultProcessor` (seosoyoung/slackbot/soulstream/result_processor.py:18): Claude 실행 결과를 처리하여 슬랙에 응답
 - `ClaudeServiceAdapter` (seosoyoung/slackbot/soulstream/service_adapter.py:25): Soulstream 서버 어댑터
@@ -225,7 +227,7 @@
 - `create_runner()` (seosoyoung/rescue/engine_adapter.py:27): rescue-bot용 ClaudeRunner를 생성합니다.
 - `interrupt()` (seosoyoung/rescue/engine_adapter.py:41): 실행 중인 스레드에 인터럽트 전송
 - `compact_session_sync()` (seosoyoung/rescue/engine_adapter.py:49): 세션 컴팩트 (동기)
-- `main()` (seosoyoung/rescue/main.py:608): rescue-bot 진입점
+- `main()` (seosoyoung/rescue/main.py:623): rescue-bot 진입점
 - `escape_backticks()` (seosoyoung/rescue/message_formatter.py:6): 텍스트 내 모든 백틱을 이스케이프
 - `create_management_app()` (seosoyoung/rescue/shutdown.py:19): cogito /reflect + /shutdown 을 제공하는 FastAPI 앱을 생성한다.
 - `start_management_server()` (seosoyoung/rescue/shutdown.py:32): FastAPI 앱을 별도 데몬 스레드에서 uvicorn으로 실행한다.
@@ -246,7 +248,7 @@
 - `format_tool_result()` (seosoyoung/slackbot/formatting.py:227): tool result 도착 시 표시 포맷
 - `build_input_request_blocks()` (seosoyoung/slackbot/formatting.py:252): AskUserQuestion 이벤트를 Slack Block Kit으로 변환
 - `format_input_request_answered()` (seosoyoung/slackbot/formatting.py:329): 응답 완료된 AskUserQuestion을 텍스트로 변환
-- `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:11): 모든 핸들러를 앱에 등록
+- `register_all_handlers()` (seosoyoung/slackbot/handlers/__init__.py:19): 모든 핸들러를 앱에 등록
 - `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:15): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `send_deploy_shutdown_popup()` (seosoyoung/slackbot/handlers/actions.py:83): 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
 - `register_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:146): 액션 핸들러 등록
@@ -280,19 +282,19 @@
 - `build_delete_selection_blocks()` (seosoyoung/slackbot/handlers/credential_ui.py:380): 프로필 삭제 선택 Block Kit 블록 생성
 - `build_delete_confirm_blocks()` (seosoyoung/slackbot/handlers/credential_ui.py:445): 프로필 삭제 확인 블록
 - `send_credential_alert()` (seosoyoung/slackbot/handlers/credential_ui.py:483): 크레덴셜 알림을 슬랙 채널에 전송
-- `extract_command()` (seosoyoung/slackbot/handlers/mention.py:31): 멘션에서 명령어 추출
-- `build_prompt()` (seosoyoung/slackbot/handlers/mention.py:57): 프롬프트 구성.
-- `try_handle_command()` (seosoyoung/slackbot/handlers/mention.py:138): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
-- `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:226): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
-- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:424): 멘션 핸들러 등록
+- `extract_command()` (seosoyoung/slackbot/handlers/mention.py:32): 멘션에서 명령어 추출
+- `build_prompt()` (seosoyoung/slackbot/handlers/mention.py:58): 프롬프트 구성.
+- `try_handle_command()` (seosoyoung/slackbot/handlers/mention.py:139): 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
+- `create_session_and_run_claude()` (seosoyoung/slackbot/handlers/mention.py:234): 세션 생성 + 컨텍스트 빌드 + Claude 실행.
+- `register_mention_handlers()` (seosoyoung/slackbot/handlers/mention.py:432): 멘션 핸들러 등록
 - `build_slack_context()` (seosoyoung/slackbot/handlers/message.py:16): 슬랙 컨텍스트 블록 문자열을 생성합니다.
 - `process_thread_message()` (seosoyoung/slackbot/handlers/message.py:52): 세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 - `register_message_handlers()` (seosoyoung/slackbot/handlers/message.py:325): 메시지 핸들러 등록
 - `setup_logging()` (seosoyoung/slackbot/logging_config.py:44): 로깅 설정 및 로거 반환
-- `notify_startup()` (seosoyoung/slackbot/main.py:240): 봇 시작 알림 (운영자 DM)
-- `notify_shutdown()` (seosoyoung/slackbot/main.py:250): 봇 종료 알림 (운영자 DM)
-- `init_bot_user_id()` (seosoyoung/slackbot/main.py:292): 봇 사용자 ID 초기화
-- `main()` (seosoyoung/slackbot/main.py:302): 봇 메인 진입점
+- `notify_startup()` (seosoyoung/slackbot/main.py:248): 봇 시작 알림 (운영자 DM)
+- `notify_shutdown()` (seosoyoung/slackbot/main.py:258): 봇 종료 알림 (운영자 DM)
+- `init_bot_user_id()` (seosoyoung/slackbot/main.py:300): 봇 사용자 ID 초기화
+- `main()` (seosoyoung/slackbot/main.py:310): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
 - `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:512): Initialize plugin SDK backends.
 - `run_with_event_callbacks()` (seosoyoung/slackbot/presentation/execution.py:24): placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화

@@ -7,6 +7,7 @@ import re
 import logging
 
 from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.reflect import reflect
 from seosoyoung.slackbot.slack import download_files_sync, build_file_context
 from seosoyoung.slackbot.slack.message_formatter import format_slack_message
 from seosoyoung.slackbot.handlers.message import process_thread_message, build_slack_context
@@ -223,6 +224,13 @@ def try_handle_command(
     return False
 
 
+@reflect.capability(
+    name="mention_response",
+    description=(
+        "@seosoyoung 멘션을 감지하여 soulstream에 Claude Code 세션을 요청하고 "
+        "응답을 스레드에 게시"
+    ),
+)
 def create_session_and_run_claude(
     event: dict,
     clean_text: str,

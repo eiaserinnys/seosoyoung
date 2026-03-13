@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from seosoyoung.slackbot.reflect import reflect
 from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult, CompactCallback
 from seosoyoung.slackbot.soulstream.intervention import InterventionManager
 from seosoyoung.slackbot.soulstream.result_processor import ResultProcessor
@@ -119,6 +120,13 @@ class ClaudeExecutor:
         self._pending_session_interventions: dict[str, list] = {}  # thread_ts -> [(prompt, ...)]
         self._pending_session_lock = threading.Lock()
 
+    @reflect.capability(
+        name="soulstream_integration",
+        description=(
+            "soulstream soul-server에 Claude Code 세션을 위임하고 "
+            "SSE 스트리밍으로 실시간 응답을 수신"
+        ),
+    )
     def run(
         self,
         prompt: str,

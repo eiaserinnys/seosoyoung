@@ -6,8 +6,16 @@ from seosoyoung.slackbot.handlers.actions import (
     register_action_handlers,
     register_credential_action_handlers,
 )
+from seosoyoung.slackbot.reflect import reflect
 
 
+@reflect.capability(
+    name="event_handling",
+    description=(
+        "Slack SocketMode를 통한 실시간 이벤트 수신 및 처리 "
+        "(메시지, 리액션, 앱 멘션 등)"
+    ),
+)
 def register_all_handlers(app, dependencies: dict):
     """모든 핸들러를 앱에 등록
 

@@ -36,7 +36,7 @@ class TestManifestLoad:
 
     def test_service_count(self, manifest_path):
         data = load_manifest(manifest_path)
-        assert len(data["services"]) == 6
+        assert len(data["services"]) == 9
 
     def test_internal_services(self, manifest_path):
         data = load_manifest(manifest_path)

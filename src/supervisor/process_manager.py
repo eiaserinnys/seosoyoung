@@ -17,6 +17,7 @@ from .models import (
     ProcessState,
     ProcessStatus,
 )
+from .reflect import reflect
 
 logger = logging.getLogger("supervisor")
 
@@ -100,6 +101,10 @@ class ProcessManager:
         except Exception:
             logger.debug("포트 %d 정리 중 오류 (무시)", port, exc_info=True)
 
+    @reflect.capability(
+        name="process_management",
+        description="bot, MCP 서버 등 자식 프로세스의 생명주기 관리",
+    )
     def start(self, name: str) -> None:
         """프로세스 시작"""
         state = self._ensure_registered(name)

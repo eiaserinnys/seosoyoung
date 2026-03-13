@@ -18,6 +18,7 @@ from .notifier import (
     notify_restart_start,
     notify_restart_complete,
 )
+from .reflect import reflect
 
 if TYPE_CHECKING:
     from .process_manager import ProcessManager
@@ -108,6 +109,12 @@ class Deployer:
                 source, self._state.value, self._pending_sources,
             )
 
+    # TODO: @reflect.config("GIT_POLL_INTERVAL", required=False)를 추가하여
+    # 기존 declare_capability의 configs 정보를 복원 (Phase 2 또는 별도 작업에서)
+    @reflect.capability(
+        name="deployment",
+        description="Git 변경 감지 및 자동 배포 (롤링 업데이트)",
+    )
     def tick(self) -> None:
         """상태 머신 한 스텝 진행."""
         if self._state == DeployState.IDLE:

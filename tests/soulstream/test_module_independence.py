@@ -96,12 +96,13 @@ class TestModuleImports:
         for py_file in claude_dir.glob("*.py"):
             tree = ast.parse(py_file.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
-                # executor.py는 credential_ui, config를 로컬 임포트로 사용 (허용)
+                # executor.py는 credential_ui, config, reflect를 로컬 임포트로 사용 (허용)
                 allowed_prefixes = (
                     "seosoyoung.slackbot.soulstream",
                     "seosoyoung.slackbot.formatting",
                     "seosoyoung.slackbot.handlers.credential_ui",
                     "seosoyoung.slackbot.config",
+                    "seosoyoung.slackbot.reflect",
                     "seosoyoung.utils",
                 )
                 if isinstance(node, ast.ImportFrom) and node.module:
