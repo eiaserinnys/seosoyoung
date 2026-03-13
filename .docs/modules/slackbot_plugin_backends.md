@@ -39,21 +39,21 @@ These backends wrap the existing seosoyoung infrastructure
 - `__init__(self, executor, session_manager, restart_manager, data_dir, slack_client, update_message_fn)` (줄 246): Initialize with Claude executor and session manager.
 - `_build_presentation(self, channel, thread_ts, msg_ts, session_id, role)` (줄 273): presentation이 전달되지 않은 호출(워처 등)을 위해 PresentationContext를 자동 구성.
 - `async run(self, prompt, channel, thread_ts, role, session_id, on_compact)` (줄 324): Execute Claude Code with the given prompt.
-- `async compact(self, session_id)` (줄 439): Compact a Claude Code session.
-- `get_session_id(self, thread_ts)` (줄 461): Get the Claude Code session ID for a thread.
-- `is_restart_pending(self)` (줄 466): Check if a restart is pending.
-- `get_data_dir(self)` (줄 470): Get the data directory for plugin storage.
+- `async compact(self, session_id)` (줄 450): Compact a Claude Code session.
+- `get_session_id(self, thread_ts)` (줄 472): Get the Claude Code session ID for a thread.
+- `is_restart_pending(self)` (줄 477): Check if a restart is pending.
+- `get_data_dir(self)` (줄 481): Get the data directory for plugin storage.
 
 ### `MentionTrackingBackendImpl`
-- 위치: 줄 480
+- 위치: 줄 491
 - 설명: Mention tracking backend wrapping the existing MentionTracker.
 
 #### 메서드
 
-- `__init__(self, tracker)` (줄 483): 
-- `mark(self, thread_ts)` (줄 486): 
-- `is_handled(self, thread_ts)` (줄 489): 
-- `unmark(self, thread_ts)` (줄 492): 
+- `__init__(self, tracker)` (줄 494): 
+- `mark(self, thread_ts)` (줄 497): 
+- `is_handled(self, thread_ts)` (줄 500): 
+- `unmark(self, thread_ts)` (줄 503): 
 
 ## 함수
 
@@ -62,7 +62,7 @@ These backends wrap the existing seosoyoung infrastructure
 - 설명: text_only 모드용 no-op compact 콜백.
 
 ### `init_plugin_backends(slack_client, executor, session_manager, restart_manager, data_dir, update_message_fn, mention_tracker)`
-- 위치: 줄 501
+- 위치: 줄 512
 - 설명: Initialize plugin SDK backends.
 
 Call this during startup after slack_client and executor are ready.

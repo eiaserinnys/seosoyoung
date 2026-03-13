@@ -539,3 +539,36 @@ class TestResultProcessorMainMsgTsNone:
         pctx.say.assert_called_once()
         call_kwargs = pctx.say.call_args[1]
         assert "오류" in call_kwargs["text"]
+
+
+class TestConcurrentRun:
+    """run()이 이벤트 루프를 블로킹하지 않고 병렬 실행되는지 검증"""
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(5)
+    async def test_concurrent_runs_not_serialized(self):
+        """여러 run() 호출이 이벤트 루프를 블로킹하지 않고 병렬 실행됨"""
+        import time
+
+        def slow_executor(**kwargs):
+            time.sleep(1)  # 1초 블로킹 시뮬레이션
+
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+
+        backend = _make_backend(
+            executor=slow_executor,
+            session_manager=mock_session_mgr,
+        )
+
+        start = time.monotonic()
+        results = await asyncio.gather(
+            backend.run(prompt="p1", channel="C1", thread_ts="ts1"),
+            backend.run(prompt="p2", channel="C2", thread_ts="ts2"),
+            backend.run(prompt="p3", channel="C3", thread_ts="ts3"),
+        )
+        elapsed = time.monotonic() - start
+
+        # 병렬이면 ~1초, 직렬이면 ~3초
+        assert elapsed < 2.0, f"Expected <2s (parallel), got {elapsed:.2f}s (serial)"
+        assert all(r.ok for r in results)

@@ -341,6 +341,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         text_only = kwargs.pop("text_only", False)
 
         try:
+            loop = asyncio.get_running_loop()
+
             # Get or use provided session_id
             if session_id is None:
                 session = self._session_manager.get(thread_ts)
@@ -359,15 +361,18 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 def capture_result(result, _thread_ts, _user_message):
                     captured_output.append(result.output or "")
 
-                self._executor(
-                    prompt=prompt,
-                    thread_ts=thread_ts,
-                    msg_ts=kwargs.get("msg_ts", thread_ts),
-                    on_compact=_noop_compact,
-                    presentation=None,
-                    session_id=session_id,
-                    role=role,
-                    on_result=capture_result,
+                await loop.run_in_executor(
+                    None,
+                    lambda: self._executor(
+                        prompt=prompt,
+                        thread_ts=thread_ts,
+                        msg_ts=kwargs.get("msg_ts", thread_ts),
+                        on_compact=_noop_compact,
+                        presentation=None,
+                        session_id=session_id,
+                        role=role,
+                        on_result=capture_result,
+                    ),
                 )
             else:
                 # Resolve presentation context
@@ -390,31 +395,37 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         run_with_event_callbacks,
                     )
 
-                    run_with_event_callbacks(
-                        presentation,
-                        self._executor,
-                        dict(
+                    await loop.run_in_executor(
+                        None,
+                        lambda: run_with_event_callbacks(
+                            presentation,
+                            self._executor,
+                            dict(
+                                prompt=prompt,
+                                thread_ts=thread_ts,
+                                msg_ts=kwargs.get("msg_ts", thread_ts),
+                                presentation=presentation,
+                                session_id=session_id,
+                                role=role,
+                                on_result=on_result_fn,
+                            ),
+                            on_compact_override=on_compact,
+                        ),
+                    )
+                else:
+                    # update_message_fn 없음 — 세분화 콜백 없이 실행
+                    await loop.run_in_executor(
+                        None,
+                        lambda: self._executor(
                             prompt=prompt,
                             thread_ts=thread_ts,
                             msg_ts=kwargs.get("msg_ts", thread_ts),
+                            on_compact=on_compact,
                             presentation=presentation,
                             session_id=session_id,
                             role=role,
                             on_result=on_result_fn,
                         ),
-                        on_compact_override=on_compact,
-                    )
-                else:
-                    # update_message_fn 없음 — 세분화 콜백 없이 실행
-                    self._executor(
-                        prompt=prompt,
-                        thread_ts=thread_ts,
-                        msg_ts=kwargs.get("msg_ts", thread_ts),
-                        on_compact=on_compact,
-                        presentation=presentation,
-                        session_id=session_id,
-                        role=role,
-                        on_result=on_result_fn,
                     )
 
             # Get updated session_id

@@ -123,7 +123,7 @@
 - `ParsedMarkers` (seosoyoung/slackbot/marker_parser.py:13): 파싱된 응용 마커
 - `SlackBackendImpl` (seosoyoung/slackbot/plugin_backends.py:49): Slack backend implementation using slack_sdk client.
 - `SoulstreamBackendImpl` (seosoyoung/slackbot/plugin_backends.py:243): Soulstream backend implementation using ClaudeExecutor.
-- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:480): Mention tracking backend wrapping the existing MentionTracker.
+- `MentionTrackingBackendImpl` (seosoyoung/slackbot/plugin_backends.py:491): Mention tracking backend wrapping the existing MentionTracker.
 - `ActivityItem` (seosoyoung/slackbot/presentation/activity_board.py:19): 
 - `ActivityBoard` (seosoyoung/slackbot/presentation/activity_board.py:24): 플레이스홀더 B의 항목 리스트를 관리하고 슬랙 메시지를 갱신
 - `SlackNode` (seosoyoung/slackbot/presentation/node_map.py:12): 이벤트 노드에 대응하는 슬랙 메시지
@@ -293,7 +293,7 @@
 - `init_bot_user_id()` (seosoyoung/slackbot/main.py:292): 봇 사용자 ID 초기화
 - `main()` (seosoyoung/slackbot/main.py:302): 봇 메인 진입점
 - `parse_markers()` (seosoyoung/slackbot/marker_parser.py:21): 출력 텍스트에서 응용 마커를 파싱합니다.
-- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:501): Initialize plugin SDK backends.
+- `init_plugin_backends()` (seosoyoung/slackbot/plugin_backends.py:512): Initialize plugin SDK backends.
 - `run_with_event_callbacks()` (seosoyoung/slackbot/presentation/execution.py:24): placeholder 게시 → 콜백 빌드 → executor 실행 → cleanup 패턴을 캡슐화
 - `wrap_on_compact_with_memory()` (seosoyoung/slackbot/presentation/execution.py:100): on_compact 콜백에 MemoryPlugin compact 플래그를 래핑
 - `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:28): 초기 placeholder 메시지를 게시하고 ts를 반환
