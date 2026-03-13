@@ -34,44 +34,44 @@ Args:
     source: 로그용 호출 출처 (예: "SIGTERM", "HTTP /shutdown")
 
 ### `_signal_handler(signum, frame)`
-- 위치: 줄 116
+- 위치: 줄 115
 - 설명: 시그널 수신 시 graceful shutdown 수행
 
 SIGTERM, SIGINT 수신 시 활성 세션이 있으면 사용자에게 확인을 받은 후 종료합니다.
 
 ### `async _slack_notifier(message)`
-- 위치: 줄 158
-- 설명: PluginManager 알림을 Slack에 전송.
+- 위치: 줄 157
+- 설명: PluginManager 알림을 운영자 DM으로 전송.
 
 ### `_load_plugins()`
-- 위치: 줄 171
+- 위치: 줄 169
 - 설명: plugins.yaml 레지스트리에서 플러그인을 로드합니다.
 
 ### `_build_dependencies()`
-- 위치: 줄 214
+- 위치: 줄 211
 - 설명: 핸들러 의존성 딕셔너리 빌드
 
 ### `notify_startup()`
-- 위치: 줄 243
-- 설명: 봇 시작 알림
+- 위치: 줄 240
+- 설명: 봇 시작 알림 (운영자 DM)
 
 ### `notify_shutdown()`
-- 위치: 줄 254
-- 설명: 봇 종료 알림
+- 위치: 줄 250
+- 설명: 봇 종료 알림 (운영자 DM)
 
 ### `_dispatch_plugin_startup()`
-- 위치: 줄 265
+- 위치: 줄 260
 - 설명: Dispatch on_startup hook to all loaded plugins.
 
 Plugins return runtime references (e.g. watcher, list_runner,
 channel_store, channel_collector) which are stored for handler access.
 
 ### `init_bot_user_id()`
-- 위치: 줄 297
+- 위치: 줄 292
 - 설명: 봇 사용자 ID 초기화
 
 ### `main()`
-- 위치: 줄 307
+- 위치: 줄 302
 - 설명: 봇 메인 진입점
 
 ## 내부 의존성
@@ -91,6 +91,7 @@ channel_store, channel_collector) which are stored for handler access.
 - `seosoyoung.slackbot.restart.RestartManager`
 - `seosoyoung.slackbot.restart.RestartType`
 - `seosoyoung.slackbot.slack.formatting.update_message`
+- `seosoyoung.slackbot.slack.helpers.resolve_operator_dm`
 - `seosoyoung.slackbot.slack.helpers.send_long_message`
 - `seosoyoung.slackbot.soulstream.executor.ClaudeExecutor`
 - `seosoyoung.slackbot.soulstream.session.SessionManager`

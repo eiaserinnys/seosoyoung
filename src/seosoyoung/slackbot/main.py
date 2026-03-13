@@ -14,7 +14,7 @@ from seosoyoung.slackbot.auth import check_permission, get_user_role
 from pathlib import Path
 from seosoyoung.slackbot.soulstream.session import SessionManager, SessionRuntime
 from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
-from seosoyoung.slackbot.slack.helpers import send_long_message
+from seosoyoung.slackbot.slack.helpers import send_long_message, resolve_operator_dm
 from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers
 from seosoyoung.slackbot.handlers.actions import send_restart_confirmation
@@ -96,8 +96,8 @@ def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
     logger.info(
         f"[{source}] 활성 세션 {running_count}개, 사용자 확인 팝업 전송"
     )
-    channel = Config.slack.notify_channel
-    if channel:
+    try:
+        channel = resolve_operator_dm(app.client, Config.slack.operator_user_id)
         from seosoyoung.slackbot.handlers.actions import send_deploy_shutdown_popup
         send_deploy_shutdown_popup(
             client=app.client,
@@ -105,10 +105,9 @@ def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
             running_count=running_count,
             restart_type=restart_type,
         )
-    else:
-        # notify_channel 미설정 시 팝업 불가 → 세션 대기 모드로 진입
+    except Exception as e:
         logger.warning(
-            f"[{source}] notify_channel 미설정, 세션 대기 모드로 진입"
+            f"[{source}] DM 채널 resolve 실패, 세션 대기 모드로 진입: {e}"
         )
         restart_manager.request_system_shutdown(restart_type)
 
@@ -156,13 +155,12 @@ _mention_tracker = MentionTracker()
 # -- Plugin system -----------------------------------------------------------
 
 async def _slack_notifier(message: str) -> None:
-    """PluginManager 알림을 Slack에 전송."""
-    channel = Config.slack.notify_channel
-    if channel:
-        try:
-            app.client.chat_postMessage(channel=channel, text=message)
-        except Exception as e:
-            logger.warning(f"플러그인 알림 전송 실패: {e}")
+    """PluginManager 알림을 운영자 DM으로 전송."""
+    try:
+        channel = resolve_operator_dm(app.client, Config.slack.operator_user_id)
+        app.client.chat_postMessage(channel=channel, text=message)
+    except Exception as e:
+        logger.warning(f"플러그인 알림 전송 실패: {e}")
 
 
 plugin_manager = PluginManager(notifier=_slack_notifier)
@@ -206,7 +204,6 @@ def _load_plugins() -> None:
             except Exception as e:
                 logger.error(f"플러그인 로드 실패 ({name}): {e}")
 
-        await plugin_manager.notify_startup_summary()
 
     run_in_new_loop(_load_all())
 
@@ -241,25 +238,23 @@ register_all_handlers(app, _build_dependencies())
 
 
 def notify_startup():
-    """봇 시작 알림"""
-    channel = Config.slack.notify_channel
-    if channel:
-        try:
-            app.client.chat_postMessage(channel=channel, text="안녕하세요, 서소영입니다.")
-            logger.info(f"시작 알림 전송: {channel}")
-        except Exception as e:
-            logger.error(f"시작 알림 실패: {e}")
+    """봇 시작 알림 (운영자 DM)"""
+    try:
+        channel = resolve_operator_dm(app.client, Config.slack.operator_user_id)
+        app.client.chat_postMessage(channel=channel, text="안녕하세요, 서소영입니다.")
+        logger.info(f"시작 알림 전송: {channel}")
+    except Exception as e:
+        logger.error(f"시작 알림 실패: {e}")
 
 
 def notify_shutdown():
-    """봇 종료 알림"""
-    channel = Config.slack.notify_channel
-    if channel:
-        try:
-            app.client.chat_postMessage(channel=channel, text="다음에 또 뵙겠습니다, 안녕히 계세요.")
-            logger.info(f"종료 알림 전송: {channel}")
-        except Exception as e:
-            logger.error(f"종료 알림 실패: {e}")
+    """봇 종료 알림 (운영자 DM)"""
+    try:
+        channel = resolve_operator_dm(app.client, Config.slack.operator_user_id)
+        app.client.chat_postMessage(channel=channel, text="다음에 또 뵙겠습니다, 안녕히 계세요.")
+        logger.info(f"종료 알림 전송: {channel}")
+    except Exception as e:
+        logger.error(f"종료 알림 실패: {e}")
 
 
 def _dispatch_plugin_startup():

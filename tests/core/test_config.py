@@ -9,7 +9,7 @@ import pytest
 
 
 _MINIMAL_ENV = {
-    "NOTIFY_CHANNEL": "",
+    "OPERATOR_USER_ID": "U_TEST_OPERATOR",
     "GEMINI_MODEL": "gemini-test",
     "SEOSOYOUNG_SOUL_URL": "http://localhost:4105",
     "SEOSOYOUNG_SOUL_TOKEN": "test-token",

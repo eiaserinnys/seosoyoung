@@ -525,20 +525,4 @@ class TestNotifications:
         )
         assert plugin.meta.name == "greeter"
 
-    async def test_startup_summary(self, manager, notifier):
-        _inject_module("fake_plugins.greeter", GreeterPlugin)
-        _inject_module("fake_plugins.stopper", StopperPlugin)
-        await manager.load("fake_plugins.greeter", config={"greeting": "hello"})
-        await manager.load("fake_plugins.stopper")
-        notifier.reset_mock()
-
-        await manager.notify_startup_summary()
-        notifier.assert_awaited_once()
-        msg = notifier.call_args[0][0]
-        assert "greeter" in msg
-        assert "stopper" in msg
-
-    async def test_startup_summary_empty(self, manager, notifier):
-        await manager.notify_startup_summary()
-        notifier.assert_awaited_once()
-        assert "No plugins" in notifier.call_args[0][0]
+    # notify_startup_summary() 제거됨 (운영 메시지 DM 전환)

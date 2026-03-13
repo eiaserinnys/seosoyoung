@@ -1,12 +1,34 @@
 """Slack 메시지 유틸리티
 
-파일 업로드, 긴 메시지 분할 전송 등의 헬퍼 함수들입니다.
+파일 업로드, 긴 메시지 분할 전송, DM 채널 resolve 등의 헬퍼 함수들입니다.
 """
 
 import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+_dm_channel_id: str | None = None
+
+
+def resolve_operator_dm(client, operator_user_id: str) -> str:
+    """운영자 DM 채널 ID를 획득하고 캐싱한다.
+
+    Slack conversations.open API로 운영자와의 IM 채널을 열고,
+    채널 ID를 모듈 레벨에서 캐싱하여 이후 호출에서 재사용한다.
+
+    Args:
+        client: Slack WebClient (동기)
+        operator_user_id: 운영자의 Slack user ID
+
+    Returns:
+        DM 채널 ID
+    """
+    global _dm_channel_id
+    if _dm_channel_id is None:
+        resp = client.conversations_open(users=operator_user_id)
+        _dm_channel_id = resp["channel"]["id"]
+    return _dm_channel_id
 
 
 def upload_file_to_slack(client, channel: str, thread_ts: str, file_path: str) -> tuple[bool, str]:

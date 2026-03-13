@@ -294,7 +294,7 @@ supervisor가 실행 중이면 `http://localhost:8042`에서 대시보드에 접
 | `ALLOWED_USERS` | 봇 사용 허용 사용자 ID (쉼표 구분) |
 | `ADMIN_USERS` | 관리자 사용자 ID (쉼표 구분) |
 | `DEBUG` | 디버그 모드 (true/false) |
-| `NOTIFY_CHANNEL` | 알림 채널 ID |
+| `OPERATOR_USER_ID` | 운영자 Slack user ID (운영 메시지 DM 발송) |
 
 ### 번역
 

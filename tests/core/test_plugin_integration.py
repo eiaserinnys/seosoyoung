@@ -666,14 +666,7 @@ class TestFullLifecycle:
 
         assert len(manager.plugins) == 2
 
-        # 2) Startup summary
-        notifier.reset_mock()
-        await manager.notify_startup_summary()
-        summary = notifier.call_args[0][0]
-        assert "alpha" in summary
-        assert "beta" in summary
-
-        # 3) Dispatch on_message
+        # 2) Dispatch on_message
         ctx = create_hook_context("on_message", text="world")
         result = await manager.dispatch("on_message", ctx)
         assert result.results == ["alpha:world", "B:world"]
@@ -782,11 +775,6 @@ class TestNotifierIntegration:
         )
         load_msg = notifier.call_args[0][0]
         assert "loaded" in load_msg.lower()
-
-        notifier.reset_mock()
-        await manager.notify_startup_summary()
-        summary_msg = notifier.call_args[0][0]
-        assert "alpha" in summary_msg
 
         notifier.reset_mock()
         await manager.unload("alpha")

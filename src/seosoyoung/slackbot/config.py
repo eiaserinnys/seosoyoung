@@ -49,7 +49,7 @@ class SlackConfig:
     bot_token: str | None = os.getenv("SLACK_BOT_TOKEN")
     app_token: str | None = os.getenv("SLACK_APP_TOKEN")
     bot_user_id: str | None = None  # 런타임에 auth.test()로 설정
-    notify_channel: str = os.environ["NOTIFY_CHANNEL"]
+    operator_user_id: str = os.environ["OPERATOR_USER_ID"]
 
 
 @dataclass

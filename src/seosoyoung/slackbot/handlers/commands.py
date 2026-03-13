@@ -15,6 +15,7 @@ import psutil
 from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.restart import RestartType
 from seosoyoung.slackbot.slack.formatting import update_message
+from seosoyoung.slackbot.slack.helpers import resolve_operator_dm
 
 logger = logging.getLogger(__name__)
 
@@ -483,9 +484,10 @@ def handle_update_restart(
     running_count = get_running_session_count()
 
     if running_count > 0:
+        channel = resolve_operator_dm(client, Config.slack.operator_user_id)
         send_restart_confirmation(
             client=client,
-            channel=Config.slack.notify_channel,
+            channel=channel,
             restart_type=restart_type,
             running_count=running_count,
             user_id=user_id,

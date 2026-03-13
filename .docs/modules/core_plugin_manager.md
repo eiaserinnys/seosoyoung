@@ -29,10 +29,9 @@ not buried in plugin config dicts.
 - `async unload(self, name)` (줄 131): Unload a plugin by name.
 - `async reload(self, name)` (줄 173): Reload a plugin, preserving config, priority, and dependencies.
 - `async dispatch(self, hook_name, context)` (줄 210): Dispatch a hook through registered handlers in priority order.
-- `async notify_startup_summary(self)` (줄 246): Send a summary of all loaded plugins.
-- `async _notify(self, message)` (줄 260): Send a notification if a notifier is configured.
-- `_find_plugin_class(mod)` (줄 274): Find the single Plugin subclass in a module.
-- `_cleanup_module(module_path)` (줄 298): Remove a module and its submodules from sys.modules.
+- `async _notify(self, message)` (줄 246): Send a notification if a notifier is configured.
+- `_find_plugin_class(mod)` (줄 260): Find the single Plugin subclass in a module.
+- `_cleanup_module(module_path)` (줄 284): Remove a module and its submodules from sys.modules.
 
 ## 내부 의존성
 

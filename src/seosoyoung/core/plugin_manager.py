@@ -243,20 +243,6 @@ class PluginManager:
 
         return context
 
-    async def notify_startup_summary(self) -> None:
-        """Send a summary of all loaded plugins."""
-        if not self._plugins:
-            await self._notify("📦 No plugins loaded.")
-            return
-
-        lines = ["📦 Plugin startup summary:"]
-        for name, plugin in self._plugins.items():
-            priority = self._priorities[name]
-            lines.append(
-                f"  - `{name}` v{plugin.meta.version} (priority={priority})"
-            )
-        await self._notify("\n".join(lines))
-
     async def _notify(self, message: str) -> None:
         """Send a notification if a notifier is configured."""
         if self._notifier is None:
