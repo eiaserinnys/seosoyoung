@@ -9,8 +9,8 @@ seosoyoung MCP 서버 정의
 ## 함수
 
 ### `slack_attach_file(file_path, channel, thread_ts)`
-- 위치: 줄 20
-- 데코레이터: mcp.tool
+- 위치: 줄 43
+- 데코레이터: mcp.tool, reflect.capability, reflect.config
 - 설명: 슬랙에 파일을 첨부합니다.
 
 workspace(slackbot_workspace) 내부 파일만 허용됩니다.
@@ -23,8 +23,8 @@ Args:
     thread_ts: 스레드 타임스탬프
 
 ### `slack_post_message(channel, text, thread_ts, file_paths)`
-- 위치: 줄 36
-- 데코레이터: mcp.tool
+- 위치: 줄 65
+- 데코레이터: mcp.tool, reflect.capability, reflect.config
 - 설명: 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
 
 텍스트 전송과 파일 첨부를 모두 지원합니다.
@@ -37,8 +37,8 @@ Args:
     file_paths: 파일 경로, 쉼표 구분 (선택)
 
 ### `async slack_generate_image(prompt, channel, thread_ts, reference_image_paths, image_size, aspect_ratio)`
-- 위치: 줄 57
-- 데코레이터: mcp.tool
+- 위치: 줄 92
+- 데코레이터: mcp.tool, reflect.capability, reflect.config
 - 설명: 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
 
 Gemini API (Nano Banana 2)를 사용하여 이미지를 생성합니다.
@@ -53,8 +53,8 @@ Args:
     aspect_ratio: 종횡비 - "1:1"(API 기본값), "16:9", "9:16", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "21:9", "1:4", "4:1", "1:8", "8:1" (선택)
 
 ### `async slack_download_thread_files(channel, thread_ts)`
-- 위치: 줄 89
-- 데코레이터: mcp.tool
+- 위치: 줄 130
+- 데코레이터: mcp.tool, reflect.capability, reflect.config
 - 설명: 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
 
 Slack conversations.replies API로 스레드 메시지를 조회하고,
@@ -65,8 +65,8 @@ Args:
     thread_ts: 스레드 타임스탬프
 
 ### `slack_get_user_profile(user_id)`
-- 위치: 줄 103
-- 데코레이터: mcp.tool
+- 위치: 줄 150
+- 데코레이터: mcp.tool, reflect.capability, reflect.config
 - 설명: Slack 사용자의 프로필 정보를 조회합니다.
 
 display_name, real_name, title, status, email, 프로필 이미지 URL 등을 반환합니다.
@@ -75,7 +75,7 @@ Args:
     user_id: Slack User ID (예: U08HWT0C6K1)
 
 ### `async slack_download_user_avatar(user_id, size)`
-- 위치: 줄 115
+- 위치: 줄 165
 - 데코레이터: mcp.tool
 - 설명: Slack 사용자의 프로필 이미지를 다운로드합니다.
 
@@ -84,6 +84,41 @@ Args:
 Args:
     user_id: Slack User ID (예: U08HWT0C6K1)
     size: 이미지 크기 (24, 32, 48, 72, 192, 512, 1024). 기본값 512.
+
+### `async reflect_level0(request)`
+- 위치: 줄 186
+- 데코레이터: mcp.custom_route
+- 설명: Level 0: identity + capabilities.
+
+### `async reflect_config_all(request)`
+- 위치: 줄 192
+- 데코레이터: mcp.custom_route
+- 설명: Level 1: all configuration entries.
+
+### `async reflect_config_by_cap(request)`
+- 위치: 줄 198
+- 데코레이터: mcp.custom_route
+- 설명: Level 1: configuration entries for a specific capability.
+
+### `async reflect_source_all(request)`
+- 위치: 줄 206
+- 데코레이터: mcp.custom_route
+- 설명: Level 2: all source locations.
+
+### `async reflect_source_by_cap(request)`
+- 위치: 줄 212
+- 데코레이터: mcp.custom_route
+- 설명: Level 2: source locations for a specific capability.
+
+### `async reflect_runtime(request)`
+- 위치: 줄 220
+- 데코레이터: mcp.custom_route
+- 설명: Level 3: runtime status.
+
+### `async reflect_full(request)`
+- 위치: 줄 226
+- 데코레이터: mcp.custom_route
+- 설명: Full response: all levels combined.
 
 ## 내부 의존성
 

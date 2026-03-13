@@ -166,12 +166,19 @@
 - `create_hook_context()` (seosoyoung/core/context.py:13): Create a HookContext with the given hook name and keyword arguments.
 - `load_plugin_config()` (seosoyoung/core/plugin_config.py:24): Load a single plugin's configuration YAML.
 - `load_plugin_registry()` (seosoyoung/core/plugin_config.py:51): Load the plugin registry (plugins.yaml).
-- `slack_attach_file()` (seosoyoung/mcp/server.py:20): 슬랙에 파일을 첨부합니다.
-- `slack_post_message()` (seosoyoung/mcp/server.py:36): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
-- `async slack_generate_image()` (seosoyoung/mcp/server.py:57): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
-- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:89): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
-- `slack_get_user_profile()` (seosoyoung/mcp/server.py:103): Slack 사용자의 프로필 정보를 조회합니다.
-- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:115): Slack 사용자의 프로필 이미지를 다운로드합니다.
+- `slack_attach_file()` (seosoyoung/mcp/server.py:43): 슬랙에 파일을 첨부합니다.
+- `slack_post_message()` (seosoyoung/mcp/server.py:65): 봇 권한으로 슬랙 채널에 메시지를 보냅니다.
+- `async slack_generate_image()` (seosoyoung/mcp/server.py:92): 텍스트 프롬프트로 이미지를 생성하고 슬랙 스레드에 업로드합니다.
+- `async slack_download_thread_files()` (seosoyoung/mcp/server.py:130): 스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
+- `slack_get_user_profile()` (seosoyoung/mcp/server.py:150): Slack 사용자의 프로필 정보를 조회합니다.
+- `async slack_download_user_avatar()` (seosoyoung/mcp/server.py:165): Slack 사용자의 프로필 이미지를 다운로드합니다.
+- `async reflect_level0()` (seosoyoung/mcp/server.py:186): Level 0: identity + capabilities.
+- `async reflect_config_all()` (seosoyoung/mcp/server.py:192): Level 1: all configuration entries.
+- `async reflect_config_by_cap()` (seosoyoung/mcp/server.py:198): Level 1: configuration entries for a specific capability.
+- `async reflect_source_all()` (seosoyoung/mcp/server.py:206): Level 2: all source locations.
+- `async reflect_source_by_cap()` (seosoyoung/mcp/server.py:212): Level 2: source locations for a specific capability.
+- `async reflect_runtime()` (seosoyoung/mcp/server.py:220): Level 3: runtime status.
+- `async reflect_full()` (seosoyoung/mcp/server.py:226): Full response: all levels combined.
 - `get_slack_context()` (seosoyoung/mcp/tools/attach.py:23): 현재 대화의 채널/스레드 정보를 환경변수에서 읽어 반환
 - `attach_file()` (seosoyoung/mcp/tools/attach.py:35): 슬랙에 파일을 첨부
 - `async generate_image()` (seosoyoung/mcp/tools/image_gen.py:67): Gemini API로 이미지를 생성하고 임시 파일로 저장

@@ -11,6 +11,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from cogito import Reflector
+from cogito.endpoint import mount_cogito
+
 if TYPE_CHECKING:
     from .deployer import Deployer
     from .git_poller import GitPoller
@@ -88,6 +91,40 @@ def create_app(
 
     # 재기동 상태 (외부 주입 또는 내부 생성)
     _restart = restart_state or _RestartState()
+
+    # --- Cogito reflection ---
+
+    _reflect = Reflector(
+        name="supervisor",
+        description="seosoyoung 프로세스 관리자",
+        version_from="git",
+        source_root=str(Path(__file__).resolve().parent),
+        port=8042,
+    )
+
+    _reflect.declare_capability(
+        name="process_management",
+        description="bot, MCP 서버 등 자식 프로세스의 생명주기 관리",
+    )
+
+    _reflect.declare_capability(
+        name="deployment",
+        description="Git 변경 감지 및 자동 배포 (롤링 업데이트)",
+        configs=[{"key": "GIT_POLL_INTERVAL", "source": "env", "required": False}],
+    )
+
+    # bot 대리 리플렉션: bot은 HTTP 엔드포인트가 없으므로 (shutdown 포트 3106만 존재)
+    # supervisor가 bot의 기능을 정적으로 선언하여 대리 제공
+    _reflect.declare_capability(
+        name="slack_bot",
+        description="Slack SocketMode 봇 (이벤트 처리, 멘션 응답) — supervisor 대리 제공",
+        configs=[
+            {"key": "SLACK_BOT_TOKEN", "source": "env", "sensitive": True},
+            {"key": "SLACK_APP_TOKEN", "source": "env", "sensitive": True},
+        ],
+    )
+
+    mount_cogito(app, _reflect)
 
     # --- API ---
 

@@ -1,9 +1,14 @@
 """seosoyoung MCP 서버 정의"""
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+from cogito import Reflector
 
 from seosoyoung.mcp.tools.attach import attach_file
 from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
@@ -15,8 +20,26 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP("seosoyoung-attach")
 
+reflect = Reflector(
+    name="mcp-seosoyoung",
+    description="서소영 봇 전용 MCP 서버",
+    version_from="git",
+    source_root=str(Path(__file__).resolve().parent),
+    port=3104,
+    transport="sse",
+)
+
+
+# --- MCP Tools with cogito annotations ---
+
 
 @mcp.tool()
+@reflect.capability(
+    name="file_attachment",
+    description="슬랙 채널에 파일 첨부",
+    tools=["slack_attach_file"],
+)
+@reflect.config("SLACK_BOT_TOKEN", sensitive=True)
 def slack_attach_file(file_path: str, channel: str, thread_ts: str) -> dict:
     """슬랙에 파일을 첨부합니다.
 
@@ -33,6 +56,12 @@ def slack_attach_file(file_path: str, channel: str, thread_ts: str) -> dict:
 
 
 @mcp.tool()
+@reflect.capability(
+    name="messaging",
+    description="봇 권한으로 슬랙 채널에 메시지 전송",
+    tools=["slack_post_message"],
+)
+@reflect.config("SLACK_BOT_TOKEN", sensitive=True)
 def slack_post_message(
     channel: str,
     text: str,
@@ -54,6 +83,12 @@ def slack_post_message(
 
 
 @mcp.tool()
+@reflect.capability(
+    name="image_generation",
+    description="텍스트 프롬프트로 이미지를 생성하여 슬랙에 업로드",
+    tools=["slack_generate_image"],
+)
+@reflect.config("GEMINI_API_KEY", sensitive=True)
 async def slack_generate_image(
     prompt: str,
     channel: str,
@@ -86,6 +121,12 @@ async def slack_generate_image(
 
 
 @mcp.tool()
+@reflect.capability(
+    name="thread_files",
+    description="슬랙 스레드 내 첨부 파일 다운로드",
+    tools=["slack_download_thread_files"],
+)
+@reflect.config("SLACK_BOT_TOKEN", sensitive=True)
 async def slack_download_thread_files(channel: str, thread_ts: str) -> dict:
     """스레드 내 모든 메시지의 첨부 파일을 다운로드합니다.
 
@@ -100,6 +141,12 @@ async def slack_download_thread_files(channel: str, thread_ts: str) -> dict:
 
 
 @mcp.tool()
+@reflect.capability(
+    name="user_profile",
+    description="Slack 사용자 프로필 조회 및 아바타 다운로드",
+    tools=["slack_get_user_profile", "slack_download_user_avatar"],
+)
+@reflect.config("SLACK_BOT_TOKEN", sensitive=True)
 def slack_get_user_profile(user_id: str) -> dict:
     """Slack 사용자의 프로필 정보를 조회합니다.
 
@@ -111,6 +158,9 @@ def slack_get_user_profile(user_id: str) -> dict:
     return get_user_profile(user_id)
 
 
+# NOTE: user_profile capability에 논리적으로 속하지만, cogito는
+# 1 capability = 1 function 바인딩이므로 별도 데코레이터를 달지 않는다.
+# tools 목록(위 @reflect.capability의 tools 파라미터)에만 선언하여 기능 범위를 나타낸다.
 @mcp.tool()
 async def slack_download_user_avatar(
     user_id: str, size: Optional[int] = None
@@ -126,3 +176,53 @@ async def slack_download_user_avatar(
     return await download_user_avatar(user_id, size)
 
 
+# --- Cogito reflection endpoints via FastMCP custom_route ---
+#
+# mount_cogito()는 FastAPI 전용이므로, FastMCP의 Starlette 앱에는
+# custom_route()를 통해 동일한 7개 엔드포인트를 직접 등록한다.
+
+
+@mcp.custom_route("/reflect", methods=["GET"])
+async def reflect_level0(request: Request) -> JSONResponse:
+    """Level 0: identity + capabilities."""
+    return JSONResponse(reflect.get_level0())
+
+
+@mcp.custom_route("/reflect/config", methods=["GET"])
+async def reflect_config_all(request: Request) -> JSONResponse:
+    """Level 1: all configuration entries."""
+    return JSONResponse(reflect.get_level1())
+
+
+@mcp.custom_route("/reflect/config/{capability_name}", methods=["GET"])
+async def reflect_config_by_cap(request: Request) -> JSONResponse:
+    """Level 1: configuration entries for a specific capability."""
+    return JSONResponse(
+        reflect.get_level1(request.path_params["capability_name"])
+    )
+
+
+@mcp.custom_route("/reflect/source", methods=["GET"])
+async def reflect_source_all(request: Request) -> JSONResponse:
+    """Level 2: all source locations."""
+    return JSONResponse(reflect.get_level2())
+
+
+@mcp.custom_route("/reflect/source/{capability_name}", methods=["GET"])
+async def reflect_source_by_cap(request: Request) -> JSONResponse:
+    """Level 2: source locations for a specific capability."""
+    return JSONResponse(
+        reflect.get_level2(request.path_params["capability_name"])
+    )
+
+
+@mcp.custom_route("/reflect/runtime", methods=["GET"])
+async def reflect_runtime(request: Request) -> JSONResponse:
+    """Level 3: runtime status."""
+    return JSONResponse(reflect.get_level3())
+
+
+@mcp.custom_route("/reflect/full", methods=["GET"])
+async def reflect_full(request: Request) -> JSONResponse:
+    """Full response: all levels combined."""
+    return JSONResponse(reflect.get_full())
