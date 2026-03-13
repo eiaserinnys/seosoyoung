@@ -31,7 +31,7 @@ _SUPERVISOR_PATH_PREFIX = "src/supervisor/"
 
 # soulstream 관련 경로 접두사
 _SOULSTREAM_DASHBOARD_PATH_PREFIX = "soul-dashboard/"
-_SOULSTREAM_DASHBOARD_PACKAGE_LOCK = "soul-dashboard/package-lock.json"
+_SOULSTREAM_DASHBOARD_PACKAGE_LOCK = "soul-dashboard/pnpm-lock.yaml"
 _SOULSTREAM_SERVER_PATH_PREFIX = "soul-server/"
 
 # 배포 시 프로세스 stop() 타임아웃 (초)
@@ -41,8 +41,8 @@ _DEPLOY_STOP_TIMEOUT = 0
 # 재시작 마커 파일명
 _RESTART_MARKER_NAME = "restart_in_progress"
 
-# npm 빌드 타임아웃 (초)
-_NPM_TIMEOUT = 120
+# pnpm 빌드 타임아웃 (초)
+_PNPM_TIMEOUT = 120
 
 
 class SupervisorRestartRequired(Exception):
@@ -390,14 +390,14 @@ class Deployer:
                     # hatchling editable install 버그 보정 (pip install 결과와 무관)
                     self._fix_editable_pth(soulstream_dir)
 
-                # soulstream-dashboard 변경 시 npm install
+                # soulstream-dashboard 변경 시 pnpm install
                 if any(f.startswith(_SOULSTREAM_DASHBOARD_PATH_PREFIX) for f in changed):
                     needs_install = any(
                         f == _SOULSTREAM_DASHBOARD_PACKAGE_LOCK for f in changed
                     )
                     dashboard_dir = soulstream_dir / "soul-dashboard"
                     build_ok = self._build_soul_dashboard(
-                        dashboard_dir, npm_install=needs_install,
+                        dashboard_dir, pnpm_install=needs_install,
                     )
                     if not build_ok:
                         logger.warning(
@@ -565,16 +565,16 @@ class Deployer:
     def _build_soul_dashboard(
         dashboard_dir: Path,
         *,
-        npm_install: bool = False,
+        pnpm_install: bool = False,
     ) -> bool:
         """soul-dashboard 클라이언트를 빌드한다.
 
-        npm_install이 True이면 빌드 전에 npm install을 실행한다.
+        pnpm_install이 True이면 빌드 전에 pnpm install을 실행한다.
         빌드 성공 시 True, 실패 시 False를 반환한다.
         """
-        npm = shutil.which("npm")
-        if not npm:
-            logger.warning("soul-dashboard 빌드 건너뜀: npm을 찾을 수 없음")
+        pnpm = shutil.which("pnpm")
+        if not pnpm:
+            logger.warning("soul-dashboard 빌드 건너뜀: pnpm을 찾을 수 없음")
             return False
 
         if not dashboard_dir.is_dir():
@@ -585,38 +585,38 @@ class Deployer:
 
         cwd = str(dashboard_dir)
 
-        if npm_install:
-            logger.info("soul-dashboard: npm install")
+        if pnpm_install:
+            logger.info("soul-dashboard: pnpm install")
             try:
                 result = subprocess.run(
-                    [npm, "install"],
+                    [pnpm, "install"],
                     cwd=cwd,
                     capture_output=True,
                     text=True,
-                    timeout=_NPM_TIMEOUT,
+                    timeout=_PNPM_TIMEOUT,
                 )
                 if result.returncode != 0:
                     logger.warning(
-                        "soul-dashboard npm install 실패 (rc=%d): %s",
+                        "soul-dashboard pnpm install 실패 (rc=%d): %s",
                         result.returncode,
                         result.stderr.strip()[:500],
                     )
                     return False
             except subprocess.TimeoutExpired:
-                logger.warning("soul-dashboard npm install 타임아웃")
+                logger.warning("soul-dashboard pnpm install 타임아웃")
                 return False
             except (subprocess.SubprocessError, OSError) as exc:
-                logger.warning("soul-dashboard npm install 오류: %s", exc)
+                logger.warning("soul-dashboard pnpm install 오류: %s", exc)
                 return False
 
-        logger.info("soul-dashboard: npm run build")
+        logger.info("soul-dashboard: pnpm run build")
         try:
             result = subprocess.run(
-                [npm, "run", "build"],
+                [pnpm, "run", "build"],
                 cwd=cwd,
                 capture_output=True,
                 text=True,
-                timeout=_NPM_TIMEOUT,
+                timeout=_PNPM_TIMEOUT,
             )
             if result.returncode != 0:
                 logger.warning(
