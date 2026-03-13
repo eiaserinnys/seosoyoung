@@ -307,10 +307,35 @@ def main():
     logger.info(f"ALLOWED_USERS: {Config.auth.allowed_users}")
     logger.info(f"DEBUG: {Config.debug}")
 
-    # Shutdown 서버 시작 (supervisor graceful shutdown용)
-    from seosoyoung.slackbot.shutdown import start_shutdown_server
+    # Management 서버 시작 (cogito /reflect + supervisor graceful shutdown)
+    from cogito import Reflector
+    from seosoyoung.slackbot.shutdown import create_management_app, start_management_server
 
-    _SHUTDOWN_PORT = int(os.environ.get("SHUTDOWN_PORT", "3106"))
+    _SHUTDOWN_PORT = int(os.environ["SHUTDOWN_PORT"])
+
+    _reflect = Reflector(
+        name="bot",
+        description="서소영 Slack SocketMode 봇. 이벤트 처리, 멘션 응답, 플러그인 시스템을 통해 soulstream과 연동한다.",
+        version_from="1.0.0",
+        language="python",
+        port=_SHUTDOWN_PORT,
+    )
+    _reflect.declare_capability(
+        name="event_handling",
+        description="Slack SocketMode를 통한 실시간 이벤트 수신 및 처리 (메시지, 리액션, 앱 멘션 등)",
+    )
+    _reflect.declare_capability(
+        name="mention_response",
+        description="@seosoyoung 멘션을 감지하여 soulstream에 Claude Code 세션을 요청하고 응답을 스레드에 게시",
+    )
+    _reflect.declare_capability(
+        name="plugin_system",
+        description="config/plugins.yaml 기반 동적 플러그인 로딩 (memory, channel_observer, trello, translate)",
+    )
+    _reflect.declare_capability(
+        name="soulstream_integration",
+        description="soulstream soul-server에 Claude Code 세션을 위임하고 SSE 스트리밍으로 실시간 응답을 수신",
+    )
 
     def _on_shutdown_request():
         """supervisor에서 graceful shutdown 요청을 받았을 때
@@ -319,8 +344,8 @@ def main():
         """
         _shutdown_with_session_wait(RestartType.RESTART, "HTTP /shutdown")
 
-    start_shutdown_server(_SHUTDOWN_PORT, _on_shutdown_request)
-    logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")
+    _app = create_management_app(_reflect, _on_shutdown_request)
+    start_management_server(_app, _SHUTDOWN_PORT)
     init_bot_user_id()
 
     # Initialize plugin SDK backends (must be before plugin load)

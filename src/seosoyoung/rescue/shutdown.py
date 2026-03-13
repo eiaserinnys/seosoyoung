@@ -1,47 +1,38 @@
-"""경량 HTTP Shutdown 서버
+"""Management 서버 (cogito /reflect + /shutdown)
 
-supervisor에서 POST /shutdown 요청을 받아 프로세스를 graceful하게 종료합니다.
+cogito 리플렉션 엔드포인트와 supervisor graceful shutdown 엔드포인트를
+FastAPI 앱으로 통합하여 제공한다.
 """
 
 import logging
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Callable
+
+import uvicorn
+from cogito import Reflector
+from cogito.endpoint import mount_cogito
+from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
 
-class _ShutdownHandler(BaseHTTPRequestHandler):
-    shutdown_callback: Callable[[], None]
+def create_management_app(reflector: Reflector, shutdown_callback: Callable[[], None]) -> FastAPI:
+    """cogito /reflect + /shutdown 을 제공하는 FastAPI 앱을 생성한다."""
+    app = FastAPI()
+    mount_cogito(app, reflector)
 
-    def do_POST(self):
-        if self.path == "/shutdown":
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"shutting down")
-            threading.Timer(0.1, self.shutdown_callback).start()
-        else:
-            self.send_response(404)
-            self.end_headers()
+    @app.post("/shutdown")
+    async def shutdown():
+        threading.Timer(0.1, shutdown_callback).start()
+        return {"status": "shutting down"}
 
-    def log_message(self, format, *args):
-        pass  # HTTP 요청 로그 억제
+    return app
 
 
-def start_shutdown_server(
-    port: int,
-    callback: Callable[[], None],
-    host: str = "127.0.0.1",
-) -> HTTPServer:
-    """셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환."""
-    handler_class = type(
-        "_Handler",
-        (_ShutdownHandler,),
-        {"shutdown_callback": staticmethod(callback)},
-    )
-    server = HTTPServer((host, port), handler_class)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+def start_management_server(app: FastAPI, port: int, host: str = "127.0.0.1"):
+    """FastAPI 앱을 별도 데몬 스레드에서 uvicorn으로 실행한다."""
+    config = uvicorn.Config(app, host=host, port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
-    logger.info("Shutdown server started on %s:%d", host, port)
-    return server
+    logger.info("Management server started on %s:%d", host, port)

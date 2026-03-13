@@ -113,17 +113,6 @@ def create_app(
         configs=[{"key": "GIT_POLL_INTERVAL", "source": "env", "required": False}],
     )
 
-    # bot 대리 리플렉션: bot은 HTTP 엔드포인트가 없으므로 (shutdown 포트 3106만 존재)
-    # supervisor가 bot의 기능을 정적으로 선언하여 대리 제공
-    _reflect.declare_capability(
-        name="slack_bot",
-        description="Slack SocketMode 봇 (이벤트 처리, 멘션 응답) — supervisor 대리 제공",
-        configs=[
-            {"key": "SLACK_BOT_TOKEN", "source": "env", "sensitive": True},
-            {"key": "SLACK_APP_TOKEN", "source": "env", "sensitive": True},
-        ],
-    )
-
     mount_cogito(app, _reflect)
 
     # --- API ---

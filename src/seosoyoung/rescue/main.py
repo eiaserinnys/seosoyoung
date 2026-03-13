@@ -612,17 +612,34 @@ def main():
 
     RescueConfig.validate()
 
-    # Shutdown 서버 시작 (supervisor graceful shutdown용)
-    from seosoyoung.rescue.shutdown import start_shutdown_server
+    # Management 서버 시작 (cogito /reflect + supervisor graceful shutdown)
+    from cogito import Reflector
+    from seosoyoung.rescue.shutdown import create_management_app, start_management_server
 
     _SHUTDOWN_PORT = int(os.environ["RESCUE_SHUTDOWN_PORT"])
+
+    _reflect = Reflector(
+        name="rescue-bot",
+        description="서소영 긴급 복구용 봇. soulstream 없이 Claude Code SDK를 직접 실행하여 장애 시에도 슬랙 명령을 처리한다.",
+        version_from="1.0.0",
+        language="python",
+        port=_SHUTDOWN_PORT,
+    )
+    _reflect.declare_capability(
+        name="emergency_execution",
+        description="Claude Code SDK를 직접 호출하여 soulstream 장애 시에도 명령을 처리",
+    )
+    _reflect.declare_capability(
+        name="standalone_operation",
+        description="메인 봇과 독립된 Slack App으로 동작하여 메인 봇 장애와 무관하게 가용",
+    )
 
     def _on_shutdown():
         logger.info("rescue-bot: graceful shutdown")
         os._exit(0)
 
-    start_shutdown_server(_SHUTDOWN_PORT, _on_shutdown)
-    logger.info(f"Shutdown server started on port {_SHUTDOWN_PORT}")
+    _app = create_management_app(_reflect, _on_shutdown)
+    start_management_server(_app, _SHUTDOWN_PORT)
 
     # Slack 앱 초기화
     slack_app = App(token=RescueConfig.SLACK_BOT_TOKEN, logger=logger)

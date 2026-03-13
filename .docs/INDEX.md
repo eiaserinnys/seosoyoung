@@ -35,7 +35,7 @@
 - [`rescue/main.py`](modules/rescue_main.md): rescue-bot 메인 모듈 (메인 봇 기본 대화 기능 완전 복제)
 - [`rescue/message_formatter.py`](modules/rescue_message_formatter.md): 슬랙 메시지 포맷팅 유틸리티 (rescue-bot 경량 버전)
 - [`rescue/session.py`](modules/rescue_session.md): rescue-bot 세션 관리 (경량 in-memory 버전)
-- [`rescue/shutdown.py`](modules/rescue_shutdown.md): 경량 HTTP Shutdown 서버
+- [`rescue/shutdown.py`](modules/rescue_shutdown.md): Management 서버 (cogito /reflect + /shutdown)
 - [`rescue/slack_utils.py`](modules/rescue_slack_utils.md): rescue-bot용 슬랙 메시지 포맷팅 헬퍼
 - [`slackbot/__main__.py`](modules/slackbot___main__.md): python -m seosoyoung.slackbot 실행 지원
 - [`slackbot/auth.py`](modules/slackbot_auth.md): 권한 및 역할 관리
@@ -58,7 +58,7 @@
 - [`presentation/redact.py`](modules/presentation_redact.md): 민감 정보 REDACT 유틸리티
 - [`presentation/types.py`](modules/presentation_types.md): 프레젠테이션 컨텍스트 타입 정의
 - [`slackbot/restart.py`](modules/slackbot_restart.md): 재시작 관리
-- [`slackbot/shutdown.py`](modules/slackbot_shutdown.md): 경량 HTTP Shutdown 서버
+- [`slackbot/shutdown.py`](modules/slackbot_shutdown.md): Management 서버 (cogito /reflect + /shutdown)
 - [`slack/file_handler.py`](modules/slack_file_handler.md): 슬랙 파일 다운로드 및 처리 유틸리티
 - [`slack/formatting.py`](modules/slack_formatting.md): 슬랙 메시지 포맷팅 헬퍼
 - [`slack/helpers.py`](modules/slack_helpers.md): Slack 메시지 유틸리티
@@ -227,7 +227,8 @@
 - `compact_session_sync()` (seosoyoung/rescue/engine_adapter.py:49): 세션 컴팩트 (동기)
 - `main()` (seosoyoung/rescue/main.py:608): rescue-bot 진입점
 - `escape_backticks()` (seosoyoung/rescue/message_formatter.py:6): 텍스트 내 모든 백틱을 이스케이프
-- `start_shutdown_server()` (seosoyoung/rescue/shutdown.py:32): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
+- `create_management_app()` (seosoyoung/rescue/shutdown.py:19): cogito /reflect + /shutdown 을 제공하는 FastAPI 앱을 생성한다.
+- `start_management_server()` (seosoyoung/rescue/shutdown.py:32): FastAPI 앱을 별도 데몬 스레드에서 uvicorn으로 실행한다.
 - `build_section_blocks()` (seosoyoung/rescue/slack_utils.py:9): mrkdwn section block 리스트 생성
 - `update_message()` (seosoyoung/rescue/slack_utils.py:17): 슬랙 메시지를 업데이트합니다.
 - `check_permission()` (seosoyoung/slackbot/auth.py:13): 사용자 권한 확인 (관리자 명령어용)
@@ -299,7 +300,8 @@
 - `post_initial_placeholder()` (seosoyoung/slackbot/presentation/progress.py:28): 초기 placeholder 메시지를 게시하고 ts를 반환
 - `build_event_callbacks()` (seosoyoung/slackbot/presentation/progress.py:56): 세분화 이벤트 콜백 + on_compact 팩토리
 - `redact_sensitive()` (seosoyoung/slackbot/presentation/redact.py:75): 텍스트에서 민감 정보를 [REDACTED]로 대체합니다.
-- `start_shutdown_server()` (seosoyoung/slackbot/shutdown.py:33): 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
+- `create_management_app()` (seosoyoung/slackbot/shutdown.py:19): cogito /reflect + /shutdown 을 제공하는 FastAPI 앱을 생성한다.
+- `start_management_server()` (seosoyoung/slackbot/shutdown.py:32): FastAPI 앱을 별도 데몬 스레드에서 uvicorn으로 실행한다.
 - `get_file_type()` (seosoyoung/slackbot/slack/file_handler.py:54): 파일 확장자로 타입 분류
 - `ensure_tmp_dir()` (seosoyoung/slackbot/slack/file_handler.py:67): 스레드별 임시 폴더 생성
 - `cleanup_thread_files()` (seosoyoung/slackbot/slack/file_handler.py:76): 스레드의 임시 파일 정리

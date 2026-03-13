@@ -4,22 +4,17 @@
 
 ## 개요
 
-경량 HTTP Shutdown 서버
+Management 서버 (cogito /reflect + /shutdown)
 
-supervisor에서 POST /shutdown 요청을 받아 프로세스를 graceful하게 종료합니다.
-
-## 클래스
-
-### `_ShutdownHandler` (BaseHTTPRequestHandler)
-- 위치: 줄 14
-
-#### 메서드
-
-- `do_POST(self)` (줄 17): 
-- `log_message(self, format)` (줄 28): 
+cogito 리플렉션 엔드포인트와 supervisor graceful shutdown 엔드포인트를
+FastAPI 앱으로 통합하여 제공한다.
 
 ## 함수
 
-### `start_shutdown_server(port, callback, host)`
+### `create_management_app(reflector, shutdown_callback)`
+- 위치: 줄 19
+- 설명: cogito /reflect + /shutdown 을 제공하는 FastAPI 앱을 생성한다.
+
+### `start_management_server(app, port, host)`
 - 위치: 줄 32
-- 설명: 셧다운 서버를 데몬 스레드에서 시작. HTTPServer 인스턴스 반환.
+- 설명: FastAPI 앱을 별도 데몬 스레드에서 uvicorn으로 실행한다.

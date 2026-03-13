@@ -62,31 +62,20 @@ class TestSupervisorReflectEndpoints:
         data = resp.json()
         assert data["identity"]["name"] == "supervisor"
         assert data["identity"]["port"] == 8042
-        assert len(data["capabilities"]) == 3
+        assert len(data["capabilities"]) == 2
 
     def test_capability_names(self, client):
         resp = client.get("/reflect")
         data = resp.json()
         cap_names = {c["name"] for c in data["capabilities"]}
-        assert cap_names == {"process_management", "deployment", "slack_bot"}
+        assert cap_names == {"process_management", "deployment"}
 
     def test_config_all(self, client):
         resp = client.get("/reflect/config")
         assert resp.status_code == 200
         data = resp.json()
         # deployment: GIT_POLL_INTERVAL
-        # slack_bot: SLACK_BOT_TOKEN, SLACK_APP_TOKEN
-        assert len(data["configs"]) == 3
-
-    def test_config_slack_bot(self, client):
-        resp = client.get("/reflect/config/slack_bot")
-        assert resp.status_code == 200
-        data = resp.json()
-        keys = {c["key"] for c in data["configs"]}
-        assert keys == {"SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"}
-        # sensitive 확인
-        for cfg in data["configs"]:
-            assert cfg["sensitive"] is True
+        assert len(data["configs"]) == 1
 
     def test_config_deployment(self, client):
         resp = client.get("/reflect/config/deployment")
