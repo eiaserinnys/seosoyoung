@@ -175,6 +175,8 @@ def handle_help(*, say, ts, **_):
             "• `@seosoyoung cleanup` - 고아 프로세스/세션 정리 (관리자)\n"
             "• `@seosoyoung profile` - 인증 프로필 관리 (관리자)\n"
             "• `@seosoyoung session-info` - 스레드 세션 정보 조회 (관리자)\n"
+            "• `@seosoyoung set-token <토큰>` - Claude OAuth 토큰 설정 (관리자)\n"
+            "• `@seosoyoung clear-token` - Claude OAuth 토큰 삭제 (관리자)\n"
             "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
             "• `@seosoyoung restart` - 봇 재시작 (관리자)"
         ),
