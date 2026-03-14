@@ -1138,6 +1138,92 @@ class TestCredentialProfileAPI:
         session.delete.assert_called_once_with("http://localhost:3105/profiles/old")
 
 
+class TestClaudeOAuthTokenAPI:
+    """SoulServiceClient Claude OAuth Token API 테스트"""
+
+    @pytest.fixture
+    def client(self):
+        return SoulServiceClient(base_url="http://localhost:3105", token="test")
+
+    # --- set_claude_token ---
+
+    @pytest.mark.asyncio
+    async def test_set_claude_token_success(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
+            "success": True, "message": "토큰이 설정되었습니다."
+        })
+        client._session = _mock_session(mock_response)
+
+        result = await client.set_claude_token("sk-ant-oat01-xxx")
+        assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_set_claude_token_error(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 400
+        mock_response.json = AsyncMock(return_value={"error": {"message": "invalid token"}})
+        client._session = _mock_session(mock_response)
+
+        with pytest.raises(SoulServiceError, match="토큰 설정 실패"):
+            await client.set_claude_token("bad-token")
+
+    @pytest.mark.asyncio
+    async def test_set_claude_token_url(self, client):
+        """set_claude_token이 올바른 URL을 호출하는지 확인"""
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"success": True})
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.set_claude_token("sk-ant-oat01-xxx")
+
+        call_args = session.post.call_args
+        url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url", "")
+        assert url == "http://localhost:3105/auth/claude/token"
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+        assert body["token"] == "sk-ant-oat01-xxx"
+
+    # --- clear_claude_token ---
+
+    @pytest.mark.asyncio
+    async def test_clear_claude_token_success(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={
+            "success": True, "message": "토큰이 삭제되었습니다."
+        })
+        client._session = _mock_session(mock_response, method="delete")
+
+        result = await client.clear_claude_token()
+        assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_clear_claude_token_error(self, client):
+        mock_response = AsyncMock()
+        mock_response.status = 500
+        mock_response.json = AsyncMock(return_value={"error": {"message": "internal error"}})
+        client._session = _mock_session(mock_response, method="delete")
+
+        with pytest.raises(SoulServiceError, match="토큰 삭제 실패"):
+            await client.clear_claude_token()
+
+    @pytest.mark.asyncio
+    async def test_clear_claude_token_url(self, client):
+        """clear_claude_token이 올바른 URL을 호출하는지 확인"""
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"success": True})
+        session = _mock_session(mock_response, method="delete")
+        client._session = session
+
+        await client.clear_claude_token()
+
+        session.delete.assert_called_once_with("http://localhost:3105/auth/claude/token")
+
+
 class TestParseError:
     """_parse_error 테스트"""
 

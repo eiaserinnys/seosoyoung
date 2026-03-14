@@ -11,8 +11,25 @@ import pytest
 load_dotenv()
 
 # 테스트 환경 변수 설정
-os.environ["SLACK_BOT_TOKEN"] = "xoxb-test-token"
-os.environ["SLACK_APP_TOKEN"] = "xapp-test-token"
+os.environ.setdefault("SLACK_BOT_TOKEN", "xoxb-test-token")
+os.environ.setdefault("SLACK_APP_TOKEN", "xapp-test-token")
+os.environ.setdefault("OPERATOR_USER_ID", "U00000000")
+os.environ.setdefault("GEMINI_API_KEY", "")
+os.environ.setdefault("GEMINI_MODEL", "gemini-3-pro-image-preview")
+os.environ.setdefault("SEOSOYOUNG_SOUL_URL", "http://localhost:4105")
+os.environ.setdefault("SEOSOYOUNG_SOUL_TOKEN", "test-token")
+os.environ.setdefault("CREDENTIAL_ALERT_CHANNEL", "")
+os.environ.setdefault("EXECUTE_EMOJI", "rocket")
+os.environ.setdefault("EMOJI_TRANSLATE_PROGRESS", "hourglass_flowing_sand")
+os.environ.setdefault("EMOJI_TRANSLATE_DONE", "ssy-happy")
+os.environ.setdefault("EMOJI_TEXT_SESSION_START", ":rocket:")
+os.environ.setdefault("EMOJI_TEXT_LTM_INJECT", ":brain:")
+os.environ.setdefault("EMOJI_TEXT_NEW_OBS_INJECT", ":eye:")
+os.environ.setdefault("EMOJI_TEXT_SESSION_OBS_INJECT", ":thread:")
+os.environ.setdefault("EMOJI_TEXT_CHANNEL_OBS_INJECT", ":channel:")
+os.environ.setdefault("EMOJI_TEXT_RESTART_TROUBLE", ":warning:")
+os.environ.setdefault("EMOJI_TEXT_OBS_COMPLETE", ":white_check_mark:")
+os.environ.setdefault("EMOJI_TEXT_INTERVENTION_ERROR", ":x:")
 # ANTHROPIC_API_KEY는 설정하지 않음 (CLI 로그인 세션 사용)
 # os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test-key"
 
@@ -23,6 +40,14 @@ mock_app.event = MagicMock(return_value=lambda f: f)  # 데코레이터 mock
 sys.modules["slack_bolt"] = MagicMock()
 sys.modules["slack_bolt"].App = MagicMock(return_value=mock_app)
 sys.modules["slack_bolt.adapter.socket_mode"] = MagicMock()
+
+# cogito mock (설치되지 않은 경우)
+mock_cogito = MagicMock()
+mock_cogito.Reflector = MagicMock(return_value=MagicMock(
+    capability=MagicMock(return_value=lambda f: f),
+    collect_capabilities=MagicMock(return_value=[]),
+))
+sys.modules["cogito"] = mock_cogito
 
 # src 경로 추가
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))

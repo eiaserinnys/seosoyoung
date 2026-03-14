@@ -23,6 +23,8 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_plugins,
     handle_resume_list_run,
     handle_session_info,
+    handle_set_token,
+    handle_clear_token,
 )
 from seosoyoung.slackbot.soulstream.session_context import build_initial_context, format_hybrid_context
 
@@ -110,7 +112,7 @@ def _get_channel_messages(client, channel: str, limit: int = 20) -> list[dict]:
 
 _ADMIN_COMMANDS = frozenset({
     "help", "status", "update", "restart", "compact", "profile", "cleanup", "log", "plugins",
-    "session-info",
+    "session-info", "clear-token",
 })
 
 _COMMAND_DISPATCH = {
@@ -124,6 +126,7 @@ _COMMAND_DISPATCH = {
     "compact": handle_compact,
     "plugins": handle_plugins,
     "session-info": handle_session_info,
+    "clear-token": handle_clear_token,
 }
 
 
@@ -133,6 +136,7 @@ def _is_admin_command(command: str) -> bool:
         command in _ADMIN_COMMANDS
         or command.startswith("profile ")
         or command.startswith("cleanup")
+        or command.startswith("set-token")
     )
 
 
@@ -219,6 +223,10 @@ def try_handle_command(
 
     if command.startswith("plugins"):
         handle_plugins(**kwargs)
+        return True
+
+    if command.startswith("set-token"):
+        handle_set_token(**kwargs)
         return True
 
     return False

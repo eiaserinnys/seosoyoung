@@ -548,6 +548,41 @@ class SoulServiceClient:
             data = await response.json()
             return data.get("email")
 
+    # === Claude OAuth Token API ===
+
+    async def set_claude_token(self, token: str) -> dict:
+        """Claude OAuth 토큰 설정 (POST /auth/claude/token)
+
+        Args:
+            token: sk-ant-oat01-xxx 형식의 OAuth 토큰
+
+        Returns:
+            { "success": bool, "message": str } 또는 { "success": bool, "error": str }
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/auth/claude/token"
+
+        async with session.post(url, json={"token": token}) as response:
+            if response.status == 200:
+                return await response.json()
+            error = await self._parse_error(response)
+            raise SoulServiceError(f"토큰 설정 실패: {error}")
+
+    async def clear_claude_token(self) -> dict:
+        """Claude OAuth 토큰 삭제 (DELETE /auth/claude/token)
+
+        Returns:
+            { "success": bool, "message": str }
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/auth/claude/token"
+
+        async with session.delete(url) as response:
+            if response.status == 200:
+                return await response.json()
+            error = await self._parse_error(response)
+            raise SoulServiceError(f"토큰 삭제 실패: {error}")
+
     # === 헬퍼 메서드 ===
 
     async def _handle_sse_events(

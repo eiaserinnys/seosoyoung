@@ -19,6 +19,8 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_profile,
     handle_resume_list_run,
     handle_session_info,
+    handle_set_token,
+    handle_clear_token,
     _sanitize_email_to_profile_name,
 )
 from seosoyoung.slackbot.handlers.mention import (
@@ -81,7 +83,7 @@ class TestGetAncestors:
 
 class TestIsAdminCommand:
     def test_exact_matches(self):
-        for cmd in ["help", "status", "update", "restart", "compact", "profile", "cleanup", "log", "session-info"]:
+        for cmd in ["help", "status", "update", "restart", "compact", "profile", "cleanup", "log", "session-info", "clear-token"]:
             assert _is_admin_command(cmd), f"{cmd} should be admin command"
 
     def test_profile_subcommands(self):
@@ -90,6 +92,9 @@ class TestIsAdminCommand:
 
     def test_cleanup_confirm(self):
         assert _is_admin_command("cleanup confirm")
+
+    def test_set_token_subcommand(self):
+        assert _is_admin_command("set-token sk-ant-oat01-xxx")
 
     def test_non_admin(self):
         assert not _is_admin_command("hello")
@@ -175,8 +180,31 @@ class TestTryHandleCommandDispatch:
         expected = {
             "help", "status", "cleanup", "cleanup confirm", "log",
             "update", "restart", "compact", "plugins", "session-info",
+            "clear-token",
         }
         assert set(_COMMAND_DISPATCH.keys()) == expected
+
+    def test_set_token_prefix_match(self):
+        """'set-token' 프리픽스 매치"""
+        say = MagicMock()
+        deps = _make_deps()
+        with patch("seosoyoung.slackbot.handlers.commands._run_soul_api") as mock_api:
+            mock_api.return_value = {"success": True}
+            result = try_handle_command(
+                "set-token sk-ant-oat01-xxx", "", "C1", "ts1", None, "U1", say, MagicMock(), deps
+            )
+        assert result is True
+
+    def test_clear_token_dispatched(self):
+        """'clear-token' 디스패치"""
+        say = MagicMock()
+        deps = _make_deps()
+        with patch("seosoyoung.slackbot.handlers.commands._run_soul_api") as mock_api:
+            mock_api.return_value = {"success": True, "message": "삭제됨"}
+            result = try_handle_command(
+                "clear-token", "", "C1", "ts1", None, "U1", say, MagicMock(), deps
+            )
+        assert result is True
 
 
 # ── 개별 핸들러 테스트 ──────────────────────────────────────────
@@ -804,6 +832,136 @@ class TestHandleSessionInfo:
 
         assert result is True
         assert say.called
+
+
+class TestHandleSetToken:
+    def test_permission_denied(self):
+        """관리자 권한 없으면 거부"""
+        say = MagicMock()
+        handle_set_token(
+            command="set-token sk-ant-oat01-xxx", say=say, ts="ts1", thread_ts=None,
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=False),
+        )
+        assert "관리자 권한" in say.call_args[1]["text"]
+
+    def test_no_token_argument(self):
+        """토큰 인자 없으면 안내 메시지"""
+        say = MagicMock()
+        handle_set_token(
+            command="set-token", say=say, ts="ts1", thread_ts=None,
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        assert "토큰을 입력해주세요" in say.call_args[1]["text"]
+
+    def test_invalid_token_format(self):
+        """유효하지 않은 토큰 형식 거부"""
+        say = MagicMock()
+        handle_set_token(
+            command="set-token bad-token", say=say, ts="ts1", thread_ts=None,
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        assert "유효하지 않은 토큰 형식" in say.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_set_token_success(self, mock_api):
+        """토큰 설정 성공"""
+        mock_api.return_value = {"success": True, "message": "토큰이 설정되었습니다."}
+        say = MagicMock()
+        handle_set_token(
+            command="set-token sk-ant-oat01-xxx", say=say, ts="ts1", thread_ts=None,
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        mock_api.assert_called_once()
+        assert "토큰이 설정되었습니다" in say.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_set_token_api_failure(self, mock_api):
+        """토큰 설정 API 실패"""
+        mock_api.return_value = {"success": False, "error": "토큰 검증 실패"}
+        say = MagicMock()
+        handle_set_token(
+            command="set-token sk-ant-oat01-xxx", say=say, ts="ts1", thread_ts=None,
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        assert "토큰 설정 실패" in say.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_set_token_connection_error(self, mock_api):
+        """soulstream 연결 실패"""
+        mock_api.side_effect = ConnectionError("connection refused")
+        say = MagicMock()
+        handle_set_token(
+            command="set-token sk-ant-oat01-xxx", say=say, ts="ts1", thread_ts=None,
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        assert "soulstream 연결 실패" in say.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_set_token_with_thread_ts(self, mock_api):
+        """thread_ts가 있으면 해당 스레드에 응답"""
+        mock_api.return_value = {"success": True}
+        say = MagicMock()
+        handle_set_token(
+            command="set-token sk-ant-oat01-xxx", say=say, ts="ts1", thread_ts="thread1",
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        assert say.call_args[1]["thread_ts"] == "thread1"
+
+
+class TestHandleClearToken:
+    def test_permission_denied(self):
+        """관리자 권한 없으면 거부"""
+        say = MagicMock()
+        handle_clear_token(
+            say=say, ts="ts1", thread_ts=None,
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=False),
+        )
+        assert "관리자 권한" in say.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_clear_token_success(self, mock_api):
+        """토큰 삭제 성공"""
+        mock_api.return_value = {"success": True, "message": "토큰이 삭제되었습니다."}
+        say = MagicMock()
+        handle_clear_token(
+            say=say, ts="ts1", thread_ts=None,
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        mock_api.assert_called_once()
+        assert "토큰이 삭제되었습니다" in say.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_clear_token_connection_error(self, mock_api):
+        """soulstream 연결 실패"""
+        mock_api.side_effect = ConnectionError("connection refused")
+        say = MagicMock()
+        handle_clear_token(
+            say=say, ts="ts1", thread_ts=None,
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        assert "soulstream 연결 실패" in say.call_args[1]["text"]
+
+    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
+    def test_clear_token_with_thread_ts(self, mock_api):
+        """thread_ts가 있으면 해당 스레드에 응답"""
+        mock_api.return_value = {"success": True, "message": "삭제됨"}
+        say = MagicMock()
+        handle_clear_token(
+            say=say, ts="ts1", thread_ts="thread1",
+            client=MagicMock(), user_id="U1",
+            check_permission=MagicMock(return_value=True),
+        )
+        assert say.call_args[1]["thread_ts"] == "thread1"
 
 
 class TestHandleCleanup:

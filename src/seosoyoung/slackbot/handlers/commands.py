@@ -870,6 +870,86 @@ def handle_resume_list_run(*, say, ts, list_runner_ref=None, **_):
         say(text="정주행 재개에 실패했습니다.", thread_ts=ts)
 
 
+def handle_set_token(
+    *, command, say, ts, thread_ts, client, user_id, check_permission, **_,
+):
+    """set-token 명령어 핸들러 - Claude OAuth 토큰 설정
+
+    사용법: @서소영 set-token sk-ant-oat01-xxx
+    """
+    from seosoyoung.slackbot.soulstream.service_client import SoulServiceError
+
+    if not check_permission(user_id, client):
+        logger.warning(f"set-token 권한 없음: user={user_id}")
+        say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts or ts)
+        return
+
+    parts = command.split(maxsplit=1)
+    if len(parts) < 2:
+        say(
+            text="토큰을 입력해주세요.\n예: `@서소영 set-token sk-ant-oat01-xxx`",
+            thread_ts=thread_ts or ts,
+        )
+        return
+
+    token = parts[1].strip()
+
+    # 토큰 형식 검증
+    if not token.startswith("sk-ant-oat01-"):
+        say(
+            text="유효하지 않은 토큰 형식입니다.\n토큰은 `sk-ant-oat01-`로 시작해야 합니다.",
+            thread_ts=thread_ts or ts,
+        )
+        return
+
+    try:
+        result = _run_soul_api(lambda soul: soul.set_claude_token(token))
+        if result.get("success"):
+            say(
+                text="✅ Claude 토큰이 설정되었습니다. (1년 유효)",
+                thread_ts=thread_ts or ts,
+            )
+        else:
+            error = result.get("error", "알 수 없는 오류")
+            say(
+                text=f"❌ 토큰 설정 실패: {error}",
+                thread_ts=thread_ts or ts,
+            )
+    except SoulServiceError as e:
+        say(text=f"❌ 토큰 설정 실패: {e}", thread_ts=thread_ts or ts)
+    except Exception as e:
+        logger.exception(f"set-token 명령어 오류: {e}")
+        say(text=f"❌ soulstream 연결 실패: {e}", thread_ts=thread_ts or ts)
+
+
+def handle_clear_token(
+    *, say, ts, thread_ts, client, user_id, check_permission, **_,
+):
+    """clear-token 명령어 핸들러 - Claude OAuth 토큰 삭제
+
+    사용법: @서소영 clear-token
+    """
+    from seosoyoung.slackbot.soulstream.service_client import SoulServiceError
+
+    if not check_permission(user_id, client):
+        logger.warning(f"clear-token 권한 없음: user={user_id}")
+        say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts or ts)
+        return
+
+    try:
+        result = _run_soul_api(lambda soul: soul.clear_claude_token())
+        message = result.get("message", "토큰이 삭제되었습니다.")
+        say(
+            text=f"✅ {message}",
+            thread_ts=thread_ts or ts,
+        )
+    except SoulServiceError as e:
+        say(text=f"❌ 토큰 삭제 실패: {e}", thread_ts=thread_ts or ts)
+    except Exception as e:
+        logger.exception(f"clear-token 명령어 오류: {e}")
+        say(text=f"❌ soulstream 연결 실패: {e}", thread_ts=thread_ts or ts)
+
+
 def handle_session_info(
     *, say, ts, thread_ts, session_manager, client, user_id,
     check_permission, get_agent_session_id=None, **_,
