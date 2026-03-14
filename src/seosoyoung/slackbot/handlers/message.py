@@ -9,6 +9,7 @@ from seosoyoung.core.context import create_hook_context
 from seosoyoung.slackbot.slack import download_files_sync, build_file_context
 from seosoyoung.slackbot.slack.message_formatter import format_slack_message
 from seosoyoung.slackbot.soulstream.session_context import build_followup_context
+from seosoyoung.slackbot.handlers.auth import check_auth_session
 
 logger = logging.getLogger(__name__)
 
@@ -387,6 +388,10 @@ def register_message_handlers(app, dependencies: dict):
         user_id = event["user"]
         channel = event["channel"]
         ts = event["ts"]
+
+        # 인증 세션 체크 (Claude 대화 세션과 별도)
+        if check_auth_session(thread_ts, text, say, client, dependencies):
+            return
 
         # 세션 확인
         session = session_manager.get(thread_ts)

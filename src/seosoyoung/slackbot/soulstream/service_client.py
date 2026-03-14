@@ -548,7 +548,7 @@ class SoulServiceClient:
             data = await response.json()
             return data.get("email")
 
-    # === Claude OAuth Token API ===
+    # === Claude Auth API ===
 
     async def set_claude_token(self, token: str) -> dict:
         """Claude OAuth 토큰 설정 (POST /auth/claude/token)
@@ -568,11 +568,51 @@ class SoulServiceClient:
             error = await self._parse_error(response)
             raise SoulServiceError(f"토큰 설정 실패: {error}")
 
-    async def clear_claude_token(self) -> dict:
-        """Claude OAuth 토큰 삭제 (DELETE /auth/claude/token)
+    async def start_claude_auth(self) -> dict:
+        """Claude 인증 세션 시작 (POST /auth/claude/start)
 
         Returns:
-            { "success": bool, "message": str }
+            {"session_id": str, "auth_url": str, "expires_at": str}
+
+        Raises:
+            SoulServiceError: 인증 세션 시작 실패
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/auth/claude/start"
+
+        async with session.post(url) as response:
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"인증 세션 시작 실패: {error}")
+            return await response.json()
+
+    async def submit_auth_code(self, session_id: str, code: str) -> dict:
+        """인증 코드 제출 (POST /auth/claude/code)
+
+        Args:
+            session_id: start_claude_auth에서 반환된 세션 ID
+            code: 사용자가 브라우저에서 받은 인증 코드
+
+        Returns:
+            {"success": True, "expires_at": str} 또는 에러 정보
+
+        Raises:
+            SoulServiceError: 코드 제출 실패
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/auth/claude/code"
+
+        async with session.post(url, json={"session_id": session_id, "code": code}) as response:
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"코드 제출 실패: {error}")
+            return await response.json()
+
+    async def clear_claude_token(self) -> dict:
+        """Claude 토큰 삭제 (DELETE /auth/claude/token)
+
+        Returns:
+            {"success": bool, "message": str}
         """
         session = await self._get_session()
         url = f"{self.base_url}/auth/claude/token"
