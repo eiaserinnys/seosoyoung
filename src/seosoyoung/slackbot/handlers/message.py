@@ -134,18 +134,14 @@ def process_thread_message(
                     thread_ts, followup["last_seen_ts"]
                 )
 
-    prompt_parts = [slack_context]
+    prompt = clean_text
+    context_items = [
+        {"key": "slack_metadata", "label": "슬랙 메타데이터", "content": slack_context},
+    ]
     if followup_context:
-        prompt_parts.append(followup_context)
-    if clean_text:
-        prompt_parts.append(
-            f"<user-request>\n{clean_text}\n</user-request>"
-        )
+        context_items.append({"key": "followup_context", "label": "후속 대화 맥락", "content": followup_context})
     if file_context:
-        prompt_parts.append(
-            f"<attachments>\n{file_context}\n</attachments>"
-        )
-    prompt = "\n\n".join(prompt_parts)
+        context_items.append({"key": "attachments", "label": "첨부 파일", "content": file_context})
 
     logger.info(
         f"{log_prefix} 처리: thread_ts={thread_ts}, "
@@ -170,6 +166,7 @@ def process_thread_message(
 
     # Plugin: before_execute hook — memory injection
     effective_prompt = prompt
+    effective_context_items = context_items
     if pm:
         try:
             ctx = create_hook_context(
@@ -178,6 +175,7 @@ def process_thread_message(
                 channel=channel,
                 session_id=session.session_id,
                 prompt=prompt,
+                context_items=context_items,
                 channel_observer_channels=channel_observer_channels,
             )
             ctx = run_in_new_loop(pm.dispatch("before_execute", ctx))
@@ -185,6 +183,8 @@ def process_thread_message(
                 if isinstance(result, dict):
                     if "prompt" in result:
                         effective_prompt = result["prompt"]
+                    if "context_items" in result:
+                        effective_context_items = result["context_items"]
                     if "anchor_ts" in result:
                         pctx.om_anchor_ts = result["anchor_ts"]
         except Exception as e:
@@ -223,6 +223,7 @@ def process_thread_message(
         run_claude_in_session,
         dict(
             prompt=effective_prompt,
+            context=effective_context_items,
             thread_ts=thread_ts,
             msg_ts=ts,
             presentation=pctx,

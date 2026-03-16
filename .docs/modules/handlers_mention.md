@@ -11,11 +11,11 @@
 ## 함수
 
 ### `extract_command(text)`
-- 위치: 줄 32
+- 위치: 줄 37
 - 설명: 멘션에서 명령어 추출
 
 ### `_is_resume_list_run_command(command)`
-- 위치: 줄 38
+- 위치: 줄 43
 - 설명: 정주행 재개 명령어인지 확인
 
 다음과 같은 패턴을 인식합니다:
@@ -24,32 +24,32 @@
 - 리스트런 재개
 - resume list run
 
-### `build_prompt(context, question, file_context, slack_context)`
-- 위치: 줄 58
-- 설명: 프롬프트 구성.
+### `build_request(context, question, file_context, slack_context)`
+- 위치: 줄 63
+- 설명: 프롬프트와 컨텍스트 아이템을 구성합니다.
 
-각 섹션을 XML 태그로 감싸서 LLM이 메타데이터, 대화 기록,
-사용자 질문, 첨부 파일을 명확히 구분할 수 있도록 합니다.
+prompt는 사용자 질문만 담고, 슬랙 메타데이터·채널 히스토리·첨부 파일은
+context_items로 분리하여 soulstream이 구조적으로 조립합니다.
 
 Args:
     context: 채널 히스토리 컨텍스트 (이미 XML 태그 포함)
     question: 사용자 질문
     file_context: 첨부 파일 컨텍스트
-    slack_context: 슬랙 컨텍스트 블록 문자열 (이미 XML 태그 포함)
+    slack_context: 슬랙 컨텍스트 블록 문자열 (build_slack_context() 반환값)
 
 Returns:
-    구성된 프롬프트 문자열
+    (prompt, context_items) 튜플
 
 ### `_get_channel_messages(client, channel, limit)`
-- 위치: 줄 99
+- 위치: 줄 93
 - 설명: 채널의 최근 메시지를 가져와서 dict 리스트로 반환
 
 ### `_is_admin_command(command)`
-- 위치: 줄 130
+- 위치: 줄 126
 - 설명: 관리자 명령어 여부 판별
 
 ### `try_handle_command(command, text, channel, ts, thread_ts, user_id, say, client, deps)`
-- 위치: 줄 139
+- 위치: 줄 136
 - 설명: 명령어 라우팅. 처리했으면 True, 아니면 False 반환.
 
 handle_mention과 DM 핸들러에서 공유합니다.
@@ -66,7 +66,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `create_session_and_run_claude(event, clean_text, channel, ts, thread_ts, user_id, say, client, deps)`
-- 위치: 줄 234
+- 위치: 줄 235
 - 데코레이터: reflect.capability
 - 설명: 세션 생성 + 컨텍스트 빌드 + Claude 실행.
 
@@ -84,7 +84,7 @@ Args:
     deps: 의존성 딕셔너리
 
 ### `register_mention_handlers(app, dependencies)`
-- 위치: 줄 432
+- 위치: 줄 438
 - 설명: 멘션 핸들러 등록
 
 Args:
@@ -94,7 +94,9 @@ Args:
 ## 내부 의존성
 
 - `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.handlers.auth.handle_setup_token`
 - `seosoyoung.slackbot.handlers.commands.handle_cleanup`
+- `seosoyoung.slackbot.handlers.commands.handle_clear_token`
 - `seosoyoung.slackbot.handlers.commands.handle_compact`
 - `seosoyoung.slackbot.handlers.commands.handle_help`
 - `seosoyoung.slackbot.handlers.commands.handle_log`
@@ -102,6 +104,7 @@ Args:
 - `seosoyoung.slackbot.handlers.commands.handle_profile`
 - `seosoyoung.slackbot.handlers.commands.handle_resume_list_run`
 - `seosoyoung.slackbot.handlers.commands.handle_session_info`
+- `seosoyoung.slackbot.handlers.commands.handle_set_token`
 - `seosoyoung.slackbot.handlers.commands.handle_status`
 - `seosoyoung.slackbot.handlers.commands.handle_translate`
 - `seosoyoung.slackbot.handlers.commands.handle_update_restart`

@@ -57,6 +57,7 @@ class ClaudeServiceAdapter:
         allowed_tools: Optional[list[str]] = None,
         disallowed_tools: Optional[list[str]] = None,
         use_mcp: bool = True,
+        context: Optional[list] = None,
     ) -> ClaudeResult:
         """Claude Code를 Soulstream에서 실행하고 ClaudeResult로 반환
 
@@ -92,6 +93,7 @@ class ClaudeServiceAdapter:
                 allowed_tools=allowed_tools,
                 disallowed_tools=disallowed_tools,
                 use_mcp=use_mcp,
+                context=context,
             )
 
             if result.success:

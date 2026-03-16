@@ -48,30 +48,30 @@ The host provides an implementation of this protocol.
 
 #### 메서드
 
-- `async run(self, prompt, channel, thread_ts, role, session_id, on_compact)` (줄 94): Execute Claude Code with the given prompt.
-- `async compact(self, session_id)` (줄 120): Compact a Claude Code session to reduce context size.
-- `get_session_id(self, thread_ts)` (줄 131): Get the Claude Code session ID for a thread.
-- `is_restart_pending(self)` (줄 142): Check if a restart is pending.
-- `get_data_dir(self)` (줄 150): Get the data directory for plugin storage.
+- `async run(self, prompt, channel, thread_ts, role, session_id, on_compact, context)` (줄 94): Execute Claude Code with the given prompt.
+- `async compact(self, session_id)` (줄 122): Compact a Claude Code session to reduce context size.
+- `get_session_id(self, thread_ts)` (줄 133): Get the Claude Code session ID for a thread.
+- `is_restart_pending(self)` (줄 144): Check if a restart is pending.
+- `get_data_dir(self)` (줄 152): Get the data directory for plugin storage.
 
 ## 함수
 
 ### `set_backend(backend)`
-- 위치: 줄 166
+- 위치: 줄 168
 - 설명: Set the Soulstream backend implementation.
 
 Called by the host during startup to provide the actual implementation.
 
 ### `get_backend()`
-- 위치: 줄 175
+- 위치: 줄 177
 - 설명: Get the current Soulstream backend.
 
 ### `_require_backend()`
-- 위치: 줄 180
+- 위치: 줄 182
 - 설명: Get backend or raise if not set.
 
-### `async run(prompt, channel, thread_ts, role, session_id, on_compact)`
-- 위치: 줄 195
+### `async run(prompt, channel, thread_ts, role, session_id, on_compact, context)`
+- 위치: 줄 197
 - 설명: Execute Claude Code with the given prompt.
 
 This is the main entry point for plugins to run Claude Code.
@@ -83,6 +83,7 @@ Args:
     role: User role (affects permissions)
     session_id: Existing session ID to resume
     on_compact: Callback for compact notifications
+    context: Structured context items for soulstream assembly
     **kwargs: Additional arguments
 
 Returns:
@@ -98,7 +99,7 @@ Example:
         print(f"Session: {result.session_id}")
 
 ### `async compact(session_id)`
-- 위치: 줄 241
+- 위치: 줄 246
 - 설명: Compact a Claude Code session to reduce context size.
 
 Compacting summarizes the conversation history to free up
@@ -116,7 +117,7 @@ Example:
         print(f"New session: {result.session_id}")
 
 ### `get_session_id(thread_ts)`
-- 위치: 줄 262
+- 위치: 줄 267
 - 설명: Get the Claude Code session ID for a thread.
 
 Args:
@@ -131,7 +132,7 @@ Example:
         await soulstream.compact(session_id)
 
 ### `is_restart_pending()`
-- 위치: 줄 280
+- 위치: 줄 285
 - 설명: Check if a system restart is pending.
 
 When a restart is pending, plugins should avoid starting new tasks.
@@ -148,7 +149,7 @@ Example:
         return
 
 ### `get_data_dir()`
-- 위치: 줄 300
+- 위치: 줄 305
 - 설명: Get the data directory for plugin storage.
 
 Returns:

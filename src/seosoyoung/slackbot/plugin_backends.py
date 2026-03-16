@@ -329,6 +329,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         role: str = "admin",
         session_id: str | None = None,
         on_compact=None,
+        context: list[dict] | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -371,6 +372,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         presentation=None,
                         session_id=session_id,
                         role=role,
+                        context=context,
                         on_result=capture_result,
                     ),
                 )
@@ -407,6 +409,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                                 presentation=presentation,
                                 session_id=session_id,
                                 role=role,
+                                context=context,
                                 on_result=on_result_fn,
                             ),
                             on_compact_override=on_compact,
@@ -424,6 +427,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                             presentation=presentation,
                             session_id=session_id,
                             role=role,
+                            context=context,
                             on_result=on_result_fn,
                         ),
                     )

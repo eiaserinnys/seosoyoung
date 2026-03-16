@@ -27,16 +27,16 @@ per-session 아키텍처: agent_session_id가 유일한 식별자.
 
 - `__init__(self, session_manager, session_runtime, restart_manager, send_long_message, send_restart_confirmation, update_message_fn)` (줄 66): 
 - `run(self, prompt, thread_ts, msg_ts)` (줄 130): 세션 내에서 Claude Code 실행 (공통 로직)
-- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 209): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
-- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 245): 락을 보유한 상태에서 실행
-- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 290): 단일 Claude 실행 -- Soulstream 서버에 위임
-- `_get_role_config(self, role)` (줄 335): 역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)
-- `_get_service_adapter(self)` (줄 339): Remote 모드용 ClaudeServiceAdapter를 생성하여 반환 (호출마다 새 인스턴스)
-- `_register_session_id(self, thread_ts, session_id)` (줄 358): thread_ts <-> agent_session_id 매핑 등록 및 버퍼된 인터벤션 flush
-- `_unregister_session_id(self, thread_ts)` (줄 382): thread_ts <-> agent_session_id 매핑 해제
-- `get_session_id(self, thread_ts)` (줄 391): thread_ts에 대응하는 agent_session_id 조회
-- `_execute_remote(self, thread_ts, prompt)` (줄 396): Remote 모드: Soulstream 서버에 실행을 위임 (per-session)
-- `_process_result(self, presentation, result, thread_ts)` (줄 483): 실행 결과 처리
+- `_handle_intervention(self, thread_ts, prompt, msg_ts)` (줄 211): 인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
+- `_run_with_lock(self, thread_ts, prompt, msg_ts)` (줄 253): 락을 보유한 상태에서 실행
+- `_execute_once(self, thread_ts, prompt, msg_ts)` (줄 300): 단일 Claude 실행 -- Soulstream 서버에 위임
+- `_get_role_config(self, role)` (줄 347): 역할에 맞는 runner 설정을 반환 (모듈 함수에 위임)
+- `_get_service_adapter(self)` (줄 351): Remote 모드용 ClaudeServiceAdapter를 생성하여 반환 (호출마다 새 인스턴스)
+- `_register_session_id(self, thread_ts, session_id)` (줄 370): thread_ts <-> agent_session_id 매핑 등록 및 버퍼된 인터벤션 flush
+- `_unregister_session_id(self, thread_ts)` (줄 394): thread_ts <-> agent_session_id 매핑 해제
+- `get_session_id(self, thread_ts)` (줄 403): thread_ts에 대응하는 agent_session_id 조회
+- `_execute_remote(self, thread_ts, prompt)` (줄 408): Remote 모드: Soulstream 서버에 실행을 위임 (per-session)
+- `_process_result(self, presentation, result, thread_ts)` (줄 497): 실행 결과 처리
 
 ## 함수
 
