@@ -34,8 +34,8 @@ _SOULSTREAM_DASHBOARD_PATH_PREFIX = "soul-dashboard/"
 _SOULSTREAM_SERVER_PATH_PREFIX = "soul-server/"
 
 # 배포 시 프로세스 stop() 타임아웃 (초)
-# graceful shutdown 응답 대기 시간. 이 시간 안에 응답 없으면 강제 종료.
-_DEPLOY_STOP_TIMEOUT = 30
+# 0 = 무한 대기 (클로드 세션이 자연 종료될 때까지 기다림)
+_DEPLOY_STOP_TIMEOUT = 0
 
 # 재시작 마커 파일명
 _RESTART_MARKER_NAME = "restart_in_progress"
