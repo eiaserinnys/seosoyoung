@@ -222,8 +222,8 @@ class SoulServiceClient:
             data["allowed_tools"] = allowed_tools
         if disallowed_tools is not None:
             data["disallowed_tools"] = disallowed_tools
-        if context:
-            data["context"] = {"items": context}
+        if context is not None:
+            data["context_items"] = context
 
         backoff = ExponentialBackoff()
         resolved_session_id = agent_session_id  # init 이벤트에서 갱신됨
