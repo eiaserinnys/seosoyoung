@@ -198,7 +198,7 @@ def main() -> None:
         shutting_down = True
         sig_name = signal.Signals(signum).name if hasattr(signal, "Signals") else str(signum)
         logger.info("시그널 수신: %s, 종료 시작", sig_name)
-        pm.stop_all()
+        pm.stop_all(timeout=60.0)  # graceful_shutdown() 최대 50초를 커버하기 위해 60초
         logger.info("supervisor 종료")
         sys.exit(0)
 
@@ -222,7 +222,7 @@ def main() -> None:
                 logger.info("대시보드에서 supervisor 재기동 요청 수신")
                 deployer.notify_and_mark_restart()
                 exiting_intentionally = True
-                pm.stop_all()
+                pm.stop_all(timeout=60.0)  # graceful_shutdown() 최대 50초를 커버하기 위해 60초
                 job_object.close_job_object()
                 sys.exit(EXIT_CODE_SUPERVISOR_PLAIN_RESTART)
 
@@ -270,7 +270,7 @@ def main() -> None:
                     )
                     deployer.notify_and_mark_restart()
                     exiting_intentionally = True
-                    pm.stop_all()
+                    pm.stop_all(timeout=60.0)  # graceful_shutdown() 최대 50초를 커버하기 위해 60초
                     job_object.close_job_object()
                     sys.exit(EXIT_CODE_SUPERVISOR_PLAIN_RESTART)
                 elif action == ExitAction.RESTART_DELAY:
@@ -298,7 +298,7 @@ def main() -> None:
     except SupervisorRestartRequired:
         logger.info("supervisor 자체 코드 변경 감지 → exit %d", EXIT_CODE_SUPERVISOR_RESTART)
         exiting_intentionally = True
-        pm.stop_all()
+        pm.stop_all(timeout=60.0)  # graceful_shutdown() 최대 50초를 커버하기 위해 60초
         job_object.close_job_object()
         sys.exit(EXIT_CODE_SUPERVISOR_RESTART)
     finally:
@@ -307,7 +307,7 @@ def main() -> None:
         # 가능하면 graceful shutdown을 시도한다.
         if not shutting_down and not exiting_intentionally:
             logger.warning("예기치 않은 종료, 자식 프로세스 정리 중")
-            pm.stop_all()
+            pm.stop_all(timeout=60.0)  # graceful_shutdown() 최대 50초를 커버하기 위해 60초
             job_object.close_job_object()
 
 
