@@ -494,50 +494,62 @@ class TestBuildSoulDashboard:
     """_build_soul_dashboard 빌드 로직 테스트"""
 
     def test_build_success(self, deployer, tmp_path):
-        """빌드 성공 시 True 반환"""
+        """빌드 성공 시 True 반환 (항상 clean install + build)"""
         dashboard_dir = tmp_path / "src" / "soul-dashboard"
         dashboard_dir.mkdir(parents=True)
 
         with patch("supervisor.deployer.shutil.which", return_value="/usr/bin/npm"), \
-             patch("supervisor.deployer.subprocess.run") as mock_run:
+             patch("supervisor.deployer.subprocess.run") as mock_run, \
+             patch.object(Deployer, "_clean_node_modules"):
             mock_run.return_value = MagicMock(returncode=0)
             result = deployer._build_soul_dashboard(dashboard_dir)
 
         assert result is True
-        # npm run build 만 호출 (npm_install=False)
-        mock_run.assert_called_once()
-        assert mock_run.call_args[0][0] == ["/usr/bin/npm", "run", "build"]
+        # npm install + npm run build 두 번 호출
+        assert mock_run.call_count == 2
+        assert mock_run.call_args_list[0][0][0] == ["/usr/bin/npm", "install"]
+        assert mock_run.call_args_list[1][0][0] == ["/usr/bin/npm", "run", "build"]
 
-    def test_build_with_install(self, deployer, tmp_path):
-        """npm_install=True 시 install 후 build"""
+    def test_clean_node_modules_called_before_install(self, deployer, tmp_path):
+        """빌드 전에 항상 _clean_node_modules가 호출된다"""
         dashboard_dir = tmp_path / "src" / "soul-dashboard"
         dashboard_dir.mkdir(parents=True)
 
-        with patch("supervisor.deployer.shutil.which", return_value="/usr/bin/npm"), \
-             patch("supervisor.deployer.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
-            result = deployer._build_soul_dashboard(
-                dashboard_dir, npm_install=True,
-            )
+        call_order = []
 
-        assert result is True
-        assert mock_run.call_count == 2
-        # 첫 호출: npm install
-        assert mock_run.call_args_list[0][0][0] == ["/usr/bin/npm", "install"]
-        # 두 번째 호출: npm run build
-        assert mock_run.call_args_list[1][0][0] == ["/usr/bin/npm", "run", "build"]
+        def track_clean(path):
+            call_order.append("clean")
+
+        def track_run(cmd, **kwargs):
+            call_order.append(cmd[1] if len(cmd) > 1 else cmd[0])
+            return MagicMock(returncode=0)
+
+        with patch("supervisor.deployer.shutil.which", return_value="/usr/bin/npm"), \
+             patch("supervisor.deployer.subprocess.run", side_effect=track_run), \
+             patch.object(Deployer, "_clean_node_modules", side_effect=track_clean):
+            deployer._build_soul_dashboard(dashboard_dir)
+
+        assert call_order[0] == "clean"
+        assert "install" in call_order[1]
 
     def test_build_failure_returns_false(self, deployer, tmp_path):
         """빌드 실패 시 False 반환"""
         dashboard_dir = tmp_path / "src" / "soul-dashboard"
         dashboard_dir.mkdir(parents=True)
 
+        call_count = [0]
+
+        def side_effect(cmd, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # npm install 성공
+                return MagicMock(returncode=0, stderr="")
+            # npm run build 실패
+            return MagicMock(returncode=1, stderr="Build error")
+
         with patch("supervisor.deployer.shutil.which", return_value="/usr/bin/npm"), \
-             patch("supervisor.deployer.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1,
-                stderr="Build error",
-            )
+             patch("supervisor.deployer.subprocess.run", side_effect=side_effect), \
+             patch.object(Deployer, "_clean_node_modules"):
             result = deployer._build_soul_dashboard(dashboard_dir)
 
         assert result is False
@@ -548,14 +560,13 @@ class TestBuildSoulDashboard:
         dashboard_dir.mkdir(parents=True)
 
         with patch("supervisor.deployer.shutil.which", return_value="/usr/bin/npm"), \
-             patch("supervisor.deployer.subprocess.run") as mock_run:
+             patch("supervisor.deployer.subprocess.run") as mock_run, \
+             patch.object(Deployer, "_clean_node_modules"):
             mock_run.return_value = MagicMock(
                 returncode=1,
                 stderr="Install error",
             )
-            result = deployer._build_soul_dashboard(
-                dashboard_dir, npm_install=True,
-            )
+            result = deployer._build_soul_dashboard(dashboard_dir)
 
         assert result is False
         # install만 호출, build는 호출되지 않음
@@ -590,10 +601,47 @@ class TestBuildSoulDashboard:
              patch(
                  "supervisor.deployer.subprocess.run",
                  side_effect=sp.TimeoutExpired(cmd="npm", timeout=120),
-             ):
+             ), \
+             patch.object(Deployer, "_clean_node_modules"):
             result = deployer._build_soul_dashboard(dashboard_dir)
 
         assert result is False
+
+
+class TestCleanNodeModules:
+    """_clean_node_modules 테스트"""
+
+    def test_deletes_node_modules_and_package_lock(self, deployer, tmp_path):
+        """node_modules와 package-lock.json을 삭제한다"""
+        dashboard_dir = tmp_path / "soul-dashboard"
+        dashboard_dir.mkdir()
+        node_modules = dashboard_dir / "node_modules"
+        node_modules.mkdir()
+        (node_modules / "some_package").mkdir()
+        package_lock = dashboard_dir / "package-lock.json"
+        package_lock.write_text("{}")
+
+        deployer._clean_node_modules(dashboard_dir)
+
+        assert not node_modules.exists()
+        assert not package_lock.exists()
+
+    def test_no_node_modules_does_not_fail(self, deployer, tmp_path):
+        """node_modules가 없어도 에러 없이 동작한다"""
+        dashboard_dir = tmp_path / "soul-dashboard"
+        dashboard_dir.mkdir()
+
+        deployer._clean_node_modules(dashboard_dir)  # 예외 없어야 함
+
+    def test_no_package_lock_does_not_fail(self, deployer, tmp_path):
+        """package-lock.json이 없어도 에러 없이 동작한다"""
+        dashboard_dir = tmp_path / "soul-dashboard"
+        dashboard_dir.mkdir()
+        node_modules = dashboard_dir / "node_modules"
+        node_modules.mkdir()
+
+        deployer._clean_node_modules(dashboard_dir)  # 예외 없어야 함
+        assert not node_modules.exists()
 
 
 class TestEnsureRepoClean:
