@@ -31,18 +31,17 @@ _SUPERVISOR_PATH_PREFIX = "src/supervisor/"
 
 # soulstream 관련 경로 접두사
 _SOULSTREAM_DASHBOARD_PATH_PREFIX = "soul-dashboard/"
-_SOULSTREAM_DASHBOARD_PACKAGE_LOCK = "soul-dashboard/pnpm-lock.yaml"
 _SOULSTREAM_SERVER_PATH_PREFIX = "soul-server/"
 
 # 배포 시 프로세스 stop() 타임아웃 (초)
-# 0 = 무한 대기 (클로드 세션이 자연 종료될 때까지 기다림)
-_DEPLOY_STOP_TIMEOUT = 0
+# graceful shutdown 응답 대기 시간. 이 시간 안에 응답 없으면 강제 종료.
+_DEPLOY_STOP_TIMEOUT = 30
 
 # 재시작 마커 파일명
 _RESTART_MARKER_NAME = "restart_in_progress"
 
-# pnpm 빌드 타임아웃 (초)
-_PNPM_TIMEOUT = 120
+# npm/pnpm 빌드 타임아웃 (초)
+_NPM_TIMEOUT = 300
 
 
 class SupervisorRestartRequired(Exception):
@@ -390,15 +389,10 @@ class Deployer:
                     # hatchling editable install 버그 보정 (pip install 결과와 무관)
                     self._fix_editable_pth(soulstream_dir)
 
-                # soulstream-dashboard 변경 시 pnpm install
+                # soulstream-dashboard 변경 시 npm clean install + build
                 if any(f.startswith(_SOULSTREAM_DASHBOARD_PATH_PREFIX) for f in changed):
-                    needs_install = any(
-                        f == _SOULSTREAM_DASHBOARD_PACKAGE_LOCK for f in changed
-                    )
                     dashboard_dir = soulstream_dir / "soul-dashboard"
-                    build_ok = self._build_soul_dashboard(
-                        dashboard_dir, pnpm_install=needs_install,
-                    )
+                    build_ok = self._build_soul_dashboard(dashboard_dir)
                     if not build_ok:
                         logger.warning(
                             "soulstream-dashboard 빌드 실패, "
@@ -562,19 +556,42 @@ class Deployer:
             logger.exception("_soul_server.pth 보정 실패")
 
     @staticmethod
-    def _build_soul_dashboard(
-        dashboard_dir: Path,
-        *,
-        pnpm_install: bool = False,
-    ) -> bool:
+    def _clean_node_modules(dashboard_dir: Path) -> None:
+        """node_modules와 package-lock.json을 삭제한다.
+
+        npm의 optional dependency 버그(@rollup/rollup-win32-x64-msvc 누락 등)를
+        방지하기 위해 빌드 전에 항상 clean install을 수행한다.
+        삭제 실패 시 경고만 남기고 계속 진행한다.
+        """
+        node_modules = dashboard_dir / "node_modules"
+        package_lock = dashboard_dir / "package-lock.json"
+
+        if node_modules.exists():
+            try:
+                shutil.rmtree(node_modules)
+                logger.info("soul-dashboard: node_modules 삭제 완료")
+            except OSError as exc:
+                logger.warning("soul-dashboard: node_modules 삭제 실패: %s", exc)
+
+        if package_lock.exists():
+            try:
+                package_lock.unlink()
+                logger.info("soul-dashboard: package-lock.json 삭제 완료")
+            except OSError as exc:
+                logger.warning("soul-dashboard: package-lock.json 삭제 실패: %s", exc)
+
+    @staticmethod
+    def _build_soul_dashboard(dashboard_dir: Path) -> bool:
         """soul-dashboard 클라이언트를 빌드한다.
 
-        pnpm_install이 True이면 빌드 전에 pnpm install을 실행한다.
+        npm의 optional dependency 버그(@rollup/rollup-win32-x64-msvc 누락)를
+        방지하기 위해 빌드 전에 항상 node_modules와 package-lock.json을 삭제하고
+        npm install을 재실행한다.
         빌드 성공 시 True, 실패 시 False를 반환한다.
         """
-        pnpm = shutil.which("pnpm")
-        if not pnpm:
-            logger.warning("soul-dashboard 빌드 건너뜀: pnpm을 찾을 수 없음")
+        npm = shutil.which("npm")
+        if not npm:
+            logger.warning("soul-dashboard 빌드 건너뜀: npm을 찾을 수 없음")
             return False
 
         if not dashboard_dir.is_dir():
@@ -585,38 +602,40 @@ class Deployer:
 
         cwd = str(dashboard_dir)
 
-        if pnpm_install:
-            logger.info("soul-dashboard: pnpm install")
-            try:
-                result = subprocess.run(
-                    [pnpm, "install"],
-                    cwd=cwd,
-                    capture_output=True,
-                    text=True,
-                    timeout=_PNPM_TIMEOUT,
-                )
-                if result.returncode != 0:
-                    logger.warning(
-                        "soul-dashboard pnpm install 실패 (rc=%d): %s",
-                        result.returncode,
-                        result.stderr.strip()[:500],
-                    )
-                    return False
-            except subprocess.TimeoutExpired:
-                logger.warning("soul-dashboard pnpm install 타임아웃")
-                return False
-            except (subprocess.SubprocessError, OSError) as exc:
-                logger.warning("soul-dashboard pnpm install 오류: %s", exc)
-                return False
+        # npm optional dependency 버그 방지: 항상 clean install
+        Deployer._clean_node_modules(dashboard_dir)
 
-        logger.info("soul-dashboard: pnpm run build")
+        logger.info("soul-dashboard: npm install")
         try:
             result = subprocess.run(
-                [pnpm, "run", "build"],
+                [npm, "install"],
                 cwd=cwd,
                 capture_output=True,
                 text=True,
-                timeout=_PNPM_TIMEOUT,
+                timeout=_NPM_TIMEOUT,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    "soul-dashboard npm install 실패 (rc=%d): %s",
+                    result.returncode,
+                    result.stderr.strip()[:500],
+                )
+                return False
+        except subprocess.TimeoutExpired:
+            logger.warning("soul-dashboard npm install 타임아웃")
+            return False
+        except (subprocess.SubprocessError, OSError) as exc:
+            logger.warning("soul-dashboard npm install 오류: %s", exc)
+            return False
+
+        logger.info("soul-dashboard: npm run build")
+        try:
+            result = subprocess.run(
+                [npm, "run", "build"],
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=_NPM_TIMEOUT,
             )
             if result.returncode != 0:
                 logger.warning(
