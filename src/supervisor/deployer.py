@@ -40,8 +40,8 @@ _DEPLOY_STOP_TIMEOUT = 0
 # 재시작 마커 파일명
 _RESTART_MARKER_NAME = "restart_in_progress"
 
-# npm/pnpm 빌드 타임아웃 (초)
-_NPM_TIMEOUT = 300
+# pnpm 빌드 타임아웃 (초)
+_PNPM_TIMEOUT = 300
 
 
 class SupervisorRestartRequired(Exception):
@@ -557,14 +557,11 @@ class Deployer:
 
     @staticmethod
     def _clean_node_modules(dashboard_dir: Path) -> None:
-        """node_modules와 package-lock.json을 삭제한다.
+        """node_modules를 삭제하여 pnpm install이 깨끗한 상태에서 실행되도록 한다.
 
-        npm의 optional dependency 버그(@rollup/rollup-win32-x64-msvc 누락 등)를
-        방지하기 위해 빌드 전에 항상 clean install을 수행한다.
         삭제 실패 시 경고만 남기고 계속 진행한다.
         """
         node_modules = dashboard_dir / "node_modules"
-        package_lock = dashboard_dir / "package-lock.json"
 
         if node_modules.exists():
             try:
@@ -573,25 +570,20 @@ class Deployer:
             except OSError as exc:
                 logger.warning("soul-dashboard: node_modules 삭제 실패: %s", exc)
 
-        if package_lock.exists():
-            try:
-                package_lock.unlink()
-                logger.info("soul-dashboard: package-lock.json 삭제 완료")
-            except OSError as exc:
-                logger.warning("soul-dashboard: package-lock.json 삭제 실패: %s", exc)
-
     @staticmethod
     def _build_soul_dashboard(dashboard_dir: Path) -> bool:
-        """soul-dashboard 클라이언트를 빌드한다.
+        """soul-dashboard 클라이언트를 pnpm으로 빌드한다.
 
-        npm의 optional dependency 버그(@rollup/rollup-win32-x64-msvc 누락)를
-        방지하기 위해 빌드 전에 항상 node_modules와 package-lock.json을 삭제하고
-        npm install을 재실행한다.
+        soul-dashboard는 pnpm-lock.yaml을 정본으로 사용한다.
+        pnpm은 optional dependencies(플랫폼별 네이티브 모듈 포함)를 올바르게
+        처리하므로 npm의 optional dependency 버그를 피할 수 있다.
+
+        빌드 전에 node_modules를 삭제하여 clean install을 보장한다.
         빌드 성공 시 True, 실패 시 False를 반환한다.
         """
-        npm = shutil.which("npm")
-        if not npm:
-            logger.warning("soul-dashboard 빌드 건너뜀: npm을 찾을 수 없음")
+        pnpm = shutil.which("pnpm")
+        if not pnpm:
+            logger.warning("soul-dashboard 빌드 건너뜀: pnpm을 찾을 수 없음")
             return False
 
         if not dashboard_dir.is_dir():
@@ -602,40 +594,40 @@ class Deployer:
 
         cwd = str(dashboard_dir)
 
-        # npm optional dependency 버그 방지: 항상 clean install
+        # clean install로 stale node_modules 방지
         Deployer._clean_node_modules(dashboard_dir)
 
-        logger.info("soul-dashboard: npm install")
+        logger.info("soul-dashboard: pnpm install")
         try:
             result = subprocess.run(
-                [npm, "install"],
+                [pnpm, "install"],
                 cwd=cwd,
                 capture_output=True,
                 text=True,
-                timeout=_NPM_TIMEOUT,
+                timeout=_PNPM_TIMEOUT,
             )
             if result.returncode != 0:
                 logger.warning(
-                    "soul-dashboard npm install 실패 (rc=%d): %s",
+                    "soul-dashboard pnpm install 실패 (rc=%d): %s",
                     result.returncode,
                     result.stderr.strip()[:500],
                 )
                 return False
         except subprocess.TimeoutExpired:
-            logger.warning("soul-dashboard npm install 타임아웃")
+            logger.warning("soul-dashboard pnpm install 타임아웃")
             return False
         except (subprocess.SubprocessError, OSError) as exc:
-            logger.warning("soul-dashboard npm install 오류: %s", exc)
+            logger.warning("soul-dashboard pnpm install 오류: %s", exc)
             return False
 
-        logger.info("soul-dashboard: npm run build")
+        logger.info("soul-dashboard: pnpm run build")
         try:
             result = subprocess.run(
-                [npm, "run", "build"],
+                [pnpm, "run", "build"],
                 cwd=cwd,
                 capture_output=True,
                 text=True,
-                timeout=_NPM_TIMEOUT,
+                timeout=_PNPM_TIMEOUT,
             )
             if result.returncode != 0:
                 logger.warning(
