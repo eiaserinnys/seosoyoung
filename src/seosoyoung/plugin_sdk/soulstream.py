@@ -99,6 +99,7 @@ class SoulstreamBackend(Protocol):
         role: str = "admin",
         session_id: str | None = None,
         on_compact: CompactCallback | None = None,
+        context: list[dict] | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -110,6 +111,7 @@ class SoulstreamBackend(Protocol):
             role: User role (affects permissions)
             session_id: Existing session ID to resume
             on_compact: Compact notification callback
+            context: Structured context items for soulstream assembly
             **kwargs: Additional arguments
 
         Returns:
@@ -199,6 +201,7 @@ async def run(
     role: str = "admin",
     session_id: str | None = None,
     on_compact: CompactCallback | None = None,
+    context: list[dict] | None = None,
     **kwargs: Any,
 ) -> RunResult:
     """Execute Claude Code with the given prompt.
@@ -212,6 +215,7 @@ async def run(
         role: User role (affects permissions)
         session_id: Existing session ID to resume
         on_compact: Callback for compact notifications
+        context: Structured context items for soulstream assembly
         **kwargs: Additional arguments
 
     Returns:
@@ -234,6 +238,7 @@ async def run(
         role=role,
         session_id=session_id,
         on_compact=on_compact,
+        context=context,
         **kwargs,
     )
 

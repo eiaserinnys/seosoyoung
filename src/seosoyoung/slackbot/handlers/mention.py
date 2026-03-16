@@ -60,45 +60,34 @@ def _is_resume_list_run_command(command: str) -> bool:
     return False
 
 
-def build_prompt(
+def build_request(
     context: str,
     question: str,
     file_context: str,
     slack_context: str = "",
-) -> str:
-    """프롬프트 구성.
+) -> tuple[str, list[dict]]:
+    """프롬프트와 컨텍스트 아이템을 구성합니다.
 
-    각 섹션을 XML 태그로 감싸서 LLM이 메타데이터, 대화 기록,
-    사용자 질문, 첨부 파일을 명확히 구분할 수 있도록 합니다.
+    prompt는 사용자 질문만 담고, 슬랙 메타데이터·채널 히스토리·첨부 파일은
+    context_items로 분리하여 soulstream이 구조적으로 조립합니다.
 
     Args:
         context: 채널 히스토리 컨텍스트 (이미 XML 태그 포함)
         question: 사용자 질문
         file_context: 첨부 파일 컨텍스트
-        slack_context: 슬랙 컨텍스트 블록 문자열 (이미 XML 태그 포함)
+        slack_context: 슬랙 컨텍스트 블록 문자열 (build_slack_context() 반환값)
 
     Returns:
-        구성된 프롬프트 문자열
+        (prompt, context_items) 튜플
     """
-    prompt_parts = []
-
-    if slack_context:
-        prompt_parts.append(slack_context)
-
-    if context:
-        prompt_parts.append(context)
-
-    if question:
-        prompt_parts.append(
-            f"<user-request>\n{question}\n</user-request>"
-        )
-
+    prompt = question
+    context_items = [
+        {"key": "slack_metadata", "label": "슬랙 메타데이터", "content": slack_context},
+        {"key": "channel_history", "label": "채널 히스토리", "content": context},
+    ]
     if file_context:
-        prompt_parts.append(
-            f"<attachments>\n{file_context}\n</attachments>"
-        )
-
-    return "\n\n".join(prompt_parts)
+        context_items.append({"key": "attachments", "label": "첨부 파일", "content": file_context})
+    return prompt, context_items
 
 
 def _get_channel_messages(client, channel: str, limit: int = 20) -> list[dict]:
@@ -364,8 +353,8 @@ def create_session_and_run_claude(
         parent_thread_ts=thread_ts,
     )
 
-    # 프롬프트 구성
-    prompt = build_prompt(
+    # 프롬프트 및 컨텍스트 아이템 구성
+    prompt, context_items = build_request(
         context=context,
         question=clean_text,
         file_context=file_context,
@@ -374,6 +363,7 @@ def create_session_and_run_claude(
 
     # Plugin: before_execute hook — memory injection
     effective_prompt = prompt
+    effective_context_items = context_items
     if pm:
         try:
             from seosoyoung.utils.async_bridge import run_in_new_loop
@@ -385,6 +375,7 @@ def create_session_and_run_claude(
                 channel=channel,
                 session_id=session.session_id,
                 prompt=prompt,
+                context_items=context_items,
                 channel_observer_channels=channel_observer_channels,
             )
             ctx = run_in_new_loop(pm.dispatch("before_execute", ctx))
@@ -392,6 +383,8 @@ def create_session_and_run_claude(
                 if isinstance(result, dict):
                     if "prompt" in result:
                         effective_prompt = result["prompt"]
+                    if "context_items" in result:
+                        effective_context_items = result["context_items"]
                     if "anchor_ts" in result:
                         pctx.om_anchor_ts = result["anchor_ts"]
         except Exception as e:
@@ -427,6 +420,7 @@ def create_session_and_run_claude(
         run_claude_in_session,
         dict(
             prompt=effective_prompt,
+            context=effective_context_items,
             thread_ts=session_thread_ts,
             msg_ts=ts,
             presentation=pctx,

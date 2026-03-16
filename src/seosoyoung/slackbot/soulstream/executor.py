@@ -138,6 +138,7 @@ class ClaudeExecutor:
         session_id: Optional[str] = None,
         role: Optional[str] = None,
         user_message: Optional[str] = None,
+        context: Optional[list] = None,
         on_result: Optional[Callable] = None,  # (result, thread_ts, user_message) -> None
         # 세분화 이벤트 콜백
         on_thinking=None,
@@ -194,6 +195,7 @@ class ClaudeExecutor:
                 session_id=session_id,
                 role=role,
                 user_message=user_message,
+                context=context,
                 on_result=on_result,
                 on_thinking=on_thinking,
                 on_text_start=on_text_start,
@@ -231,6 +233,12 @@ class ClaudeExecutor:
 
         Soulstream에 interrupt를 전송하여 현재 실행을 중단시킵니다.
         Soulstream 측에서 interrupt를 받으면 새 프롬프트로 이어서 실행합니다.
+
+        알려진 제한: context(structured context items)는 이 경로에서 전달되지 않는다.
+        인터벤션은 fire_interrupt_remote → pending_session_interventions 큐 경로를 통해
+        처리되는데, 이 큐가 context를 함께 저장하는 메커니즘이 없다.
+        따라서 인터벤션이 flush되어 실행될 때 context 없이 프롬프트만 전달된다.
+        이 제한은 인터벤션 기능 전체의 리팩터링 시 별도로 해결한다.
         """
         logger.info(f"인터벤션 발생: thread={thread_ts}")
 
@@ -253,6 +261,7 @@ class ClaudeExecutor:
         session_id,
         role,
         user_message,
+        context: Optional[list] = None,
         on_result,
         # 세분화 이벤트 콜백
         on_thinking=None,
@@ -275,6 +284,7 @@ class ClaudeExecutor:
                 session_id=session_id,
                 role=role,
                 user_message=user_message,
+                context=context,
                 on_result=on_result,
                 on_thinking=on_thinking,
                 on_text_start=on_text_start,
@@ -298,6 +308,7 @@ class ClaudeExecutor:
         session_id,
         role,
         user_message,
+        context: Optional[list] = None,
         on_result,
         # 세분화 이벤트 콜백
         on_thinking=None,
@@ -319,6 +330,7 @@ class ClaudeExecutor:
             presentation=presentation,
             session_id=session_id,
             user_message=user_message,
+            context=context,
             on_result=on_result,
             allowed_tools=role_config["allowed_tools"],
             disallowed_tools=role_config["disallowed_tools"],
@@ -402,6 +414,7 @@ class ClaudeExecutor:
         presentation,
         session_id,
         user_message,
+        context: Optional[list] = None,
         on_result,
         allowed_tools: Optional[list] = None,
         disallowed_tools: Optional[list] = None,
@@ -461,6 +474,7 @@ class ClaudeExecutor:
                     allowed_tools=allowed_tools,
                     disallowed_tools=disallowed_tools,
                     use_mcp=use_mcp,
+                    context=context,
                 )
             )
 
