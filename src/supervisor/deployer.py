@@ -389,7 +389,7 @@ class Deployer:
                     # hatchling editable install 버그 보정 (pip install 결과와 무관)
                     self._fix_editable_pth(soulstream_dir)
 
-                # soulstream-dashboard 변경 시 npm clean install + build
+                # soulstream-dashboard 변경 시 pnpm install + build
                 if any(f.startswith(_SOULSTREAM_DASHBOARD_PATH_PREFIX) for f in changed):
                     dashboard_dir = soulstream_dir / "soul-dashboard"
                     build_ok = self._build_soul_dashboard(dashboard_dir)
