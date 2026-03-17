@@ -254,33 +254,4 @@ def build_process_configs() -> list[ProcessConfig]:
             soulstream_server_dir,
         )
 
-    # --- 선택적: soulstream-dashboard (TypeScript, port 4109) ---
-    soulstream_dashboard_dir = paths["soulstream_runtime"] / "soul-dashboard"
-    soulstream_tsx = soulstream_dashboard_dir / "node_modules" / "tsx" / "dist" / "cli.mjs"
-    soulstream_dashboard_entry = soulstream_dashboard_dir / "server" / "index.ts"
-
-    if soulstream_tsx.is_file() and soulstream_dashboard_entry.is_file():
-        try:
-            node = _find_node()
-            configs.append(ProcessConfig(
-                name="soulstream-dashboard",
-                command=node,
-                args=[str(soulstream_tsx), str(soulstream_dashboard_entry)],
-                cwd=str(paths["soulstream_runtime"].resolve()),
-                restart_policy=RestartPolicy(
-                    use_exit_codes=False,
-                    auto_restart=True,
-                    restart_delay=3.0,
-                ),
-                log_dir=str(paths["soulstream_logs"]),
-                port=4109,
-            ))
-        except FileNotFoundError:
-            logger.warning("soulstream-dashboard 설정 건너뜀: node를 찾을 수 없음")
-    else:
-        logger.info(
-            "soulstream-dashboard 설정 건너뜀: tsx 또는 서버 엔트리 없음 (%s)",
-            soulstream_dashboard_dir,
-        )
-
     return configs
