@@ -34,45 +34,45 @@ Args:
     source: 로그용 호출 출처 (예: "SIGTERM", "HTTP /shutdown")
 
 ### `_signal_handler(signum, frame)`
-- 위치: 줄 116
+- 위치: 줄 119
 - 설명: 시그널 수신 시 graceful shutdown 수행
 
 SIGTERM, SIGINT 수신 시 활성 세션이 있으면 사용자에게 확인을 받은 후 종료합니다.
 
 ### `async _slack_notifier(message)`
-- 위치: 줄 158
+- 위치: 줄 161
 - 설명: PluginManager 알림을 운영자 DM으로 전송.
 
 ### `_load_plugins()`
-- 위치: 줄 177
+- 위치: 줄 180
 - 데코레이터: reflect.capability
 - 설명: plugins.yaml 레지스트리에서 플러그인을 로드합니다.
 
 ### `_build_dependencies()`
-- 위치: 줄 219
+- 위치: 줄 222
 - 설명: 핸들러 의존성 딕셔너리 빌드
 
 ### `notify_startup()`
-- 위치: 줄 248
+- 위치: 줄 251
 - 설명: 봇 시작 알림 (운영자 DM)
 
 ### `notify_shutdown()`
-- 위치: 줄 258
+- 위치: 줄 261
 - 설명: 봇 종료 알림 (운영자 DM)
 
 ### `_dispatch_plugin_startup()`
-- 위치: 줄 268
+- 위치: 줄 271
 - 설명: Dispatch on_startup hook to all loaded plugins.
 
 Plugins return runtime references (e.g. watcher, list_runner,
 channel_store, channel_collector) which are stored for handler access.
 
 ### `init_bot_user_id()`
-- 위치: 줄 300
+- 위치: 줄 303
 - 설명: 봇 사용자 ID 초기화
 
 ### `main()`
-- 위치: 줄 310
+- 위치: 줄 313
 - 설명: 봇 메인 진입점
 
 ## 내부 의존성

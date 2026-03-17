@@ -13,7 +13,7 @@ from pathlib import Path
 import psutil
 
 from seosoyoung.slackbot.config import Config
-from seosoyoung.slackbot.restart import RestartType
+from seosoyoung.slackbot.restart import RestartType, RestartRequest
 from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.slack.helpers import resolve_operator_dm
 
@@ -474,6 +474,7 @@ def handle_update_restart(
     check_permission,
     get_running_session_count,
     send_restart_confirmation,
+    trello_watcher_ref,
     **_,
 ):
     """update/restart 명령어 핸들러"""
@@ -487,6 +488,7 @@ def handle_update_restart(
 
     if running_count > 0:
         channel = resolve_operator_dm(client, Config.slack.operator_user_id)
+        # 팝업 발송 (기존 유지)
         send_restart_confirmation(
             client=client,
             channel=channel,
@@ -495,6 +497,19 @@ def handle_update_restart(
             user_id=user_id,
             original_thread_ts=ts,
         )
+        # 신규: 자동 pending 등록
+        # request_restart()는 중복 호출 시 기존 요청을 유지하므로 안전
+        request = RestartRequest(
+            restart_type=restart_type,
+            requester_user_id=user_id,
+            channel_id=channel,
+            thread_ts=ts or "",
+        )
+        restart_manager.request_restart(request)
+        # 신규: trello_watcher 일시 중단
+        trello_watcher = trello_watcher_ref()
+        if trello_watcher:
+            trello_watcher.pause()
         return
 
     type_name = "업데이트" if command == "update" else "재시작"

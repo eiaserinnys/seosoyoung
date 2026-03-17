@@ -203,6 +203,12 @@ def register_action_handlers(app, dependencies: dict):
         except Exception as e:
             logger.error(f"메시지 업데이트 실패: {e}")
 
+        # 신규: pending 취소 (사용자가 "아니오"를 클릭했으므로 자동 등록된 pending 취소)
+        restart_manager.cancel_restart()
+        # 신규: trello watcher 재개 (handle_update_restart에서 자동 pause된 상태 복구)
+        trello_watcher = trello_watcher_ref()
+        if trello_watcher:
+            trello_watcher.resume()
         logger.info(f"재시작 취소: user={user_id}")
 
     @app.action("restart_wait_all")
