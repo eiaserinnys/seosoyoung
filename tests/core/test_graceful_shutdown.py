@@ -60,7 +60,7 @@ class TestShutdownWithActiveSessions:
     """활성 세션이 있을 때의 shutdown 동작"""
 
     def test_sigterm_with_sessions_enters_pending(self):
-        """SIGTERM: 활성 세션 있으면 pending 모드 진입"""
+        """SIGTERM: 활성 세션 있으면 pending_request 등록 (is_pending은 사용자 확인 후 True)"""
         on_restart = MagicMock()
         manager = RestartManager(
             get_running_count=lambda: 1,
@@ -71,10 +71,10 @@ class TestShutdownWithActiveSessions:
         shutdown_fn("SIGTERM")
 
         on_restart.assert_not_called()
-        assert manager.is_pending is True
+        assert manager.pending_request is not None
 
     def test_http_shutdown_with_sessions_enters_pending(self):
-        """HTTP /shutdown: 활성 세션 있으면 pending 모드 진입"""
+        """HTTP /shutdown: 활성 세션 있으면 pending_request 등록 (is_pending은 사용자 확인 후 True)"""
         on_restart = MagicMock()
         manager = RestartManager(
             get_running_count=lambda: 2,
@@ -85,7 +85,7 @@ class TestShutdownWithActiveSessions:
         shutdown_fn("HTTP /shutdown")
 
         on_restart.assert_not_called()
-        assert manager.is_pending is True
+        assert manager.pending_request is not None
 
     def test_sigterm_waits_then_restarts_when_session_ends(self):
         """SIGTERM: 세션 종료 시 check_and_restart_if_ready를 통해 재시작"""
@@ -100,8 +100,8 @@ class TestShutdownWithActiveSessions:
         shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("SIGTERM")
 
-        # 아직 세션 진행 중
-        assert manager.is_pending is True
+        # 아직 세션 진행 중 — pending_request 등록됨, is_pending은 사용자 확인 전 False
+        assert manager.pending_request is not None
         on_restart.assert_not_called()
 
         # 세션 종료 시뮬레이션
@@ -124,7 +124,7 @@ class TestShutdownWithActiveSessions:
         shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("HTTP /shutdown")
 
-        assert manager.is_pending is True
+        assert manager.pending_request is not None
 
         # 세션 하나씩 종료
         running_count[0] = 2
@@ -187,8 +187,8 @@ class TestNoTimeoutSafetyNet:
         shutdown_fn = make_shutdown_with_session_wait(manager, RestartType.RESTART)
         shutdown_fn("SIGTERM")
 
-        # pending 상태이지만 on_restart는 호출되지 않음
-        assert manager.is_pending is True
+        # pending_request 등록됨, on_restart는 호출되지 않음
+        assert manager.pending_request is not None
         on_restart.assert_not_called()
 
     def test_only_session_end_triggers_restart(self):

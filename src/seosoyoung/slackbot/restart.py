@@ -51,13 +51,18 @@ class RestartManager:
 
         # 대기 상태
         self._pending_restart: Optional[RestartRequest] = None
+        self._user_confirmed: bool = False
         self._lock = threading.Lock()
 
     @property
     def is_pending(self) -> bool:
-        """재시작 대기 중인지 확인"""
+        """재시작 대기 중이며 사용자가 확인한 상태인지 확인.
+
+        팝업이 떴더라도 사용자가 '세션 완료 후 종료' 버튼을 누르기 전까지는
+        False를 반환하여 대화를 차단하지 않는다.
+        """
         with self._lock:
-            return self._pending_restart is not None
+            return self._pending_restart is not None and self._user_confirmed
 
     @property
     def pending_request(self) -> Optional[RestartRequest]:
@@ -80,6 +85,7 @@ class RestartManager:
                 return False
 
             self._pending_restart = request
+            self._user_confirmed = False
             logger.info(f"재시작 대기 시작: type={request.restart_type.name}")
             return True
 
@@ -112,7 +118,17 @@ class RestartManager:
                 restart_type=restart_type,
                 is_system=True,
             )
+            self._user_confirmed = False
         return False
+
+    def confirm_shutdown(self) -> None:
+        """사용자가 '세션 완료 후 종료' 버튼을 클릭했음을 기록.
+
+        이 시점부터 is_pending이 True가 되어 새 대화가 차단된다.
+        """
+        with self._lock:
+            self._user_confirmed = True
+        logger.info("사용자 종료 확인 — 이후 신규 대화 차단")
 
     def cancel_restart(self) -> bool:
         """재시작 대기 취소
@@ -125,6 +141,7 @@ class RestartManager:
                 return False
 
             self._pending_restart = None
+            self._user_confirmed = False
             logger.info("재시작 대기 취소됨")
             return True
 
@@ -154,6 +171,7 @@ class RestartManager:
         """즉시 재시작 (대기 없이)"""
         with self._lock:
             self._pending_restart = None
+            self._user_confirmed = False
 
         logger.info(f"즉시 재시작: {restart_type.name}")
         self._on_restart(restart_type)

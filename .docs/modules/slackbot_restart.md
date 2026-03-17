@@ -28,10 +28,11 @@
 #### 메서드
 
 - `__init__(self, get_running_count, on_restart)` (줄 39): Args:
-- `is_pending(self)` (줄 57): 재시작 대기 중인지 확인
-- `pending_request(self)` (줄 63): 대기 중인 재시작 요청 반환
-- `request_restart(self, request)` (줄 68): 재시작 요청 (대기 모드 진입)
-- `request_system_shutdown(self, restart_type)` (줄 86): 시스템 수준의 종료 요청 (SIGTERM, HTTP /shutdown 등)
-- `cancel_restart(self)` (줄 117): 재시작 대기 취소
-- `check_and_restart_if_ready(self)` (줄 131): 실행 중인 세션이 없으면 재시작 실행
-- `force_restart(self, restart_type)` (줄 153): 즉시 재시작 (대기 없이)
+- `is_pending(self)` (줄 58): 재시작 대기 중이며 사용자가 확인한 상태인지 확인.
+- `pending_request(self)` (줄 68): 대기 중인 재시작 요청 반환
+- `request_restart(self, request)` (줄 73): 재시작 요청 (대기 모드 진입)
+- `request_system_shutdown(self, restart_type)` (줄 92): 시스템 수준의 종료 요청 (SIGTERM, HTTP /shutdown 등)
+- `confirm_shutdown(self)` (줄 124): 사용자가 '세션 완료 후 종료' 버튼을 클릭했음을 기록.
+- `cancel_restart(self)` (줄 133): 재시작 대기 취소
+- `check_and_restart_if_ready(self)` (줄 148): 실행 중인 세션이 없으면 재시작 실행
+- `force_restart(self, restart_type)` (줄 170): 즉시 재시작 (대기 없이)
