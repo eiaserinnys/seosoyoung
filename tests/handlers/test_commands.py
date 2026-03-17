@@ -113,6 +113,7 @@ def _make_deps(**overrides):
         "get_running_session_count": MagicMock(return_value=0),
         "send_restart_confirmation": MagicMock(),
         "list_runner_ref": MagicMock(return_value=None),
+        "trello_watcher_ref": MagicMock(return_value=None),
     }
     deps.update(overrides)
     return deps
@@ -260,6 +261,7 @@ class TestHandleUpdateRestart:
             check_permission=MagicMock(return_value=False),
             get_running_session_count=MagicMock(return_value=0),
             send_restart_confirmation=MagicMock(),
+            trello_watcher_ref=MagicMock(return_value=None),
         )
         assert "관리자 권한" in say.call_args[1]["text"]
 
@@ -272,6 +274,7 @@ class TestHandleUpdateRestart:
             check_permission=MagicMock(return_value=True),
             get_running_session_count=MagicMock(return_value=2),
             send_restart_confirmation=send_confirm,
+            trello_watcher_ref=MagicMock(return_value=None),
         )
         send_confirm.assert_called_once()
 
@@ -284,8 +287,53 @@ class TestHandleUpdateRestart:
             check_permission=MagicMock(return_value=True),
             get_running_session_count=MagicMock(return_value=0),
             send_restart_confirmation=MagicMock(),
+            trello_watcher_ref=MagicMock(return_value=None),
         )
         restart_mgr.force_restart.assert_called_once()
+
+    def test_restart_with_sessions_registers_pending(self):
+        """세션이 있을 때 팝업 발송과 동시에 request_restart()로 pending 자동 등록"""
+        restart_mgr = MagicMock()
+        handle_update_restart(
+            command="restart", say=MagicMock(), ts="ts1", user_id="U1",
+            client=MagicMock(),
+            restart_manager=restart_mgr,
+            check_permission=MagicMock(return_value=True),
+            get_running_session_count=MagicMock(return_value=1),
+            send_restart_confirmation=MagicMock(),
+            trello_watcher_ref=MagicMock(return_value=None),
+        )
+        restart_mgr.request_restart.assert_called_once()
+
+    def test_restart_with_sessions_pauses_watcher(self):
+        """세션이 있을 때 trello_watcher.pause()가 호출된다"""
+        watcher = MagicMock()
+        restart_mgr = MagicMock()
+        handle_update_restart(
+            command="restart", say=MagicMock(), ts="ts1", user_id="U1",
+            client=MagicMock(),
+            restart_manager=restart_mgr,
+            check_permission=MagicMock(return_value=True),
+            get_running_session_count=MagicMock(return_value=1),
+            send_restart_confirmation=MagicMock(),
+            trello_watcher_ref=lambda: watcher,
+        )
+        watcher.pause.assert_called_once()
+
+    def test_restart_with_sessions_no_watcher_no_error(self):
+        """trello_watcher_ref()가 None을 반환해도 오류 없이 동작"""
+        restart_mgr = MagicMock()
+        handle_update_restart(
+            command="restart", say=MagicMock(), ts="ts1", user_id="U1",
+            client=MagicMock(),
+            restart_manager=restart_mgr,
+            check_permission=MagicMock(return_value=True),
+            get_running_session_count=MagicMock(return_value=1),
+            send_restart_confirmation=MagicMock(),
+            trello_watcher_ref=lambda: None,
+        )
+        # request_restart는 호출되어야 함
+        restart_mgr.request_restart.assert_called_once()
 
 
 class TestHandleCompact:

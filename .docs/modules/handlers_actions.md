@@ -42,14 +42,14 @@ Args:
     dependencies: 의존성 딕셔너리
 
 ### `_deliver_input_response_to_soul(agent_session_id, request_id, question_text, selected_label)`
-- 위치: 줄 375
+- 위치: 줄 381
 - 설명: soul-server에 AskUserQuestion 응답을 HTTP로 전달
 
 POST /sessions/{agent_session_id}/respond
 Body: {"request_id": "...", "answers": {"question_text": "selected_label"}}
 
 ### `activate_credential_profile(profile_name, channel, message_ts, client)`
-- 위치: 줄 417
+- 위치: 줄 423
 - 설명: 크레덴셜 프로필 전환 처리
 
 Soul API를 호출하여 프로필을 활성화하고 슬랙 메시지를 업데이트합니다.
@@ -61,7 +61,7 @@ Args:
     client: Slack client
 
 ### `save_credential_profile(profile_name, channel, message_ts, client)`
-- 위치: 줄 469
+- 위치: 줄 475
 - 설명: 크레덴셜 프로필 저장 처리
 
 Soul API를 호출하여 현재 크레덴셜을 프로필로 저장하고
@@ -74,7 +74,7 @@ Args:
     client: Slack client
 
 ### `delete_credential_profile(profile_name, channel, message_ts, client)`
-- 위치: 줄 524
+- 위치: 줄 530
 - 설명: 크레덴셜 프로필 삭제 처리
 
 Soul API를 호출하여 프로필을 삭제하고 슬랙 메시지를 업데이트합니다.
@@ -86,7 +86,7 @@ Args:
     client: Slack client
 
 ### `list_credential_profiles(channel, message_ts, client)`
-- 위치: 줄 578
+- 위치: 줄 584
 - 설명: 크레덴셜 프로필 목록 조회 및 관리 UI 표시
 
 Soul API에서 프로필 목록과 rate limit 정보를 조회하여
@@ -98,7 +98,7 @@ Args:
     client: Slack client
 
 ### `register_credential_action_handlers(app, dependencies)`
-- 위치: 줄 664
+- 위치: 줄 670
 - 설명: 크레덴셜 프로필 관리 액션 핸들러 등록
 
 Args:

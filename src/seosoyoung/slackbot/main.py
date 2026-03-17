@@ -106,6 +106,9 @@ def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
             running_count=running_count,
             restart_type=restart_type,
         )
+        # 신규: 팝업 발송 성공 경로에서도 pending 자동 등록
+        # request_system_shutdown()은 중복 호출 시 기존 요청을 유지하므로 안전
+        restart_manager.request_system_shutdown(restart_type)
     except Exception as e:
         logger.warning(
             f"[{source}] DM 채널 resolve 실패, 세션 대기 모드로 진입: {e}"

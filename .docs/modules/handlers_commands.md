@@ -78,11 +78,11 @@ TranslatePlugin의 설정과 translate_text() 메서드를 사용합니다.
 - 설명: update/restart 명령어 핸들러
 
 ### `handle_compact()`
-- 위치: 줄 505
+- 위치: 줄 520
 - 설명: compact 명령어 핸들러 - Soulstream 서비스에 compact 요청
 
 ### `_run_soul_api(async_fn)`
-- 위치: 줄 551
+- 위치: 줄 566
 - 설명: SoulServiceClient API를 동기적으로 호출
 
 slack_bolt sync mode에서 핸들러 스레드에는 이벤트 루프가 없으므로
@@ -95,7 +95,7 @@ Returns:
     API 응답
 
 ### `_sanitize_email_to_profile_name(email)`
-- 위치: 줄 578
+- 위치: 줄 593
 - 설명: 이메일에서 프로필 이름 생성
 
 user@example.com → user
@@ -108,7 +108,7 @@ Returns:
     프로필 이름으로 사용 가능한 문자열
 
 ### `_fetch_profiles_with_rates()`
-- 위치: 줄 599
+- 위치: 줄 614
 - 설명: Soulstream API에서 프로필 목록 + rate limit을 조회하여 병합.
 
 Returns:
@@ -117,39 +117,39 @@ Returns:
     - merged_profiles: rate limit 정보가 병합된 프로필 리스트
 
 ### `_handle_profile_list(say, reply_ts)`
-- 위치: 줄 634
+- 위치: 줄 649
 - 설명: profile list: Soulstream API로 프로필 + rate limit 조회 후 게이지 바 UI 표시
 
 ### `_handle_profile_delete_ui(say, reply_ts)`
-- 위치: 줄 660
+- 위치: 줄 675
 - 설명: profile delete (이름 미입력): 프로필 목록을 삭제 버튼으로 표시
 
 ### `handle_profile()`
-- 위치: 줄 693
+- 위치: 줄 708
 - 설명: profile 명령어 핸들러 - Soulstream API 기반 인증 프로필 관리
 
 ### `handle_plugins()`
-- 위치: 줄 776
+- 위치: 줄 791
 - 설명: plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드
 
 ### `handle_resume_list_run()`
-- 위치: 줄 847
+- 위치: 줄 862
 - 설명: 정주행 재개 명령어 핸들러
 
 ### `handle_set_token()`
-- 위치: 줄 875
+- 위치: 줄 890
 - 설명: set-token 명령어 핸들러 - Claude OAuth 토큰 설정
 
 사용법: @서소영 set-token sk-ant-oat01-xxx
 
 ### `handle_clear_token()`
-- 위치: 줄 927
+- 위치: 줄 942
 - 설명: clear-token 명령어 핸들러 - Claude OAuth 토큰 삭제
 
 사용법: @서소영 clear-token
 
 ### `handle_session_info()`
-- 위치: 줄 955
+- 위치: 줄 970
 - 설명: session-info 명령어 핸들러 - 현재 스레드의 세션 정보 표시
 
 디버깅용으로, 현재 스레드에 연결된 세션의 주요 ID들을 표시합니다.
@@ -158,6 +158,7 @@ Returns:
 ## 내부 의존성
 
 - `seosoyoung.slackbot.config.Config`
+- `seosoyoung.slackbot.restart.RestartRequest`
 - `seosoyoung.slackbot.restart.RestartType`
 - `seosoyoung.slackbot.slack.formatting.update_message`
 - `seosoyoung.slackbot.slack.helpers.resolve_operator_dm`
