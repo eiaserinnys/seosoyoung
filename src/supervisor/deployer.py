@@ -33,6 +33,9 @@ _SUPERVISOR_PATH_PREFIX = "src/supervisor/"
 _SOULSTREAM_DASHBOARD_PATH_PREFIX = "soul-dashboard/"
 _SOULSTREAM_SERVER_PATH_PREFIX = "soul-server/"
 
+# soul-dashboard lockfile 경로 (의존성 변경 감지 기준)
+_SOULSTREAM_DASHBOARD_LOCKFILE = "soul-dashboard/pnpm-lock.yaml"
+
 # 배포 시 프로세스 stop() 타임아웃 (초)
 # 0 = 무한 대기 (클로드 세션이 자연 종료될 때까지 기다림)
 _DEPLOY_STOP_TIMEOUT = 0
@@ -392,7 +395,7 @@ class Deployer:
                 # soulstream-dashboard 변경 시 pnpm install + build
                 if any(f.startswith(_SOULSTREAM_DASHBOARD_PATH_PREFIX) for f in changed):
                     dashboard_dir = soulstream_dir / "soul-dashboard"
-                    build_ok = self._build_soul_dashboard(dashboard_dir)
+                    build_ok = self._build_soul_dashboard(dashboard_dir, changed_files=changed)
                     if not build_ok:
                         logger.warning(
                             "soulstream-dashboard 빌드 실패, "
@@ -571,14 +574,18 @@ class Deployer:
                 logger.warning("soul-dashboard: node_modules 삭제 실패: %s", exc)
 
     @staticmethod
-    def _build_soul_dashboard(dashboard_dir: Path) -> bool:
+    def _build_soul_dashboard(
+        dashboard_dir: Path,
+        changed_files: list[str] | None = None,
+    ) -> bool:
         """soul-dashboard 클라이언트를 pnpm으로 빌드한다.
 
         soul-dashboard는 pnpm-lock.yaml을 정본으로 사용한다.
         pnpm은 optional dependencies(플랫폼별 네이티브 모듈 포함)를 올바르게
         처리하므로 npm의 optional dependency 버그를 피할 수 있다.
 
-        빌드 전에 node_modules를 삭제하여 clean install을 보장한다.
+        lockfile(pnpm-lock.yaml)이 변경된 경우에만 node_modules를 삭제하고
+        전체 재설치한다. lockfile 변경이 없으면 --frozen-lockfile로 빠르게 진행한다.
         빌드 성공 시 True, 실패 시 False를 반환한다.
         """
         pnpm = shutil.which("pnpm")
@@ -594,13 +601,23 @@ class Deployer:
 
         cwd = str(dashboard_dir)
 
-        # clean install로 stale node_modules 방지
-        Deployer._clean_node_modules(dashboard_dir)
+        # lockfile 변경 시에만 clean install (node_modules 삭제 후 재설치)
+        # lockfile 변경 없으면 --frozen-lockfile로 캐시를 활용하여 빠르게 처리
+        lockfile_changed = changed_files is None or any(
+            f == _SOULSTREAM_DASHBOARD_LOCKFILE for f in changed_files
+        )
+        if lockfile_changed:
+            logger.info("soul-dashboard: lockfile 변경 감지, clean install")
+            Deployer._clean_node_modules(dashboard_dir)
+            install_cmd = [pnpm, "install"]
+        else:
+            logger.info("soul-dashboard: lockfile 변경 없음, frozen install")
+            install_cmd = [pnpm, "install", "--frozen-lockfile"]
 
         logger.info("soul-dashboard: pnpm install")
         try:
             result = subprocess.run(
-                [pnpm, "install"],
+                install_cmd,
                 cwd=cwd,
                 capture_output=True,
                 text=True,
