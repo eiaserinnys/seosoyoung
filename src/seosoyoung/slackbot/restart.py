@@ -65,6 +65,19 @@ class RestartManager:
             return self._pending_restart is not None and self._user_confirmed
 
     @property
+    def is_shutdown_requested(self) -> bool:
+        """사용자 확인 여부와 무관하게 종료/재시작 요청이 등록되어 있는지 확인.
+
+        세션 종료 콜백에서 자동 재시작 트리거 여부를 판단할 때 사용한다.
+        새 대화 차단 여부는 is_pending을 사용한다.
+
+        - is_shutdown_requested: pending 등록됨 → 세션 0이 되면 재시작 실행
+        - is_pending: pending + user_confirmed → 신규 대화 차단
+        """
+        with self._lock:
+            return self._pending_restart is not None
+
+    @property
     def pending_request(self) -> Optional[RestartRequest]:
         """대기 중인 재시작 요청 반환"""
         with self._lock:

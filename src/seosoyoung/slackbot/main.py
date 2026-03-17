@@ -63,7 +63,7 @@ restart_manager = RestartManager(
 
 def _check_restart_on_session_stop():
     """세션 종료 시 재시작 확인"""
-    if restart_manager.is_pending:
+    if restart_manager.is_shutdown_requested:  # user_confirmed 무관
         restart_manager.check_and_restart_if_ready()
 
 
