@@ -321,3 +321,13 @@ class ProcessManager:
     @property
     def registered_names(self) -> list[str]:
         return list(self._states.keys())
+
+    def log_paths(self) -> dict[str, dict]:
+        """등록된 프로세스의 로그 파일 경로 반환."""
+        return {
+            name: {
+                "stdout_log": str(state.config.stdout_log) if state.config.stdout_log else None,
+                "stderr_log": str(state.config.stderr_log) if state.config.stderr_log else None,
+            }
+            for name, state in self._states.items()
+        }
