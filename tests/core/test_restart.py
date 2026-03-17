@@ -48,7 +48,7 @@ class TestRestartManager:
         assert manager.pending_request is None
 
     def test_request_restart(self):
-        """재시작 요청 등록"""
+        """재시작 요청 등록: pending_request는 설정되지만 is_pending은 사용자 확인 전까지 False"""
         manager = RestartManager(
             get_running_count=lambda: 1,
             on_restart=MagicMock()
@@ -64,8 +64,10 @@ class TestRestartManager:
         result = manager.request_restart(request)
 
         assert result is True
-        assert manager.is_pending is True
+        # pending_request는 등록됨
         assert manager.pending_request == request
+        # is_pending은 사용자 확인 전까지 False
+        assert manager.is_pending is False
 
     def test_request_restart_already_pending(self):
         """이미 대기 중일 때 중복 요청"""
@@ -108,6 +110,7 @@ class TestRestartManager:
             thread_ts="1234567890.123456"
         )
         manager.request_restart(request)
+        manager.confirm_shutdown()
 
         result = manager.cancel_restart()
 
@@ -140,7 +143,7 @@ class TestRestartManager:
         on_restart.assert_not_called()
 
     def test_check_and_restart_sessions_running(self):
-        """실행 중인 세션이 있을 때"""
+        """실행 중인 세션이 있을 때: is_pending 여부와 무관하게 재시작 보류"""
         on_restart = MagicMock()
         manager = RestartManager(
             get_running_count=lambda: 2,
@@ -159,8 +162,8 @@ class TestRestartManager:
 
         assert result is False
         on_restart.assert_not_called()
-        # 여전히 대기 중
-        assert manager.is_pending is True
+        # pending_request는 여전히 등록된 상태
+        assert manager.pending_request is not None
 
     def test_check_and_restart_no_sessions(self):
         """실행 중인 세션이 없을 때 재시작"""
@@ -252,6 +255,122 @@ class TestRestartManager:
         on_restart.assert_called_once_with(RestartType.UPDATE)
 
 
+class TestConfirmShutdown:
+    """confirm_shutdown — 사용자 확인 후 대화 차단 활성화 테스트"""
+
+    def test_is_pending_false_before_confirm(self):
+        """confirm_shutdown 호출 전에는 is_pending이 False"""
+        manager = RestartManager(
+            get_running_count=lambda: 1,
+            on_restart=MagicMock(),
+        )
+        manager.request_system_shutdown(RestartType.RESTART)
+
+        assert manager.is_pending is False
+
+    def test_is_pending_true_after_confirm(self):
+        """confirm_shutdown 호출 후 is_pending이 True"""
+        manager = RestartManager(
+            get_running_count=lambda: 1,
+            on_restart=MagicMock(),
+        )
+        manager.request_system_shutdown(RestartType.RESTART)
+        manager.confirm_shutdown()
+
+        assert manager.is_pending is True
+
+    def test_confirm_without_pending_has_no_effect(self):
+        """pending 없이 confirm_shutdown 호출해도 is_pending은 False 유지"""
+        manager = RestartManager(
+            get_running_count=lambda: 0,
+            on_restart=MagicMock(),
+        )
+
+        manager.confirm_shutdown()
+
+        assert manager.is_pending is False
+
+    def test_cancel_after_confirm_resets_state(self):
+        """confirm_shutdown 후 cancel_restart 호출 시 모든 상태 초기화"""
+        manager = RestartManager(
+            get_running_count=lambda: 1,
+            on_restart=MagicMock(),
+        )
+        manager.request_system_shutdown(RestartType.RESTART)
+        manager.confirm_shutdown()
+        assert manager.is_pending is True
+
+        manager.cancel_restart()
+
+        assert manager.is_pending is False
+        assert manager.pending_request is None
+
+    def test_force_restart_after_confirm_resets_state(self):
+        """confirm_shutdown 후 force_restart 호출 시 상태 초기화"""
+        on_restart = MagicMock()
+        manager = RestartManager(
+            get_running_count=lambda: 1,
+            on_restart=on_restart,
+        )
+        manager.request_system_shutdown(RestartType.RESTART)
+        manager.confirm_shutdown()
+
+        manager.force_restart(RestartType.UPDATE)
+
+        assert manager.is_pending is False
+        on_restart.assert_called_once_with(RestartType.UPDATE)
+
+    def test_check_and_restart_works_regardless_of_confirm(self):
+        """confirm_shutdown 여부와 무관하게 check_and_restart_if_ready는 pending_request만 본다"""
+        on_restart = MagicMock()
+        running_count = [1]
+        manager = RestartManager(
+            get_running_count=lambda: running_count[0],
+            on_restart=on_restart,
+        )
+        manager.request_system_shutdown(RestartType.RESTART)
+        # confirm_shutdown 없이도 세션이 0이 되면 자동 재시작
+        assert manager.is_pending is False
+
+        running_count[0] = 0
+        assert manager.check_and_restart_if_ready() is True
+        on_restart.assert_called_once_with(RestartType.RESTART)
+
+    def test_request_restart_resets_confirmed_flag(self):
+        """새 request_restart 호출 시 _user_confirmed 초기화"""
+        manager = RestartManager(
+            get_running_count=lambda: 1,
+            on_restart=MagicMock(),
+        )
+        request1 = RestartRequest(restart_type=RestartType.UPDATE, requester_user_id="U1")
+        manager.request_restart(request1)
+        manager.confirm_shutdown()
+        assert manager.is_pending is True
+
+        # 취소 후 새 요청
+        manager.cancel_restart()
+        request2 = RestartRequest(restart_type=RestartType.RESTART, requester_user_id="U2")
+        manager.request_restart(request2)
+
+        # confirm_shutdown 없이는 다시 False
+        assert manager.is_pending is False
+
+    def test_request_system_shutdown_resets_confirmed_flag(self):
+        """새 request_system_shutdown 호출 시 _user_confirmed 초기화"""
+        manager = RestartManager(
+            get_running_count=lambda: 1,
+            on_restart=MagicMock(),
+        )
+        manager.request_system_shutdown(RestartType.RESTART)
+        manager.confirm_shutdown()
+        manager.cancel_restart()
+
+        manager.request_system_shutdown(RestartType.UPDATE)
+
+        # confirm_shutdown 없이는 False
+        assert manager.is_pending is False
+
+
 class TestRequestSystemShutdown:
     """request_system_shutdown 테스트 — SIGTERM/HTTP shutdown 경로 대기 로직"""
 
@@ -270,7 +389,7 @@ class TestRequestSystemShutdown:
         assert manager.is_pending is False
 
     def test_active_sessions_enters_pending_mode(self):
-        """활성 세션이 있으면 pending 모드 진입, on_restart 호출 안 함"""
+        """활성 세션이 있으면 pending_request가 등록되지만 is_pending은 확인 전 False"""
         on_restart = MagicMock()
         manager = RestartManager(
             get_running_count=lambda: 2,
@@ -281,7 +400,10 @@ class TestRequestSystemShutdown:
 
         assert result is False
         on_restart.assert_not_called()
-        assert manager.is_pending is True
+        # pending_request는 등록됨
+        assert manager.pending_request is not None
+        # is_pending은 사용자 확인 전 False
+        assert manager.is_pending is False
 
     def test_pending_is_system_flagged(self):
         """pending 요청에 is_system=True 플래그가 설정됨"""
@@ -298,7 +420,7 @@ class TestRequestSystemShutdown:
         assert manager.pending_request.restart_type == RestartType.RESTART
 
     def test_session_completion_triggers_restart(self):
-        """pending 상태에서 세션 종료 시 check_and_restart_if_ready 통해 재시작"""
+        """pending 상태에서 세션 종료 시 check_and_restart_if_ready 통해 재시작 (confirm 불필요)"""
         on_restart = MagicMock()
         running_count = [1]
 
@@ -308,13 +430,15 @@ class TestRequestSystemShutdown:
         )
 
         manager.request_system_shutdown(RestartType.RESTART)
-        assert manager.is_pending is True
+        # is_pending은 False (confirm 안 했으므로), pending_request는 등록됨
+        assert manager.is_pending is False
+        assert manager.pending_request is not None
 
         # 세션 아직 있음
         assert manager.check_and_restart_if_ready() is False
         on_restart.assert_not_called()
 
-        # 세션 종료
+        # 세션 종료 — confirm 없이도 자동 재시작
         running_count[0] = 0
         assert manager.check_and_restart_if_ready() is True
         on_restart.assert_called_once_with(RestartType.RESTART)

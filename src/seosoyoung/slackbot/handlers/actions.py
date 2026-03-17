@@ -307,6 +307,9 @@ def register_action_handlers(app, dependencies: dict):
             # 이미 세션이 없어서 즉시 종료됨
             return
 
+        # 사용자가 '세션 완료 후 종료'를 선택했으므로 이 시점부터 신규 대화 차단
+        restart_manager.confirm_shutdown()
+
         # Trello 워처 일시 중단
         trello_watcher = trello_watcher_ref()
         if trello_watcher:

@@ -253,11 +253,11 @@
 - `send_restart_confirmation()` (seosoyoung/slackbot/handlers/actions.py:15): 재시작 확인 메시지를 인터랙티브 버튼과 함께 전송
 - `send_deploy_shutdown_popup()` (seosoyoung/slackbot/handlers/actions.py:83): 배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
 - `register_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:146): 액션 핸들러 등록
-- `activate_credential_profile()` (seosoyoung/slackbot/handlers/actions.py:423): 크레덴셜 프로필 전환 처리
-- `save_credential_profile()` (seosoyoung/slackbot/handlers/actions.py:475): 크레덴셜 프로필 저장 처리
-- `delete_credential_profile()` (seosoyoung/slackbot/handlers/actions.py:530): 크레덴셜 프로필 삭제 처리
-- `list_credential_profiles()` (seosoyoung/slackbot/handlers/actions.py:584): 크레덴셜 프로필 목록 조회 및 관리 UI 표시
-- `register_credential_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:670): 크레덴셜 프로필 관리 액션 핸들러 등록
+- `activate_credential_profile()` (seosoyoung/slackbot/handlers/actions.py:426): 크레덴셜 프로필 전환 처리
+- `save_credential_profile()` (seosoyoung/slackbot/handlers/actions.py:478): 크레덴셜 프로필 저장 처리
+- `delete_credential_profile()` (seosoyoung/slackbot/handlers/actions.py:533): 크레덴셜 프로필 삭제 처리
+- `list_credential_profiles()` (seosoyoung/slackbot/handlers/actions.py:587): 크레덴셜 프로필 목록 조회 및 관리 UI 표시
+- `register_credential_action_handlers()` (seosoyoung/slackbot/handlers/actions.py:673): 크레덴셜 프로필 관리 액션 핸들러 등록
 - `handle_setup_token()` (seosoyoung/slackbot/handlers/auth.py:43): setup-token 명령어 핸들러
 - `handle_clear_token()` (seosoyoung/slackbot/handlers/auth.py:98): clear-token 명령어 핸들러
 - `check_auth_session()` (seosoyoung/slackbot/handlers/auth.py:129): 인증 세션에서 코드 입력 감지. 처리했으면 True 반환.
