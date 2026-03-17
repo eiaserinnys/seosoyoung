@@ -95,6 +95,7 @@ def create_app(
 
     # --- Cogito reflection ---
 
+    reflect.set_process_manager(process_manager)  # 로그 경로 주입
     mount_cogito(app, reflect)
 
     # --- API ---

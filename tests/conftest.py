@@ -42,11 +42,30 @@ sys.modules["slack_bolt"].App = MagicMock(return_value=mock_app)
 sys.modules["slack_bolt.adapter.socket_mode"] = MagicMock()
 
 # cogito mock (설치되지 않은 경우)
+# Reflector를 실제 클래스로 정의해야 SupervisorReflector(Reflector) 상속이 올바르게 동작한다.
+# MagicMock 인스턴스를 base class로 사용하면 subclass의 metaclass가 MagicMock이 되어
+# 메서드(start 등)가 MagicMock으로 교체되는 문제가 생긴다.
+class _MockReflector:
+    """테스트용 cogito.Reflector stub."""
+
+    def __init__(self, **kwargs):
+        pass
+
+    def capability(self, **kwargs):
+        return lambda f: f
+
+    def collect_capabilities(self):
+        return []
+
+    def get_level3(self) -> dict:
+        return {}
+
+    def get_sources(self):
+        return []
+
+
 mock_cogito = MagicMock()
-mock_cogito.Reflector = MagicMock(return_value=MagicMock(
-    capability=MagicMock(return_value=lambda f: f),
-    collect_capabilities=MagicMock(return_value=[]),
-))
+mock_cogito.Reflector = _MockReflector
 sys.modules["cogito"] = mock_cogito
 
 # src 경로 추가
