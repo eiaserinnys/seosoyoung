@@ -243,6 +243,9 @@ def register_action_handlers(app, dependencies: dict):
         )
         restart_manager.request_restart(request)
 
+        # 사용자가 버튼을 클릭하여 직접 대기를 선택했으므로 이 시점부터 신규 대화 차단
+        restart_manager.confirm_shutdown()
+
         # Trello 워처 일시 중단
         trello_watcher = trello_watcher_ref()
         if trello_watcher:
