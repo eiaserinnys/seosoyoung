@@ -1,6 +1,7 @@
 """RestartManager 테스트"""
 
 import pytest
+from unittest import mock
 from unittest.mock import MagicMock, call
 
 from seosoyoung.slackbot.restart import RestartManager, RestartRequest, RestartType
@@ -495,6 +496,60 @@ class TestRestartRequestDefaults:
         )
 
         assert request.is_system is False
+
+
+class TestSessionShutdownTrigger:
+    """_check_restart_on_session_stop 콜백 동작 검증
+
+    main.py를 import하면 슬랙 초기화가 실행되므로,
+    RestartManager를 직접 구성하여 콜백 패턴을 재현한다.
+    """
+
+    def _make_callback(self, restart_manager):
+        """main.py의 _check_restart_on_session_stop과 동일한 콜백 구성"""
+        def callback():
+            if restart_manager.is_shutdown_requested:
+                restart_manager.check_and_restart_if_ready()
+        return callback
+
+    def test_system_shutdown_pending_session_0_triggers_restart(self):
+        """system shutdown pending 상태에서 세션이 0이 되면 콜백으로 재시작 트리거"""
+        on_restart = mock.Mock()
+        running_count = [1]
+        manager = RestartManager(
+            get_running_count=lambda: running_count[0],
+            on_restart=on_restart,
+        )
+        # 세션이 있는 상태에서 pending 등록
+        manager.request_system_shutdown(RestartType.UPDATE)
+        assert manager.is_shutdown_requested is True
+        on_restart.assert_not_called()
+
+        # 세션 종료 → 콜백 호출
+        running_count[0] = 0
+        callback = self._make_callback(manager)
+        callback()
+
+        on_restart.assert_called_once_with(RestartType.UPDATE)
+
+    def test_no_confirm_session_0_allows_new_session(self):
+        """버튼 미클릭(user_confirmed=False) 상태 → is_pending=False → 신규 대화 허용"""
+        # 세션이 1개 있는 상태에서 pending 등록
+        manager = RestartManager(get_running_count=lambda: 1, on_restart=mock.Mock())
+        manager.request_system_shutdown(RestartType.UPDATE)
+
+        # is_pending은 False (신규 대화 게이트 통과)
+        assert manager.is_pending is False
+        # is_shutdown_requested는 True (재시작 트리거 통과)
+        assert manager.is_shutdown_requested is True
+
+    def test_confirm_shutdown_blocks_new_session(self):
+        """confirm_shutdown 후 → is_pending=True → 신규 대화 차단"""
+        manager = RestartManager(get_running_count=lambda: 1, on_restart=mock.Mock())
+        manager.request_system_shutdown(RestartType.UPDATE)
+        manager.confirm_shutdown()
+
+        assert manager.is_pending is True
 
 
 if __name__ == "__main__":
