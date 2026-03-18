@@ -43,4 +43,5 @@ pytest-asyncio>=0.23.0
 pytest-xdist>=3.5.0
 
 # Cogito reflection protocol
--e ../slackbot_workspace/.projects/cogito/python
+# Installed separately (via haniel YAML or: pip install -e .projects/cogito/python)
+# cogito @ git+https://github.com/eiaserinnys/cogito.git#subdirectory=python
