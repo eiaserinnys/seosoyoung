@@ -1,15 +1,22 @@
+param(
+    [Parameter(Mandatory=$true, Position=0)]
+    [string]$Command,
+    [string]$EnvPath = ""
+)
+
 # UTF-8 인코딩 설정
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 chcp 65001 | Out-Null
 
-param(
-    [Parameter(Mandatory=$true, Position=0)]
-    [string]$Command
-)
+# .env 파일 경로 결정
+# -EnvPath가 지정되면 해당 파일 사용, 없으면 CWD의 .env 사용
+if ($EnvPath -ne "") {
+    $envFile = $EnvPath
+} else {
+    $envFile = Join-Path (Get-Location) ".env"
+}
 
-# CWD의 .env 파일 로드
-$envFile = Join-Path (Get-Location) ".env"
 if (Test-Path $envFile) {
     Get-Content $envFile | ForEach-Object {
         $line = $_.Trim()
