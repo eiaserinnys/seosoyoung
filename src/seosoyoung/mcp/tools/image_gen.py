@@ -16,8 +16,11 @@ from google import genai
 from google.genai import types
 from slack_sdk import WebClient
 
-from seosoyoung.slackbot.config import Config
 from seosoyoung.mcp.config import SLACK_BOT_TOKEN
+
+# MCP는 bot 전체 설정이 아닌 MCP 전용 env vars만 사용
+_GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash-preview-image-generation")
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +90,7 @@ async def generate_image(
         ValueError: API 키가 설정되지 않은 경우, 또는 잘못된 파라미터
         RuntimeError: 이미지 생성에 실패한 경우
     """
-    if not Config.gemini.api_key:
+    if not _GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
 
     if image_size and image_size not in VALID_IMAGE_SIZES:
@@ -102,14 +105,14 @@ async def generate_image(
             f"허용 값: {', '.join(sorted(VALID_ASPECT_RATIOS))}"
         )
 
-    target_model = model or Config.gemini.model
+    target_model = model or _GEMINI_MODEL
     logger.info(
         f"이미지 생성 요청: model={target_model}, prompt={prompt[:100]}"
         f"{f', size={image_size}' if image_size else ''}"
         f"{f', ratio={aspect_ratio}' if aspect_ratio else ''}"
     )
 
-    client = genai.Client(api_key=Config.gemini.api_key)
+    client = genai.Client(api_key=_GEMINI_API_KEY)
 
     # 레퍼런스 이미지가 있으면 multimodal contents 구성
     contents = prompt
