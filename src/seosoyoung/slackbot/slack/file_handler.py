@@ -11,8 +11,6 @@ from typing import TypedDict
 
 import httpx
 
-from seosoyoung.slackbot.config import Config
-
 logger = logging.getLogger(__name__)
 
 # 임시 파일 저장 경로 (.local/tmp/slack_files)
@@ -129,7 +127,7 @@ async def download_file(
 
         # 파일 다운로드 (Bot Token 인증)
         async with httpx.AsyncClient() as client:
-            headers = {"Authorization": f"Bearer {Config.slack.bot_token}"}
+            headers = {"Authorization": f"Bearer {os.environ.get('SLACK_BOT_TOKEN', '')}"}
             response = await client.get(url, headers=headers, follow_redirects=True)
             response.raise_for_status()
 
