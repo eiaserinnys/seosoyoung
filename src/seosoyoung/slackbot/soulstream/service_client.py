@@ -145,7 +145,7 @@ class SoulServiceClient:
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
                 headers=self._build_headers(),
-                read_bufsize=2**20,  # 1MB (기본 64KB → 1MB, _high_water = 2MB)
+                read_bufsize=2**25,  # 32MB (기본 64KB → 32MB, _high_water = 64MB)
             )
         return self._session
 

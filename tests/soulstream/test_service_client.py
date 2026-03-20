@@ -915,7 +915,7 @@ class TestSSEReconnection:
 
     @pytest.mark.asyncio
     async def test_get_session_uses_large_read_bufsize(self, client):
-        """_get_session()이 aiohttp.ClientSession에 read_bufsize=2**20을 전달하는지 확인"""
+        """_get_session()이 aiohttp.ClientSession에 read_bufsize=2**25을 전달하는지 확인"""
         with patch("aiohttp.ClientSession") as mock_cls:
             mock_instance = MagicMock()
             mock_instance.closed = False
@@ -928,7 +928,7 @@ class TestSSEReconnection:
 
             mock_cls.assert_called_once()
             call_kwargs = mock_cls.call_args.kwargs
-            assert call_kwargs["read_bufsize"] == 2**20
+            assert call_kwargs["read_bufsize"] == 2**25
 
 
 class TestCredentialProfileAPI:
