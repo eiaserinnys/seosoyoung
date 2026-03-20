@@ -36,14 +36,13 @@ class TestManifestLoad:
 
     def test_service_count(self, manifest_path):
         data = load_manifest(manifest_path)
-        assert len(data["services"]) == 9
+        assert len(data["services"]) == 8
 
     def test_internal_services(self, manifest_path):
         data = load_manifest(manifest_path)
         internal = [s for s in data["services"] if s.get("type") == "internal"]
         names = {s["name"] for s in internal}
         assert "mcp-seosoyoung" in names
-        assert "supervisor" in names
         assert "soulstream-server" in names
 
     def test_external_services(self, manifest_path):

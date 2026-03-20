@@ -16,7 +16,7 @@ def make_shutdown_with_session_wait(manager: RestartManager, restart_type: Resta
     동일한 로직을 RestartManager 인스턴스를 주입받아 구현합니다.
 
     타임아웃 안전망은 사용자의 팝업 응답을 무시하고 강제 종료하는 문제를
-    일으키므로 제거되었다. supervisor가 프로세스 수명을 관리한다.
+    일으키므로 제거되었다. 프로세스 관리자가 수명을 관리한다.
     """
 
     def shutdown_with_session_wait(source: str = "TEST"):

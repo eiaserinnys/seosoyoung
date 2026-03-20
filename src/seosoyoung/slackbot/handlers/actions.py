@@ -88,7 +88,7 @@ def send_deploy_shutdown_popup(
 ) -> None:
     """배포/재시작 시 활성 세션이 있을 때 사용자 확인 팝업을 전송
 
-    supervisor에서 graceful shutdown 요청이 왔을 때 활성 세션이 있으면
+    graceful shutdown 요청이 왔을 때 활성 세션이 있으면
     사용자에게 즉시 종료 또는 세션 완료 후 종료를 선택하도록 한다.
 
     Args:

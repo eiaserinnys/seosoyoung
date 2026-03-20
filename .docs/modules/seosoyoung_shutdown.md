@@ -6,7 +6,7 @@
 
 경량 HTTP Shutdown 서버
 
-supervisor에서 POST /shutdown 요청을 받아 프로세스를 graceful하게 종료합니다.
+POST /shutdown 요청을 받아 프로세스를 graceful하게 종료합니다.
 
 ## 클래스
 

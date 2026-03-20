@@ -23,7 +23,7 @@ Seosoyoung Soul - FastAPI Application
 ### `async shutdown()`
 - 위치: 줄 190
 - 데코레이터: app.post
-- 설명: Graceful shutdown 엔드포인트 (supervisor 전용)
+- 설명: Graceful shutdown 엔드포인트
 
 ### `async health_check()`
 - 위치: 줄 215

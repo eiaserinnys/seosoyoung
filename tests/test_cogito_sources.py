@@ -81,38 +81,3 @@ class TestRescueCogitoSources:
             assert source.path, f"{source.capability}: path가 비어있음"
             assert source.entry_point, f"{source.capability}: entry_point가 비어있음"
             assert source.start_line > 0, f"{source.capability}: start_line이 0"
-
-
-class TestSupervisorCogitoSources:
-    """supervisor 서비스의 cogito source 검증."""
-
-    @pytest.fixture(autouse=True)
-    def _import_decorated_modules(self):
-        """데코레이터가 적용된 모듈을 임포트하여 capability를 등록한다."""
-        import supervisor.process_manager  # process_management
-        import supervisor.deployer  # deployment
-
-    def test_sources_count(self):
-        from supervisor.reflect import reflect
-
-        sources = reflect.get_sources()
-        assert len(sources) == 2
-
-    def test_source_capability_names(self):
-        from supervisor.reflect import reflect
-
-        sources = reflect.get_sources()
-        names = {s.capability for s in sources}
-        assert names == {
-            "process_management",
-            "deployment",
-        }
-
-    def test_sources_have_paths(self):
-        from supervisor.reflect import reflect
-
-        sources = reflect.get_sources()
-        for source in sources:
-            assert source.path, f"{source.capability}: path가 비어있음"
-            assert source.entry_point, f"{source.capability}: entry_point가 비어있음"
-            assert source.start_line > 0, f"{source.capability}: start_line이 0"

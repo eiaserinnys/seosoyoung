@@ -627,7 +627,7 @@ def main():
 
     RescueConfig.validate()
 
-    # Management 서버 시작 (cogito /reflect + supervisor graceful shutdown)
+    # Management 서버 시작 (cogito /reflect + graceful shutdown)
     from seosoyoung.rescue.shutdown import create_management_app, start_management_server
 
     _SHUTDOWN_PORT = int(os.environ["RESCUE_SHUTDOWN_PORT"])

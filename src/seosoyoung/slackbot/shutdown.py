@@ -1,6 +1,6 @@
 """Management 서버 (cogito /reflect + /shutdown)
 
-cogito 리플렉션 엔드포인트와 supervisor graceful shutdown 엔드포인트를
+cogito 리플렉션 엔드포인트와 graceful shutdown 엔드포인트를
 FastAPI 앱으로 통합하여 제공한다.
 """
 

@@ -78,7 +78,7 @@ def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
     세션이 있으면 Slack 팝업으로 사용자에게 확인을 받는다.
     - "지금 종료": 즉시 os._exit
     - "세션 완료 후 종료": pending 등록, 세션 0 도달 시 자동 종료
-    사용자의 응답을 무기한 대기한다. supervisor가 프로세스 수명을 관리하므로
+    사용자의 응답을 무기한 대기한다. 프로세스 관리자가 수명을 관리하므로
     봇 내부에서 타임아웃으로 강제 종료하지 않는다.
 
     Args:
@@ -318,13 +318,13 @@ def main():
     logger.info(f"ALLOWED_USERS: {Config.auth.allowed_users}")
     logger.info(f"DEBUG: {Config.debug}")
 
-    # Management 서버 시작 (cogito /reflect + supervisor graceful shutdown)
+    # Management 서버 시작 (cogito /reflect + graceful shutdown)
     from seosoyoung.slackbot.shutdown import create_management_app, start_management_server
 
     _SHUTDOWN_PORT = int(os.environ["SHUTDOWN_PORT"])
 
     def _on_shutdown_request():
-        """supervisor에서 graceful shutdown 요청을 받았을 때
+        """graceful shutdown 요청을 받았을 때
 
         활성 세션이 있으면 사용자에게 확인을 받은 후 종료합니다.
         """

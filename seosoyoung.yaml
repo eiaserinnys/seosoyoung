@@ -1,7 +1,7 @@
 # seosoyoung.yaml — soulstream + plugin-less seosoyoung bot
 #
 # 사용법:
-#   haniel install seosoyoung.yaml       # 환경 구성 (venv, .env, NSSM 서비스)
+#   haniel install seosoyoung.yaml       # 환경 구성 (venv, .env, 서비스 등록)
 #   haniel run seosoyoung.yaml           # 서비스 실행
 #   haniel validate seosoyoung.yaml      # 설정 유효성 검증
 #

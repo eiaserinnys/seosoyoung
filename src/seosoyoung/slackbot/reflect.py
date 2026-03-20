@@ -14,6 +14,6 @@ reflect = Reflector(
         "이벤트 처리, 멘션 응답, 플러그인 시스템을 통해 soulstream과 연동한다."
     ),
     source_root=str(Path(__file__).resolve().parent),
-    # supervisor가 할당하는 고정 포트. cogito identity에서 서비스 디스커버리 메타데이터로 사용.
+    # 프로세스 관리자가 할당하는 고정 포트. cogito identity에서 서비스 디스커버리 메타데이터로 사용.
     port=3106,
 )
