@@ -148,6 +148,7 @@ class ClaudeExecutor:
         on_tool_start=None,
         on_tool_result=None,
         on_input_request=None,
+        model: Optional[str] = None,
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -204,6 +205,7 @@ class ClaudeExecutor:
                 on_tool_start=on_tool_start,
                 on_tool_result=on_tool_result,
                 on_input_request=on_input_request,
+                model=model,
             )
         finally:
             lock.release()
@@ -271,6 +273,7 @@ class ClaudeExecutor:
         on_tool_start=None,
         on_tool_result=None,
         on_input_request=None,
+        model: Optional[str] = None,
     ):
         """락을 보유한 상태에서 실행"""
         # 실행 중 세션으로 표시
@@ -293,6 +296,7 @@ class ClaudeExecutor:
                 on_tool_start=on_tool_start,
                 on_tool_result=on_tool_result,
                 on_input_request=on_input_request,
+                model=model,
             )
         finally:
             self.mark_session_stopped(thread_ts)
@@ -318,6 +322,7 @@ class ClaudeExecutor:
         on_tool_start=None,
         on_tool_result=None,
         on_input_request=None,
+        model: Optional[str] = None,
     ):
         """단일 Claude 실행 -- Soulstream 서버에 위임"""
         effective_role = role or "admin"
@@ -342,6 +347,7 @@ class ClaudeExecutor:
             on_tool_start=on_tool_start,
             on_tool_result=on_tool_result,
             on_input_request=on_input_request,
+            model=model,
         )
 
     def _get_role_config(self, role: str) -> dict:
@@ -427,6 +433,7 @@ class ClaudeExecutor:
         on_tool_start=None,
         on_tool_result=None,
         on_input_request=None,
+        model: Optional[str] = None,
     ):
         """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
@@ -475,6 +482,7 @@ class ClaudeExecutor:
                     disallowed_tools=disallowed_tools,
                     use_mcp=use_mcp,
                     context=context,
+                    model=model,
                 )
             )
 
