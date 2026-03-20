@@ -181,7 +181,7 @@ def _load_plugins() -> None:
     """plugins.yaml 레지스트리에서 플러그인을 로드합니다."""
     from seosoyoung.utils.async_bridge import run_in_new_loop
 
-    base_dir = Path(__file__).resolve().parent.parent.parent.parent  # project root
+    base_dir = Path.cwd()  # bot CWD = services/bot (haniel services.bot.cwd) → config/plugins.yaml ✓
     registry_path = base_dir / "config" / "plugins.yaml"
     registry = load_plugin_registry(registry_path)
 
