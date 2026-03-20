@@ -340,6 +340,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 on_result 콜백으로 출력 텍스트를 캡처하여 RunResult.output에 담아 반환합니다.
         """
         text_only = kwargs.pop("text_only", False)
+        model = kwargs.pop("model", None)
 
         try:
             loop = asyncio.get_running_loop()
@@ -374,6 +375,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         role=role,
                         context=context,
                         on_result=capture_result,
+                        model=model,
                     ),
                 )
             else:
