@@ -4,7 +4,7 @@ Slack 멘션으로 Claude Code를 호출하여
 로컬 PC에서 여러가지 작업을 지원하거나
 스스로 수정하는 작업을 자동화하는 봇입니다.
 
-<!-- sentinel deploy test -->
+<!-- sentinel deploy test 2 -->
 
 ## 개요
 
