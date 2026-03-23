@@ -221,20 +221,75 @@ class TestFetchSessions:
     """fetch_sessions 네트워크 호출 테스트"""
 
     def test_fetch_sessions_success(self):
-        """정상 API 호출 성공"""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "sessions": [_make_session()],
-            "total": 1,
-        }
-        mock_response.raise_for_status = MagicMock()
+        """정상 API 호출 성공: 두 번 호출 후 병합"""
+        resp_running = MagicMock()
+        resp_running.raise_for_status = MagicMock()
+        resp_running.json.return_value = {"sessions": [_make_session(status="running")], "total": 1}
 
-        with patch("seosoyoung.slackbot.handlers.home.requests.get", return_value=mock_response):
-            result = fetch_sessions("http://localhost:3105")
+        resp_finished = MagicMock()
+        resp_finished.raise_for_status = MagicMock()
+        resp_finished.json.return_value = {"sessions": [_make_session(status="completed")], "total": 3}
 
-        assert result["total"] == 1
-        assert len(result["sessions"]) == 1
+        with patch(
+            "seosoyoung.slackbot.handlers.home.requests.get",
+            side_effect=[resp_running, resp_finished],
+        ) as mock_get:
+            result = fetch_sessions("http://localhost:4105")
+
+        assert mock_get.call_count == 2
+        assert len(result["sessions"]) == 2
+        assert result["total"] == 1  # running 세션 수 기준
+
+    def test_fetch_sessions_calls_correct_urls(self):
+        """status 필터 URL로 두 번 호출하는지 검증"""
+        from seosoyoung.slackbot.handlers.home import MAX_COMPLETED_SESSIONS
+
+        resp_running = MagicMock()
+        resp_running.raise_for_status = MagicMock()
+        resp_running.json.return_value = {"sessions": [], "total": 0}
+
+        resp_finished = MagicMock()
+        resp_finished.raise_for_status = MagicMock()
+        resp_finished.json.return_value = {"sessions": [], "total": 0}
+
+        with patch(
+            "seosoyoung.slackbot.handlers.home.requests.get",
+            side_effect=[resp_running, resp_finished],
+        ) as mock_get:
+            fetch_sessions("http://localhost:4105")
+
+        calls = mock_get.call_args_list
+        assert len(calls) == 2
+
+        first_url = calls[0].args[0]
+        second_url = calls[1].args[0]
+
+        assert "status=running" in first_url
+        assert "status=completed,error" in second_url
+        assert f"limit={MAX_COMPLETED_SESSIONS}" in second_url
+
+    def test_fetch_sessions_return_shape(self):
+        """반환 형태 {sessions: list, total: int} 검증"""
+        resp_running = MagicMock()
+        resp_running.raise_for_status = MagicMock()
+        resp_running.json.return_value = {"sessions": [_make_session(status="running")], "total": 5}
+
+        resp_finished = MagicMock()
+        resp_finished.raise_for_status = MagicMock()
+        resp_finished.json.return_value = {"sessions": [_make_session(status="completed")], "total": 10}
+
+        with patch(
+            "seosoyoung.slackbot.handlers.home.requests.get",
+            side_effect=[resp_running, resp_finished],
+        ):
+            result = fetch_sessions("http://localhost:4105")
+
+        assert "sessions" in result
+        assert "total" in result
+        assert isinstance(result["sessions"], list)
+        assert isinstance(result["total"], int)
+        # total은 running 기준 (5), finished total(10)이 아님
+        assert result["total"] == 5
 
     def test_fetch_sessions_api_failure(self):
         """API 호출 실패 시 예외 전파"""
@@ -245,7 +300,7 @@ class TestFetchSessions:
             side_effect=req.ConnectionError("Connection refused"),
         ):
             with pytest.raises(Exception):
-                fetch_sessions("http://localhost:3105")
+                fetch_sessions("http://localhost:4105")
 
 
 class TestHandleAppHomeOpened:

@@ -16,23 +16,45 @@ FETCH_TIMEOUT_SECONDS = 5
 
 
 def fetch_sessions(soul_url: str) -> dict:
-    """소울스트림 GET /sessions를 호출하여 세션 목록을 반환한다.
+    """소울스트림에서 홈 탭용 세션을 조회한다.
+
+    running 전체 + 최근 종료 MAX_COMPLETED_SESSIONS개를 별도 쿼리로 받아 병합한다.
+    각 쿼리가 소규모 결과를 반환하므로 세션 누적 시에도 타임아웃이 발생하지 않는다.
 
     Args:
-        soul_url: 소울스트림 서버 base URL (예: http://localhost:3105)
+        soul_url: 소울스트림 서버 base URL (예: http://localhost:4105)
 
     Returns:
         {"sessions": [...], "total": int}
+        total은 running 세션 수 기준 (홈 탭 카운터용)
 
     Raises:
         requests.RequestException: 네트워크 오류
     """
+    # 1. running 세션 전체
     resp = requests.get(
-        f"{soul_url}/sessions",
+        f"{soul_url}/sessions?status=running",
         timeout=FETCH_TIMEOUT_SECONDS,
     )
     resp.raise_for_status()
-    return resp.json()
+    running_data = resp.json()
+
+    # 2. 최근 종료 세션 (completed + error, 최대 MAX_COMPLETED_SESSIONS개)
+    resp = requests.get(
+        f"{soul_url}/sessions?status=completed,error&limit={MAX_COMPLETED_SESSIONS}",
+        timeout=FETCH_TIMEOUT_SECONDS,
+    )
+    resp.raise_for_status()
+    finished_data = resp.json()
+
+    running_sessions = running_data.get("sessions", [])
+    finished_sessions = finished_data.get("sessions", [])
+    total = running_data.get("total", 0)  # 홈 탭 카운터는 running 세션 수 기준
+
+    return {
+        "sessions": running_sessions + finished_sessions,
+        "total": total,
+    }
 
 
 def _get_session_name(session: dict) -> str:
