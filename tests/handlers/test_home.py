@@ -210,40 +210,32 @@ class TestBuildHomeView:
 class TestFetchSessions:
     """fetch_sessions 네트워크 호출 테스트"""
 
-    @pytest.mark.asyncio
-    async def test_fetch_sessions_success(self):
+    def test_fetch_sessions_success(self):
         """정상 API 호출 성공"""
-        mock_response = AsyncMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
             "sessions": [_make_session()],
             "total": 1,
-        })
+        }
+        mock_response.raise_for_status = MagicMock()
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(return_value=mock_response)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
-            result = await fetch_sessions("http://localhost:4105")
+        with patch("seosoyoung.slackbot.handlers.home.requests.get", return_value=mock_response):
+            result = fetch_sessions("http://localhost:3105")
 
         assert result["total"] == 1
         assert len(result["sessions"]) == 1
 
-    @pytest.mark.asyncio
-    async def test_fetch_sessions_api_failure(self):
+    def test_fetch_sessions_api_failure(self):
         """API 호출 실패 시 예외 전파"""
-        import aiohttp
+        import requests as req
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(side_effect=aiohttp.ClientError("Connection refused"))
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(
+            "seosoyoung.slackbot.handlers.home.requests.get",
+            side_effect=req.ConnectionError("Connection refused"),
+        ):
             with pytest.raises(Exception):
-                await fetch_sessions("http://localhost:4105")
+                fetch_sessions("http://localhost:3105")
 
 
 class TestHandleAppHomeOpened:
@@ -253,11 +245,9 @@ class TestHandleAppHomeOpened:
     핸들러를 직접 캡처하는 대신 fetch_sessions를 mock하여 간접 검증한다.
     """
 
-    @pytest.mark.asyncio
-    async def test_success_publishes_view(self):
+    def test_success_publishes_view(self):
         """정상 동작: fetch_sessions → build_home_view → views_publish"""
-        mock_client = AsyncMock()
-        mock_logger = MagicMock()
+        mock_client = MagicMock()
 
         mock_data = {
             "sessions": [_make_session("sess-test-11111111", "running", "테스트")],
@@ -266,31 +256,28 @@ class TestHandleAppHomeOpened:
 
         with patch(
             "seosoyoung.slackbot.handlers.home.fetch_sessions",
-            new_callable=AsyncMock,
             return_value=mock_data,
         ):
-            # 핸들러를 직접 가져와서 호출
-            from seosoyoung.slackbot.handlers.home import fetch_sessions as _fs, build_home_view, _build_error_view
+            from seosoyoung.slackbot.handlers.home import fetch_sessions as _fs, build_home_view
             from urllib.parse import urlparse
 
-            soul_url = "http://localhost:4105"
+            soul_url = "http://localhost:3105"
             node_name = urlparse(soul_url).hostname
 
-            data = await _fs(soul_url)
+            data = _fs(soul_url)
             view = build_home_view(
                 data["sessions"], node_name, total=data["total"],
                 dashboard_base_url=DASHBOARD_BASE,
             )
 
-            await mock_client.views_publish(user_id="U123", view=view)
+            mock_client.views_publish(user_id="U123", view=view)
 
         mock_client.views_publish.assert_called_once()
         call_kwargs = mock_client.views_publish.call_args
         published_view = call_kwargs.kwargs.get("view") or call_kwargs[1].get("view")
         assert published_view["type"] == "home"
 
-    @pytest.mark.asyncio
-    async def test_api_failure_shows_error_view(self):
+    def test_api_failure_shows_error_view(self):
         """API 실패 시 에러 view 표시, 예외 전파 없음"""
         from seosoyoung.slackbot.handlers.home import _build_error_view
 
@@ -298,7 +285,6 @@ class TestHandleAppHomeOpened:
 
         assert error_view["type"] == "home"
         blocks = error_view["blocks"]
-        # 에러 메시지가 포함되어 있는지
         section_texts = [
             b["text"]["text"]
             for b in blocks

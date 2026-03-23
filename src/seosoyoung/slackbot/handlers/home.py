@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-import aiohttp
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -17,24 +17,24 @@ MAX_COMPLETED_SESSIONS = 5
 FETCH_TIMEOUT_SECONDS = 5
 
 
-async def fetch_sessions(soul_url: str) -> dict:
+def fetch_sessions(soul_url: str) -> dict:
     """소울스트림 GET /sessions를 호출하여 세션 목록을 반환한다.
 
     Args:
-        soul_url: 소울스트림 서버 base URL (예: http://localhost:4105)
+        soul_url: 소울스트림 서버 base URL (예: http://localhost:3105)
 
     Returns:
         {"sessions": [...], "total": int}
 
     Raises:
-        aiohttp.ClientError: 네트워크 오류
-        Exception: 기타 오류
+        requests.RequestException: 네트워크 오류
     """
-    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT_SECONDS)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        resp = await session.get(f"{soul_url}/sessions")
-        resp.raise_for_status()
-        return await resp.json()
+    resp = requests.get(
+        f"{soul_url}/sessions",
+        timeout=FETCH_TIMEOUT_SECONDS,
+    )
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _get_session_name(session: dict) -> str:
@@ -296,13 +296,13 @@ def register_home_handlers(app, dependencies: dict):
     node_name = parsed.hostname or "unknown"
 
     @app.event("app_home_opened")
-    async def handle_app_home_opened(event, client, logger):
+    def handle_app_home_opened(event, client, logger):
         user_id = event.get("user")
         if not user_id:
             return
 
         try:
-            data = await fetch_sessions(soul_url)
+            data = fetch_sessions(soul_url)
             sessions = data.get("sessions", [])
             total = data.get("total", 0)
             view = build_home_view(
@@ -314,6 +314,6 @@ def register_home_handlers(app, dependencies: dict):
             view = _build_error_view("서버 연결 실패")
 
         try:
-            await client.views_publish(user_id=user_id, view=view)
+            client.views_publish(user_id=user_id, view=view)
         except Exception as e:
             logger.error(f"App Home: views_publish 실패: {e}")
