@@ -241,6 +241,9 @@ def _build_dependencies():
         "plugin_manager": plugin_manager,
         # 디버깅용: 실행 중인 agent_session_id 조회
         "get_agent_session_id": executor.get_session_id,
+        # App Home: 소울스트림 세션 현황 표시
+        "soul_url": Config.claude.soul_url,
+        "dashboard_url": Config.claude.dashboard_url,
     }
 
 

@@ -6,6 +6,7 @@ from seosoyoung.slackbot.handlers.actions import (
     register_action_handlers,
     register_credential_action_handlers,
 )
+from seosoyoung.slackbot.handlers.home import register_home_handlers
 from seosoyoung.slackbot.reflect import reflect
 
 
@@ -34,6 +35,7 @@ def register_all_handlers(app, dependencies: dict):
     register_message_handlers(app, dependencies)
     register_action_handlers(app, dependencies)
     register_credential_action_handlers(app, dependencies)
+    register_home_handlers(app, dependencies)
 
 
 __all__ = [
@@ -42,4 +44,5 @@ __all__ = [
     "register_message_handlers",
     "register_action_handlers",
     "register_credential_action_handlers",
+    "register_home_handlers",
 ]
