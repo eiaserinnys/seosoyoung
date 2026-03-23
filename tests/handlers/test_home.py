@@ -195,6 +195,48 @@ class TestBuildHomeView:
         assert len(buttons) >= 1
         assert buttons[0]["url"] == f"{DASHBOARD_BASE}sess-20260323-link1234"
 
+    def test_dashboard_link_url_without_hash_suffix(self):
+        """base URL에 # 없으면 /#를 붙여서 올바른 fragment URL 생성"""
+        session = _make_session("sess-20260323-abcd5678", "running", "테스트 세션")
+
+        view = build_home_view(
+            [session],
+            NODE_NAME,
+            total=1,
+            dashboard_base_url="http://localhost:4105",
+        )
+        blocks = view["blocks"]
+
+        buttons = []
+        for b in blocks:
+            acc = b.get("accessory", {})
+            if acc.get("type") == "button" and "url" in acc:
+                buttons.append(acc)
+
+        assert len(buttons) >= 1
+        assert buttons[0]["url"] == "http://localhost:4105/#sess-20260323-abcd5678"
+
+    def test_dashboard_link_url_with_hash_suffix(self):
+        """base URL이 이미 #으로 끝나면 그대로 사용"""
+        session = _make_session("sess-20260323-link1234", "running", "테스트 세션")
+
+        view = build_home_view(
+            [session],
+            NODE_NAME,
+            total=1,
+            dashboard_base_url="https://soul.eiaserinnys.me/#",
+        )
+        blocks = view["blocks"]
+
+        buttons = []
+        for b in blocks:
+            acc = b.get("accessory", {})
+            if acc.get("type") == "button" and "url" in acc:
+                buttons.append(acc)
+
+        assert len(buttons) >= 1
+        assert buttons[0]["url"] == "https://soul.eiaserinnys.me/#sess-20260323-link1234"
+
     def test_completed_sessions_sorted_by_updated_at(self):
         """완료 세션은 updated_at 기준 최신순 정렬"""
         sessions = [
