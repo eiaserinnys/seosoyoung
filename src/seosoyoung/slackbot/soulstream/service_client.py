@@ -193,6 +193,7 @@ class SoulServiceClient:
         use_mcp: bool = True,
         context: Optional[List[dict]] = None,
         model: Optional[str] = None,
+        folder_id: Optional[str] = None,
     ) -> ExecuteResult:
         """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
 
@@ -227,6 +228,8 @@ class SoulServiceClient:
             data["context_items"] = context
         if model is not None:
             data["model"] = model
+        if folder_id is not None:
+            data["folder_id"] = folder_id
 
         backoff = ExponentialBackoff()
         resolved_session_id = agent_session_id  # init 이벤트에서 갱신됨

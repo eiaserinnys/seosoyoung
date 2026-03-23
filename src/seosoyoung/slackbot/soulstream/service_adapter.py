@@ -59,6 +59,7 @@ class ClaudeServiceAdapter:
         use_mcp: bool = True,
         context: Optional[list] = None,
         model: Optional[str] = None,
+        folder_id: Optional[str] = None,
     ) -> ClaudeResult:
         """Claude Code를 Soulstream에서 실행하고 ClaudeResult로 반환
 
@@ -96,6 +97,7 @@ class ClaudeServiceAdapter:
                 use_mcp=use_mcp,
                 context=context,
                 model=model,
+                folder_id=folder_id,
             )
 
             if result.success:

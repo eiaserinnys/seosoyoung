@@ -330,6 +330,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         session_id: str | None = None,
         on_compact=None,
         context: list[dict] | None = None,
+        folder_id: str | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -341,6 +342,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         """
         text_only = kwargs.pop("text_only", False)
         model = kwargs.pop("model", None)
+        _folder_id = folder_id
 
         try:
             loop = asyncio.get_running_loop()
@@ -376,6 +378,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         context=context,
                         on_result=capture_result,
                         model=model,
+                        folder_id=_folder_id,
                     ),
                 )
             else:
@@ -413,6 +416,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                                 role=role,
                                 context=context,
                                 on_result=on_result_fn,
+                                folder_id=_folder_id,
                             ),
                             on_compact_override=on_compact,
                         ),
@@ -431,6 +435,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                             role=role,
                             context=context,
                             on_result=on_result_fn,
+                            folder_id=_folder_id,
                         ),
                     )
 

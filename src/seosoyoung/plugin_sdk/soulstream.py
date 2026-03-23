@@ -100,6 +100,7 @@ class SoulstreamBackend(Protocol):
         session_id: str | None = None,
         on_compact: CompactCallback | None = None,
         context: list[dict] | None = None,
+        folder_id: str | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -112,6 +113,7 @@ class SoulstreamBackend(Protocol):
             session_id: Existing session ID to resume
             on_compact: Compact notification callback
             context: Structured context items for soulstream assembly
+            folder_id: Soulstream folder ID to place the session in
             **kwargs: Additional arguments
 
         Returns:
@@ -202,6 +204,7 @@ async def run(
     session_id: str | None = None,
     on_compact: CompactCallback | None = None,
     context: list[dict] | None = None,
+    folder_id: str | None = None,
     **kwargs: Any,
 ) -> RunResult:
     """Execute Claude Code with the given prompt.
@@ -239,6 +242,7 @@ async def run(
         session_id=session_id,
         on_compact=on_compact,
         context=context,
+        folder_id=folder_id,
         **kwargs,
     )
 
