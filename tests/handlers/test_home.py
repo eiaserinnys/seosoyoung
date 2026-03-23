@@ -15,7 +15,7 @@ from seosoyoung.slackbot.handlers.home import (
 
 
 DASHBOARD_BASE = "https://soul.eiaserinnys.me/#"
-NODE_NAME = "localhost"
+NODE_NAME = "eiaserinnys"
 
 # 공통 build_home_view 호출 헬퍼
 def _build_view(sessions, node_name=NODE_NAME, total=None, dashboard_base_url=DASHBOARD_BASE):
@@ -31,6 +31,7 @@ def _make_session(
     last_message: dict | None = None,
     created_at: str = "2026-03-23T02:00:00Z",
     updated_at: str = "2026-03-23T02:30:00Z",
+    node_id: str | None = "eiaserinnys",
 ) -> dict:
     """테스트용 세션 딕셔너리 생성"""
     return {
@@ -43,6 +44,7 @@ def _make_session(
         "prompt": "test prompt",
         "pid": 1234,
         "session_type": "claude",
+        "node_id": node_id,
     }
 
 
@@ -146,20 +148,28 @@ class TestBuildHomeView:
         ]
         assert any("abcd1234" in t for t in section_texts)
 
-    def test_error_interrupted_sessions_shown_with_red_icon(self):
-        """error/interrupted 세션은 🔴 아이콘으로 실행 중 섹션에 표시"""
+    def test_error_interrupted_sessions_in_finished_section(self):
+        """error/interrupted 세션은 🔴 아이콘으로 최근 종료 섹션에 표시"""
         error_session = _make_session("sess-err-1", "error", "에러 세션")
         interrupted_session = _make_session("sess-int-1", "interrupted", "중단 세션")
 
         view = _build_view([error_session, interrupted_session], total=2)
         blocks = view["blocks"]
 
+        # "실행 중인 세션이 없습니다" 안내가 표시되어야 함 (running이 없으므로)
+        context_texts = []
+        for b in blocks:
+            if b["type"] == "context":
+                for elem in b.get("elements", []):
+                    context_texts.append(elem.get("text", ""))
+        assert any("실행 중인 세션이 없습니다" in t for t in context_texts)
+
+        # error/interrupted는 최근 종료 섹션에 🔴로 표시
         section_texts = [
             b["text"]["text"]
             for b in blocks
             if b["type"] == "section" and "text" in b.get("text", {})
         ]
-        # 🔴 아이콘과 함께 표시
         error_texts = [t for t in section_texts if "에러 세션" in t]
         assert len(error_texts) == 1
         assert "🔴" in error_texts[0]
@@ -259,12 +269,17 @@ class TestHandleAppHomeOpened:
             return_value=mock_data,
         ):
             from seosoyoung.slackbot.handlers.home import fetch_sessions as _fs, build_home_view
-            from urllib.parse import urlparse
 
             soul_url = "http://localhost:3105"
-            node_name = urlparse(soul_url).hostname
 
             data = _fs(soul_url)
+            # running 세션의 node_id에서 노드 이름 추출
+            node_name = "unknown"
+            for s in data["sessions"]:
+                if s.get("status") == "running" and s.get("node_id"):
+                    node_name = s["node_id"]
+                    break
+
             view = build_home_view(
                 data["sessions"], node_name, total=data["total"],
                 dashboard_base_url=DASHBOARD_BASE,
