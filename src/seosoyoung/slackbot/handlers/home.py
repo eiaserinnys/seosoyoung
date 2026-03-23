@@ -158,7 +158,7 @@ def _build_session_block(session: dict, is_active: bool, dashboard_base_url: str
                 "type": "plain_text",
                 "text": "📋 대시보드",
             },
-            "url": f"{dashboard_base_url}{session_id}",
+            "url": f"{dashboard_base_url if dashboard_base_url.endswith('#') else dashboard_base_url + '/#'}{session_id}",
             "action_id": f"session_dashboard_{session_id[-8:]}",
         },
     }
