@@ -16,7 +16,9 @@ from typing import Any, TYPE_CHECKING
 
 from seosoyoung.plugin_sdk import slack, soulstream, mention
 from seosoyoung.plugin_sdk.slack import (
+    FileInfo,
     Message,
+    Reaction,
     ReactionResult,
     SendMessageResult,
     SlackBackend,
@@ -44,6 +46,27 @@ async def _noop_compact(_session_id: str, _msg: str) -> None:
 # ============================================================================
 # Slack Backend Implementation
 # ============================================================================
+
+
+def _parse_reactions(raw: list[dict]) -> list[Reaction]:
+    """Slack API 응답의 reactions 필드를 Reaction 목록으로 변환."""
+    return [
+        Reaction(name=r["name"], count=r["count"], users=r.get("users", []))
+        for r in raw
+    ]
+
+
+def _parse_files(raw: list[dict]) -> list[FileInfo]:
+    """Slack API 응답의 files 필드를 FileInfo 목록으로 변환."""
+    return [
+        FileInfo(
+            name=f.get("name", ""),
+            title=f.get("title", ""),
+            mimetype=f.get("mimetype", ""),
+            permalink=f.get("permalink", ""),
+        )
+        for f in raw
+    ]
 
 
 class SlackBackendImpl(SlackBackend):
@@ -191,6 +214,9 @@ class SlackBackendImpl(SlackBackend):
                         user=msg.get("user", ""),
                         thread_ts=msg.get("thread_ts"),
                         channel=channel,
+                        reactions=_parse_reactions(msg.get("reactions", [])),
+                        files=_parse_files(msg.get("files", [])),
+                        blocks=msg.get("blocks", []),
                     )
                 )
             return messages
@@ -218,6 +244,9 @@ class SlackBackendImpl(SlackBackend):
                         user=msg.get("user", ""),
                         thread_ts=msg.get("thread_ts"),
                         channel=channel,
+                        reactions=_parse_reactions(msg.get("reactions", [])),
+                        files=_parse_files(msg.get("files", [])),
+                        blocks=msg.get("blocks", []),
                     )
                 )
             return messages

@@ -13,7 +13,7 @@ Usage:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol, TypeVar
 
 T = TypeVar("T")
@@ -36,6 +36,25 @@ class UserInfo:
 
 
 @dataclass
+class Reaction:
+    """Slack message reaction."""
+
+    name: str        # 이모지 이름 (예: 'thumbsup')
+    count: int       # 총 리액션 수
+    users: list[str] = field(default_factory=list)  # 누른 user ID 목록
+
+
+@dataclass
+class FileInfo:
+    """Slack file attachment info."""
+
+    name: str
+    title: str
+    mimetype: str
+    permalink: str   # 슬랙 내 링크
+
+
+@dataclass
 class Message:
     """Slack message information."""
 
@@ -44,6 +63,10 @@ class Message:
     user: str = ""
     thread_ts: str | None = None
     channel: str = ""
+    # Rich data (Optional, 하위 호환)
+    reactions: list[Reaction] = field(default_factory=list)
+    files: list[FileInfo] = field(default_factory=list)
+    blocks: list[dict] = field(default_factory=list)
 
 
 @dataclass
