@@ -151,6 +151,7 @@ class ClaudeExecutor:
         model: Optional[str] = None,
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        profile: Optional[str] = None,
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -210,6 +211,7 @@ class ClaudeExecutor:
                 model=model,
                 folder_id=folder_id,
                 system_prompt=system_prompt,
+                profile=profile,
             )
         finally:
             lock.release()
@@ -280,6 +282,7 @@ class ClaudeExecutor:
         model: Optional[str] = None,
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        profile: Optional[str] = None,
     ):
         """락을 보유한 상태에서 실행"""
         # 실행 중 세션으로 표시
@@ -305,6 +308,7 @@ class ClaudeExecutor:
                 model=model,
                 folder_id=folder_id,
                 system_prompt=system_prompt,
+                profile=profile,
             )
         finally:
             self.mark_session_stopped(thread_ts)
@@ -333,6 +337,7 @@ class ClaudeExecutor:
         model: Optional[str] = None,
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        profile: Optional[str] = None,
     ):
         """단일 Claude 실행 -- Soulstream 서버에 위임"""
         effective_role = role or "admin"
@@ -360,6 +365,7 @@ class ClaudeExecutor:
             model=model,
             folder_id=folder_id,
             system_prompt=system_prompt,
+            profile=profile,
         )
 
     def _get_role_config(self, role: str) -> dict:
@@ -448,6 +454,7 @@ class ClaudeExecutor:
         model: Optional[str] = None,
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        profile: Optional[str] = None,
     ):
         """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
@@ -499,6 +506,7 @@ class ClaudeExecutor:
                     model=model,
                     folder_id=folder_id,
                     system_prompt=system_prompt,
+                    profile=profile,
                 )
             )
 
