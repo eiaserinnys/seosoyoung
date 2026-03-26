@@ -80,6 +80,7 @@ class ClaudeExecutor:
         trello_watcher_ref: Optional[Callable] = None,
         list_runner_ref: Optional[Callable] = None,
         parse_markers_fn: Optional[Callable] = None,
+        agent_id: str = "",
     ):
         self.session_manager = session_manager
         self.session_runtime = session_runtime
@@ -93,6 +94,7 @@ class ClaudeExecutor:
         self.trello_watcher_ref = trello_watcher_ref
         self.list_runner_ref = list_runner_ref
         self._parse_markers_fn = parse_markers_fn
+        self._agent_id = agent_id
 
         # 하위 호환 프로퍼티 (기존 코드에서 직접 접근하는 경우 대비)
         self.get_session_lock = session_runtime.get_session_lock
@@ -169,10 +171,15 @@ class ClaudeExecutor:
             user_message: 사용자 원본 메시지
             on_result: 결과 핸들러 콜백
         """
+        # profile 기본값: 명시적 profile 전달 시 그대로, 없으면 agent_id 사용
+        # agent_id가 빈 문자열이면 None으로 처리하여 기존 동작(하위 호환) 유지
+        effective_profile = profile if profile is not None else (self._agent_id or None)
+
         # 스레드별 락으로 동시 실행 방지
         lock = self.get_session_lock(thread_ts)
         if not lock.acquire(blocking=False):
             # 인터벤션: pending에 저장 후 interrupt
+            # 인터벤션은 기존 세션 복구이므로 profile은 초기 세션 생성 시점에만 필요
             self._handle_intervention(
                 thread_ts, prompt, msg_ts,
                 on_compact=on_compact,
@@ -211,7 +218,7 @@ class ClaudeExecutor:
                 model=model,
                 folder_id=folder_id,
                 system_prompt=system_prompt,
-                profile=profile,
+                profile=effective_profile,
             )
         finally:
             lock.release()
