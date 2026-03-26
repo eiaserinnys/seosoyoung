@@ -92,6 +92,10 @@ class ClaudeConfig:
     soul_token: str = os.environ["SEOSOYOUNG_SOUL_TOKEN"]
     dashboard_url: str = os.environ["SOUL_DASHBOARD_URL"]
     credential_alert_channel: str = os.getenv("CREDENTIAL_ALERT_CHANNEL", "")
+    agent_id: str = os.getenv("SEOSOYOUNG_AGENT_ID", "")
+    # SEOSOYOUNG_AGENT_ID: soul-server agents.yaml의 에이전트 ID.
+    # 설정 시 모든 세션 요청에 해당 프로필을 기본값으로 사용.
+    # 미설정(빈 문자열) 시 기존 동작(profile=None) 유지 (하위 호환).
 
 
 @dataclass

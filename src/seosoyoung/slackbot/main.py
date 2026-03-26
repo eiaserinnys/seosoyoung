@@ -150,6 +150,7 @@ executor = ClaudeExecutor(
     trello_watcher_ref=lambda: _trello_refs["watcher"],
     list_runner_ref=lambda: _trello_refs["list_runner"],
     parse_markers_fn=parse_markers,
+    agent_id=Config.claude.agent_id,
 )
 
 # 멘션 트래커 (채널 관찰자-멘션 핸들러 통합용)
