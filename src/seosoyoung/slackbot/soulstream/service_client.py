@@ -194,6 +194,7 @@ class SoulServiceClient:
         context: Optional[List[dict]] = None,
         model: Optional[str] = None,
         folder_id: Optional[str] = None,
+        system_prompt: Optional[str] = None,
     ) -> ExecuteResult:
         """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
 
@@ -230,6 +231,8 @@ class SoulServiceClient:
             data["model"] = model
         if folder_id is not None:
             data["folder_id"] = folder_id
+        if system_prompt is not None:
+            data["system_prompt"] = system_prompt
 
         backoff = ExponentialBackoff()
         resolved_session_id = agent_session_id  # init 이벤트에서 갱신됨

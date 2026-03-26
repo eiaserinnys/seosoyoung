@@ -360,6 +360,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         on_compact=None,
         context: list[dict] | None = None,
         folder_id: str | None = None,
+        system_prompt: str | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -371,6 +372,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         """
         text_only = kwargs.pop("text_only", False)
         model = kwargs.pop("model", None)
+        _system_prompt = system_prompt
         _folder_id = folder_id
 
         try:
@@ -408,6 +410,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         on_result=capture_result,
                         model=model,
                         folder_id=_folder_id,
+                        system_prompt=_system_prompt,
                     ),
                 )
             else:
@@ -446,6 +449,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                                 context=context,
                                 on_result=on_result_fn,
                                 folder_id=_folder_id,
+                                system_prompt=_system_prompt,
                             ),
                             on_compact_override=on_compact,
                         ),
@@ -465,6 +469,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                             context=context,
                             on_result=on_result_fn,
                             folder_id=_folder_id,
+                            system_prompt=_system_prompt,
                         ),
                     )
 
