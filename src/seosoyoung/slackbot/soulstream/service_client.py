@@ -195,6 +195,7 @@ class SoulServiceClient:
         model: Optional[str] = None,
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        profile: Optional[str] = None,
     ) -> ExecuteResult:
         """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
 
@@ -233,6 +234,8 @@ class SoulServiceClient:
             data["folder_id"] = folder_id
         if system_prompt is not None:
             data["system_prompt"] = system_prompt
+        if profile is not None:
+            data["profile"] = profile  # soul-server ExecuteRequest.profile: Optional[str]
 
         backoff = ExponentialBackoff()
         resolved_session_id = agent_session_id  # init 이벤트에서 갱신됨

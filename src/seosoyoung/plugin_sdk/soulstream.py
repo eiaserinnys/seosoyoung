@@ -102,6 +102,7 @@ class SoulstreamBackend(Protocol):
         context: list[dict] | None = None,
         folder_id: str | None = None,
         system_prompt: str | None = None,
+        agent_id: str | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -116,6 +117,7 @@ class SoulstreamBackend(Protocol):
             context: Structured context items for soulstream assembly
             folder_id: Soulstream folder ID to place the session in
             system_prompt: Claude API system 파라미터로 전달할 시스템 프롬프트
+            agent_id: soul-server 에이전트 프로필 ID
             **kwargs: Additional arguments
 
         Returns:
@@ -208,6 +210,7 @@ async def run(
     context: list[dict] | None = None,
     folder_id: str | None = None,
     system_prompt: str | None = None,
+    agent_id: str | None = None,
     **kwargs: Any,
 ) -> RunResult:
     """Execute Claude Code with the given prompt.
@@ -224,6 +227,7 @@ async def run(
         context: Structured context items for soulstream assembly
         folder_id: Soulstream folder ID to place the session in
         system_prompt: Claude API system 파라미터로 전달할 시스템 프롬프트
+        agent_id: soul-server 에이전트 프로필 ID
         **kwargs: Additional arguments
 
     Returns:
@@ -249,6 +253,7 @@ async def run(
         context=context,
         folder_id=folder_id,
         system_prompt=system_prompt,
+        agent_id=agent_id,
         **kwargs,
     )
 
