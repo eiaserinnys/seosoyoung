@@ -12,12 +12,10 @@ from seosoyoung.slackbot.handlers.credential_ui import (
     format_time_remaining,
     format_expiry_date,
     render_rate_limit_line,
-    render_profile_section,
     build_credential_alert_blocks,
     build_credential_alert_text,
     send_credential_alert,
 )
-from seosoyoung.slackbot.handlers.actions import activate_credential_profile
 
 
 # ── render_gauge ──────────────────────────────────────────────
@@ -211,187 +209,49 @@ class TestRenderRateLimitLine:
         assert "초기화 완료" in line
 
 
-# ── render_profile_section ───────────────────────────────────
-
-
-class TestRenderProfileSection:
-    def test_active_profile(self):
-        profile = {
-            "name": "linegames",
-            "five_hour": {"utilization": 0.95, "resets_at": None},
-            "seven_day": {"utilization": 0.51, "resets_at": None},
-        }
-        result = render_profile_section(profile, is_active=True)
-        assert "*linegames*" in result
-        assert "(활성)" in result
-        assert "5시간" in result
-        assert "주간" in result
-
-    def test_inactive_profile(self):
-        profile = {
-            "name": "personal",
-            "five_hour": {"utilization": 0.0, "resets_at": None},
-            "seven_day": {"utilization": "unknown", "resets_at": None},
-        }
-        result = render_profile_section(profile, is_active=False)
-        assert "*personal*" in result
-        assert "(활성)" not in result
-
-    def test_missing_state_defaults_to_unknown(self):
-        """rate limit 데이터 없으면 unknown 표시 (expires_at 키도 없는 경우)"""
-        profile = {"name": "empty"}
-        result = render_profile_section(profile, is_active=False)
-        assert "unknown" in result
-
-    def test_with_expiry_shows_both(self):
-        """expires_at과 rate limit이 모두 표시됨"""
-        future_ms = int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp() * 1000)
-        profile = {
-            "name": "linegames",
-            "expires_at": future_ms,
-            "five_hour": {"utilization": 0.5, "resets_at": None},
-            "seven_day": {"utilization": 0.3, "resets_at": None},
-        }
-        result = render_profile_section(profile, is_active=True)
-        assert "*linegames*" in result
-        assert "(활성)" in result
-        # 만료일 표시
-        assert "인증 유효 기간:" in result
-        assert ":white_check_mark:" in result
-        # rate limit 게이지도 함께 표시
-        assert "5시간" in result
-        assert "주간" in result
-
-    def test_with_expiry_expired(self):
-        """expires_at이 과거이면 무효 표시, rate limit도 표시"""
-        past_ms = int((datetime.now(timezone.utc) - timedelta(days=1)).timestamp() * 1000)
-        profile = {
-            "name": "personal",
-            "expires_at": past_ms,
-            "five_hour": {"utilization": "unknown", "resets_at": None},
-            "seven_day": {"utilization": "unknown", "resets_at": None},
-        }
-        result = render_profile_section(profile, is_active=False)
-        assert ":warning:" in result
-        assert "(무효)" in result
-        assert "5시간" in result
-
-    def test_with_expiry_none(self):
-        """expires_at이 None이면 알 수 없음 표시, rate limit도 표시"""
-        profile = {
-            "name": "unknown_expiry",
-            "expires_at": None,
-            "five_hour": {"utilization": 0.5, "resets_at": None},
-            "seven_day": {"utilization": 0.2, "resets_at": None},
-        }
-        result = render_profile_section(profile, is_active=False)
-        assert "알 수 없음" in result
-        assert "5시간" in result
-        assert "주간" in result
-
-    def test_without_expiry_shows_rate_limits(self):
-        """expires_at 키가 없으면 rate limit만 표시 (알림 컨텍스트)"""
-        profile = {
-            "name": "legacy",
-            "five_hour": {"utilization": 0.8, "resets_at": None},
-            "seven_day": {"utilization": 0.2, "resets_at": None},
-        }
-        result = render_profile_section(profile, is_active=False)
-        assert "5시간" in result
-        assert "주간" in result
-        assert "인증 유효 기간" not in result
-
-
 # ── build_credential_alert_blocks ────────────────────────────
 
 
 class TestBuildCredentialAlertBlocks:
-    def _make_profiles(self):
-        return [
-            {
-                "name": "linegames",
-                "five_hour": {"utilization": 0.95, "resets_at": None},
-                "seven_day": {"utilization": 0.51, "resets_at": None},
-            },
-            {
-                "name": "personal",
-                "five_hour": {"utilization": 0.0, "resets_at": None},
-                "seven_day": {"utilization": "unknown", "resets_at": None},
-            },
-        ]
-
     def test_structure(self):
-        blocks = build_credential_alert_blocks("linegames", self._make_profiles())
-
-        # section block + actions block
-        assert len(blocks) == 2
+        blocks = build_credential_alert_blocks(0.95, "five_hour")
+        assert len(blocks) == 1
         assert blocks[0]["type"] == "section"
-        assert blocks[1]["type"] == "actions"
 
-    def test_section_content(self):
-        blocks = build_credential_alert_blocks("linegames", self._make_profiles())
+    def test_section_content_five_hour(self):
+        blocks = build_credential_alert_blocks(0.95, "five_hour")
         text = blocks[0]["text"]["text"]
-        assert "크레덴셜 사용량 알림" in text
-        assert "linegames" in text
-        assert "personal" in text
+        assert "사용량 경고" in text
+        assert "5시간" in text
+        assert "95%" in text
 
-    def test_buttons(self):
-        blocks = build_credential_alert_blocks("linegames", self._make_profiles())
-        buttons = blocks[1]["elements"]
-        # 프로필 전환 버튼 2개 + 프로필 관리 버튼 1개
-        assert len(buttons) == 3
+    def test_section_content_seven_day(self):
+        blocks = build_credential_alert_blocks(0.80, "seven_day")
+        text = blocks[0]["text"]["text"]
+        assert "7일" in text
+        assert "80%" in text
 
-        # 활성 프로필 버튼: (현재) 표시, style 없음
-        assert "(현재)" in buttons[0]["text"]["text"]
-        assert "style" not in buttons[0]
-
-        # 비활성 프로필 버튼: style=primary
-        assert "(현재)" not in buttons[1]["text"]["text"]
-        assert buttons[1]["style"] == "primary"
-
-        # 프로필 관리 버튼
-        assert buttons[2]["action_id"] == "credential_list_profiles"
-
-    def test_action_ids(self):
-        blocks = build_credential_alert_blocks("linegames", self._make_profiles())
-        buttons = blocks[1]["elements"]
-        assert buttons[0]["action_id"] == "credential_switch_linegames"
-        assert buttons[0]["value"] == "linegames"
-        assert buttons[1]["action_id"] == "credential_switch_personal"
-        assert buttons[1]["value"] == "personal"
-
-    def test_single_profile(self):
-        profiles = [
-            {
-                "name": "only",
-                "five_hour": {"utilization": 0.5, "resets_at": None},
-                "seven_day": {"utilization": 0.0, "resets_at": None},
-            },
-        ]
-        blocks = build_credential_alert_blocks("only", profiles)
-        assert len(blocks) == 2
-        buttons = blocks[1]["elements"]
-        # 프로필 전환 버튼 1개 + 프로필 관리 버튼 1개
-        assert len(buttons) == 2
-        assert "(현재)" in buttons[0]["text"]["text"]
-        assert buttons[1]["action_id"] == "credential_list_profiles"
+    def test_unknown_rate_type_passthrough(self):
+        blocks = build_credential_alert_blocks(0.70, "hourly")
+        text = blocks[0]["text"]["text"]
+        assert "hourly" in text
+        assert "70%" in text
 
 
 # ── build_credential_alert_text ──────────────────────────────
 
 
 class TestBuildCredentialAlertText:
-    def test_fallback_text(self):
-        profiles = [
-            {
-                "name": "work",
-                "five_hour": {"utilization": 0.8, "resets_at": None},
-                "seven_day": {"utilization": 0.0, "resets_at": None},
-            },
-        ]
-        text = build_credential_alert_text("work", profiles)
-        assert "크레덴셜 사용량 알림" in text
-        assert "work" in text
+    def test_five_hour(self):
+        text = build_credential_alert_text(0.80, "five_hour")
+        assert "사용량 경고" in text
+        assert "5시간" in text
+        assert "80%" in text
+
+    def test_seven_day(self):
+        text = build_credential_alert_text(0.60, "seven_day")
+        assert "7일" in text
+        assert "60%" in text
 
 
 # ── send_credential_alert ────────────────────────────────────
@@ -405,16 +265,7 @@ class TestSendCredentialAlert:
     def test_sends_message(self):
         self._reset_cooldown()
         client = MagicMock()
-        data = {
-            "active_profile": "linegames",
-            "profiles": [
-                {
-                    "name": "linegames",
-                    "five_hour": {"utilization": 0.95, "resets_at": None},
-                    "seven_day": {"utilization": 0.5, "resets_at": None},
-                },
-            ],
-        }
+        data = {"utilization": 0.95, "rate_limit_type": "five_hour"}
 
         send_credential_alert(client, "C123", data)
         client.chat_postMessage.assert_called_once()
@@ -423,26 +274,17 @@ class TestSendCredentialAlert:
         assert "blocks" in call_kwargs
         assert "text" in call_kwargs
 
-    def test_skips_empty_profiles(self):
+    def test_skips_missing_utilization(self):
         self._reset_cooldown()
         client = MagicMock()
 
-        send_credential_alert(client, "C123", {"active_profile": "x", "profiles": []})
+        send_credential_alert(client, "C123", {"rate_limit_type": "five_hour"})
         client.chat_postMessage.assert_not_called()
 
     def test_cooldown(self):
         self._reset_cooldown()
         client = MagicMock()
-        data = {
-            "active_profile": "test",
-            "profiles": [
-                {
-                    "name": "test",
-                    "five_hour": {"utilization": 0.95, "resets_at": None},
-                    "seven_day": {"utilization": 0.0, "resets_at": None},
-                },
-            ],
-        }
+        data = {"utilization": 0.95, "rate_limit_type": "five_hour"}
 
         # 첫 번째: 전송됨
         send_credential_alert(client, "C123", data)
@@ -456,87 +298,7 @@ class TestSendCredentialAlert:
         self._reset_cooldown()
         client = MagicMock()
         client.chat_postMessage.side_effect = Exception("Slack error")
-        data = {
-            "active_profile": "test",
-            "profiles": [
-                {
-                    "name": "test",
-                    "five_hour": {"utilization": 0.95, "resets_at": None},
-                    "seven_day": {"utilization": 0.0, "resets_at": None},
-                },
-            ],
-        }
+        data = {"utilization": 0.95, "rate_limit_type": "five_hour"}
 
         # 예외가 외부로 전파되지 않아야 함
         send_credential_alert(client, "C123", data)
-
-
-# ── activate_credential_profile (버튼 클릭 핸들러) ───────────
-
-
-class TestActivateCredentialProfile:
-    @patch("seosoyoung.slackbot.handlers.actions.urllib.request.urlopen")
-    def test_successful_switch(self, mock_urlopen):
-        """프로필 전환 성공 시 메시지 업데이트"""
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_urlopen.return_value = mock_resp
-
-        client = MagicMock()
-        activate_credential_profile("personal", "C123", "ts123", client)
-
-        client.chat_update.assert_called_once()
-        call_kwargs = client.chat_update.call_args[1]
-        assert "✅" in call_kwargs["text"]
-        assert "personal" in call_kwargs["text"]
-
-    @patch("seosoyoung.slackbot.handlers.actions.urllib.request.urlopen")
-    def test_failed_switch(self, mock_urlopen):
-        """프로필 전환 실패 시 에러 메시지"""
-        mock_urlopen.side_effect = Exception("Connection refused")
-
-        client = MagicMock()
-        activate_credential_profile("broken", "C123", "ts123", client)
-
-        client.chat_update.assert_called_once()
-        call_kwargs = client.chat_update.call_args[1]
-        assert "❌" in call_kwargs["text"]
-        assert "broken" in call_kwargs["text"]
-
-    @patch("seosoyoung.slackbot.handlers.actions.urllib.request.urlopen")
-    def test_api_call_format(self, mock_urlopen):
-        """Soul API 호출 형식 확인 (URL, 메서드, 인증 헤더)"""
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_urlopen.return_value = mock_resp
-
-        client = MagicMock()
-        activate_credential_profile("work", "C123", "ts123", client)
-
-        # urlopen 호출 확인
-        mock_urlopen.assert_called_once()
-        req = mock_urlopen.call_args[0][0]
-        assert "/profiles/work/activate" in req.full_url
-        assert req.method == "POST"
-        assert req.get_header("Authorization").startswith("Bearer ")
-
-    def test_invalid_profile_name_rejected(self):
-        """유효하지 않은 프로필 이름은 API 호출 없이 거부"""
-        client = MagicMock()
-        activate_credential_profile("../etc/passwd", "C123", "ts123", client)
-
-        client.chat_update.assert_called_once()
-        call_kwargs = client.chat_update.call_args[1]
-        assert "유효하지 않은" in call_kwargs["text"]
-
-    def test_empty_profile_name_rejected(self):
-        """빈 프로필 이름 거부"""
-        client = MagicMock()
-        activate_credential_profile("", "C123", "ts123", client)
-
-        client.chat_update.assert_called_once()
-        assert "유효하지 않은" in client.chat_update.call_args[1]["text"]
