@@ -16,12 +16,10 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_translate,
     handle_update_restart,
     handle_compact,
-    handle_profile,
     handle_resume_list_run,
     handle_session_info,
     handle_set_token,
     handle_clear_token,
-    _sanitize_email_to_profile_name,
 )
 from seosoyoung.slackbot.handlers.mention import (
     try_handle_command,
@@ -83,12 +81,8 @@ class TestGetAncestors:
 
 class TestIsAdminCommand:
     def test_exact_matches(self):
-        for cmd in ["help", "status", "update", "restart", "compact", "profile", "cleanup", "log", "session-info", "clear-token"]:
+        for cmd in ["help", "status", "update", "restart", "compact", "cleanup", "log", "session-info", "clear-token"]:
             assert _is_admin_command(cmd), f"{cmd} should be admin command"
-
-    def test_profile_subcommands(self):
-        assert _is_admin_command("profile list")
-        assert _is_admin_command("profile save work")
 
     def test_cleanup_confirm(self):
         assert _is_admin_command("cleanup confirm")
@@ -164,16 +158,6 @@ class TestTryHandleCommandDispatch:
         result = try_handle_command(
             "번역 안녕", "번역 안녕", "C1", "ts1", None, "U1", say, client, deps
         )
-        assert result is True
-
-    def test_profile_prefix_match(self):
-        """'profile' 프리픽스 매치"""
-        say = MagicMock()
-        deps = _make_deps()
-        with patch("seosoyoung.slackbot.handlers.commands._handle_profile_list"):
-            result = try_handle_command(
-                "profile list", "", "C1", "ts1", None, "U1", say, MagicMock(), deps
-            )
         assert result is True
 
     def test_dispatch_table_contains_expected_commands(self):
@@ -489,223 +473,6 @@ class TestHandleCompact:
 
         sm.update_session_id.assert_not_called()
         assert "완료" in client.chat_update.call_args[1]["text"]
-
-
-class TestHandleProfile:
-    def test_permission_denied(self):
-        say = MagicMock()
-        handle_profile(
-            command="profile list", say=say, thread_ts=None,
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=False),
-        )
-        assert "관리자 권한" in say.call_args[1]["text"]
-
-    def test_shows_usage_on_unknown_subcmd(self):
-        say = MagicMock()
-        handle_profile(
-            command="profile unknown", say=say, thread_ts=None,
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        assert "사용법" in say.call_args[1]["text"]
-
-    @patch("seosoyoung.slackbot.handlers.commands._handle_profile_list")
-    def test_bare_profile_shows_list(self, mock_list):
-        """인자 없는 profile은 목록 표시"""
-        say = MagicMock()
-        handle_profile(
-            command="profile", say=say, thread_ts=None,
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        mock_list.assert_called_once_with(say, None)
-
-    @patch("seosoyoung.slackbot.handlers.commands._handle_profile_list")
-    def test_profile_list_shows_list(self, mock_list):
-        """profile list도 목록 표시"""
-        say = MagicMock()
-        handle_profile(
-            command="profile list", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        mock_list.assert_called_once_with(say, "ts1")
-
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
-    def test_profile_save(self, mock_api):
-        """profile save → Soul API 호출"""
-        say = MagicMock()
-        handle_profile(
-            command="profile save work", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        mock_api.assert_called_once()
-        assert "저장" in say.call_args[1]["text"]
-        assert "work" in say.call_args[1]["text"]
-
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
-    def test_profile_delete(self, mock_api):
-        """profile delete → Soul API 호출"""
-        say = MagicMock()
-        handle_profile(
-            command="profile delete old", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        mock_api.assert_called_once()
-        assert "삭제" in say.call_args[1]["text"]
-        assert "old" in say.call_args[1]["text"]
-
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
-    def test_profile_change(self, mock_api):
-        """profile change → Soul API activate 호출"""
-        say = MagicMock()
-        handle_profile(
-            command="profile change personal", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        mock_api.assert_called_once()
-        assert "전환" in say.call_args[1]["text"]
-        assert "personal" in say.call_args[1]["text"]
-
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
-    def test_profile_save_no_arg_email_found(self, mock_api):
-        """profile save (인자 없음) + 이메일 찾음 → 자동 저장"""
-        # 첫 호출: get_current_email → "user@example.com"
-        # 두 번째 호출: save_profile → 성공
-        mock_api.side_effect = ["user@example.com", {"name": "user", "saved": True}]
-        say = MagicMock()
-        handle_profile(
-            command="profile save", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        assert mock_api.call_count == 2
-        assert "user" in say.call_args[1]["text"]
-        assert "저장" in say.call_args[1]["text"]
-
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
-    def test_profile_save_no_arg_email_not_found(self, mock_api):
-        """profile save (인자 없음) + 이메일 없음 → 이름 입력 안내"""
-        mock_api.return_value = None
-        say = MagicMock()
-        handle_profile(
-            command="profile save", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        assert "이메일" in say.call_args[1]["text"]
-        assert "직접 지정" in say.call_args[1]["text"]
-
-    @patch("seosoyoung.slackbot.handlers.commands._handle_profile_delete_ui")
-    def test_profile_delete_no_arg_shows_ui(self, mock_delete_ui):
-        """profile delete (인자 없음) → 삭제 버튼 UI 표시"""
-        say = MagicMock()
-        handle_profile(
-            command="profile delete", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        mock_delete_ui.assert_called_once_with(say, "ts1")
-
-    def test_profile_change_no_arg(self):
-        """profile change 인자 없으면 안내 메시지"""
-        say = MagicMock()
-        handle_profile(
-            command="profile change", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        assert "이름을 입력" in say.call_args[1]["text"]
-
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
-    def test_soul_service_error_handled(self, mock_api):
-        """SoulServiceError 발생 시 에러 메시지 표시"""
-        from seosoyoung.slackbot.soulstream.service_client import SoulServiceError
-        mock_api.side_effect = SoulServiceError("프로필을 찾을 수 없습니다: bad")
-        say = MagicMock()
-        handle_profile(
-            command="profile delete bad", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        assert "❌" in say.call_args[1]["text"]
-        assert "프로필을 찾을 수 없습니다" in say.call_args[1]["text"]
-
-    @patch("seosoyoung.slackbot.handlers.commands._run_soul_api")
-    def test_generic_exception_handled(self, mock_api):
-        """예상치 못한 예외 시 에러 메시지 표시"""
-        mock_api.side_effect = ConnectionError("network down")
-        say = MagicMock()
-        handle_profile(
-            command="profile save test", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        assert "오류가 발생했습니다" in say.call_args[1]["text"]
-
-    def test_invalid_profile_name_rejected(self):
-        """유효하지 않은 프로필 이름은 API 호출 없이 거부"""
-        say = MagicMock()
-        handle_profile(
-            command="profile save ../etc/passwd", say=say, thread_ts="ts1",
-            client=MagicMock(), user_id="U1",
-            check_permission=MagicMock(return_value=True),
-        )
-        assert "영문/숫자" in say.call_args[1]["text"]
-
-    def test_special_chars_in_name_rejected(self):
-        """특수문자 포함 프로필 이름 거부 (단일 토큰으로 파싱되는 이름)"""
-        say = MagicMock()
-        # command.split()으로 파싱되므로 공백 포함 이름은 테스트하지 않음
-        for name in [".hidden", "_reserved", "한글이름"]:
-            handle_profile(
-                command=f"profile save {name}", say=say, thread_ts="ts1",
-                client=MagicMock(), user_id="U1",
-                check_permission=MagicMock(return_value=True),
-            )
-            assert "영문/숫자" in say.call_args[1]["text"], f"Should reject '{name}'"
-
-
-class TestSanitizeEmailToProfileName:
-    def test_basic_email(self):
-        """user@example.com → user"""
-        assert _sanitize_email_to_profile_name("user@example.com") == "user"
-
-    def test_no_at_sign(self):
-        """@ 없는 경우 전체를 local로 사용"""
-        assert _sanitize_email_to_profile_name("just_a_name") == "just_a_name"
-
-    def test_dots_replaced(self):
-        """점은 언더스코어로 대체"""
-        result = _sanitize_email_to_profile_name("user.name@example.com")
-        assert "." not in result
-        assert "user" in result
-
-    def test_digit_prefix_gets_p_prefix(self):
-        """숫자로 시작하면 p_ 접두사"""
-        result = _sanitize_email_to_profile_name("123user@example.com")
-        assert result.startswith("p_")
-
-    def test_max_length_64(self):
-        """64자 초과 이름은 잘림"""
-        long_local = "a" * 100
-        result = _sanitize_email_to_profile_name(f"{long_local}@example.com")
-        assert len(result) <= 64
-
-    def test_empty_local_fallback(self):
-        """빈 local 부분이면 fallback"""
-        result = _sanitize_email_to_profile_name("@example.com")
-        assert result == "profile"
-
-    def test_special_chars_sanitized(self):
-        """특수문자는 언더스코어로 대체"""
-        result = _sanitize_email_to_profile_name("user+tag@example.com")
-        assert "+" not in result
-
 
 class TestHandleResumeListRun:
     def test_no_list_runner(self):

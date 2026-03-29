@@ -19,7 +19,6 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_translate,
     handle_update_restart,
     handle_compact,
-    handle_profile,
     handle_plugins,
     handle_resume_list_run,
     handle_session_info,
@@ -103,7 +102,7 @@ def _get_channel_messages(client, channel: str, limit: int = 20) -> list[dict]:
 
 
 _ADMIN_COMMANDS = frozenset({
-    "help", "status", "update", "restart", "compact", "profile", "cleanup", "log", "plugins",
+    "help", "status", "update", "restart", "compact", "cleanup", "log", "plugins",
     "session-info", "setup-token", "clear-token",
 })
 
@@ -127,7 +126,6 @@ def _is_admin_command(command: str) -> bool:
     """관리자 명령어 여부 판별"""
     return (
         command in _ADMIN_COMMANDS
-        or command.startswith("profile ")
         or command.startswith("cleanup")
         or command.startswith("set-token")
     )
@@ -208,10 +206,6 @@ def try_handle_command(
     # 프리픽스 매치 명령어
     if command.startswith("번역 ") or command.startswith("번역\n"):
         handle_translate(**kwargs)
-        return True
-
-    if command.startswith("profile"):
-        handle_profile(**kwargs)
         return True
 
     if command.startswith("plugins"):
