@@ -496,5 +496,57 @@ class TestSessionManagerThreadSafety:
         assert session.role == "admin"
 
 
+class TestFindAllBySessionId:
+    """SessionManager.find_all_by_session_id 단위 테스트"""
+
+    def _make_session_file(self, session_dir: Path, thread_ts: str, session_id: str | None, updated_at: str = "2026-03-29T10:00:00+00:00") -> None:
+        """테스트용 세션 파일 생성"""
+        safe_name = thread_ts.replace(".", "_")
+        data = {
+            "thread_ts": thread_ts,
+            "channel_id": "C12345",
+            "session_id": session_id,
+            "created_at": "2026-03-29T09:00:00+00:00",
+            "updated_at": updated_at,
+        }
+        file_path = session_dir / f"session_{safe_name}.json"
+        file_path.write_text(json.dumps(data), encoding="utf-8")
+
+    def test_find_all_by_session_id_basic(self):
+        """session_id 있는 파일 → 결과에 포함"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SessionManager(Path(tmpdir))
+            self._make_session_file(Path(tmpdir), "1000000000.000001", "sess-abc123")
+
+            result = manager.find_all_by_session_id()
+
+            assert "sess-abc123" in result
+            assert result["sess-abc123"].thread_ts == "1000000000.000001"
+
+    def test_find_all_by_session_id_dedup(self):
+        """동일 session_id 두 파일 → updated_at 최신 선택"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SessionManager(Path(tmpdir))
+            self._make_session_file(Path(tmpdir), "1000000000.000001", "sess-shared", updated_at="2026-03-29T09:00:00+00:00")
+            self._make_session_file(Path(tmpdir), "1000000000.000002", "sess-shared", updated_at="2026-03-29T10:00:00+00:00")
+
+            result = manager.find_all_by_session_id()
+
+            assert "sess-shared" in result
+            assert result["sess-shared"].thread_ts == "1000000000.000002"
+
+    def test_find_all_by_session_id_skip_no_session_id(self):
+        """session_id 없는 파일 → 제외"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SessionManager(Path(tmpdir))
+            self._make_session_file(Path(tmpdir), "1000000000.000001", None)
+            self._make_session_file(Path(tmpdir), "1000000000.000002", "sess-valid")
+
+            result = manager.find_all_by_session_id()
+
+            assert len(result) == 1
+            assert "sess-valid" in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -259,6 +259,35 @@ class SessionManager:
 
         return cleaned
 
+    def find_all_by_session_id(self) -> dict[str, "Session"]:
+        """agent_session_id를 키로 하는 역방향 인덱스를 반환한다.
+
+        session_dir의 모든 세션 파일을 스캔하여
+        session_id가 있는 세션만 포함한다.
+        동일 session_id에 여러 파일이 있으면 updated_at 최신을 유지한다.
+
+        참고: _cache_lock을 보유한 채 파일 I/O를 수행하므로
+        세션 파일이 수백 개 이상으로 늘어나면 경합이 발생할 수 있다.
+        현 운영 규모(수십 개)에서는 문제없다.
+
+        Returns:
+            {agent_session_id: Session} 딕셔너리
+        """
+        result: dict[str, "Session"] = {}
+        with self._cache_lock:
+            for file_path in self.session_dir.glob("session_*.json"):
+                try:
+                    data = json.loads(file_path.read_text(encoding="utf-8"))
+                    session = Session(**data)
+                    if not session.session_id:
+                        continue
+                    existing = result.get(session.session_id)
+                    if existing is None or session.updated_at > existing.updated_at:
+                        result[session.session_id] = session
+                except Exception as e:
+                    logger.debug(f"세션 파일 스캔 실패: {file_path}, {e}")
+        return result
+
 
 class SessionRuntime:
     """세션 실행 상태 관리자

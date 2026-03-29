@@ -118,8 +118,39 @@ def _format_duration(created_at: str, updated_at: str) -> str:
         return "시간 정보 없음"
 
 
-def _build_session_block(session: dict, is_active: bool, dashboard_base_url: str) -> dict:
-    """개별 세션을 section 블록으로 변환한다."""
+def _build_slack_url(
+    workspace_url: str,
+    channel_id: str,
+    thread_ts: str,
+    last_seen_ts: str,
+) -> str:
+    """슬랙 스레드 딥링크 URL을 생성한다.
+
+    last_seen_ts가 있으면 해당 메시지로,
+    없으면 스레드 첫 메시지(thread_ts)로 링크한다.
+    """
+    base = workspace_url.rstrip("/")
+    if last_seen_ts:
+        msg_ts_nodot = last_seen_ts.replace(".", "")
+        return f"{base}/archives/{channel_id}/p{msg_ts_nodot}?thread_ts={thread_ts}&cid={channel_id}"
+    else:
+        thread_ts_nodot = thread_ts.replace(".", "")
+        return f"{base}/archives/{channel_id}/p{thread_ts_nodot}"
+
+
+def _build_session_block(
+    session: dict,
+    is_active: bool,
+    dashboard_base_url: str,
+    slack_session=None,           # Optional[Session] — import 없이 덕타이핑으로 사용
+    slack_workspace_url: str = "",
+) -> list[dict]:
+    """개별 세션을 section 블록(들)으로 변환한다.
+
+    slack_session과 slack_workspace_url이 모두 주어지면
+    소울스트림 버튼 + 슬랙 버튼 2개를 actions 블록으로 반환한다.
+    그 외에는 accessory 버튼 1개를 포함한 section 블록 1개를 반환한다.
+    """
     session_id = session.get("agent_session_id", "")
     status = session.get("status", "")
     name = _get_session_name(session)
@@ -146,22 +177,49 @@ def _build_session_block(session: dict, is_active: bool, dashboard_base_url: str
 
     text = f"{icon}  *{name}*\n`{short_id}`  ·  {time_info}"
 
-    return {
-        "type": "section",
-        "text": {
-            "type": "mrkdwn",
-            "text": text,
-        },
-        "accessory": {
-            "type": "button",
-            "text": {
-                "type": "plain_text",
-                "text": "📋 대시보드",
+    soulstream_url = f"{dashboard_base_url if dashboard_base_url.endswith('#') else dashboard_base_url + '/#'}{session_id}"
+
+    if slack_session is not None and slack_workspace_url:
+        slack_url = _build_slack_url(
+            slack_workspace_url,
+            slack_session.channel_id,
+            slack_session.thread_ts,
+            slack_session.last_seen_ts,
+        )
+        return [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text},
             },
-            "url": f"{dashboard_base_url if dashboard_base_url.endswith('#') else dashboard_base_url + '/#'}{session_id}",
-            "action_id": f"session_dashboard_{session_id[-8:]}",
-        },
-    }
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "소울스트림에서 보기"},
+                        "url": soulstream_url,
+                        "action_id": f"session_soulstream_{session_id[-8:]}",
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "슬랙에서 보기"},
+                        "url": slack_url,
+                        "action_id": f"session_slack_{session_id[-8:]}",
+                    },
+                ],
+            },
+        ]
+    else:
+        return [{
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": text},
+            "accessory": {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "소울스트림에서 보기"},
+                "url": soulstream_url,
+                "action_id": f"session_soulstream_{session_id[-8:]}",
+            },
+        }]
 
 
 def build_home_view(
@@ -169,6 +227,8 @@ def build_home_view(
     node_name: str,
     total: int = 0,
     dashboard_base_url: str = "",
+    slack_session_map: dict | None = None,
+    slack_workspace_url: str = "",
 ) -> dict:
     """세션 목록을 App Home Block Kit 뷰로 변환한다.
 
@@ -177,6 +237,8 @@ def build_home_view(
         node_name: 노드 이름 (헤더에 표시)
         total: 전체 세션 수
         dashboard_base_url: 소울 대시보드 base URL (예: https://soul.eiaserinnys.me/#)
+        slack_session_map: {agent_session_id: Session} 역방향 인덱스 (슬랙 버튼 표시용)
+        slack_workspace_url: 슬랙 워크스페이스 URL (예: https://xxx.slack.com)
 
     Returns:
         Block Kit home 뷰 딕셔너리
@@ -232,9 +294,17 @@ def build_home_view(
         },
     })
 
+    session_map = slack_session_map or {}
+
     if running_sessions:
         for session in running_sessions:
-            blocks.append(_build_session_block(session, is_active=True, dashboard_base_url=dashboard_base_url))
+            slack_session = session_map.get(session.get("agent_session_id", ""))
+            blocks.extend(_build_session_block(
+                session, is_active=True,
+                dashboard_base_url=dashboard_base_url,
+                slack_session=slack_session,
+                slack_workspace_url=slack_workspace_url,
+            ))
     else:
         blocks.append({
             "type": "context",
@@ -256,7 +326,13 @@ def build_home_view(
         })
 
         for session in finished_sessions:
-            blocks.append(_build_session_block(session, is_active=False, dashboard_base_url=dashboard_base_url))
+            slack_session = session_map.get(session.get("agent_session_id", ""))
+            blocks.extend(_build_session_block(
+                session, is_active=False,
+                dashboard_base_url=dashboard_base_url,
+                slack_session=slack_session,
+                slack_workspace_url=slack_workspace_url,
+            ))
 
     # 하단 안내
     blocks.append({
@@ -310,9 +386,13 @@ def register_home_handlers(app, dependencies: dict):
         app: Slack Bolt App 인스턴스
         dependencies: 핸들러 의존성
             - soul_url: 소울스트림 서버 URL
+            - session_manager: SessionManager 인스턴스 (슬랙 스레드 연결 정보 조회)
+            - slack_workspace_url: 슬랙 워크스페이스 URL (예: https://xxx.slack.com)
     """
     soul_url = dependencies.get("soul_url", "")
     dashboard_url = dependencies.get("dashboard_url", "")
+    session_manager = dependencies.get("session_manager")  # SessionManager — 덕타이핑, import 불필요
+    slack_workspace_url = dependencies.get("slack_workspace_url", "")
 
     @app.event("app_home_opened")
     def handle_app_home_opened(event, client, logger):
@@ -333,9 +413,17 @@ def register_home_handlers(app, dependencies: dict):
                     node_name = nid
                     break
 
+            # slack_session_map 빌드 (실패 시 빈 dict → 소울스트림 버튼만 표시)
+            try:
+                slack_session_map = session_manager.find_all_by_session_id() if session_manager else {}
+            except Exception:
+                slack_session_map = {}
+
             view = build_home_view(
                 sessions, node_name, total=total,
                 dashboard_base_url=dashboard_url,
+                slack_session_map=slack_session_map,
+                slack_workspace_url=slack_workspace_url,
             )
         except Exception as e:
             logger.warning(f"App Home: 소울스트림 세션 조회 실패: {e}")
