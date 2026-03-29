@@ -50,6 +50,8 @@ class SlackConfig:
     app_token: str | None = os.getenv("SLACK_APP_TOKEN")
     bot_user_id: str | None = None  # 런타임에 auth.test()로 설정
     operator_user_id: str = os.environ["OPERATOR_USER_ID"]
+    # 미설정 시 빈 문자열 → 슬랙 버튼 미표시
+    workspace_url: str = os.getenv("SLACK_WORKSPACE_URL", "")
 
 
 @dataclass

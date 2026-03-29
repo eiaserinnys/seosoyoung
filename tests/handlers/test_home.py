@@ -11,7 +11,10 @@ from seosoyoung.slackbot.handlers.home import (
     build_home_view,
     fetch_sessions,
     register_home_handlers,
+    _build_slack_url,
+    _build_session_block,
 )
+from seosoyoung.slackbot.soulstream.session import Session
 
 
 DASHBOARD_BASE = "https://soul.eiaserinnys.me/#"
@@ -236,6 +239,86 @@ class TestBuildHomeView:
 
         assert len(buttons) >= 1
         assert buttons[0]["url"] == "https://soul.eiaserinnys.me/#sess-20260323-link1234"
+
+    def test_soulstream_button_text(self):
+        """accessory 버튼 텍스트가 '소울스트림에서 보기'로 변경됨"""
+        session = _make_session("sess-20260323-abcd1234", "running", "테스트 세션")
+
+        view = _build_view([session], total=1)
+        blocks = view["blocks"]
+
+        buttons = []
+        for b in blocks:
+            acc = b.get("accessory", {})
+            if acc.get("type") == "button":
+                buttons.append(acc)
+
+        assert len(buttons) >= 1
+        assert buttons[0]["text"]["text"] == "소울스트림에서 보기"
+
+    def test_slack_button_shown_when_session_map_provided(self):
+        """slack_session_map 제공 시 actions 블록에 두 버튼 표시"""
+        session_id = "sess-20260323-abcd1234"
+        session = _make_session(session_id, "running", "테스트 세션")
+        slack_session = Session(
+            thread_ts="1234567890.000001",
+            channel_id="C12345",
+            session_id=session_id,
+            last_seen_ts="1234567890.000099",
+        )
+
+        view = build_home_view(
+            [session],
+            NODE_NAME,
+            total=1,
+            dashboard_base_url=DASHBOARD_BASE,
+            slack_session_map={session_id: slack_session},
+            slack_workspace_url="https://test.slack.com",
+        )
+        blocks = view["blocks"]
+
+        actions_blocks = [b for b in blocks if b["type"] == "actions"]
+        assert len(actions_blocks) == 1
+        elements = actions_blocks[0]["elements"]
+        assert len(elements) == 2
+        button_texts = [e["text"]["text"] for e in elements]
+        assert "소울스트림에서 보기" in button_texts
+        assert "슬랙에서 보기" in button_texts
+
+    def test_slack_url_with_last_seen_ts(self):
+        """last_seen_ts가 있으면 p{msg_ts_nodot}?thread_ts=...&cid=... 형태"""
+        url = _build_slack_url(
+            workspace_url="https://test.slack.com",
+            channel_id="C12345",
+            thread_ts="1234567890.000001",
+            last_seen_ts="1234567890.000099",
+        )
+        assert url == "https://test.slack.com/archives/C12345/p1234567890000099?thread_ts=1234567890.000001&cid=C12345"
+
+    def test_slack_url_without_last_seen_ts(self):
+        """last_seen_ts가 없으면 p{thread_ts_nodot} 형태 (thread 파라미터 없음)"""
+        url = _build_slack_url(
+            workspace_url="https://test.slack.com",
+            channel_id="C12345",
+            thread_ts="1234567890.000001",
+            last_seen_ts="",
+        )
+        assert url == "https://test.slack.com/archives/C12345/p1234567890000001"
+
+    def test_no_slack_button_when_session_map_empty(self):
+        """session_map 미제공 시 accessory 1-버튼만 표시"""
+        session = _make_session("sess-20260323-abcd1234", "running", "테스트 세션")
+
+        view = _build_view([session], total=1)
+        blocks = view["blocks"]
+
+        # actions 블록 없음
+        actions_blocks = [b for b in blocks if b["type"] == "actions"]
+        assert len(actions_blocks) == 0
+
+        # accessory 버튼 1개
+        buttons = [b.get("accessory") for b in blocks if b.get("accessory")]
+        assert len(buttons) == 1
 
     def test_completed_sessions_sorted_by_updated_at(self):
         """완료 세션은 updated_at 기준 최신순 정렬"""
