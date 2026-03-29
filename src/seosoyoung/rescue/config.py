@@ -36,5 +36,8 @@ class RescueConfig:
 
     @staticmethod
     def get_working_dir() -> Path:
-        """Claude Code SDK 작업 디렉토리 (메인 봇과 동일)"""
+        """Claude Code SDK 작업 디렉토리 (env의 WORKSPACE_DIR 우선, 없으면 cwd)"""
+        workspace_dir = os.environ.get("WORKSPACE_DIR")
+        if workspace_dir:
+            return Path(workspace_dir)
         return Path.cwd()
