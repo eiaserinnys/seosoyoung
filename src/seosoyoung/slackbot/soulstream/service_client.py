@@ -194,6 +194,8 @@ class SoulServiceClient:
         context: Optional[List[dict]] = None,
         model: Optional[str] = None,
         folder_id: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        profile: Optional[str] = None,
     ) -> ExecuteResult:
         """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
 
@@ -230,6 +232,10 @@ class SoulServiceClient:
             data["model"] = model
         if folder_id is not None:
             data["folder_id"] = folder_id
+        if system_prompt is not None:
+            data["system_prompt"] = system_prompt
+        if profile is not None:
+            data["profile"] = profile  # soul-server ExecuteRequest.profile: Optional[str]
 
         backoff = ExponentialBackoff()
         resolved_session_id = agent_session_id  # init 이벤트에서 갱신됨
@@ -454,108 +460,6 @@ class SoulServiceClient:
                 return await response.json()
             else:
                 raise SoulServiceError("헬스 체크 실패")
-
-    # === Credential Profile API ===
-
-    async def list_profiles(self) -> dict:
-        """프로필 목록 조회 (GET /profiles)
-
-        Returns:
-            {"profiles": [...], "active": "profile_name" | None}
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/profiles"
-
-        async with session.get(url) as response:
-            if response.status != 200:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"프로필 목록 조회 실패: {error}")
-            return await response.json()
-
-    async def get_rate_limits(self) -> dict:
-        """전체 프로필 rate limit 조회 (GET /profiles/rate-limits)
-
-        Returns:
-            {"active_profile": str, "profiles": [...]}
-            Rate limit tracking 비활성 시 빈 profiles 반환
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/profiles/rate-limits"
-
-        async with session.get(url) as response:
-            if response.status == 503:
-                return {"active_profile": None, "profiles": []}
-            if response.status != 200:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"Rate limit 조회 실패: {error}")
-            return await response.json()
-
-    async def save_profile(self, name: str) -> dict:
-        """현재 크레덴셜을 프로필로 저장 (POST /profiles/{name})
-
-        Returns:
-            {"name": str, "saved": True}
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/profiles/{name}"
-
-        async with session.post(url) as response:
-            if response.status != 200:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"프로필 저장 실패: {error}")
-            return await response.json()
-
-    async def activate_profile(self, name: str) -> dict:
-        """프로필 활성화 (POST /profiles/{name}/activate)
-
-        Returns:
-            {"activated": str}
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/profiles/{name}/activate"
-
-        async with session.post(url) as response:
-            if response.status == 404:
-                raise SoulServiceError(f"프로필을 찾을 수 없습니다: {name}")
-            if response.status != 200:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"프로필 활성화 실패: {error}")
-            return await response.json()
-
-    async def delete_profile(self, name: str) -> dict:
-        """프로필 삭제 (DELETE /profiles/{name})
-
-        Returns:
-            {"deleted": True, "name": str}
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/profiles/{name}"
-
-        async with session.delete(url) as response:
-            if response.status == 404:
-                raise SoulServiceError(f"프로필을 찾을 수 없습니다: {name}")
-            if response.status != 200:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"프로필 삭제 실패: {error}")
-            return await response.json()
-
-    async def get_current_email(self) -> Optional[str]:
-        """현재 크레덴셜의 계정 이메일 조회 (GET /profiles/email)
-
-        Returns:
-            이메일 주소 또는 None (이메일 없거나 크레덴셜에 포함되지 않음)
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/profiles/email"
-
-        async with session.get(url) as response:
-            if response.status == 404:
-                return None
-            if response.status != 200:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"이메일 조회 실패: {error}")
-            data = await response.json()
-            return data.get("email")
 
     # === Claude Auth API ===
 

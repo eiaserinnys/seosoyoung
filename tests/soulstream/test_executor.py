@@ -6,7 +6,7 @@ from seosoyoung.slackbot.soulstream.session import SessionRuntime
 from seosoyoung.slackbot.presentation.types import PresentationContext
 
 
-def _make_executor():
+def _make_executor(agent_id: str = ""):
     """테스트용 ClaudeExecutor를 간단히 생성"""
     return ClaudeExecutor(
         session_manager=MagicMock(),
@@ -15,6 +15,7 @@ def _make_executor():
         send_long_message=MagicMock(),
         send_restart_confirmation=MagicMock(),
         update_message_fn=MagicMock(),
+        agent_id=agent_id,
     )
 
 
@@ -283,3 +284,87 @@ class TestHandleExceptionDelegatesToHandleError:
         pctx.say.assert_called_once()
         call_kwargs = pctx.say.call_args.kwargs
         assert "오류가 발생했습니다" in call_kwargs["text"]
+
+
+class TestRunEffectiveProfile:
+    """run()의 effective_profile 로직 검증
+
+    agent_id → default profile, 명시적 profile 우선, 빈 agent_id → None 세 케이스.
+    """
+
+    def _make_pctx_simple(self):
+        return PresentationContext(
+            channel="C_TEST",
+            thread_ts="1234.5678",
+            msg_ts="1234.9999",
+            say=MagicMock(),
+            client=MagicMock(),
+            effective_role="admin",
+            session_id="test-session",
+            user_id="U_TEST",
+            last_msg_ts="1234.0001",
+            is_existing_thread=False,
+            is_thread_reply=False,
+        )
+
+    def test_run_uses_agent_id_as_default_profile(self):
+        """profile 미전달 시 agent_id가 default profile로 사용되어야 함"""
+        executor = _make_executor(agent_id="seosoyoung")
+
+        # 락 즉시 획득, _run_with_lock mock
+        executor.get_session_lock = MagicMock(
+            return_value=MagicMock(**{"acquire.return_value": True, "release": MagicMock()})
+        )
+        executor._run_with_lock = MagicMock()
+
+        executor.run(
+            prompt="hello",
+            thread_ts="1234.5678",
+            msg_ts="1234.9999",
+            on_compact=MagicMock(),
+            presentation=self._make_pctx_simple(),
+        )
+
+        call_kwargs = executor._run_with_lock.call_args.kwargs
+        assert call_kwargs["profile"] == "seosoyoung"
+
+    def test_run_explicit_profile_overrides_agent_id(self):
+        """명시적 profile 전달 시 agent_id 기본값보다 우선해야 함"""
+        executor = _make_executor(agent_id="seosoyoung")
+
+        executor.get_session_lock = MagicMock(
+            return_value=MagicMock(**{"acquire.return_value": True, "release": MagicMock()})
+        )
+        executor._run_with_lock = MagicMock()
+
+        executor.run(
+            prompt="hello",
+            thread_ts="1234.5678",
+            msg_ts="1234.9999",
+            on_compact=MagicMock(),
+            presentation=self._make_pctx_simple(),
+            profile="remiel",
+        )
+
+        call_kwargs = executor._run_with_lock.call_args.kwargs
+        assert call_kwargs["profile"] == "remiel"
+
+    def test_run_empty_agent_id_uses_none_profile(self):
+        """agent_id 빈 문자열 시 profile=None으로 기존 동작이 유지되어야 함"""
+        executor = _make_executor(agent_id="")
+
+        executor.get_session_lock = MagicMock(
+            return_value=MagicMock(**{"acquire.return_value": True, "release": MagicMock()})
+        )
+        executor._run_with_lock = MagicMock()
+
+        executor.run(
+            prompt="hello",
+            thread_ts="1234.5678",
+            msg_ts="1234.9999",
+            on_compact=MagicMock(),
+            presentation=self._make_pctx_simple(),
+        )
+
+        call_kwargs = executor._run_with_lock.call_args.kwargs
+        assert call_kwargs["profile"] is None

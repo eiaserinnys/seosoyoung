@@ -16,7 +16,9 @@ from typing import Any, TYPE_CHECKING
 
 from seosoyoung.plugin_sdk import slack, soulstream, mention
 from seosoyoung.plugin_sdk.slack import (
+    FileInfo,
     Message,
+    Reaction,
     ReactionResult,
     SendMessageResult,
     SlackBackend,
@@ -44,6 +46,27 @@ async def _noop_compact(_session_id: str, _msg: str) -> None:
 # ============================================================================
 # Slack Backend Implementation
 # ============================================================================
+
+
+def _parse_reactions(raw: list[dict]) -> list[Reaction]:
+    """Slack API 응답의 reactions 필드를 Reaction 목록으로 변환."""
+    return [
+        Reaction(name=r["name"], count=r["count"], users=r.get("users", []))
+        for r in raw
+    ]
+
+
+def _parse_files(raw: list[dict]) -> list[FileInfo]:
+    """Slack API 응답의 files 필드를 FileInfo 목록으로 변환."""
+    return [
+        FileInfo(
+            name=f.get("name", ""),
+            title=f.get("title", ""),
+            mimetype=f.get("mimetype", ""),
+            permalink=f.get("permalink", ""),
+        )
+        for f in raw
+    ]
 
 
 class SlackBackendImpl(SlackBackend):
@@ -191,6 +214,9 @@ class SlackBackendImpl(SlackBackend):
                         user=msg.get("user", ""),
                         thread_ts=msg.get("thread_ts"),
                         channel=channel,
+                        reactions=_parse_reactions(msg.get("reactions", [])),
+                        files=_parse_files(msg.get("files", [])),
+                        blocks=msg.get("blocks", []),
                     )
                 )
             return messages
@@ -218,6 +244,9 @@ class SlackBackendImpl(SlackBackend):
                         user=msg.get("user", ""),
                         thread_ts=msg.get("thread_ts"),
                         channel=channel,
+                        reactions=_parse_reactions(msg.get("reactions", [])),
+                        files=_parse_files(msg.get("files", [])),
+                        blocks=msg.get("blocks", []),
                     )
                 )
             return messages
@@ -331,6 +360,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         on_compact=None,
         context: list[dict] | None = None,
         folder_id: str | None = None,
+        system_prompt: str | None = None,
+        agent_id: str | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -342,7 +373,9 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         """
         text_only = kwargs.pop("text_only", False)
         model = kwargs.pop("model", None)
+        _system_prompt = system_prompt
         _folder_id = folder_id
+        _agent_id = agent_id
 
         try:
             loop = asyncio.get_running_loop()
@@ -379,6 +412,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         on_result=capture_result,
                         model=model,
                         folder_id=_folder_id,
+                        system_prompt=_system_prompt,
+                        profile=_agent_id,
                     ),
                 )
             else:
@@ -417,6 +452,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                                 context=context,
                                 on_result=on_result_fn,
                                 folder_id=_folder_id,
+                                system_prompt=_system_prompt,
+                                profile=_agent_id,
                             ),
                             on_compact_override=on_compact,
                         ),
@@ -436,6 +473,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                             context=context,
                             on_result=on_result_fn,
                             folder_id=_folder_id,
+                            system_prompt=_system_prompt,
+                            profile=_agent_id,
                         ),
                     )
 

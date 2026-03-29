@@ -60,6 +60,8 @@ class ClaudeServiceAdapter:
         context: Optional[list] = None,
         model: Optional[str] = None,
         folder_id: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        profile: Optional[str] = None,
     ) -> ClaudeResult:
         """Claude Code를 Soulstream에서 실행하고 ClaudeResult로 반환
 
@@ -98,6 +100,8 @@ class ClaudeServiceAdapter:
                 context=context,
                 model=model,
                 folder_id=folder_id,
+                system_prompt=system_prompt,
+                profile=profile,
             )
 
             if result.success:
@@ -117,6 +121,7 @@ class ClaudeServiceAdapter:
                     success=False,
                     output="",
                     error=result.error or result.result,
+                    session_id=result.agent_session_id,
                 )
 
         except SessionConflictError:
