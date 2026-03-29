@@ -121,6 +121,7 @@ class ClaudeServiceAdapter:
                     success=False,
                     output="",
                     error=result.error or result.result,
+                    session_id=result.agent_session_id,
                 )
 
         except SessionConflictError:

@@ -148,6 +148,25 @@ class TestExecute:
         assert result.error == "연결 타임아웃"
 
     @pytest.mark.asyncio
+    async def test_failure_preserves_session_id(self, adapter, mock_client):
+        """에러(rate limit 등)로 세션이 종료되어도 session_id가 ClaudeResult에 보존되어야 한다.
+
+        같은 스레드에서 재요청 시 soulstream이 이전 세션을 resume할 수 있으려면
+        에러 결과에도 session_id가 포함되어야 한다.
+        """
+        mock_client.execute.return_value = ExecuteResult(
+            success=False,
+            result="You've hit your limit · resets 6pm (Asia/Seoul)",
+            error="You've hit your limit · resets 6pm (Asia/Seoul)",
+            agent_session_id="sess-20260329071849-bf75ea1f",
+        )
+
+        result = await adapter.execute(prompt="hello")
+
+        assert result.success is False
+        assert result.session_id == "sess-20260329071849-bf75ea1f"
+
+    @pytest.mark.asyncio
     async def test_conflict_error(self, adapter, mock_client):
         """SessionConflictError → ClaudeResult(success=False)"""
         mock_client.execute.side_effect = SessionConflictError("conflict")
