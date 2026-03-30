@@ -398,7 +398,7 @@ def _deliver_input_response_to_soul(
     soul_url = Config.claude.soul_url
     soul_token = Config.claude.soul_token
 
-    url = f"{soul_url}/sessions/{agent_session_id}/respond"
+    url = f"{soul_url}/api/sessions/{agent_session_id}/respond"
     data = json.dumps({
         "request_id": request_id,
         "answers": {question_text: selected_label},
