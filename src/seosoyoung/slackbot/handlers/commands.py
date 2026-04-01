@@ -543,6 +543,46 @@ def _run_soul_api(async_fn):
     return asyncio.run(_wrapper())
 
 
+def _build_profile_blocks(node_id: str, profiles: list, current: str | None) -> list:
+    """OAuth 프로필 선택 Block Kit 블록 생성"""
+    if not profiles:
+        return [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"현재 *{node_id}* 노드에 설정된 OAuth 토큰 프로필이 없습니다.",
+                },
+            }
+        ]
+
+    current_text = f"\n현재 활성 프로필: *{current}*" if current else "\n현재 활성 프로필: 없음 (설정된 토큰이 프로필과 일치하지 않음)"
+    elements = [
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": f"{'✓ ' if name == current else ''}{name}"},
+            "action_id": "oauth_profile_switch",
+            "value": name,
+            **({"style": "primary"} if name == current else {}),
+        }
+        for name in profiles
+    ]
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"현재 *{node_id}* 노드에 설정된 OAuth 토큰 프로필입니다.{current_text}",
+            },
+        },
+        {
+            "type": "actions",
+            "block_id": "oauth_profile_actions",
+            "elements": elements,
+        },
+    ]
+
+
 def handle_compact(*, say, ts, thread_ts, channel, client, session_manager, **_):
     """compact 명령어 핸들러 - Soulstream 서비스에 compact 요청"""
     if not thread_ts:
@@ -762,6 +802,32 @@ def handle_clear_token(
         say(text=f"❌ 토큰 삭제 실패: {e}", thread_ts=thread_ts or ts)
     except Exception as e:
         logger.exception(f"clear-token 명령어 오류: {e}")
+        say(text=f"❌ soulstream 연결 실패: {e}", thread_ts=thread_ts or ts)
+
+
+def handle_profile(
+    *, say, ts, thread_ts, client, channel, user_id, check_permission, **_,
+):
+    """profile 커맨드 핸들러 - OAuth 토큰 프로필 목록 표시"""
+    from seosoyoung.slackbot.soulstream.service_client import SoulServiceError
+
+    if not check_permission(user_id, client):
+        logger.warning(f"profile 권한 없음: user={user_id}")
+        say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts or ts)
+        return
+
+    try:
+        result = _run_soul_api(lambda soul: soul.get_oauth_profiles())
+        node_id = result.get("node_id", "unknown")
+        profiles = result.get("profiles", [])
+        current = result.get("current_profile")
+        blocks = _build_profile_blocks(node_id, profiles, current)
+        fallback = f"OAuth 프로필: {current or '없음'}"
+        say(blocks=blocks, text=fallback, thread_ts=thread_ts or ts)
+    except SoulServiceError as e:
+        say(text=f"❌ 프로필 조회 실패: {e}", thread_ts=thread_ts or ts)
+    except Exception as e:
+        logger.exception(f"profile 명령어 오류: {e}")
         say(text=f"❌ soulstream 연결 실패: {e}", thread_ts=thread_ts or ts)
 
 
