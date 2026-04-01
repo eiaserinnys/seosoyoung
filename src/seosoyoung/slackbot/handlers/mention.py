@@ -24,6 +24,7 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_session_info,
     handle_set_token,
     handle_clear_token,
+    handle_profile,
 )
 from seosoyoung.slackbot.handlers.auth import (
     handle_setup_token,
@@ -103,7 +104,7 @@ def _get_channel_messages(client, channel: str, limit: int = 20) -> list[dict]:
 
 _ADMIN_COMMANDS = frozenset({
     "help", "status", "update", "restart", "compact", "cleanup", "log", "plugins",
-    "session-info", "setup-token", "clear-token",
+    "session-info", "setup-token", "clear-token", "profile",
 })
 
 _COMMAND_DISPATCH = {
@@ -119,6 +120,7 @@ _COMMAND_DISPATCH = {
     "session-info": handle_session_info,
     "setup-token": handle_setup_token,
     "clear-token": handle_clear_token,
+    "profile": handle_profile,
 }
 
 

@@ -487,6 +487,41 @@ class SoulServiceClient:
             error = await self._parse_error(response)
             raise SoulServiceError(f"토큰 삭제 실패: {error}")
 
+    async def get_oauth_profiles(self) -> dict:
+        """OAuth 프로필 목록 조회 (GET /auth/claude/profiles)
+
+        Returns:
+            {
+                "node_id": str,
+                "profiles": [str, ...],
+                "current_profile": str | None
+            }
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/auth/claude/profiles"
+        async with session.get(url) as response:
+            if response.status == 200:
+                return await response.json()
+            error = await self._parse_error(response)
+            raise SoulServiceError(f"프로필 목록 조회 실패: {error}")
+
+    async def activate_oauth_profile(self, profile: str) -> dict:
+        """OAuth 프로필 활성화 (POST /auth/claude/profiles/activate)
+
+        Args:
+            profile: 활성화할 프로필명
+
+        Returns:
+            {"success": bool, "message": str} 또는 {"success": bool, "error": str}
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/auth/claude/profiles/activate"
+        async with session.post(url, json={"profile": profile}) as response:
+            if response.status == 200:
+                return await response.json()
+            error = await self._parse_error(response)
+            raise SoulServiceError(f"프로필 활성화 실패: {error}")
+
     # === 헬퍼 메서드 ===
 
     async def _handle_sse_events(

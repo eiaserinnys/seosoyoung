@@ -383,6 +383,78 @@ def register_action_handlers(app, dependencies: dict):
             selected_label=selected_label,
         )
 
+    @app.action("oauth_profile_switch")
+    def handle_oauth_profile_switch(ack, body, client):
+        """OAuth 프로필 버튼 클릭 → 프로필 전환 후 메시지 갱신"""
+        ack()
+
+        action = body["actions"][0]
+        profile_name = action["value"]
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+
+        soul_url = Config.claude.soul_url
+        soul_token = Config.claude.soul_token
+
+        def _http_get_json(url):
+            req = urllib.request.Request(url, method="GET")
+            req.add_header("Authorization", f"Bearer {soul_token}")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read())
+
+        def _http_post_json(url, payload):
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data, method="POST")
+            req.add_header("Authorization", f"Bearer {soul_token}")
+            req.add_header("Content-Type", "application/json")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read())
+
+        try:
+            # 1. 프로필 전환
+            activate_result = _http_post_json(
+                f"{soul_url}/auth/claude/profiles/activate",
+                {"profile": profile_name},
+            )
+            if not activate_result.get("success"):
+                error = activate_result.get("error", "알 수 없는 오류")
+                client.chat_update(
+                    channel=channel,
+                    ts=message_ts,
+                    blocks=[],
+                    text=f"❌ 프로필 전환 실패: {error}",
+                )
+                return
+
+            # 2. 갱신된 프로필 목록 조회
+            profiles_result = _http_get_json(f"{soul_url}/auth/claude/profiles")
+            node_id = profiles_result.get("node_id", "unknown")
+            profiles = profiles_result.get("profiles", [])
+            current = profiles_result.get("current_profile")
+
+            # 3. 메시지 업데이트
+            from seosoyoung.slackbot.handlers.commands import _build_profile_blocks
+            blocks = _build_profile_blocks(node_id, profiles, current)
+            client.chat_update(
+                channel=channel,
+                ts=message_ts,
+                blocks=blocks,
+                text=f"OAuth 프로필 전환 완료: {current or profile_name}",
+            )
+            logger.info(f"OAuth 프로필 전환: '{profile_name}' → 성공")
+
+        except Exception as e:
+            logger.error(f"OAuth 프로필 전환 오류: profile={profile_name!r}, error={e}")
+            try:
+                client.chat_update(
+                    channel=channel,
+                    ts=message_ts,
+                    blocks=[],
+                    text=f"❌ 프로필 전환 중 오류 발생: {e}",
+                )
+            except Exception:
+                pass
+
 
 def _deliver_input_response_to_soul(
     agent_session_id: str,
