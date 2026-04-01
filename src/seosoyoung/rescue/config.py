@@ -8,7 +8,23 @@ from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
 
-load_dotenv(find_dotenv(usecwd=True))
+
+def _load_service_dotenv() -> None:
+    """서비스 .env를 __file__ 기준으로 로드한다.
+
+    Haniel은 서비스 .env를 {service_dir}/.env 에 배포한다.
+    src 레이아웃에서 src/ 디렉토리의 형제로 venv/가 있으면 그 부모가 서비스 루트이다.
+    """
+    path = Path(__file__).resolve()
+    for parent in path.parents:
+        if parent.name == "src" and (parent.parent / "venv").exists():
+            load_dotenv(parent.parent / ".env")
+            return
+    # fallback: CWD 기준 탐색
+    load_dotenv(find_dotenv(usecwd=True))
+
+
+_load_service_dotenv()
 
 
 class RescueConfig:
