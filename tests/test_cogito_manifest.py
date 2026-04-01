@@ -36,7 +36,7 @@ class TestManifestLoad:
 
     def test_service_count(self, manifest_path):
         data = load_manifest(manifest_path)
-        assert len(data["services"]) == 8
+        assert len(data["services"]) == 10
 
     def test_internal_services(self, manifest_path):
         data = load_manifest(manifest_path)
@@ -51,7 +51,7 @@ class TestManifestLoad:
         names = {s["name"] for s in external}
         assert "mcp-slack" in names
         assert "mcp-trello" in names
-        assert "mcp-outline" in names
+        assert "mcp-serendipity" in names
 
     def test_external_have_static(self, manifest_path):
         data = load_manifest(manifest_path)

@@ -24,6 +24,7 @@ _MINIMAL_ENV = {
     "EMOJI_TEXT_RESTART_TROUBLE": ":ssy-troubled:",
     "EMOJI_TEXT_OBS_COMPLETE": ":ssy-happy:",
     "EMOJI_TEXT_INTERVENTION_ERROR": ":ssy-troubled:",
+    "SOUL_DASHBOARD_URL": "https://soul.eiaserinnys.me/#",
 }
 
 

@@ -509,6 +509,7 @@ class TestIntegrationCompaction:
 
 # === supervisor config 환경변수 테스트 ===
 
+@pytest.mark.skip(reason="supervisor.config 모듈이 src/supervisor/에서 제거됨 — 모듈 복원 시 재활성화")
 class TestSupervisorConfig:
     """supervisor config에서 ProcessConfig.env 필드가 제거되었음을 확인."""
 

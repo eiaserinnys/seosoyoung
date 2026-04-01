@@ -204,13 +204,13 @@ class TestMcpToolsStillRegistered:
 
     @pytest.mark.asyncio
     async def test_tool_count(self):
-        tools = await mcp.get_tools()
+        tools = await mcp.list_tools()
         assert len(tools) == 6
 
     @pytest.mark.asyncio
     async def test_tool_names(self):
-        tools = await mcp.get_tools()
-        tool_names = set(tools.keys())
+        tools = await mcp.list_tools()
+        tool_names = {t.name for t in tools}
         expected = {
             "slack_attach_file",
             "slack_post_message",

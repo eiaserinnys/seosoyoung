@@ -29,18 +29,19 @@ class TestMCPServerStandalone:
 
         assert mcp.name == "seosoyoung-attach"
 
-    def test_server_has_all_tools(self):
+    async def test_server_has_all_tools(self):
         """서버에 모든 도구가 등록됨 (NPC 도구는 eb-lore MCP로 이동)"""
         from seosoyoung.mcp.server import mcp
 
-        tools = list(mcp._tool_manager._tools.keys())
-        assert "slack_attach_file" in tools
-        assert "slack_post_message" in tools
-        assert "slack_generate_image" in tools
-        assert "slack_download_thread_files" in tools
-        assert "slack_download_user_avatar" in tools
-        assert "slack_get_user_profile" in tools
-        assert len(tools) == 6
+        tools = await mcp.list_tools()
+        tool_names = [t.name for t in tools]
+        assert "slack_attach_file" in tool_names
+        assert "slack_post_message" in tool_names
+        assert "slack_generate_image" in tool_names
+        assert "slack_download_thread_files" in tool_names
+        assert "slack_download_user_avatar" in tool_names
+        assert "slack_get_user_profile" in tool_names
+        assert len(tool_names) == 6
 
     def test_get_context_reads_env(self):
         """slack_get_context가 환경변수에서 값을 읽음"""

@@ -252,33 +252,35 @@ class TestDownloadUserAvatar:
 class TestMCPToolRegistration:
     """MCP 도구 등록 확인 테스트"""
 
-    def test_slack_get_user_profile_registered(self):
+    async def test_slack_get_user_profile_registered(self):
         """slack_get_user_profile 도구가 MCP 서버에 등록됨"""
         from seosoyoung.mcp.server import mcp
 
-        tools = mcp._tool_manager._tools
-        assert "slack_get_user_profile" in list(tools.keys())
+        tools = await mcp.list_tools()
+        tool_names = [t.name for t in tools]
+        assert "slack_get_user_profile" in tool_names
 
-    def test_slack_download_user_avatar_registered(self):
+    async def test_slack_download_user_avatar_registered(self):
         """slack_download_user_avatar 도구가 MCP 서버에 등록됨"""
         from seosoyoung.mcp.server import mcp
 
-        tools = mcp._tool_manager._tools
-        assert "slack_download_user_avatar" in list(tools.keys())
+        tools = await mcp.list_tools()
+        tool_names = [t.name for t in tools]
+        assert "slack_download_user_avatar" in tool_names
 
-    def test_get_user_profile_params(self):
+    async def test_get_user_profile_params(self):
         """slack_get_user_profile의 파라미터 스키마 확인"""
         from seosoyoung.mcp.server import mcp
 
-        tool = mcp._tool_manager._tools["slack_get_user_profile"]
+        tool = await mcp.get_tool("slack_get_user_profile")
         schema = tool.parameters
         assert "user_id" in schema["properties"]
 
-    def test_download_user_avatar_params(self):
+    async def test_download_user_avatar_params(self):
         """slack_download_user_avatar의 파라미터 스키마 확인"""
         from seosoyoung.mcp.server import mcp
 
-        tool = mcp._tool_manager._tools["slack_download_user_avatar"]
+        tool = await mcp.get_tool("slack_download_user_avatar")
         schema = tool.parameters
         assert "user_id" in schema["properties"]
         assert "size" in schema["properties"]

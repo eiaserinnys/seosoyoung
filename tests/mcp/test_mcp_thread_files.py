@@ -221,19 +221,19 @@ class TestDownloadThreadFiles:
 class TestMCPToolRegistration:
     """MCP 도구 등록 확인 테스트"""
 
-    def test_slack_download_thread_files_registered(self):
+    async def test_slack_download_thread_files_registered(self):
         """slack_download_thread_files 도구가 MCP 서버에 등록됨"""
         from seosoyoung.mcp.server import mcp
 
-        tools = mcp._tool_manager._tools
-        tool_names = list(tools.keys())
+        tools = await mcp.list_tools()
+        tool_names = [t.name for t in tools]
         assert "slack_download_thread_files" in tool_names
 
-    def test_tool_has_correct_params(self):
+    async def test_tool_has_correct_params(self):
         """도구가 올바른 파라미터를 가짐"""
         from seosoyoung.mcp.server import mcp
 
-        tool = mcp._tool_manager._tools["slack_download_thread_files"]
+        tool = await mcp.get_tool("slack_download_thread_files")
         # FastMCP Tool 객체의 파라미터 스키마 확인
         schema = tool.parameters
         assert "channel" in schema["properties"]

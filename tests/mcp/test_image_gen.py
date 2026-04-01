@@ -13,6 +13,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 import seosoyoung.mcp.tools.image_gen as _image_gen_mod
 
+# _GEMINI_API_KEY 패치 경로
+_API_KEY_PATH = "seosoyoung.mcp.tools.image_gen._GEMINI_API_KEY"
+
 
 @pytest.mark.asyncio
 class TestGeminiImageGenerator:
@@ -54,7 +57,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("귀여운 강아지")
 
@@ -67,7 +70,7 @@ class TestGeminiImageGenerator:
         """API 키 없는 경우"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        with patch.object(_image_gen_mod.Config.gemini, 'api_key', None):
+        with patch(_API_KEY_PATH, ""):
             with pytest.raises(ValueError, match="GEMINI_API_KEY"):
                 await generate_image("test")
 
@@ -81,7 +84,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(mock_response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with pytest.raises(RuntimeError, match="빈 응답"):
                     await generate_image("test")
 
@@ -105,7 +108,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(mock_response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with pytest.raises(RuntimeError, match="이미지를 생성하지 못했습니다"):
                     await generate_image("test")
 
@@ -120,7 +123,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("sunset")
 
@@ -135,7 +138,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     await generate_image("test", model="gemini-2.5-flash-image")
 
@@ -154,7 +157,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
                         "similar style dog",
@@ -182,7 +185,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
                         "blend these",
@@ -202,7 +205,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
                         "test",
@@ -222,7 +225,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("simple prompt")
 
@@ -238,7 +241,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("4K landscape", image_size="4K")
 
@@ -256,7 +259,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("wide banner", aspect_ratio="16:9")
 
@@ -273,7 +276,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
                         "cinematic shot", image_size="2K", aspect_ratio="21:9"
@@ -292,7 +295,7 @@ class TestGeminiImageGenerator:
         client = self._make_mock_client(response)
 
         with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+            with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     await generate_image("default settings")
 
@@ -304,7 +307,7 @@ class TestGeminiImageGenerator:
         """잘못된 image_size 검증"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+        with patch(_API_KEY_PATH, "test-key"):
             with pytest.raises(ValueError, match="지원하지 않는 이미지 크기"):
                 await generate_image("test", image_size="8K")
 
@@ -312,7 +315,7 @@ class TestGeminiImageGenerator:
         """잘못된 aspect_ratio 검증"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+        with patch(_API_KEY_PATH, "test-key"):
             with pytest.raises(ValueError, match="지원하지 않는 종횡비"):
                 await generate_image("test", aspect_ratio="7:3")
 
@@ -480,7 +483,7 @@ class TestMcpGenerateAndUploadImage:
         """잘못된 image_size가 전달되면 에러 반환"""
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 
-        with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+        with patch(_API_KEY_PATH, "test-key"):
             result = await generate_and_upload_image(
                 "test", "C123", "T123", image_size="8K"
             )
@@ -492,7 +495,7 @@ class TestMcpGenerateAndUploadImage:
         """잘못된 aspect_ratio가 전달되면 에러 반환"""
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 
-        with patch.object(_image_gen_mod.Config.gemini, 'api_key', "test-key"):
+        with patch(_API_KEY_PATH, "test-key"):
             result = await generate_and_upload_image(
                 "test", "C123", "T123", aspect_ratio="7:3"
             )
