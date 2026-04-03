@@ -43,7 +43,7 @@ class TestManifestLoad:
         internal = [s for s in data["services"] if s.get("type") == "internal"]
         names = {s["name"] for s in internal}
         assert "mcp-seosoyoung" in names
-        assert "soulstream-server" in names
+        assert "soulstream-soul-server" in names
 
     def test_external_services(self, manifest_path):
         data = load_manifest(manifest_path)
