@@ -154,6 +154,8 @@ class ClaudeExecutor:
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
         profile: Optional[str] = None,
+        persist_listening: bool = False,
+        inactivity_timeout: Optional[float] = None,
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -170,6 +172,8 @@ class ClaudeExecutor:
             role: 실행 역할
             user_message: 사용자 원본 메시지
             on_result: 결과 핸들러 콜백
+            persist_listening: True이면 complete 후에도 SSE 구독을 유지합니다.
+            inactivity_timeout: persist_listening 모드 비활성 타임아웃 (초).
         """
         # profile 기본값: 명시적 profile 전달 시 그대로, 없으면 agent_id 사용
         # agent_id가 빈 문자열이면 None으로 처리하여 기존 동작(하위 호환) 유지
@@ -219,6 +223,8 @@ class ClaudeExecutor:
                 folder_id=folder_id,
                 system_prompt=system_prompt,
                 profile=effective_profile,
+                persist_listening=persist_listening,
+                inactivity_timeout=inactivity_timeout,
             )
         finally:
             lock.release()
@@ -290,6 +296,8 @@ class ClaudeExecutor:
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
         profile: Optional[str] = None,
+        persist_listening: bool = False,
+        inactivity_timeout: Optional[float] = None,
     ):
         """락을 보유한 상태에서 실행"""
         # 실행 중 세션으로 표시
@@ -316,6 +324,8 @@ class ClaudeExecutor:
                 folder_id=folder_id,
                 system_prompt=system_prompt,
                 profile=profile,
+                persist_listening=persist_listening,
+                inactivity_timeout=inactivity_timeout,
             )
         finally:
             self.mark_session_stopped(thread_ts)
@@ -345,6 +355,8 @@ class ClaudeExecutor:
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
         profile: Optional[str] = None,
+        persist_listening: bool = False,
+        inactivity_timeout: Optional[float] = None,
     ):
         """단일 Claude 실행 -- Soulstream 서버에 위임"""
         effective_role = role or "admin"
@@ -373,6 +385,8 @@ class ClaudeExecutor:
             folder_id=folder_id,
             system_prompt=system_prompt,
             profile=profile,
+            persist_listening=persist_listening,
+            inactivity_timeout=inactivity_timeout,
         )
 
     def _get_role_config(self, role: str) -> dict:
@@ -462,6 +476,8 @@ class ClaudeExecutor:
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
         profile: Optional[str] = None,
+        persist_listening: bool = False,
+        inactivity_timeout: Optional[float] = None,
     ):
         """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
@@ -491,31 +507,34 @@ class ClaudeExecutor:
             self._register_session_id(thread_ts, new_session_id)
 
         try:
-            result = run_in_new_loop(
-                adapter.execute(
-                    prompt=prompt,
-                    agent_session_id=session_id,
-                    on_compact=on_compact,
-                    on_debug=on_debug,
-                    on_session=on_session_callback,
-                    on_credential_alert=on_credential_alert_callback,
-                    on_thinking=on_thinking,
-                    on_text_start=on_text_start,
-                    on_text_delta=on_text_delta,
-                    on_text_end=on_text_end,
-                    on_tool_start=on_tool_start,
-                    on_tool_result=on_tool_result,
-                    on_input_request=on_input_request,
-                    allowed_tools=allowed_tools,
-                    disallowed_tools=disallowed_tools,
-                    use_mcp=use_mcp,
-                    context=context,
-                    model=model,
-                    folder_id=folder_id,
-                    system_prompt=system_prompt,
-                    profile=profile,
-                )
+            execute_kwargs: dict = dict(
+                prompt=prompt,
+                agent_session_id=session_id,
+                on_compact=on_compact,
+                on_debug=on_debug,
+                on_session=on_session_callback,
+                on_credential_alert=on_credential_alert_callback,
+                on_thinking=on_thinking,
+                on_text_start=on_text_start,
+                on_text_delta=on_text_delta,
+                on_text_end=on_text_end,
+                on_tool_start=on_tool_start,
+                on_tool_result=on_tool_result,
+                on_input_request=on_input_request,
+                allowed_tools=allowed_tools,
+                disallowed_tools=disallowed_tools,
+                use_mcp=use_mcp,
+                context=context,
+                model=model,
+                folder_id=folder_id,
+                system_prompt=system_prompt,
+                profile=profile,
+                persist_listening=persist_listening,
             )
+            if inactivity_timeout is not None:
+                execute_kwargs["inactivity_timeout"] = inactivity_timeout
+
+            result = run_in_new_loop(adapter.execute(**execute_kwargs))
 
             # 결과 콜백 호출 (OM 등)
             if on_result:

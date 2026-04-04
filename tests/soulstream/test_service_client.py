@@ -22,6 +22,7 @@ from seosoyoung.slackbot.soulstream.service_client import (
     ExponentialBackoff,
     ExecuteResult,
     SSEEvent,
+    SSE_PERSIST_RECONNECT_DELAY,
     # 하위 호환 별칭
     TaskConflictError,
     TaskNotFoundError,
@@ -1047,3 +1048,217 @@ class TestParseError:
         mock_response.json = AsyncMock(side_effect=Exception("parse error"))
         result = await client._parse_error(mock_response)
         assert result == "HTTP 500"
+
+
+class TestPersistListening:
+    """persist_listening 모드 테스트
+
+    complete 이벤트 후에도 SSE 구독을 유지하는 동작을 검증합니다.
+    """
+
+    @pytest.fixture
+    def client(self):
+        return SoulServiceClient(base_url="http://localhost:3105", token="test")
+
+    def _make_persist_mock_session(self, post_response, get_responses):
+        """post(execute)와 get(reconnect) 각각의 응답을 설정하는 mock session"""
+        session = MagicMock()
+        session.closed = False
+        session.post.return_value = MockAsyncContextManager(post_response)
+        session.get.side_effect = [
+            MockAsyncContextManager(r) for r in get_responses
+        ]
+        return session
+
+    @pytest.mark.asyncio
+    async def test_persist_false_returns_after_complete(self, client):
+        """persist_listening=False (기본): complete 후 즉시 반환"""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-A"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = MagicMock()
+        session.closed = False
+        session.post.return_value = MockAsyncContextManager(mock_response)
+        client._session = session
+
+        result = await client.execute("hello", persist_listening=False)
+
+        assert result.success
+        assert result.agent_session_id == "sess-A"
+        # persist_listening=False이면 GET /events/... 호출 없어야 함
+        session.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_persist_true_resubscribes_after_complete(self, client):
+        """persist_listening=True: complete 후 GET /events/.../stream으로 재구독"""
+        # 초기 실행 응답
+        post_sse = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-B"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"first response"}\n'
+            b"\n"
+        )
+        post_response = MagicMock()
+        post_response.status = 200
+        post_response.content = _make_stream_reader(post_sse)
+
+        # 재구독 응답: 세션이 없거나 비어있으면 즉시 빈 스트림 (종료 신호)
+        get_response = MagicMock()
+        get_response.status = 200
+        get_response.content = _make_stream_reader(b"")  # 빈 스트림
+
+        session = self._make_persist_mock_session(post_response, [get_response])
+        client._session = session
+
+        result = await client.execute(
+            "hello",
+            persist_listening=True,
+            inactivity_timeout=5.0,
+        )
+
+        assert result.success
+        assert result.agent_session_id == "sess-B"
+        # GET /events/sess-B/stream 을 1회 호출했어야 함
+        session.get.assert_called_once()
+        call_url = session.get.call_args[0][0]
+        assert "events/sess-B/stream" in call_url
+
+    @pytest.mark.asyncio
+    async def test_persist_true_handles_session_not_found(self, client):
+        """persist_listening=True: 재구독 시 404 → SessionNotFoundError 처리 후 종료"""
+        post_sse = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-C"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"initial"}\n'
+            b"\n"
+        )
+        post_response = MagicMock()
+        post_response.status = 200
+        post_response.content = _make_stream_reader(post_sse)
+
+        get_response = MagicMock()
+        get_response.status = 404
+
+        session = self._make_persist_mock_session(post_response, [get_response])
+        client._session = session
+
+        result = await client.execute(
+            "hello",
+            persist_listening=True,
+            inactivity_timeout=5.0,
+        )
+
+        # 세션이 없어도 마지막 성공 결과를 반환해야 함
+        assert result.success
+        assert result.agent_session_id == "sess-C"
+
+    @pytest.mark.asyncio
+    async def test_persist_true_receives_new_events(self, client):
+        """persist_listening=True: 재구독 후 새 이벤트를 수신하면 루프 계속"""
+        post_sse = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-D"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"first"}\n'
+            b"\n"
+        )
+        post_response = MagicMock()
+        post_response.status = 200
+        post_response.content = _make_stream_reader(post_sse)
+
+        # 첫 번째 재구독: 새 이벤트 수신 (두 번째 응답)
+        get_sse_1 = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-D"}\n'
+            b"\n"
+            b"event:text_delta\n"
+            b'data:{"text":"new text"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"second"}\n'
+            b"\n"
+        )
+        get_response_1 = MagicMock()
+        get_response_1.status = 200
+        get_response_1.content = _make_stream_reader(get_sse_1)
+
+        # 두 번째 재구독: 빈 스트림 (종료)
+        get_response_2 = MagicMock()
+        get_response_2.status = 200
+        get_response_2.content = _make_stream_reader(b"")
+
+        received_deltas = []
+        async def on_text_delta(text, event_id, parent_event_id):
+            received_deltas.append(text)
+
+        session = self._make_persist_mock_session(
+            post_response, [get_response_1, get_response_2]
+        )
+        client._session = session
+
+        result = await client.execute(
+            "hello",
+            persist_listening=True,
+            inactivity_timeout=5.0,
+            on_text_delta=on_text_delta,
+        )
+
+        # 두 번째 이벤트의 text_delta가 콜백으로 전달되었어야 함
+        assert "new text" in received_deltas
+        # GET을 2회 호출했어야 함
+        assert session.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_persist_true_inactivity_timeout(self, client):
+        """persist_listening=True: 비활성 타임아웃 초과 시 마지막 결과 반환"""
+        post_sse = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-E"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"done"}\n'
+            b"\n"
+        )
+        post_response = MagicMock()
+        post_response.status = 200
+        post_response.content = _make_stream_reader(post_sse)
+
+        # 재구독 응답이 영원히 블로킹되는 상황을 asyncio.TimeoutError로 시뮬레이션
+        async def hanging_sse_events(*args, **kwargs):
+            await asyncio.sleep(100)  # 타임아웃보다 훨씬 길게
+            return ExecuteResult(success=True, result="")
+
+        session = MagicMock()
+        session.closed = False
+        session.post.return_value = MockAsyncContextManager(post_response)
+
+        get_response = MagicMock()
+        get_response.status = 200
+        get_response.content = _make_stream_reader(b"")
+        session.get.return_value = MockAsyncContextManager(get_response)
+        client._session = session
+
+        # _persist_listen_loop 내부의 wait_for가 타임아웃을 처리
+        # _persist_reconnect_once가 타임아웃 전에 반환하면 루프가 종료됨
+        result = await client.execute(
+            "hello",
+            persist_listening=True,
+            inactivity_timeout=0.01,  # 매우 짧은 타임아웃
+        )
+
+        # 타임아웃 후에도 마지막 성공 결과를 반환해야 함
+        assert result.success
+        assert result.agent_session_id == "sess-E"

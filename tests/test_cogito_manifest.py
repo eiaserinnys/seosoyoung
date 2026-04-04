@@ -36,22 +36,21 @@ class TestManifestLoad:
 
     def test_service_count(self, manifest_path):
         data = load_manifest(manifest_path)
-        assert len(data["services"]) == 10
+        assert len(data["services"]) == 3
 
     def test_internal_services(self, manifest_path):
         data = load_manifest(manifest_path)
         internal = [s for s in data["services"] if s.get("type") == "internal"]
         names = {s["name"] for s in internal}
         assert "mcp-seosoyoung" in names
-        assert "soulstream-soul-server" in names
+        assert "soulstream-server" in names
+        assert "bot" in names
 
     def test_external_services(self, manifest_path):
         data = load_manifest(manifest_path)
         external = [s for s in data["services"] if s.get("type") == "external"]
-        names = {s["name"] for s in external}
-        assert "mcp-slack" in names
-        assert "mcp-trello" in names
-        assert "mcp-serendipity" in names
+        # 현재 manifest에는 external 서비스가 없음 (internal 3개만 운영)
+        assert len(external) == 0
 
     def test_external_have_static(self, manifest_path):
         data = load_manifest(manifest_path)

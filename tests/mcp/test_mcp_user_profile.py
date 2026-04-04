@@ -256,17 +256,15 @@ class TestMCPToolRegistration:
         """slack_get_user_profile 도구가 MCP 서버에 등록됨"""
         from seosoyoung.mcp.server import mcp
 
-        tools = await mcp.list_tools()
-        tool_names = [t.name for t in tools]
-        assert "slack_get_user_profile" in tool_names
+        tools = await mcp.get_tools()
+        assert "slack_get_user_profile" in tools
 
     async def test_slack_download_user_avatar_registered(self):
         """slack_download_user_avatar 도구가 MCP 서버에 등록됨"""
         from seosoyoung.mcp.server import mcp
 
-        tools = await mcp.list_tools()
-        tool_names = [t.name for t in tools]
-        assert "slack_download_user_avatar" in tool_names
+        tools = await mcp.get_tools()
+        assert "slack_download_user_avatar" in tools
 
     async def test_get_user_profile_params(self):
         """slack_get_user_profile의 파라미터 스키마 확인"""
