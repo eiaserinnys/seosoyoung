@@ -33,8 +33,8 @@ class TestMCPServerStandalone:
         """서버에 모든 도구가 등록됨 (NPC 도구는 eb-lore MCP로 이동)"""
         from seosoyoung.mcp.server import mcp
 
-        tools = await mcp.list_tools()
-        tool_names = [t.name for t in tools]
+        tools = await mcp.get_tools()
+        tool_names = list(tools.keys())
         assert "slack_attach_file" in tool_names
         assert "slack_post_message" in tool_names
         assert "slack_generate_image" in tool_names

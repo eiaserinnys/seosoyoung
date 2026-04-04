@@ -22,6 +22,12 @@ SSE_RECONNECT_MAX_RETRIES = 5
 SSE_RECONNECT_BASE_DELAY = 1.0
 SSE_RECONNECT_MAX_DELAY = 16.0
 
+# SSE 퍼시스턴트 리스닝 설정
+# complete 이벤트 후 재구독 사이에 기다리는 간격 (초)
+SSE_PERSIST_RECONNECT_DELAY = 1.0
+# 퍼시스턴트 리스닝 비활성 타임아웃 (초). 이 시간 동안 이벤트 없으면 종료.
+SSE_PERSIST_INACTIVITY_TIMEOUT = 300.0
+
 
 # === 데이터 타입 ===
 
@@ -196,6 +202,8 @@ class SoulServiceClient:
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
         profile: Optional[str] = None,
+        persist_listening: bool = False,
+        inactivity_timeout: float = SSE_PERSIST_INACTIVITY_TIMEOUT,
     ) -> ExecuteResult:
         """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
 
@@ -212,6 +220,12 @@ class SoulServiceClient:
             allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
             disallowed_tools: 금지 도구 목록
             use_mcp: MCP 서버 연결 여부
+            persist_listening: True이면 complete 이벤트 후에도 구독을 유지하여
+                대시보드에서 같은 세션에 새 메시지가 들어올 때 이벤트를 계속 수신합니다.
+                비활성 타임아웃(inactivity_timeout) 초과 또는 세션 소멸 시 종료됩니다.
+                기본값 False (기존 동작 유지).
+            inactivity_timeout: persist_listening 모드에서 이 시간(초) 동안 이벤트가 없으면
+                구독을 종료합니다. 기본 300초(5분).
         """
         session = await self._get_session()
         url = f"{self.base_url}/execute"
@@ -269,6 +283,25 @@ class SoulServiceClient:
                 # init 이벤트에서 읽은 session_id를 보존
                 if result.agent_session_id:
                     resolved_session_id = result.agent_session_id
+
+                # persist_listening 모드: complete 후 재구독 루프 진입
+                if persist_listening and result.success and resolved_session_id:
+                    return await self._persist_listen_loop(
+                        agent_session_id=resolved_session_id,
+                        last_result=result,
+                        inactivity_timeout=inactivity_timeout,
+                        on_compact=on_compact,
+                        on_debug=on_debug,
+                        on_credential_alert=on_credential_alert,
+                        on_thinking=on_thinking,
+                        on_text_start=on_text_start,
+                        on_text_delta=on_text_delta,
+                        on_text_end=on_text_end,
+                        on_tool_start=on_tool_start,
+                        on_tool_result=on_tool_result,
+                        on_input_request=on_input_request,
+                    )
+
                 return result
             except ConnectionLostError as e:
                 # init 이벤트에서 이미 session_id를 받았을 수 있음
@@ -318,6 +351,140 @@ class SoulServiceClient:
             result=f"Soulstream 연결이 끊어졌습니다 ({backoff.max_retries}회 재시도 실패)",
             error=f"Soulstream 연결이 끊어졌습니다 ({backoff.max_retries}회 재시도 실패)",
         )
+
+    async def _persist_listen_loop(
+        self,
+        agent_session_id: str,
+        last_result: "ExecuteResult",
+        inactivity_timeout: float,
+        on_compact: Optional[Callable] = None,
+        on_debug: Optional[Callable] = None,
+        on_credential_alert: Optional[Callable] = None,
+        on_thinking: Optional[Callable] = None,
+        on_text_start: Optional[Callable] = None,
+        on_text_delta: Optional[Callable] = None,
+        on_text_end: Optional[Callable] = None,
+        on_tool_start: Optional[Callable] = None,
+        on_tool_result: Optional[Callable] = None,
+        on_input_request: Optional[Callable] = None,
+    ) -> "ExecuteResult":
+        """퍼시스턴트 리스닝 루프
+
+        complete 이벤트 후에도 GET /events/{agent_session_id}/stream으로 재구독하여
+        대시보드에서 같은 세션에 새 요청이 들어올 때 이벤트를 계속 수신합니다.
+
+        종료 조건:
+        - SessionNotFoundError: 세션이 서버에서 제거됨
+        - 재구독 후 스트림이 이벤트 없이 즉시 종료됨 (세션 완전 종료 신호)
+        - inactivity_timeout 초 동안 이벤트 없음 (asyncio.TimeoutError)
+        """
+        current_result = last_result
+
+        while True:
+            await asyncio.sleep(SSE_PERSIST_RECONNECT_DELAY)
+            logger.debug(
+                f"[SSE:persist] complete 후 재구독: session={agent_session_id}"
+            )
+
+            try:
+                next_result = await asyncio.wait_for(
+                    self._persist_reconnect_once(
+                        agent_session_id=agent_session_id,
+                        on_compact=on_compact,
+                        on_debug=on_debug,
+                        on_credential_alert=on_credential_alert,
+                        on_thinking=on_thinking,
+                        on_text_start=on_text_start,
+                        on_text_delta=on_text_delta,
+                        on_text_end=on_text_end,
+                        on_tool_start=on_tool_start,
+                        on_tool_result=on_tool_result,
+                        on_input_request=on_input_request,
+                    ),
+                    timeout=inactivity_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.info(
+                    f"[SSE:persist] 비활성 타임아웃 ({inactivity_timeout}초): "
+                    f"session={agent_session_id}"
+                )
+                return current_result
+            except SessionNotFoundError:
+                logger.info(
+                    f"[SSE:persist] 세션 소멸: session={agent_session_id}"
+                )
+                return current_result
+            except ConnectionLostError:
+                # 네트워크 오류: 비교적 짧은 끊김이므로 루프를 계속 돌린다
+                logger.warning(
+                    f"[SSE:persist] 재구독 중 연결 끊김, 재시도: session={agent_session_id}"
+                )
+                continue
+
+            if next_result is None:
+                # 빈 스트림: 세션 완전 종료 신호
+                logger.info(
+                    f"[SSE:persist] 빈 스트림(세션 종료): session={agent_session_id}"
+                )
+                return current_result
+
+            # 새 이벤트가 있었으면 결과를 갱신하고 루프 계속
+            current_result = next_result
+            if not next_result.success:
+                # 오류가 발생했으면 루프 종료
+                return current_result
+
+    async def _persist_reconnect_once(
+        self,
+        agent_session_id: str,
+        on_compact: Optional[Callable] = None,
+        on_debug: Optional[Callable] = None,
+        on_credential_alert: Optional[Callable] = None,
+        on_thinking: Optional[Callable] = None,
+        on_text_start: Optional[Callable] = None,
+        on_text_delta: Optional[Callable] = None,
+        on_text_end: Optional[Callable] = None,
+        on_tool_start: Optional[Callable] = None,
+        on_tool_result: Optional[Callable] = None,
+        on_input_request: Optional[Callable] = None,
+    ) -> Optional["ExecuteResult"]:
+        """퍼시스턴트 재구독 1회
+
+        세션 이벤트 스트림을 구독하여 이벤트를 처리합니다.
+        스트림이 이벤트 없이 즉시 종료되면 None을 반환합니다 (세션 완전 종료 신호).
+        SessionNotFoundError는 그대로 전파합니다.
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}/events/{agent_session_id}/stream"
+
+        async with session.get(url) as response:
+            if response.status == 404:
+                raise SessionNotFoundError(
+                    f"세션을 찾을 수 없습니다: {agent_session_id}"
+                )
+            elif response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"퍼시스턴트 재구독 실패: {error}")
+
+            result = await self._handle_sse_events(
+                response=response,
+                on_compact=on_compact,
+                on_debug=on_debug,
+                on_credential_alert=on_credential_alert,
+                on_thinking=on_thinking,
+                on_text_start=on_text_start,
+                on_text_delta=on_text_delta,
+                on_text_end=on_text_end,
+                on_tool_start=on_tool_start,
+                on_tool_result=on_tool_result,
+                on_input_request=on_input_request,
+            )
+
+            # agent_session_id가 없으면 이벤트 없는 빈 스트림
+            if not result.agent_session_id and not result.result and result.success:
+                return None
+
+            return result
 
     async def intervene(
         self,

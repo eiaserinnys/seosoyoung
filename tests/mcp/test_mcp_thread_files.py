@@ -225,9 +225,8 @@ class TestMCPToolRegistration:
         """slack_download_thread_files 도구가 MCP 서버에 등록됨"""
         from seosoyoung.mcp.server import mcp
 
-        tools = await mcp.list_tools()
-        tool_names = [t.name for t in tools]
-        assert "slack_download_thread_files" in tool_names
+        tools = await mcp.get_tools()
+        assert "slack_download_thread_files" in tools
 
     async def test_tool_has_correct_params(self):
         """도구가 올바른 파라미터를 가짐"""

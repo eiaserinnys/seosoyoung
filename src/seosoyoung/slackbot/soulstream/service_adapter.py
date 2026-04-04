@@ -62,6 +62,8 @@ class ClaudeServiceAdapter:
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
         profile: Optional[str] = None,
+        persist_listening: bool = False,
+        inactivity_timeout: Optional[float] = None,
     ) -> ClaudeResult:
         """Claude Code를 Soulstream에서 실행하고 ClaudeResult로 반환
 
@@ -75,12 +77,15 @@ class ClaudeServiceAdapter:
             allowed_tools: 허용 도구 목록 (None이면 서버 기본값 사용)
             disallowed_tools: 금지 도구 목록
             use_mcp: MCP 서버 연결 여부
+            persist_listening: True이면 complete 후에도 구독을 유지합니다.
+            inactivity_timeout: persist_listening 모드 비활성 타임아웃 (초).
+                None이면 service_client 기본값(SSE_PERSIST_INACTIVITY_TIMEOUT) 사용.
 
         Returns:
             ClaudeResult: 기존 로컬 실행과 동일한 포맷의 결과
         """
         try:
-            result = await self._client.execute(
+            execute_kwargs: dict = dict(
                 prompt=prompt,
                 agent_session_id=agent_session_id,
                 on_compact=on_compact,
@@ -102,7 +107,12 @@ class ClaudeServiceAdapter:
                 folder_id=folder_id,
                 system_prompt=system_prompt,
                 profile=profile,
+                persist_listening=persist_listening,
             )
+            if inactivity_timeout is not None:
+                execute_kwargs["inactivity_timeout"] = inactivity_timeout
+
+            result = await self._client.execute(**execute_kwargs)
 
             if result.success:
                 output = result.result or ""
