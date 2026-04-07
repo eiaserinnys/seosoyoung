@@ -37,6 +37,12 @@ _EMOJI_THINKING_DEFAULT = ":thought_balloon:"
 _EMOJI_TOOL_DEFAULT = ":hammer:"
 _EMOJI_THINKING_DONE_DEFAULT = ":white_check_mark:"
 _EMOJI_TOOL_DONE_DEFAULT = ":white_check_mark:"
+_BOT_THINKING_TEXT_DEFAULT = "*생각합니다...*"
+
+
+def _bot_thinking_text() -> str:
+    """thinking 플레이스홀더 텍스트 — 호출 시점에 환경변수를 읽어 dotenv 로딩 순서에 무관하게 동작"""
+    return os.environ.get("BOT_THINKING_TEXT", _BOT_THINKING_TEXT_DEFAULT)
 
 
 def _emoji_thinking() -> str:
@@ -125,7 +131,7 @@ def format_dm_progress(text: str, max_len: int = DM_MSG_MAX_LEN) -> str:
 
 def format_initial_placeholder() -> str:
     """소울스트림 요청 전송 직후 표시할 대기 메시지"""
-    return f"> {_emoji_thinking()} *소영이 생각합니다...*"
+    return f"> {_emoji_thinking()} {_bot_thinking_text()}"
 
 
 def format_thinking_initial() -> str:

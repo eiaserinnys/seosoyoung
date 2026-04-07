@@ -1,6 +1,7 @@
 """seosoyoung MCP 서버 정의"""
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -22,7 +23,7 @@ mcp = FastMCP("seosoyoung-attach")
 
 reflect = Reflector(
     name="mcp-seosoyoung",
-    description="서소영 봇 전용 MCP 서버",
+    description=f"{os.environ.get('BOT_NAME', '봇')} 봇 전용 MCP 서버",
     version_from="git",
     source_root=str(Path(__file__).resolve().parent),
     port=3104,

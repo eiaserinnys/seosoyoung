@@ -4,13 +4,15 @@
 inspect 기반으로 소스 위치를 자동 추적할 수 있게 한다.
 """
 
+import os
+
 from cogito import Reflector
 from pathlib import Path
 
 reflect = Reflector(
     name="bot",
     description=(
-        "서소영 Slack SocketMode 봇. "
+        f"{os.environ.get('BOT_NAME', '봇')} Slack SocketMode 봇. "
         "이벤트 처리, 멘션 응답, 플러그인 시스템을 통해 soulstream과 연동한다."
     ),
     source_root=str(Path(__file__).resolve().parent),

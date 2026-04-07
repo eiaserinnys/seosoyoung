@@ -317,7 +317,7 @@ def _format_cleanup_preview(orphan_processes: list, old_sessions: list, mem_str:
 
     if orphan_processes or old_sessions:
         lines.append("")
-        lines.append("실제 정리하려면 `@서소영 cleanup confirm`을 실행하세요.")
+        lines.append(f"실제 정리하려면 `{Config.bot.mention_name} cleanup confirm`을 실행하세요.")
 
     return "\n".join(lines)
 
@@ -742,7 +742,7 @@ def handle_set_token(
     parts = command.split(maxsplit=1)
     if len(parts) < 2:
         say(
-            text="토큰을 입력해주세요.\n예: `@서소영 set-token sk-ant-oat01-xxx`",
+            text=f"토큰을 입력해주세요.\n예: `{Config.bot.mention_name} set-token sk-ant-oat01-xxx`",
             thread_ts=thread_ts or ts,
         )
         return

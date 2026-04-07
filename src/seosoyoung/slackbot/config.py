@@ -119,6 +119,21 @@ class EmojiConfig:
     text_intervention_error: str = os.environ["EMOJI_TEXT_INTERVENTION_ERROR"]
 
 
+@dataclass
+class BotIdentityConfig:
+    """봇 정체성 문구 설정 (기본값: 일반적인 슬랙봇 문구)"""
+
+    name: str = field(default_factory=lambda: os.environ.get("BOT_NAME", "봇"))
+    mention_name: str = field(default_factory=lambda: os.environ.get("BOT_MENTION_NAME", "@봇"))
+    thinking_text: str = field(default_factory=lambda: os.environ.get("BOT_THINKING_TEXT", "*생각합니다...*"))
+    startup_message: str = field(
+        default_factory=lambda: os.environ.get("BOT_STARTUP_MESSAGE", "안녕하세요, 봇이 시작되었습니다.")
+    )
+    shutdown_message: str = field(
+        default_factory=lambda: os.environ.get("BOT_SHUTDOWN_MESSAGE", "다음에 또 뵙겠습니다, 안녕히 계세요.")
+    )
+
+
 class Config:
     """애플리케이션 설정
 
@@ -134,6 +149,7 @@ class Config:
     gemini = GeminiConfig()
     claude = ClaudeConfig()
     emoji = EmojiConfig()
+    bot = BotIdentityConfig()
 
     # ========================================
     # 경로 설정 (런타임에 cwd 기준 계산)

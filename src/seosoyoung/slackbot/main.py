@@ -257,7 +257,7 @@ def notify_startup():
     """봇 시작 알림 (운영자 DM)"""
     try:
         channel = resolve_operator_dm(app.client, Config.slack.operator_user_id)
-        app.client.chat_postMessage(channel=channel, text="안녕하세요, 서소영입니다.")
+        app.client.chat_postMessage(channel=channel, text=Config.bot.startup_message)
         logger.info(f"시작 알림 전송: {channel}")
     except Exception as e:
         logger.error(f"시작 알림 실패: {e}")
@@ -267,7 +267,7 @@ def notify_shutdown():
     """봇 종료 알림 (운영자 DM)"""
     try:
         channel = resolve_operator_dm(app.client, Config.slack.operator_user_id)
-        app.client.chat_postMessage(channel=channel, text="다음에 또 뵙겠습니다, 안녕히 계세요.")
+        app.client.chat_postMessage(channel=channel, text=Config.bot.shutdown_message)
         logger.info(f"종료 알림 전송: {channel}")
     except Exception as e:
         logger.error(f"종료 알림 실패: {e}")

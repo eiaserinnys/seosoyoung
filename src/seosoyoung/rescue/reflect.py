@@ -4,13 +4,15 @@
 inspect 기반으로 소스 위치를 자동 추적할 수 있게 한다.
 """
 
+import os
+
 from cogito import Reflector
 from pathlib import Path
 
 reflect = Reflector(
     name="rescue-bot",
     description=(
-        "서소영 긴급 복구용 봇. "
+        f"{os.environ.get('BOT_NAME', '봇')} 긴급 복구용 봇. "
         "soulstream 없이 Claude Code SDK를 직접 실행하여 "
         "장애 시에도 슬랙 명령을 처리한다."
     ),

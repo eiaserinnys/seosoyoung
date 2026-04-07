@@ -198,7 +198,7 @@ def register_action_handlers(app, dependencies: dict):
                 ts=message_ts,
                 blocks=[],
                 text="알겠습니다. 이후에 재시작을 시도하려면\n"
-                     "`@서소영 update` 또는 `@서소영 restart`라고 입력해주세요."
+                     f"`{Config.bot.mention_name} update` 또는 `{Config.bot.mention_name} restart`라고 입력해주세요."
             )
         except Exception as e:
             logger.error(f"메시지 업데이트 실패: {e}")
