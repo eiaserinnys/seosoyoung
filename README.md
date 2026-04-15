@@ -1,189 +1,228 @@
-# SeoSoyoung (서소영)
+# SeoSoyoung
 
-Slack 멘션으로 Claude Code를 호출하여
-로컬 PC에서 여러가지 작업을 지원하거나
-스스로 수정하는 작업을 자동화하는 봇입니다.
+A Slack bot that connects to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) via [Soulstream](https://github.com/eiaserinnys/soulstream), enabling AI-powered task execution directly from Slack conversations.
 
-<!-- sentinel deploy test 2 -->
+When you mention the bot in Slack, it delegates work to a Claude Code session and streams the results back to your thread in real time.
 
-## 개요
+## How It Works
 
 ```
-사용자: @[봇 이름] 질문/명령
-   ↓
-Slack Bot (slack_bolt, Socket Mode)
-   ↓
-Claude Code CLI/SDK 실행
-   ↓
-결과를 Slack 스레드에 회신
+User: @seosoyoung "refactor the auth module"
+  ↓
+Slack Bot (Socket Mode)
+  ↓
+Soulstream (Claude Code host)
+  ↓
+Claude Code session executes the task
+  ↓
+Results streamed back to the Slack thread
 ```
 
-Slack에서 봇을 멘션하면 백그라운드에서 Claude Code를 실행하고, 결과를 같은 스레드에 반환합니다.
+1. A user mentions the bot in a Slack channel or thread.
+2. The bot creates a Claude Code session through Soulstream (an HTTP/SSE service that hosts Claude Code).
+3. As Claude Code works, progress updates are streamed to the Slack thread.
+4. The final result is posted as a reply. Thread context is preserved for follow-up messages.
 
-### 주요 기능
+## Features
 
-- **Claude Code 연동**: Slack 메시지를 Claude Code에 전달하고 결과 반환
-- **세션 관리**: Slack 스레드별 대화 컨텍스트 유지
-- **Trello 연동**: Trello 카드 감시 및 자동 작업 실행
-- **번역 기능**: 특정 채널의 메시지 자동 번역
-- **파일 첨부 / 이미지 생성**: 작업 결과를 파일로 첨부하거나 Gemini로 이미지 생성
-- **MCP 서버**: Slack, Trello, Outline, eb-lore 등 외부 도구 연동
+- **Claude Code Integration** — Delegates tasks to Claude Code sessions via Soulstream, with real-time SSE streaming of progress and results.
+- **Thread-based Sessions** — Each Slack thread maps to a Claude Code session. Follow-up messages in the same thread continue the conversation.
+- **Plugin System** — Extensible via plugins loaded from a YAML registry. Plugins can hook into the message lifecycle (pre-process, post-process, etc.). See [seosoyoung-plugins](https://github.com/eiaserinnys/seosoyoung-plugins) for available plugins.
+- **MCP Server** — A built-in MCP (Model Context Protocol) server that provides tools for Slack messaging, file attachment, image generation, thread file downloads, and user profile lookups. Claude Code sessions use these tools to interact with Slack.
+- **Role-based Access Control** — Configurable permission levels (operator, member, guest) to control who can invoke the bot.
+- **Rescue Bot** — A lightweight fallback bot that runs independently. If the main bot goes down, the rescue bot can still handle basic requests using the Claude Code SDK directly.
 
-### 기술 스택
+## Architecture
 
-| 구성요소 | 기술 |
-|---------|------|
-| 언어 | Python 3.13 |
-| Slack | slack_bolt (Socket Mode) |
-| Claude | anthropic SDK, Claude Code CLI/SDK |
-| 작업 관리 | Trello API |
-| 검색 | Whoosh, kiwipiepy |
-| 프로세스 관리 | Haniel (서비스 오케스트레이터) |
-| MCP | FastMCP, supergateway |
+The system runs as three independent processes, all managed by [Haniel](https://github.com/eiaserinnys/Haniel) (a service orchestrator):
 
-## 아키텍처
-
-```
-  [Haniel]               ← 서비스 오케스트레이터 (WinSW Windows 서비스)
-     │
-     ├── mcp-seosoyoung      커스텀 MCP 서버 (3104)
-     ├── mcp-eb-lore         eb_lore MCP 서버 (3108)
-     ├── mcp-outline         Outline 위키 MCP (3103)
-     ├── mcp-slack           Slack MCP (3101)
-     ├── mcp-trello          Trello MCP (3102)
-     └── soulstream-server   Claude Code 실행 서비스 (4105)
-```
-
-Haniel이 모든 서비스의 생명주기(시작, 헬스체크, 재시작, 배포)를 관리합니다.
-bot과 rescue-bot은 별도 환경에서 독립 운영됩니다.
-
-### Exit Code 체계
-
-| Code | 의미 | 동작 |
-|------|------|------|
-| `0` | 정상 종료 | 프로세스 관리자 루프 탈출 |
-| `42` | 코드 변경 감지 | 프로세스 관리자가 git pull + pip install 후 재시작 |
-| `43` | 프로세스 재시작 | 해당 프로세스만 즉시 재시작 |
-| `44` | 프로세스 관리자 전체 재시작 | 전체 재시작 |
-| 기타 | 비정상 종료 | 지수적 백오프 후 재시작 |
-
-## 설치
-
-Haniel을 통해 설치합니다.
-
-```powershell
-# 1. Haniel 설치
-irm https://raw.githubusercontent.com/eiaserinnys/Haniel/main/install-haniel.ps1 | iex
-
-# 2. 설정 파일 URL 입력
-# https://raw.githubusercontent.com/eiaserinnys/seosoyoung_workspace/main/seosoyoung.haniel.yaml
-
-# 3. 설치 완료 후 서비스 시작
-haniel start
-```
-
-Haniel이 수행하는 작업:
-- 리포 클론 (workspace, seosoyoung, soulstream, eb_lore 등)
-- Python 가상환경 생성 및 의존성 설치
-- 서비스별 .env 파일 생성
-- MCP 서버 설정 (.mcp.json)
-- WinSW Windows 서비스 등록
-
-## 사전 준비
-
-### Slack 앱 생성
-
-Slack 앱은 직접 생성해야 합니다. [Slack API](https://api.slack.com/apps)에서 새 앱을 만들고 아래 설정을 적용하세요.
-
-**필요한 권한 (Bot Token Scopes):**
-- `app_mentions:read` - 멘션 읽기
-- `chat:write` - 메시지 전송
-- `files:write` - 파일 업로드
-- `channels:history` - 채널 기록 읽기
-- `groups:history` - 비공개 채널 기록 읽기
-
-**Event Subscriptions:**
-- `app_mention` - 봇 멘션 이벤트
-- `message.channels` - 채널 메시지 (번역 기능용)
-
-**Socket Mode:**
-- Socket Mode를 활성화하고 App-Level Token을 발급받으세요.
-
-### Claude Code CLI
-
-[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)를 설치하고 인증을 완료하세요.
-
-### 기타
-
-- **Python 3.13+**: [python.org](https://www.python.org/downloads/)
-- **Node.js**: [nodejs.org](https://nodejs.org/) (MCP 서버 브릿지용)
-
-## 프로젝트 구조
+| Process | Description | Port |
+|---------|-------------|------|
+| `bot` | Main Slack bot — handles events, manages sessions, runs plugins | 3106 |
+| `mcp-seosoyoung` | MCP server — provides Slack tools to Claude Code sessions | 3104 |
+| `rescue-bot` | Fallback bot — minimal Claude Code integration without plugins | 3107 |
 
 ```
-src/
-├── seosoyoung/
-│   ├── core/                # 플러그인 코어 (레지스트리, 훅, 매니저)
-│   ├── plugin_sdk/          # 플러그인 SDK (Slack/Soulstream 백엔드 프로토콜)
-│   ├── slackbot/            # Slack 봇 메인 모듈
-│   │   ├── main.py          # 앱 진입점
-│   │   ├── config.py        # 환경 변수 기반 설정
-│   │   ├── handlers/        # 멘션, 메시지, 명령어 핸들러
-│   │   ├── soulstream/      # Claude Code 실행 (세션, 인터벤션)
-│   │   ├── presentation/    # 진행 상태 UI
-│   │   ├── slack/           # Slack API 유틸리티
-│   │   └── web/             # 웹 콘텐츠 추출
-│   ├── claude/              # Claude Code SDK 래퍼
-│   ├── mcp/                 # 커스텀 MCP 서버 (mcp-seosoyoung)
-│   ├── rescue/              # 긴급 복구 봇
-│   └── utils/               # 공통 유틸리티
+[Haniel]                   ← Service orchestrator
+  │
+  ├── bot                  ← Slack Socket Mode bot
+  │     ├── handlers/      ← Mention, message, command handlers
+  │     ├── soulstream/    ← HTTP/SSE client to Soulstream
+  │     ├── presentation/  ← Progress display in Slack
+  │     └── plugins        ← Plugin manager + loaded plugins
+  │
+  ├── mcp-seosoyoung       ← MCP server (FastMCP)
+  │     └── tools/         ← slack_post_message, attach_file, generate_image, ...
+  │
+  └── rescue-bot           ← Standalone fallback bot
 ```
 
-### 플러그인 시스템
+### Soulstream Integration
 
-플러그인 코드는 별도 패키지 `seosoyoung-plugins`로 분리되어 있습니다.
-`config/plugins.yaml` 레지스트리가 어떤 플러그인을 로드할지 정의하며,
-각 플러그인의 런타임 설정(API 키 등)은 `config/` 하위의 개별 YAML 파일에 저장됩니다.
+The bot does **not** run Claude Code directly. Instead, it communicates with [Soulstream](https://github.com/eiaserinnys/soulstream), which manages Claude Code runner pools, session lifecycle, and credential profiles.
 
-`config/` 하위의 모든 YAML 파일은 gitignored이며, 환경마다 별도로 설정해야 합니다.
-초기 설정 시 `config/plugins.yaml.example`을 복사하여 사용하세요:
+- **Request**: The bot sends an HTTP request to Soulstream with the user's prompt and session context.
+- **Streaming**: Soulstream streams back events (tool calls, text output, errors) via SSE.
+- **Presentation**: The bot's presentation module renders these events into Slack messages with live progress updates.
+
+## Plugin System
+
+Plugins extend the bot's behavior without modifying core code. They are loaded dynamically at startup from a YAML registry.
+
+```yaml
+# config/plugins.yaml
+plugins:
+  - name: memory
+    module: seosoyoung_plugins.memory
+    enabled: true
+  - name: channel-observer
+    module: seosoyoung_plugins.channel_observer
+    enabled: true
+  - name: trello
+    module: seosoyoung_plugins.trello
+    enabled: true
+  - name: translate
+    module: seosoyoung_plugins.translate
+    enabled: false
+```
+
+Plugin implementations live in a separate package: [seosoyoung-plugins](https://github.com/eiaserinnys/seosoyoung-plugins).
+
+### Plugin SDK
+
+The bot provides a Plugin SDK (`seosoyoung.plugin_sdk`) that plugins import to interact with the system:
+
+```python
+from seosoyoung.plugin_sdk import Plugin, PluginMeta, HookContext, HookResult
+from seosoyoung.plugin_sdk import slack, soulstream, mention
+
+class MyPlugin(Plugin):
+    meta = PluginMeta(name="my-plugin", version="1.0.0", description="Example")
+
+    async def on_load(self, config: dict) -> None:
+        pass  # Initialize resources
+
+    async def on_unload(self) -> None:
+        pass  # Cleanup
+
+    def register_hooks(self) -> dict:
+        return {"message_received": self.on_message}
+
+    async def on_message(self, ctx: HookContext) -> tuple[HookResult, any]:
+        await slack.send_message(ctx.channel, "Got it!")
+        return HookResult.CONTINUE, None
+```
+
+The SDK provides three backend interfaces:
+- `slack` — Send messages, add reactions, look up users
+- `soulstream` — Run Claude Code sessions, compact context
+- `mention` — Track which threads have been handled
+
+## Project Structure
+
+```
+src/seosoyoung/
+├── slackbot/              # Main bot application
+│   ├── main.py            # Entry point, app initialization
+│   ├── config.py          # Environment-based configuration
+│   ├── handlers/          # Slack event handlers (mention, message, commands)
+│   ├── soulstream/        # Soulstream HTTP/SSE client, session management
+│   ├── presentation/      # Live progress rendering in Slack
+│   ├── slack/             # Slack API helpers (formatting, message utils)
+│   └── auth.py            # Role-based access control
+├── core/                  # Plugin infrastructure
+│   ├── plugin_manager.py  # Dynamic plugin loading and lifecycle
+│   ├── plugin.py          # Base plugin class (internal)
+│   ├── hooks.py           # Hook chain execution engine
+│   ├── context.py         # Shared context object
+│   └── plugin_config.py   # YAML registry and config loading
+├── plugin_sdk/            # Public SDK for plugin development
+│   ├── plugin.py          # Plugin base class and metadata
+│   ├── hooks.py           # HookContext, HookResult, HookPriority
+│   ├── slack.py           # Slack backend protocol
+│   ├── soulstream.py      # Soulstream backend protocol
+│   └── mention.py         # Mention tracking backend protocol
+├── mcp/                   # MCP server (mcp-seosoyoung)
+│   ├── server.py          # FastMCP server setup
+│   └── tools/             # Tool implementations
+│       ├── slack_messaging.py   # Post messages to Slack
+│       ├── attach.py            # Attach files to threads
+│       ├── image_gen.py         # Generate images (Gemini)
+│       ├── thread_files.py      # Download thread attachments
+│       └── user_profile.py      # Look up Slack user profiles
+├── rescue/                # Rescue bot (fallback)
+└── utils/                 # Shared utilities
+```
+
+## Prerequisites
+
+- **Python 3.11+**
+- **Slack App** — Create one at [api.slack.com/apps](https://api.slack.com/apps) with:
+  - Socket Mode enabled
+  - Bot Token Scopes: `app_mentions:read`, `chat:write`, `files:write`, `channels:history`, `groups:history`
+  - Event Subscriptions: `app_mention`, `message.channels`
+- **Soulstream** — A running [Soulstream](https://github.com/eiaserinnys/soulstream) instance for Claude Code execution
+- **Haniel** (optional) — [Haniel](https://github.com/eiaserinnys/Haniel) for automated deployment and service management
+
+## Installation
+
+### With Haniel (recommended)
+
+[Haniel](https://github.com/eiaserinnys/Haniel) automates the entire setup: repository cloning, virtual environments, dependency installation, `.env` configuration, and service registration. Refer to the Haniel documentation for initial installation and configuration.
+
+### Manual Setup
 
 ```bash
-cp config/plugins.yaml.example config/plugins.yaml
-# 필요에 따라 플러그인 활성화/비활성화 편집
+# Clone the repository
+git clone https://github.com/eiaserinnys/seosoyoung.git
+cd seosoyoung
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+
+# Install dependencies and the package
+# (requirements.txt lists all runtime dependencies;
+#  pip install -e . registers the package for imports)
+pip install -r requirements.txt
+pip install -e .
+
+# Configure environment variables
+cp .env.example .env
+# Edit .env with your Slack tokens, Soulstream URL, etc.
+
+# Set up plugin configuration
+# Create config/plugins.yaml using the format shown in the Plugin System section above
+# Each plugin may also need its own config file in config/ (e.g., trello.yaml, memory.yaml)
+
+# Run the bot
+python -m seosoyoung.slackbot.main
+
+# Run the MCP server (separate process)
+python -m seosoyoung.mcp
 ```
 
-## 트러블슈팅
+## Configuration
 
-### 포트 충돌
+The bot is configured through environment variables (typically in a `.env` file):
 
-프로세스가 비정상 종료하면 포트를 점유한 고아 프로세스가 남을 수 있습니다.
+| Variable | Description |
+|----------|-------------|
+| `SLACK_BOT_TOKEN` | Slack bot OAuth token (`xoxb-...`) |
+| `SLACK_APP_TOKEN` | Slack app-level token for Socket Mode (`xapp-...`) |
+| `SOULSTREAM_URL` | Soulstream server URL (e.g., `http://localhost:4105`) |
+| `OPERATOR_USER_ID` | Slack user ID for the bot operator |
+| `BOT_USER_ID` | The bot's own Slack user ID |
 
-```powershell
-# 포트를 점유한 프로세스 확인
-netstat -ano | findstr :3104
+See `.env.example` (if available) or the Haniel configuration for the full list. Plugin-specific settings live in `config/*.yaml` files (gitignored). See each plugin's documentation for required settings.
 
-# PID로 강제 종료
-taskkill /F /PID <PID>
-```
-
-주요 포트: 3101(slack), 3102(trello), 3103(outline), 3104(seosoyoung-mcp), 3106(bot shutdown), 3107(rescue), 3108(eb-lore), 4105(soulstream)
-
-### 로그 확인
-
-Haniel 대시보드에서 각 서비스의 로그를 확인할 수 있습니다.
-
-```powershell
-haniel status    # 서비스 상태 확인
-haniel logs      # 로그 확인
-```
-
-## 테스트
+## Testing
 
 ```bash
 pytest
 ```
 
-## 라이선스
+## License
 
-MIT License
+[MIT](LICENSE)
