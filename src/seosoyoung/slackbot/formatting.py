@@ -65,6 +65,78 @@ def _emoji_tool_done() -> str:
     return os.environ.get("SOULSTREAM_EMOJI_TOOL_DONE", _EMOJI_TOOL_DONE_DEFAULT)
 
 
+# --- Markdown → Slack mrkdwn 변환 ---
+
+def markdown_to_mrkdwn(text: str) -> str:
+    """Markdown 텍스트를 Slack mrkdwn 포맷으로 변환
+
+    Claude Code의 응답(Markdown)을 슬랙에 게시하기 전에 호출합니다.
+    코드블록, 인라인코드, blockquote, 기존 Slack 링크는 보존합니다.
+    """
+    if not text:
+        return text
+
+    # 1) 보존 대상을 placeholder로 치환
+    placeholders: list[str] = []
+
+    def _save(match: re.Match) -> str:
+        placeholders.append(match.group(0))
+        return f"\x00PH{len(placeholders) - 1}\x00"
+
+    result = text
+
+    # 코드블록 보존
+    result = re.sub(r'```[\s\S]*?```', _save, result)
+
+    # 인라인코드 보존
+    result = re.sub(r'`[^`]+`', _save, result)
+
+    # 기존 Slack 링크 <URL|text> 보존
+    result = re.sub(r'<[^>]+\|[^>]+>', _save, result)
+
+    # blockquote 줄 보존 (> 로 시작하는 줄 전체)
+    result = re.sub(r'^>.*$', _save, result, flags=re.MULTILINE)
+
+    # 2) 변환 수행
+
+    # 제목: # 제목 → *제목* (줄 시작에서만)
+    result = re.sub(r'^#{1,6}\s+(.+)$', r'*\1*', result, flags=re.MULTILINE)
+
+    # 굵게: **텍스트** → *텍스트*
+    result = re.sub(r'\*\*(.+?)\*\*', r'*\1*', result)
+    # 굵게: __텍스트__ → *텍스트*
+    result = re.sub(r'__(.+?)__', r'*\1*', result)
+
+    # 링크: [텍스트](URL) → <URL|텍스트>
+    result = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<\2|\1>', result)
+
+    # 취소선: ~~텍스트~~ → ~텍스트~
+    result = re.sub(r'~~(.+?)~~', r'~\1~', result)
+
+    # 표: 정렬 행 제거, 파이프 제거
+    # 정렬 행 (|---|---|) 제거
+    result = re.sub(r'^\|[\s\-:]+\|[\s\-:|]*$', '', result, flags=re.MULTILINE)
+    # 표 행의 선행/후행 파이프 제거, 내부 파이프를 공백으로
+    result = re.sub(
+        r'^\|(.+)\|$',
+        lambda m: re.sub(r'\s*\|\s*', '  ', m.group(1)).strip(),
+        result,
+        flags=re.MULTILINE,
+    )
+
+    # 수평선 제거
+    result = re.sub(r'^(-{3,}|\*{3,}|_{3,})$', '', result, flags=re.MULTILINE)
+
+    # 연속 빈 줄 정리 (3개 이상 → 2개)
+    result = re.sub(r'\n{3,}', '\n\n', result)
+
+    # 3) placeholder 복원
+    for i, original in enumerate(placeholders):
+        result = result.replace(f'\x00PH{i}\x00', original)
+
+    return result.strip()
+
+
 # --- 함수 ---
 
 def escape_backticks(text: str) -> str:

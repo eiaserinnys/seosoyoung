@@ -6,6 +6,7 @@
 import logging
 from typing import Any, Callable, Optional
 
+from seosoyoung.slackbot.formatting import markdown_to_mrkdwn
 from seosoyoung.slackbot.soulstream.message_formatter import (
     SLACK_MSG_MAX_LEN,
     build_trello_header,
@@ -84,6 +85,7 @@ class ResultProcessor:
     def handle_success(self, pctx, result):
         """성공 결과 처리"""
         response = result.output or ""
+        response = markdown_to_mrkdwn(response)
 
         if not response.strip():
             self.handle_interrupted(pctx)
