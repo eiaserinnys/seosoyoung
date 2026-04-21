@@ -87,7 +87,7 @@ class TestConfigs:
     def test_image_generation_config(self):
         configs = reflect.get_configs("image_generation")
         assert len(configs) == 1
-        assert configs[0].key == "GEMINI_API_KEY"
+        assert configs[0].key == "OPENAI_API_KEY"
         assert configs[0].sensitive is True
 
     def test_thread_files_config(self):
@@ -148,7 +148,7 @@ class TestReflectEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["configs"]) == 1
-        assert data["configs"][0]["key"] == "GEMINI_API_KEY"
+        assert data["configs"][0]["key"] == "OPENAI_API_KEY"
 
     @pytest.mark.asyncio
     async def test_source_all(self, sse_app):
