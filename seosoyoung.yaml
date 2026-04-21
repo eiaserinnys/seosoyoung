@@ -171,8 +171,11 @@ install:
           prompt: "Anthropic API Key"
           guide: "https://console.anthropic.com/settings/keys"
         - key: GEMINI_API_KEY
-          prompt: "Google Gemini API Key"
+          prompt: "Google Gemini API Key (slackbot config용)"
           guide: "https://aistudio.google.com/apikey"
+        - key: OPENAI_API_KEY
+          prompt: "OpenAI API Key (MCP 이미지 생성용)"
+          guide: "https://platform.openai.com/api-keys"
         - key: CLAUDE_EXECUTION_MODE
           default: "remote"
         - key: SEOSOYOUNG_SOUL_URL

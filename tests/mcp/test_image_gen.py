@@ -1,9 +1,10 @@
 """이미지 생성 모듈 테스트
 
-Gemini API 호출 및 MCP 도구 테스트
+OpenAI gpt-image-2 API 호출 및 MCP 도구 테스트
 """
 
 import asyncio
+import base64
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
@@ -13,50 +14,70 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 import seosoyoung.mcp.tools.image_gen as _image_gen_mod
 
-# _GEMINI_API_KEY 패치 경로
-_API_KEY_PATH = "seosoyoung.mcp.tools.image_gen._GEMINI_API_KEY"
+# _OPENAI_API_KEY 패치 경로
+_API_KEY_PATH = "seosoyoung.mcp.tools.image_gen._OPENAI_API_KEY"
+
+# 테스트용 PNG 바이트
+_FAKE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+_FAKE_PNG_B64 = base64.b64encode(_FAKE_PNG).decode()
+
+
+def _make_openai_response(b64_json=None):
+    """OpenAI images API 응답 mock 생성"""
+    mock_image = MagicMock()
+    mock_image.b64_json = b64_json if b64_json is not None else _FAKE_PNG_B64
+
+    mock_response = MagicMock()
+    mock_response.data = [mock_image]
+    return mock_response
+
+
+def _make_empty_response():
+    """빈 data 응답"""
+    mock_response = MagicMock()
+    mock_response.data = []
+    return mock_response
+
+
+def _make_no_b64_response():
+    """b64_json이 None인 응답"""
+    mock_image = MagicMock()
+    mock_image.b64_json = None
+
+    mock_response = MagicMock()
+    mock_response.data = [mock_image]
+    return mock_response
 
 
 @pytest.mark.asyncio
-class TestGeminiImageGenerator:
-    """Gemini API 이미지 생성 모킹 테스트"""
+class TestOpenAIImageGenerator:
+    """OpenAI gpt-image-2 이미지 생성 모킹 테스트"""
 
-    def _make_mock_response(self, mime_type="image/png", data=None):
-        """Gemini 응답 모킹 헬퍼"""
-        mock_blob = MagicMock()
-        mock_blob.mime_type = mime_type
-        mock_blob.data = data or b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-
-        mock_part = MagicMock()
-        mock_part.inline_data = mock_blob
-        mock_part.text = None
-
-        mock_content = MagicMock()
-        mock_content.parts = [mock_part]
-
-        mock_candidate = MagicMock()
-        mock_candidate.content = mock_content
-
-        mock_response = MagicMock()
-        mock_response.candidates = [mock_candidate]
-        return mock_response
-
-    def _make_mock_client(self, response):
-        """Gemini 클라이언트 모킹 헬퍼"""
-        mock_models = MagicMock()
-        mock_models.generate_content.return_value = response
+    def _make_mock_client(self, generate_response=None, edit_response=None):
+        """AsyncOpenAI 클라이언트 mock"""
         mock_client = MagicMock()
-        mock_client.models = mock_models
+        mock_images = MagicMock()
+
+        if generate_response is not None:
+            mock_images.generate = AsyncMock(return_value=generate_response)
+        else:
+            mock_images.generate = AsyncMock(return_value=_make_openai_response())
+
+        if edit_response is not None:
+            mock_images.edit = AsyncMock(return_value=edit_response)
+        else:
+            mock_images.edit = AsyncMock(return_value=_make_openai_response())
+
+        mock_client.images = mock_images
         return mock_client
 
     async def test_generate_image_success(self, tmp_path):
         """이미지 생성 성공"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
+        client = self._make_mock_client()
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("귀여운 강아지")
@@ -65,98 +86,63 @@ class TestGeminiImageGenerator:
         assert result.mime_type == "image/png"
         assert result.prompt == "귀여운 강아지"
         assert result.path.suffix == ".png"
+        # images.generate가 호출되었는지 확인
+        client.images.generate.assert_called_once()
 
     async def test_generate_image_no_api_key(self):
         """API 키 없는 경우"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
         with patch(_API_KEY_PATH, ""):
-            with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+            with pytest.raises(ValueError, match="OPENAI_API_KEY"):
                 await generate_image("test")
 
     async def test_generate_image_empty_response(self):
         """빈 응답 처리"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        mock_response = MagicMock()
-        mock_response.candidates = []
+        client = self._make_mock_client(generate_response=_make_empty_response())
 
-        client = self._make_mock_client(mock_response)
-
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with pytest.raises(RuntimeError, match="빈 응답"):
                     await generate_image("test")
 
-    async def test_generate_image_text_only_response(self):
-        """텍스트만 반환된 경우 (안전 필터 등)"""
+    async def test_generate_image_no_b64_data(self):
+        """b64_json이 None인 응답"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        mock_part = MagicMock()
-        mock_part.inline_data = None
-        mock_part.text = "이 요청은 안전 정책에 의해 차단되었습니다."
+        client = self._make_mock_client(generate_response=_make_no_b64_response())
 
-        mock_content = MagicMock()
-        mock_content.parts = [mock_part]
-
-        mock_candidate = MagicMock()
-        mock_candidate.content = mock_content
-
-        mock_response = MagicMock()
-        mock_response.candidates = [mock_candidate]
-
-        client = self._make_mock_client(mock_response)
-
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
-                with pytest.raises(RuntimeError, match="이미지를 생성하지 못했습니다"):
+                with pytest.raises(RuntimeError, match="이미지 데이터를 찾을 수 없습니다"):
                     await generate_image("test")
 
-    async def test_generate_image_jpg_format(self, tmp_path):
-        """JPEG 형식 이미지 저장"""
+    async def test_generate_image_always_png(self, tmp_path):
+        """gpt-image-2는 항상 PNG를 반환"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        response = self._make_mock_response(
-            mime_type="image/jpeg",
-            data=b"\xff\xd8\xff\xe0" + b"\x00" * 100,
-        )
-        client = self._make_mock_client(response)
+        client = self._make_mock_client()
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("sunset")
 
-        assert result.path.suffix == ".jpg"
-        assert result.mime_type == "image/jpeg"
-
-    async def test_generate_image_custom_model(self, tmp_path):
-        """커스텀 모델 지정"""
-        from seosoyoung.mcp.tools.image_gen import generate_image
-
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
-
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
-            with patch(_API_KEY_PATH, "test-key"):
-                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
-                    await generate_image("test", model="gemini-2.5-flash-image")
-
-        call_kwargs = client.models.generate_content.call_args
-        assert call_kwargs.kwargs["model"] == "gemini-2.5-flash-image"
+        assert result.path.suffix == ".png"
+        assert result.mime_type == "image/png"
 
     async def test_generate_image_with_reference_images(self, tmp_path):
-        """레퍼런스 이미지 포함 생성"""
+        """레퍼런스 이미지 포함 생성 — images.edit() 호출"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        # 레퍼런스 이미지 파일 생성
         ref_img = tmp_path / "reference.png"
         ref_img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 50)
 
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
+        client = self._make_mock_client()
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
@@ -165,12 +151,12 @@ class TestGeminiImageGenerator:
                     )
 
         assert result.path.exists()
-        # contents가 리스트로 전달되었는지 확인 (ref_part + prompt 텍스트)
-        call_kwargs = client.models.generate_content.call_args
-        contents = call_kwargs.kwargs["contents"]
-        assert isinstance(contents, list)
-        assert len(contents) == 2  # 1 ref_part + 1 prompt string
-        assert contents[-1] == "similar style dog"
+        # images.edit()가 호출되었는지 확인
+        client.images.edit.assert_called_once()
+        client.images.generate.assert_not_called()
+        # 프롬프트 확인
+        call_kwargs = client.images.edit.call_args
+        assert call_kwargs.kwargs["prompt"] == "similar style dog"
 
     async def test_generate_image_with_multiple_reference_images(self, tmp_path):
         """복수 레퍼런스 이미지 포함 생성"""
@@ -181,10 +167,9 @@ class TestGeminiImageGenerator:
         ref2 = tmp_path / "ref2.jpg"
         ref2.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 50)
 
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
+        client = self._make_mock_client()
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
@@ -192,19 +177,41 @@ class TestGeminiImageGenerator:
                         reference_images=[str(ref1), str(ref2)],
                     )
 
-        call_kwargs = client.models.generate_content.call_args
-        contents = call_kwargs.kwargs["contents"]
-        assert isinstance(contents, list)
-        assert len(contents) == 3  # 2 refs + 1 prompt
+        client.images.edit.assert_called_once()
+        # image 파라미터에 파일 핸들 리스트가 전달되었는지 확인
+        call_kwargs = client.images.edit.call_args
+        image_arg = call_kwargs.kwargs["image"]
+        assert len(image_arg) == 2
 
-    async def test_generate_image_reference_nonexistent_skipped(self, tmp_path):
-        """존재하지 않는 레퍼런스 이미지는 무시"""
+    async def test_generate_image_edit_with_quality(self, tmp_path):
+        """레퍼런스 이미지 + quality 파라미터 전달 — images.edit()에도 quality 적용"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
+        ref_img = tmp_path / "reference.png"
+        ref_img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 50)
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        client = self._make_mock_client()
+
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
+            with patch(_API_KEY_PATH, "test-key"):
+                with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
+                    result = await generate_image(
+                        "high quality ref",
+                        reference_images=[str(ref_img)],
+                        quality="high",
+                    )
+
+        client.images.edit.assert_called_once()
+        call_kwargs = client.images.edit.call_args
+        assert call_kwargs.kwargs["quality"] == "high"
+
+    async def test_generate_image_reference_nonexistent_fallback(self, tmp_path):
+        """존재하지 않는 레퍼런스 이미지는 무시, 전부 무효 시 generate() 폴백"""
+        from seosoyoung.mcp.tools.image_gen import generate_image
+
+        client = self._make_mock_client()
+
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
@@ -212,112 +219,101 @@ class TestGeminiImageGenerator:
                         reference_images=[str(tmp_path / "nonexistent.png")],
                     )
 
-        # 레퍼런스가 모두 스킵되면 contents는 문자열(프롬프트만)
-        call_kwargs = client.models.generate_content.call_args
-        contents = call_kwargs.kwargs["contents"]
-        assert contents == "test"
+        # 유효한 레퍼런스 없으면 generate()로 폴백
+        client.images.generate.assert_called_once()
+        client.images.edit.assert_not_called()
 
     async def test_generate_image_without_reference_images(self, tmp_path):
-        """레퍼런스 이미지 없이 호출 (기존 동작 호환)"""
+        """레퍼런스 이미지 없이 호출"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
+        client = self._make_mock_client()
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image("simple prompt")
 
-        call_kwargs = client.models.generate_content.call_args
-        contents = call_kwargs.kwargs["contents"]
-        assert contents == "simple prompt"
+        client.images.generate.assert_called_once()
+        call_kwargs = client.images.generate.call_args
+        assert call_kwargs.kwargs["prompt"] == "simple prompt"
 
-    async def test_generate_image_with_image_size(self, tmp_path):
-        """image_size 파라미터 전달"""
+    async def test_generate_image_with_size(self, tmp_path):
+        """size 파라미터 전달"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
+        client = self._make_mock_client()
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
-                    result = await generate_image("4K landscape", image_size="4K")
+                    result = await generate_image("wide banner", size="1536x1024")
 
         assert result.path.exists()
-        call_kwargs = client.models.generate_content.call_args
-        config = call_kwargs.kwargs["config"]
-        assert config.image_config is not None
-        assert config.image_config.image_size == "4K"
+        call_kwargs = client.images.generate.call_args
+        assert call_kwargs.kwargs["size"] == "1536x1024"
 
-    async def test_generate_image_with_aspect_ratio(self, tmp_path):
-        """aspect_ratio 파라미터 전달"""
+    async def test_generate_image_with_quality(self, tmp_path):
+        """quality 파라미터 전달"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
+        client = self._make_mock_client()
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
-                    result = await generate_image("wide banner", aspect_ratio="16:9")
+                    result = await generate_image("high quality art", quality="high")
 
-        call_kwargs = client.models.generate_content.call_args
-        config = call_kwargs.kwargs["config"]
-        assert config.image_config is not None
-        assert config.image_config.aspect_ratio == "16:9"
+        call_kwargs = client.images.generate.call_args
+        assert call_kwargs.kwargs["quality"] == "high"
 
-    async def test_generate_image_with_size_and_ratio(self, tmp_path):
-        """image_size + aspect_ratio 동시 전달"""
+    async def test_generate_image_with_size_and_quality(self, tmp_path):
+        """size + quality 동시 전달"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
+        client = self._make_mock_client()
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     result = await generate_image(
-                        "cinematic shot", image_size="2K", aspect_ratio="21:9"
+                        "cinematic shot", size="1024x1536", quality="high"
                     )
 
-        call_kwargs = client.models.generate_content.call_args
-        config = call_kwargs.kwargs["config"]
-        assert config.image_config.image_size == "2K"
-        assert config.image_config.aspect_ratio == "21:9"
+        call_kwargs = client.images.generate.call_args
+        assert call_kwargs.kwargs["size"] == "1024x1536"
+        assert call_kwargs.kwargs["quality"] == "high"
 
-    async def test_generate_image_no_image_config_when_defaults(self, tmp_path):
-        """image_size, aspect_ratio 미지정 시 image_config=None"""
+    async def test_generate_image_defaults_when_no_params(self, tmp_path):
+        """size, quality 미지정 시 기본값 'auto' 전달"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
-        response = self._make_mock_response()
-        client = self._make_mock_client(response)
+        client = self._make_mock_client()
 
-        with patch("seosoyoung.mcp.tools.image_gen.genai.Client", return_value=client):
+        with patch("seosoyoung.mcp.tools.image_gen.AsyncOpenAI", return_value=client):
             with patch(_API_KEY_PATH, "test-key"):
                 with patch("seosoyoung.mcp.tools.image_gen.IMAGE_GEN_DIR", tmp_path):
                     await generate_image("default settings")
 
-        call_kwargs = client.models.generate_content.call_args
-        config = call_kwargs.kwargs["config"]
-        assert config.image_config is None
+        call_kwargs = client.images.generate.call_args
+        assert call_kwargs.kwargs["size"] == "auto"
+        assert call_kwargs.kwargs["quality"] == "auto"
 
-    async def test_generate_image_invalid_image_size(self):
-        """잘못된 image_size 검증"""
+    async def test_generate_image_invalid_size(self):
+        """잘못된 size 검증"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
         with patch(_API_KEY_PATH, "test-key"):
             with pytest.raises(ValueError, match="지원하지 않는 이미지 크기"):
-                await generate_image("test", image_size="8K")
+                await generate_image("test", size="8K")
 
-    async def test_generate_image_invalid_aspect_ratio(self):
-        """잘못된 aspect_ratio 검증"""
+    async def test_generate_image_invalid_quality(self):
+        """잘못된 quality 검증"""
         from seosoyoung.mcp.tools.image_gen import generate_image
 
         with patch(_API_KEY_PATH, "test-key"):
-            with pytest.raises(ValueError, match="지원하지 않는 종횡비"):
-                await generate_image("test", aspect_ratio="7:3")
+            with pytest.raises(ValueError, match="지원하지 않는 품질"):
+                await generate_image("test", quality="ultra")
 
 
 @pytest.mark.asyncio
@@ -352,13 +348,13 @@ class TestMcpGenerateAndUploadImage:
         """API 키 미설정"""
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 
-        with patch("seosoyoung.mcp.tools.image_gen.generate_image", new_callable=AsyncMock, side_effect=ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")):
+        with patch("seosoyoung.mcp.tools.image_gen.generate_image", new_callable=AsyncMock, side_effect=ValueError("OPENAI_API_KEY가 설정되지 않았습니다.")):
             result = await generate_and_upload_image(
                 "test", "C123", "T123"
             )
 
         assert result["success"] is False
-        assert "GEMINI_API_KEY" in result["message"]
+        assert "OPENAI_API_KEY" in result["message"]
 
     async def test_generation_failure(self):
         """이미지 생성 실패"""
@@ -419,12 +415,11 @@ class TestMcpGenerateAndUploadImage:
                 )
 
         assert result["success"] is True
-        # generate_image에 reference_images 리스트 전달 확인
         call_kwargs = mock_gen.call_args
         assert call_kwargs.kwargs["reference_images"] == ["/path/to/ref1.png", "/path/to/ref2.jpg"]
 
-    async def test_with_image_size_and_aspect_ratio(self, tmp_path):
-        """image_size, aspect_ratio 파라미터 전달"""
+    async def test_with_size_and_quality(self, tmp_path):
+        """size, quality 파라미터 전달"""
         from seosoyoung.mcp.tools.image_gen import GeneratedImage
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 
@@ -441,17 +436,17 @@ class TestMcpGenerateAndUploadImage:
         with patch("seosoyoung.mcp.tools.image_gen.generate_image", mock_gen):
             with patch("seosoyoung.mcp.tools.image_gen.WebClient", return_value=mock_client):
                 result = await generate_and_upload_image(
-                    "4K panorama", "C123", "T123",
-                    image_size="4K",
-                    aspect_ratio="16:9",
+                    "high res art", "C123", "T123",
+                    size="1536x1024",
+                    quality="high",
                 )
 
         assert result["success"] is True
         call_kwargs = mock_gen.call_args
-        assert call_kwargs.kwargs["image_size"] == "4K"
-        assert call_kwargs.kwargs["aspect_ratio"] == "16:9"
+        assert call_kwargs.kwargs["size"] == "1536x1024"
+        assert call_kwargs.kwargs["quality"] == "high"
 
-    async def test_empty_size_and_ratio_passed_as_none(self, tmp_path):
+    async def test_empty_size_and_quality_passed_as_none(self, tmp_path):
         """빈 문자열은 None으로 변환되어 전달"""
         from seosoyoung.mcp.tools.image_gen import GeneratedImage
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
@@ -470,38 +465,38 @@ class TestMcpGenerateAndUploadImage:
             with patch("seosoyoung.mcp.tools.image_gen.WebClient", return_value=mock_client):
                 result = await generate_and_upload_image(
                     "default", "C123", "T123",
-                    image_size="",
-                    aspect_ratio="",
+                    size="",
+                    quality="",
                 )
 
         assert result["success"] is True
         call_kwargs = mock_gen.call_args
-        assert call_kwargs.kwargs["image_size"] is None
-        assert call_kwargs.kwargs["aspect_ratio"] is None
+        assert call_kwargs.kwargs["size"] is None
+        assert call_kwargs.kwargs["quality"] is None
 
-    async def test_invalid_image_size_returns_error(self):
-        """잘못된 image_size가 전달되면 에러 반환"""
+    async def test_invalid_size_returns_error(self):
+        """잘못된 size가 전달되면 에러 반환"""
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 
         with patch(_API_KEY_PATH, "test-key"):
             result = await generate_and_upload_image(
-                "test", "C123", "T123", image_size="8K"
+                "test", "C123", "T123", size="8K"
             )
 
         assert result["success"] is False
         assert "지원하지 않는 이미지 크기" in result["message"]
 
-    async def test_invalid_aspect_ratio_returns_error(self):
-        """잘못된 aspect_ratio가 전달되면 에러 반환"""
+    async def test_invalid_quality_returns_error(self):
+        """잘못된 quality가 전달되면 에러 반환"""
         from seosoyoung.mcp.tools.image_gen import generate_and_upload_image
 
         with patch(_API_KEY_PATH, "test-key"):
             result = await generate_and_upload_image(
-                "test", "C123", "T123", aspect_ratio="7:3"
+                "test", "C123", "T123", quality="ultra"
             )
 
         assert result["success"] is False
-        assert "지원하지 않는 종횡비" in result["message"]
+        assert "지원하지 않는 품질" in result["message"]
 
 
 if __name__ == "__main__":
