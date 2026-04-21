@@ -112,6 +112,88 @@ class TestExecutorRemoteBranch:
             assert "disallowed_tools" in call_kwargs.kwargs
             assert "use_mcp" in call_kwargs.kwargs
 
+    def test_caller_info_forwarded_to_execute_remote(self, executor, session):
+        """_execute_once가 caller_info를 _execute_remote에 그대로 전달 (Phase 4)"""
+        pctx = _make_pctx()
+        caller_info = {
+            "source": "slack",
+            "slack": {"channel_id": "C123", "user_id": "U123", "thread_ts": "1234.5678"},
+            "bot_name": "seosoyoung",
+        }
+
+        with patch.object(executor, "_execute_remote") as mock_remote:
+            executor._execute_once(
+                "1234.5678", "hello", "1234.0001",
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                role="admin",
+                user_message=None,
+                on_result=None,
+                caller_info=caller_info,
+            )
+
+            call_kwargs = mock_remote.call_args.kwargs
+            assert call_kwargs["caller_info"] == caller_info
+
+    def test_caller_info_forwarded_to_adapter_execute(self, executor, session):
+        """_execute_remote가 caller_info를 adapter.execute에 그대로 전달 (Phase 4)"""
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+        pctx = _make_pctx()
+        caller_info = {
+            "source": "slack",
+            "slack": {"channel_id": "C123", "user_id": "U123", "thread_ts": "1234.5678"},
+            "bot_name": "seosoyoung",
+        }
+
+        captured_kwargs = {}
+
+        async def mock_execute(**kwargs):
+            captured_kwargs.update(kwargs)
+            return ClaudeResult(success=True, output="done", session_id="sess-1")
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = mock_execute
+
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                user_message=None,
+                on_result=None,
+                caller_info=caller_info,
+            )
+
+        assert captured_kwargs.get("caller_info") == caller_info
+
+    def test_caller_info_default_none_passed_through(self, executor, session):
+        """caller_info를 생략하면 adapter.execute에 None으로 전달된다 (Phase 4)"""
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+        pctx = _make_pctx()
+
+        captured_kwargs = {}
+
+        async def mock_execute(**kwargs):
+            captured_kwargs.update(kwargs)
+            return ClaudeResult(success=True, output="done", session_id="sess-1")
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = mock_execute
+
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id="sess-001",
+                user_message=None,
+                on_result=None,
+            )
+
+        assert captured_kwargs.get("caller_info") is None
+
     def test_remote_viewer_role_has_disallowed_tools(self, executor, session):
         """viewer role에서 disallowed_tools가 설정됨"""
         pctx = _make_pctx()

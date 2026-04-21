@@ -408,6 +408,14 @@ def create_session_and_run_claude(
             except Exception as e:
                 logger.warning(f"after_execute hook 실패 (무시): {e}")
 
+    # 슬랙 호출 맥락으로부터 caller_info 조립 (Phase 4)
+    from seosoyoung.slackbot.soulstream.caller_info import build_slack_caller_info
+    caller_info = build_slack_caller_info(
+        channel_id=channel,
+        user_id=user_id,
+        thread_ts=session_thread_ts,
+    )
+
     # Claude 실행 (placeholder → 콜백 빌드 → executor → cleanup)
     run_with_event_callbacks(
         pctx,
@@ -422,6 +430,7 @@ def create_session_and_run_claude(
             role=user_info["role"],
             user_message=clean_text,
             on_result=on_result,
+            caller_info=caller_info,
         ),
         on_compact_wrapper=lambda cb: wrap_on_compact_with_memory(
             cb, pm, session_thread_ts,

@@ -204,6 +204,7 @@ class SoulServiceClient:
         profile: Optional[str] = None,
         persist_listening: bool = False,
         inactivity_timeout: float = SSE_PERSIST_INACTIVITY_TIMEOUT,
+        caller_info: Optional[dict] = None,
     ) -> ExecuteResult:
         """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
 
@@ -250,6 +251,10 @@ class SoulServiceClient:
             data["system_prompt"] = system_prompt
         if profile is not None:
             data["profile"] = profile  # soul-server ExecuteRequest.profile: Optional[str]
+        if caller_info is not None:
+            # soul-server /execute가 body.caller_info가 있으면 HTTP Request 수집을
+            # 건너뛰고 이 값을 그대로 사용한다 (Phase 2).
+            data["caller_info"] = caller_info
 
         backoff = ExponentialBackoff()
         resolved_session_id = agent_session_id  # init 이벤트에서 갱신됨

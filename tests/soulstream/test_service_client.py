@@ -257,6 +257,64 @@ class TestSoulServiceClientExecute:
         assert body["use_mcp"] is False
 
     @pytest.mark.asyncio
+    async def test_execute_includes_caller_info_in_body(self, client):
+        """caller_info가 전달되면 HTTP body에 그대로 포함되는지 확인 (Phase 4)"""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-caller-info"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+
+        session = _mock_session(mock_response)
+        client._session = session
+
+        caller_info = {
+            "source": "slack",
+            "slack": {
+                "channel_id": "C08ABC123",
+                "user_id": "U0A9ELR53R8",
+                "thread_ts": "1234567890.123456",
+            },
+            "bot_name": "seosoyoung",
+        }
+
+        await client.execute("hello", caller_info=caller_info)
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert body["caller_info"] == caller_info
+
+    @pytest.mark.asyncio
+    async def test_execute_omits_none_caller_info_from_body(self, client):
+        """caller_info가 None이면 HTTP body에서 생략 (Phase 4)"""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-no-caller"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.execute("hello")
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert "caller_info" not in body
+
+    @pytest.mark.asyncio
     async def test_execute_omits_none_tools_from_body(self, client):
         """allowed_tools/disallowed_tools가 None이면 body에서 생략"""
         sse_data = (

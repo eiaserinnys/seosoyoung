@@ -156,6 +156,7 @@ class ClaudeExecutor:
         profile: Optional[str] = None,
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
+        caller_info: Optional[dict] = None,
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -225,6 +226,7 @@ class ClaudeExecutor:
                 profile=effective_profile,
                 persist_listening=persist_listening,
                 inactivity_timeout=inactivity_timeout,
+                caller_info=caller_info,
             )
         finally:
             lock.release()
@@ -298,6 +300,7 @@ class ClaudeExecutor:
         profile: Optional[str] = None,
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
+        caller_info: Optional[dict] = None,
     ):
         """락을 보유한 상태에서 실행"""
         # 실행 중 세션으로 표시
@@ -326,6 +329,7 @@ class ClaudeExecutor:
                 profile=profile,
                 persist_listening=persist_listening,
                 inactivity_timeout=inactivity_timeout,
+                caller_info=caller_info,
             )
         finally:
             self.mark_session_stopped(thread_ts)
@@ -357,6 +361,7 @@ class ClaudeExecutor:
         profile: Optional[str] = None,
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
+        caller_info: Optional[dict] = None,
     ):
         """단일 Claude 실행 -- Soulstream 서버에 위임"""
         effective_role = role or "admin"
@@ -387,6 +392,7 @@ class ClaudeExecutor:
             profile=profile,
             persist_listening=persist_listening,
             inactivity_timeout=inactivity_timeout,
+            caller_info=caller_info,
         )
 
     def _get_role_config(self, role: str) -> dict:
@@ -478,6 +484,7 @@ class ClaudeExecutor:
         profile: Optional[str] = None,
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
+        caller_info: Optional[dict] = None,
     ):
         """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
@@ -530,6 +537,7 @@ class ClaudeExecutor:
                 system_prompt=system_prompt,
                 profile=profile,
                 persist_listening=persist_listening,
+                caller_info=caller_info,
             )
             if inactivity_timeout is not None:
                 execute_kwargs["inactivity_timeout"] = inactivity_timeout
