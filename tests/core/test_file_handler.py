@@ -348,3 +348,99 @@ class TestBuildFileContext:
 
         assert "test.txt" in result
         assert "image.png" in result
+
+
+class TestDownloadFileTokenMissing:
+    """SLACK_BOT_TOKEN 미설정 시 파일 다운로드 스킵 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_missing_token_returns_none(self, tmp_path, monkeypatch):
+        """SLACK_BOT_TOKEN이 비어 있으면 None 반환 + 에러 로그"""
+        monkeypatch.setattr(
+            "seosoyoung.slackbot.slack.file_handler.TMP_DIR",
+            tmp_path / "slack_files",
+        )
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "")
+
+        # httpx가 호출되지 않아야 하므로 MagicMock을 통해 호출 여부 검증
+        with patch("seosoyoung.slackbot.slack.file_handler.httpx.AsyncClient") as mock_client_cls:
+            result = await download_file(
+                {
+                    "id": "F999",
+                    "name": "test.txt",
+                    "mimetype": "text/plain",
+                    "filetype": "txt",
+                    "size": 100,
+                    "url_private": "https://files.slack.com/test.txt",
+                },
+                "1234567890.123456",
+            )
+
+        assert result is None
+        # 토큰이 없으면 HTTP 클라이언트를 아예 열지 않는다
+        mock_client_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unset_token_returns_none(self, tmp_path, monkeypatch):
+        """SLACK_BOT_TOKEN 환경변수 자체가 없어도 None 반환"""
+        monkeypatch.setattr(
+            "seosoyoung.slackbot.slack.file_handler.TMP_DIR",
+            tmp_path / "slack_files",
+        )
+        monkeypatch.delenv("SLACK_BOT_TOKEN", raising=False)
+
+        with patch("seosoyoung.slackbot.slack.file_handler.httpx.AsyncClient") as mock_client_cls:
+            result = await download_file(
+                {
+                    "id": "F998",
+                    "name": "doc.pdf",
+                    "mimetype": "application/pdf",
+                    "filetype": "pdf",
+                    "size": 2048,
+                    "url_private": "https://files.slack.com/doc.pdf",
+                },
+                "1234567890.123456",
+            )
+
+        assert result is None
+        mock_client_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_token_present_proceeds_to_http(self, tmp_path, monkeypatch):
+        """토큰이 설정되어 있으면 HTTP 호출까지 진행됨 (경계 검증)"""
+        monkeypatch.setattr(
+            "seosoyoung.slackbot.slack.file_handler.TMP_DIR",
+            tmp_path / "slack_files",
+        )
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-valid-token")
+
+        file_content = "payload"
+        mock_response = MagicMock()
+        mock_response.content = file_content.encode("utf-8")
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch(
+            "seosoyoung.slackbot.slack.file_handler.httpx.AsyncClient",
+            return_value=mock_client,
+        ):
+            result = await download_file(
+                {
+                    "id": "F997",
+                    "name": "note.txt",
+                    "mimetype": "text/plain",
+                    "filetype": "txt",
+                    "size": len(file_content),
+                    "url_private": "https://files.slack.com/note.txt",
+                },
+                "1234567890.123456",
+            )
+
+        assert result is not None
+        # Bearer 헤더에 설정된 토큰이 포함되는지 검증
+        call_kwargs = mock_client.get.call_args[1]
+        assert call_kwargs["headers"]["Authorization"] == "Bearer xoxb-valid-token"

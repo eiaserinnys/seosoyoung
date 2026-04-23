@@ -126,8 +126,17 @@ async def download_file(
         local_path = tmp_dir / f"{stem}_{file_id}{suffix}"
 
         # 파일 다운로드 (Bot Token 인증)
+        # MCP 호환성을 위해 slackbot.config 대신 os.environ에서 토큰을 읽는다.
+        # 토큰이 없으면 빈 Bearer로 401이 발생하므로, 침묵 실패 대신 즉시 명시적 에러를 남긴다.
+        bot_token = os.environ.get("SLACK_BOT_TOKEN", "")
+        if not bot_token:
+            logger.error(
+                f"SLACK_BOT_TOKEN 환경변수가 설정되지 않아 파일 다운로드를 건너뜁니다: {file_name}"
+            )
+            return None
+
         async with httpx.AsyncClient() as client:
-            headers = {"Authorization": f"Bearer {os.environ.get('SLACK_BOT_TOKEN', '')}"}
+            headers = {"Authorization": f"Bearer {bot_token}"}
             response = await client.get(url, headers=headers, follow_redirects=True)
             response.raise_for_status()
 
