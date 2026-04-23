@@ -305,14 +305,32 @@ def create_session_and_run_claude(
 
     # 첨부 파일 처리
     file_context = ""
-    if event.get("files"):
+    had_file_attachments = bool(event.get("files"))
+    file_download_failed = False
+    if had_file_attachments:
         try:
             downloaded_files = download_files_sync(event, session_thread_ts)
             if downloaded_files:
                 file_context = build_file_context(downloaded_files)
                 logger.info(f"파일 {len(downloaded_files)}개 다운로드 완료")
+            else:
+                file_download_failed = True
+                logger.warning(
+                    f"파일 다운로드 결과 없음: thread_ts={session_thread_ts}, "
+                    f"file_count={len(event.get('files', []))}"
+                )
         except Exception as e:
+            file_download_failed = True
             logger.error(f"파일 다운로드 실패: {e}")
+
+    # 파일 첨부가 있었는데 다운로드가 실패하면 사용자에게 안내한다.
+    # 현재는 무반응이라 사용자가 봇이 죽었다고 오해할 수 있다.
+    if had_file_attachments and file_download_failed and not clean_text:
+        say(
+            text="첨부 파일을 가져오지 못하였사옵니다. 잠시 후 다시 시도해 주시길 청합니다.",
+            thread_ts=session_thread_ts,
+        )
+        return
 
     if not clean_text and not file_context:
         logger.info(f"빈 질문 - 세션만 생성됨: thread_ts={session_thread_ts}")

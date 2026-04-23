@@ -443,3 +443,155 @@ class TestDmSubtypeHandling:
         # 세션 생성이나 Claude 실행이 없어야 함
         deps["session_manager"].create.assert_not_called()
         deps["run_claude_in_session"].assert_not_called()
+
+
+class TestDmFileAttachment:
+    """DM 파일 첨부 (file_share) 처리 테스트
+
+    리그레션 방지: 이전 구현은 subtype이 있는 모든 이벤트를 차단하여
+    file_share 이벤트가 세션을 생성하지 못했다. 현재 구현은 denylist 방식으로
+    file_share를 허용한다.
+    """
+
+    @patch("seosoyoung.slackbot.handlers.mention._get_channel_messages", return_value=[])
+    @patch("seosoyoung.slackbot.handlers.mention.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
+    def test_dm_file_share_with_text_creates_session(
+        self, mock_msg_config, mock_mention_config, mock_get_msgs
+    ):
+        """file_share subtype + 텍스트 있는 DM → 세션 생성 + Claude 실행"""
+        mock_msg_config.BOT_USER_ID = "B_BOT"
+        mock_msg_config.TRANSLATE_CHANNELS = []
+        mock_msg_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
+        mock_mention_config.CHANNEL_OBSERVER_CHANNELS = []
+
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
+
+        mock_session = MagicMock(source_type="thread", last_seen_ts="", message_count=0)
+        deps = _make_deps()
+        deps["session_manager"].create.return_value = mock_session
+        handlers = _register_and_capture(register_message_handlers, deps)
+
+        event = {
+            "user": "U_USER",
+            "channel": "D_DM",
+            "channel_type": "im",
+            "subtype": "file_share",
+            "text": "이 이미지 분석해줘",
+            "ts": "1234.5678",
+            "files": [
+                {
+                    "id": "F001",
+                    "name": "sample.png",
+                    "mimetype": "image/png",
+                    "filetype": "png",
+                    "size": 1024,
+                    "url_private": "https://files.slack.com/sample.png",
+                }
+            ],
+        }
+
+        say = MagicMock()
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "reply_ts"}
+
+        # download_files_sync를 패치해서 실제 다운로드 없이 테스트
+        with patch("seosoyoung.slackbot.handlers.mention.download_files_sync", return_value=[]):
+            handlers["message"](event, say, client)
+
+        # 세션이 생성되어야 함 — subtype=file_share가 차단되지 않음을 검증
+        deps["session_manager"].create.assert_called_once()
+        deps["run_claude_in_session"].assert_called_once()
+
+    @patch("seosoyoung.slackbot.handlers.mention._get_channel_messages", return_value=[])
+    @patch("seosoyoung.slackbot.handlers.mention.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
+    def test_dm_file_share_without_text_creates_session(
+        self, mock_msg_config, mock_mention_config, mock_get_msgs
+    ):
+        """file_share subtype + 텍스트 없는 DM (파일만 첨부) → 세션 생성 + Claude 실행"""
+        mock_msg_config.BOT_USER_ID = "B_BOT"
+        mock_msg_config.TRANSLATE_CHANNELS = []
+        mock_msg_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
+        mock_mention_config.CHANNEL_OBSERVER_CHANNELS = []
+
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
+
+        mock_session = MagicMock(source_type="thread", last_seen_ts="", message_count=0)
+        deps = _make_deps()
+        deps["session_manager"].create.return_value = mock_session
+        handlers = _register_and_capture(register_message_handlers, deps)
+
+        event = {
+            "user": "U_USER",
+            "channel": "D_DM",
+            "channel_type": "im",
+            "subtype": "file_share",
+            "text": "",
+            "ts": "1234.5678",
+            "files": [
+                {
+                    "id": "F001",
+                    "name": "data.pdf",
+                    "mimetype": "application/pdf",
+                    "filetype": "pdf",
+                    "size": 2048,
+                    "url_private": "https://files.slack.com/data.pdf",
+                }
+            ],
+        }
+
+        say = MagicMock()
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "reply_ts"}
+
+        # download 성공 시나리오: 파일 하나가 다운로드된 것으로 처리
+        mock_downloaded = [
+            {
+                "local_path": "/tmp/data.pdf",
+                "original_name": "data.pdf",
+                "size": 2048,
+                "file_type": "binary",
+                "content": None,
+            }
+        ]
+        with patch(
+            "seosoyoung.slackbot.handlers.mention.download_files_sync",
+            return_value=mock_downloaded,
+        ):
+            handlers["message"](event, say, client)
+
+        # 텍스트가 비어 있어도 파일이 있으면 세션이 생성되어야 함
+        deps["session_manager"].create.assert_called_once()
+        deps["run_claude_in_session"].assert_called_once()
+
+    @patch("seosoyoung.slackbot.handlers.message.Config")
+    def test_dm_file_share_empty_without_text_and_files_ignored(self, mock_config):
+        """file_share인데 text와 files 둘 다 없는 비정상 이벤트 → 무시"""
+        mock_config.BOT_USER_ID = "B_BOT"
+        mock_config.TRANSLATE_CHANNELS = []
+        mock_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
+
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
+
+        deps = _make_deps()
+        handlers = _register_and_capture(register_message_handlers, deps)
+
+        event = {
+            "user": "U_USER",
+            "channel": "D_DM",
+            "channel_type": "im",
+            "subtype": "file_share",
+            "text": "",
+            "ts": "1234.5678",
+            # files 키가 아예 없는 비정상 이벤트
+        }
+
+        say = MagicMock()
+        client = MagicMock()
+
+        handlers["message"](event, say, client)
+
+        # 둘 다 없으면 조용히 무시
+        deps["session_manager"].create.assert_not_called()
+        deps["run_claude_in_session"].assert_not_called()

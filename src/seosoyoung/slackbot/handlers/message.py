@@ -276,8 +276,16 @@ def _handle_dm_message(event, say, client, dependencies):
     get_user_role = dependencies["get_user_role"]
     pm = dependencies.get("plugin_manager")
 
-    # subtype이 있으면 무시 (message_changed, message_deleted 등)
-    if event.get("subtype"):
+    # 무시할 subtype만 명시적으로 차단한다.
+    # file_share는 파일 첨부 DM이므로 통과시켜서 첨부 파일을 처리할 수 있게 한다.
+    IGNORED_SUBTYPES = {
+        "message_changed",
+        "message_deleted",
+        "bot_message",
+        "channel_join",
+        "channel_leave",
+    }
+    if event.get("subtype") in IGNORED_SUBTYPES:
         return
 
     text = event.get("text", "")
