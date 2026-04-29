@@ -109,6 +109,7 @@ class OrchestratorConfig:
 
     url: str = os.getenv("SOULSTREAM_ORCH_URL", "")
     token: str = os.getenv("SOULSTREAM_ORCH_TOKEN", "")
+    preferred_node: str = os.getenv("SOULSTREAM_PREFERRED_NODE", "")
 
 
 @dataclass
