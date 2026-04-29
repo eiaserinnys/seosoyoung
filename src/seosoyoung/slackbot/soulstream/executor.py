@@ -407,11 +407,12 @@ class ClaudeExecutor:
         이전 루프에서 만든 ClientSession을 재사용하면 "Event loop is closed" 오류가 발생합니다.
         따라서 매 요청마다 새 SoulServiceClient를 생성합니다.
         """
+        from seosoyoung.slackbot.config import Config
         from seosoyoung.slackbot.soulstream.service_client import SoulServiceClient
         from seosoyoung.slackbot.soulstream.service_adapter import ClaudeServiceAdapter
         client = SoulServiceClient(
-            base_url=self.soul_url,
-            token=self.soul_token,
+            base_url=Config.claude.soul_url,
+            token=Config.claude.soul_token,
         )
         return ClaudeServiceAdapter(
             client=client,
