@@ -101,6 +101,17 @@ class ClaudeConfig:
 
 
 @dataclass
+class OrchestratorConfig:
+    """오케스트레이터 설정 (선택적 -- 미설정 시 노드 명령 비활성)
+
+    credential_alert_channel, agent_id와 동일한 선택적 설정 패턴.
+    """
+
+    url: str = os.getenv("SOULSTREAM_ORCH_URL", "")
+    token: str = os.getenv("SOULSTREAM_ORCH_TOKEN", "")
+
+
+@dataclass
 class EmojiConfig:
     """이모지 설정"""
 
@@ -148,6 +159,7 @@ class Config:
     auth = AuthConfig()
     gemini = GeminiConfig()
     claude = ClaudeConfig()
+    orchestrator = OrchestratorConfig()
     emoji = EmojiConfig()
     bot = BotIdentityConfig()
 

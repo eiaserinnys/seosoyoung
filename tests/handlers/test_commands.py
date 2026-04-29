@@ -165,7 +165,7 @@ class TestTryHandleCommandDispatch:
         expected = {
             "help", "status", "cleanup", "cleanup confirm", "log",
             "update", "restart", "compact", "plugins", "session-info",
-            "setup-token", "clear-token", "profile",
+            "setup-token", "clear-token", "노드",
         }
         assert set(_COMMAND_DISPATCH.keys()) == expected
 

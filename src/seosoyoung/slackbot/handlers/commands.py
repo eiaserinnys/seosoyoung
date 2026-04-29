@@ -177,6 +177,7 @@ def handle_help(*, say, ts, **_):
             "• `@seosoyoung set-token <토큰>` - Claude OAuth 토큰 설정 (관리자)\n"
             "• `@seosoyoung clear-token` - Claude OAuth 토큰 삭제 (관리자)\n"
             "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
+            "• `@seosoyoung 노드` - 소울스트림 노드 라우팅 변경 (관리자)\n"
             "• `@seosoyoung restart` - 봇 재시작 (관리자)"
         ),
         thread_ts=ts,
