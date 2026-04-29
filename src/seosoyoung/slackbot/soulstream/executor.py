@@ -406,14 +406,27 @@ class ClaudeExecutor:
         run_in_new_loop로 실행할 때마다 새 루프가 생성되므로,
         이전 루프에서 만든 ClientSession을 재사용하면 "Event loop is closed" 오류가 발생합니다.
         따라서 매 요청마다 새 SoulServiceClient를 생성합니다.
+
+        오케스트레이터 URL이 설정되어 있으면 orch-server를 경유합니다.
+        orch-server의 execute-proxy는 soul-server와 동일한 /execute 인터페이스를 제공하되,
+        reconnect 경로만 다릅니다: /sessions/{id}/events (orch) vs /events/{id}/stream (soul).
         """
         from seosoyoung.slackbot.config import Config
         from seosoyoung.slackbot.soulstream.service_client import SoulServiceClient
         from seosoyoung.slackbot.soulstream.service_adapter import ClaudeServiceAdapter
-        client = SoulServiceClient(
-            base_url=Config.claude.soul_url,
-            token=Config.claude.soul_token,
-        )
+
+        if Config.orchestrator.url:
+            client = SoulServiceClient(
+                base_url=f"{Config.orchestrator.url}/api",
+                token=Config.orchestrator.token,
+                preferred_node_id=Config.orchestrator.preferred_node or None,
+                event_stream_path="/sessions/{session_id}/events",
+            )
+        else:
+            client = SoulServiceClient(
+                base_url=Config.claude.soul_url,
+                token=Config.claude.soul_token,
+            )
         return ClaudeServiceAdapter(
             client=client,
             parse_markers_fn=self._parse_markers_fn,

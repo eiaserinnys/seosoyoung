@@ -1,7 +1,7 @@
 """소울스트림 노드 라우팅 관리 명령어 핸들러
 
 오케스트레이터에서 노드 목록을 조회하여 슬랙 버튼으로 표시하고,
-버튼 클릭으로 라우팅 대상을 실시간 변경합니다.
+버튼 클릭으로 preferred_node를 설정하여 라우팅 대상을 변경합니다.
 """
 
 import json
@@ -9,7 +9,7 @@ import logging
 import os
 import urllib.request
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from typing import Optional
 
 from dotenv import find_dotenv, set_key
 
@@ -47,8 +47,9 @@ def handle_node(*, say, ts, thread_ts, user_id, client, check_permission, **_):
         say(text="연결된 노드가 없습니다.", thread_ts=thread_ts or ts)
         return
 
+    current_node_id = Config.orchestrator.preferred_node or None
     say(
-        blocks=_build_node_blocks(nodes, Config.claude.soul_url),
+        blocks=_build_node_blocks(nodes, current_node_id),
         text="소울스트림 노드 목록",
         thread_ts=thread_ts or ts,
     )
@@ -62,38 +63,48 @@ def register_node_handlers(app):
         ack()
 
         action = body["actions"][0]
-        value = json.loads(action["value"])
-        new_url = f"http://{value['host']}:{value['port']}"
+        node_id = action["value"]
+        env_saved = _update_preferred_node(node_id)
 
-        env_saved = _update_soul_url(new_url)
+        _refresh_node_message(body, client, env_saved)
 
-        # 노드 목록 재조회하여 블록 갱신
-        try:
-            nodes = _fetch_orch_nodes(
-                Config.orchestrator.url, Config.orchestrator.token,
-            )
-            blocks = _build_node_blocks(nodes, Config.claude.soul_url)
+    @app.action("node_select_auto")
+    def handle_node_select_auto(ack, body, client):
+        ack()
 
-            if not env_saved:
-                blocks.append({
-                    "type": "context",
-                    "elements": [{
-                        "type": "mrkdwn",
-                        "text": ":warning: .env 파일을 찾을 수 없어 메모리에만 반영되었습니다.",
-                    }],
-                })
+        env_saved = _update_preferred_node(None)
 
-            # 원래 메시지를 갱신
-            channel = body["channel"]["id"]
-            message_ts = body["message"]["ts"]
-            client.chat_update(
-                channel=channel,
-                ts=message_ts,
-                blocks=blocks,
-                text="소울스트림 노드 목록",
-            )
-        except Exception as e:
-            logger.error(f"노드 선택 후 블록 갱신 실패: {e}")
+        _refresh_node_message(body, client, env_saved)
+
+
+def _refresh_node_message(body: dict, client, env_saved: bool) -> None:
+    """노드 목록 재조회 후 슬랙 메시지 갱신"""
+    try:
+        nodes = _fetch_orch_nodes(
+            Config.orchestrator.url, Config.orchestrator.token,
+        )
+        current_node_id = Config.orchestrator.preferred_node or None
+        blocks = _build_node_blocks(nodes, current_node_id)
+
+        if not env_saved:
+            blocks.append({
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": ":warning: .env 파일을 찾을 수 없어 메모리에만 반영되었습니다.",
+                }],
+            })
+
+        channel = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+        client.chat_update(
+            channel=channel,
+            ts=message_ts,
+            blocks=blocks,
+            text="소울스트림 노드 목록",
+        )
+    except Exception as e:
+        logger.error(f"노드 선택 후 블록 갱신 실패: {e}")
 
 
 # ── 내부 함수 ────────────────────────────────────────────────────
@@ -119,24 +130,40 @@ def _fetch_orch_nodes(url: str, token: str) -> list[dict]:
     return data.get("nodes", [])
 
 
-def _build_node_blocks(nodes: list[dict], current_url: str) -> list[dict]:
+def _build_node_blocks(nodes: list[dict], current_node_id: Optional[str]) -> list[dict]:
     """노드 목록을 슬랙 Block Kit 블록으로 변환
 
     Args:
         nodes: 노드 딕셔너리 리스트
-        current_url: 현재 라우팅 중인 soul_url
+        current_node_id: 현재 preferred_node 설정값 (None이면 자동 라우팅)
 
     Returns:
         슬랙 블록 리스트
     """
-    current_node_id = _find_current_node_id(nodes, current_url)
-
     blocks: list[dict] = [
         {
             "type": "header",
             "text": {"type": "plain_text", "text": "소울스트림 노드"},
         },
     ]
+
+    # 자동 라우팅 버튼
+    auto_button: dict = {
+        "type": "button",
+        "text": {"type": "plain_text", "text": "자동"},
+        "action_id": "node_select_auto",
+    }
+    if current_node_id is None:
+        auto_button["style"] = "primary"
+
+    blocks.append({
+        "type": "section",
+        "text": {
+            "type": "mrkdwn",
+            "text": "*자동*  \u00b7  최소 세션 노드에 자동 배정",
+        },
+        "accessory": auto_button,
+    })
 
     for node in nodes:
         node_id = node["nodeId"]
@@ -150,11 +177,7 @@ def _build_node_blocks(nodes: list[dict], current_url: str) -> list[dict]:
             "type": "button",
             "text": {"type": "plain_text", "text": node_id},
             "action_id": "node_select",
-            "value": json.dumps({
-                "nodeId": node_id,
-                "host": node["host"],
-                "port": node["port"],
-            }),
+            "value": node_id,
         }
         if node_id == current_node_id:
             button["style"] = "primary"
@@ -165,68 +188,40 @@ def _build_node_blocks(nodes: list[dict], current_url: str) -> list[dict]:
             "accessory": button,
         })
 
+    if current_node_id:
+        routing_text = f"현재 라우팅: *{current_node_id}* (고정)"
+    else:
+        routing_text = "현재 라우팅: *자동* (최소 세션 노드)"
+
     blocks.append({
         "type": "context",
         "elements": [{
             "type": "mrkdwn",
-            "text": f"현재 라우팅: {current_url}",
+            "text": routing_text,
         }],
     })
 
     return blocks
 
 
-_LOCALHOST_HOSTS = frozenset({"localhost", "127.0.0.1"})
-
-
-def _find_current_node_id(nodes: list[dict], current_url: str) -> str | None:
-    """현재 URL에 매칭되는 노드 ID 반환
-
-    1차: host:port 정확 비교
-    2차: URL이 localhost/127.0.0.1이면 port만 비교, 후보 1개일 때 반환
+def _update_preferred_node(node_id: Optional[str]) -> bool:
+    """preferred_node를 메모리와 .env에 갱신
 
     Args:
-        nodes: 노드 딕셔너리 리스트
-        current_url: 현재 soul_url
-
-    Returns:
-        매칭된 nodeId 또는 None
-    """
-    parsed = urlparse(current_url)
-    target_host = parsed.hostname or ""
-    target_port = parsed.port
-
-    # 1차: 정확 매칭
-    for node in nodes:
-        if node["host"] == target_host and node["port"] == target_port:
-            return node["nodeId"]
-
-    # 2차: localhost 폴백
-    if target_host in _LOCALHOST_HOSTS:
-        candidates = [n for n in nodes if n["port"] == target_port]
-        if len(candidates) == 1:
-            return candidates[0]["nodeId"]
-
-    return None
-
-
-def _update_soul_url(new_url: str) -> bool:
-    """soul_url을 메모리와 .env에 갱신
-
-    Args:
-        new_url: 새 soul URL
+        node_id: 노드 ID (None이면 자동 라우팅으로 전환)
 
     Returns:
         .env 파일에 성공적으로 기록되었는지 여부
     """
-    Config.claude.soul_url = new_url
-    os.environ["SEOSOYOUNG_SOUL_URL"] = new_url
+    value = node_id or ""
+    Config.orchestrator.preferred_node = value
+    os.environ["SOULSTREAM_PREFERRED_NODE"] = value
 
     env_path = find_dotenv(usecwd=True)
     if not env_path:
         return False
 
-    result = set_key(env_path, "SEOSOYOUNG_SOUL_URL", new_url)
+    result = set_key(env_path, "SOULSTREAM_PREFERRED_NODE", value)
     return result[0] is True
 
 

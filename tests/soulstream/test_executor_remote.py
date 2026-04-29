@@ -330,6 +330,76 @@ class TestGetServiceAdapter:
         assert adapter2 is not None
 
 
+class TestGetServiceAdapterOrchestratorRouting:
+    """_get_service_adapter가 오케스트레이터 설정 시 orch URL을 사용하는지 검증"""
+
+    def test_orchestrator_configured_uses_orch_url(self, tmp_path):
+        """Config.orchestrator.url이 설정되면 orch URL + orch token 사용"""
+        from seosoyoung.slackbot.config import Config
+
+        executor = _make_executor(tmp_path)
+
+        original_url = Config.orchestrator.url
+        original_token = Config.orchestrator.token
+        original_pn = Config.orchestrator.preferred_node
+        try:
+            Config.orchestrator.url = "http://orch:5200"
+            Config.orchestrator.token = "orch-token"
+            Config.orchestrator.preferred_node = "node-A"
+
+            adapter = executor._get_service_adapter()
+            client = adapter._client
+
+            assert client.base_url == "http://orch:5200/api"
+            assert client.token == "orch-token"
+            assert client.preferred_node_id == "node-A"
+            assert client._event_stream_path == "/sessions/{session_id}/events"
+        finally:
+            Config.orchestrator.url = original_url
+            Config.orchestrator.token = original_token
+            Config.orchestrator.preferred_node = original_pn
+
+    def test_orchestrator_not_configured_uses_soul_url(self, tmp_path):
+        """Config.orchestrator.url이 비어있으면 soul_url 사용 (기존 동작)"""
+        from seosoyoung.slackbot.config import Config
+
+        executor = _make_executor(tmp_path)
+
+        original_url = Config.orchestrator.url
+        try:
+            Config.orchestrator.url = ""
+
+            adapter = executor._get_service_adapter()
+            client = adapter._client
+
+            assert client.base_url == Config.claude.soul_url
+            assert client.token == Config.claude.soul_token
+            assert client.preferred_node_id is None
+            assert client._event_stream_path == "/events/{session_id}/stream"
+        finally:
+            Config.orchestrator.url = original_url
+
+    def test_empty_preferred_node_becomes_none(self, tmp_path):
+        """Config.orchestrator.preferred_node이 빈 문자열이면 None으로 변환"""
+        from seosoyoung.slackbot.config import Config
+
+        executor = _make_executor(tmp_path)
+
+        original_url = Config.orchestrator.url
+        original_pn = Config.orchestrator.preferred_node
+        try:
+            Config.orchestrator.url = "http://orch:5200"
+            Config.orchestrator.preferred_node = ""
+
+            adapter = executor._get_service_adapter()
+            client = adapter._client
+
+            assert client.preferred_node_id is None
+        finally:
+            Config.orchestrator.url = original_url
+            Config.orchestrator.preferred_node = original_pn
+
+
 class TestInterventionDualPath:
     """인터벤션 이중화 테스트"""
 

@@ -492,6 +492,140 @@ class TestSoulServiceClientReconnect:
         assert url == "http://localhost:3105/events/sess-xyz/stream"
 
 
+class TestPreferredNodeId:
+    """preferred_node_id가 execute body에 포함되는지 검증"""
+
+    @pytest.mark.asyncio
+    async def test_preferred_node_id_included_in_execute_body(self):
+        """preferred_node_id 설정 시 execute body에 node_id로 포함"""
+        client = SoulServiceClient(
+            base_url="http://localhost:3105",
+            token="test",
+            preferred_node_id="node-alpha",
+        )
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-pn"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.execute("hello")
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert body["node_id"] == "node-alpha"
+
+    @pytest.mark.asyncio
+    async def test_no_preferred_node_id_omits_node_id(self):
+        """preferred_node_id 미설정 시 body에 node_id가 없어야 함"""
+        client = SoulServiceClient(
+            base_url="http://localhost:3105",
+            token="test",
+        )
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-no-pn"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.execute("hello")
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert "node_id" not in body
+
+
+class TestEventStreamPath:
+    """event_stream_path 파라미터가 reconnect/persist URL에 반영되는지 검증"""
+
+    @pytest.mark.asyncio
+    async def test_custom_event_stream_path_in_reconnect(self):
+        """커스텀 event_stream_path가 reconnect_stream URL에 반영"""
+        client = SoulServiceClient(
+            base_url="http://orch:5200/api",
+            token="test",
+            event_stream_path="/sessions/{session_id}/events",
+        )
+        sse_data = (
+            b"event:complete\n"
+            b'data:{"result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response, method="get")
+        client._session = session
+
+        await client.reconnect_stream("sess-abc")
+
+        call_args = session.get.call_args
+        url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url", "")
+        assert url == "http://orch:5200/api/sessions/sess-abc/events"
+
+    @pytest.mark.asyncio
+    async def test_default_event_stream_path_in_reconnect(self):
+        """기본 event_stream_path로 soul-server 경로를 사용"""
+        client = SoulServiceClient(
+            base_url="http://localhost:3105",
+            token="test",
+        )
+        sse_data = (
+            b"event:complete\n"
+            b'data:{"result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response, method="get")
+        client._session = session
+
+        await client.reconnect_stream("sess-xyz")
+
+        call_args = session.get.call_args
+        url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url", "")
+        assert url == "http://localhost:3105/events/sess-xyz/stream"
+
+    @pytest.mark.asyncio
+    async def test_custom_event_stream_path_in_persist(self):
+        """커스텀 event_stream_path가 persist_reconnect_once URL에도 반영"""
+        client = SoulServiceClient(
+            base_url="http://orch:5200/api",
+            token="test",
+            event_stream_path="/sessions/{session_id}/events",
+        )
+        # 빈 스트림 → 세션 종료 신호 → None 반환
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(b"")
+        session = _mock_session(mock_response, method="get")
+        client._session = session
+
+        result = await client._persist_reconnect_once("sess-persist")
+
+        call_args = session.get.call_args
+        url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url", "")
+        assert url == "http://orch:5200/api/sessions/sess-persist/events"
+        assert result is None  # 빈 스트림 → 세션 종료
+
+
 class TestHandleSSEEvents:
     """_handle_sse_events 테스트 (SSE 스트림 처리)"""
 

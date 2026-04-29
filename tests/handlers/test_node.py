@@ -1,26 +1,26 @@
 """노드 라우팅 명령 핸들러 테스트
 
 순수 로직 테스트:
-- _find_current_node_id: 현재 노드 매칭
-- _build_node_blocks: 슬랙 블록 구성
+- _build_node_blocks: 슬랙 블록 구성 (preferred_node 기반)
 - _relative_time: 상대 시간 포맷
-- _update_soul_url: 메모리 + .env 갱신
+- _update_preferred_node: 메모리 + .env 갱신
 - _fetch_orch_nodes: HTTP 조회
 
 통합 테스트:
 - handle_node: 미설정/권한/정상 플로우
+- register_node_handlers: 액션 핸들러 등록 및 동작
 """
 
 import json
 import os
 import tempfile
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 
-# ── 테스트 데이터 ────────────────────────────────────────────────
+# ── 테스트 데이터 ───────────────────────────────────────────────
 
 
 def _make_nodes(count=2):
@@ -40,118 +40,127 @@ def _make_nodes(count=2):
     return nodes
 
 
-# ── _find_current_node_id ────────────────────────────────────────
-
-
-class TestFindCurrentNodeId:
-    def test_exact_match(self):
-        from seosoyoung.slackbot.handlers.node import _find_current_node_id
-
-        nodes = _make_nodes(2)
-        url = f"http://{nodes[1]['host']}:{nodes[1]['port']}"
-        assert _find_current_node_id(nodes, url) == "node-1"
-
-    def test_localhost_fallback_single_candidate(self):
-        from seosoyoung.slackbot.handlers.node import _find_current_node_id
-
-        nodes = [
-            {"nodeId": "local-1", "host": "myhost", "port": 4105},
-            {"nodeId": "remote-1", "host": "remote.example.com", "port": 4200},
-        ]
-        # localhost URL, port 4105 매칭 → 후보 1개이므로 반환
-        assert _find_current_node_id(nodes, "http://localhost:4105") == "local-1"
-
-    def test_localhost_fallback_multiple_same_port_returns_none(self):
-        from seosoyoung.slackbot.handlers.node import _find_current_node_id
-
-        nodes = [
-            {"nodeId": "a", "host": "host-a", "port": 4105},
-            {"nodeId": "b", "host": "host-b", "port": 4105},
-        ]
-        # localhost:4105 → 포트가 같은 후보 2개 → 모호 → None
-        assert _find_current_node_id(nodes, "http://127.0.0.1:4105") is None
-
-    def test_no_match_returns_none(self):
-        from seosoyoung.slackbot.handlers.node import _find_current_node_id
-
-        nodes = _make_nodes(2)
-        assert _find_current_node_id(nodes, "http://unknown.host:9999") is None
-
-    def test_127_0_0_1_treated_as_localhost(self):
-        from seosoyoung.slackbot.handlers.node import _find_current_node_id
-
-        nodes = [{"nodeId": "n1", "host": "server", "port": 5000}]
-        assert _find_current_node_id(nodes, "http://127.0.0.1:5000") == "n1"
-
-
-# ── _build_node_blocks ───────────────────────────────────────────
+# ── _build_node_blocks ──────────────────────────────────────────
 
 
 class TestBuildNodeBlocks:
-    def test_current_node_has_primary_style(self):
+    def test_preferred_node_has_primary_style(self):
         from seosoyoung.slackbot.handlers.node import _build_node_blocks
 
         nodes = _make_nodes(2)
-        current_url = f"http://{nodes[0]['host']}:{nodes[0]['port']}"
-        blocks = _build_node_blocks(nodes, current_url)
+        blocks = _build_node_blocks(nodes, "node-1")
 
-        # 헤더 + 노드 섹션 2개 + 컨텍스트
-        buttons = [
+        # 노드 섹션의 버튼 추출 (자동 버튼 제외)
+        node_buttons = [
             b["accessory"]
             for b in blocks
-            if b.get("type") == "section" and "accessory" in b
+            if b.get("type") == "section"
+            and "accessory" in b
+            and b["accessory"].get("action_id") == "node_select"
         ]
-        assert len(buttons) == 2
-        # 첫 번째 노드(현재)는 primary
-        assert buttons[0].get("style") == "primary"
-        # 두 번째 노드는 style 없음
-        assert "style" not in buttons[1]
+        assert len(node_buttons) == 2
+        # node-0은 style 없음, node-1은 primary
+        assert "style" not in node_buttons[0]
+        assert node_buttons[1].get("style") == "primary"
 
-    def test_no_current_node_no_primary(self):
+    def test_auto_routing_primary_when_no_preferred(self):
         from seosoyoung.slackbot.handlers.node import _build_node_blocks
 
         nodes = _make_nodes(2)
-        blocks = _build_node_blocks(nodes, "http://unknown:9999")
+        blocks = _build_node_blocks(nodes, None)
 
-        buttons = [
+        # 자동 버튼이 primary여야 함
+        auto_buttons = [
             b["accessory"]
             for b in blocks
-            if b.get("type") == "section" and "accessory" in b
+            if b.get("type") == "section"
+            and "accessory" in b
+            and b["accessory"].get("action_id") == "node_select_auto"
         ]
-        for btn in buttons:
+        assert len(auto_buttons) == 1
+        assert auto_buttons[0].get("style") == "primary"
+
+        # 노드 버튼은 style 없어야 함
+        node_buttons = [
+            b["accessory"]
+            for b in blocks
+            if b.get("type") == "section"
+            and "accessory" in b
+            and b["accessory"].get("action_id") == "node_select"
+        ]
+        for btn in node_buttons:
             assert "style" not in btn
 
-    def test_empty_nodes(self):
+    def test_no_current_node_no_primary_on_nodes(self):
         from seosoyoung.slackbot.handlers.node import _build_node_blocks
 
-        blocks = _build_node_blocks([], "http://x:1")
-        # 헤더 + 컨텍스트만 있어야 함
-        section_blocks = [b for b in blocks if b.get("type") == "section"]
-        assert len(section_blocks) == 0
+        nodes = _make_nodes(2)
+        blocks = _build_node_blocks(nodes, None)
 
-    def test_context_block_shows_current_url(self):
+        node_buttons = [
+            b["accessory"]
+            for b in blocks
+            if b.get("type") == "section"
+            and "accessory" in b
+            and b["accessory"].get("action_id") == "node_select"
+        ]
+        for btn in node_buttons:
+            assert "style" not in btn
+
+    def test_empty_nodes_has_auto_button_only(self):
         from seosoyoung.slackbot.handlers.node import _build_node_blocks
 
-        blocks = _build_node_blocks(_make_nodes(1), "http://my-server:4105")
+        blocks = _build_node_blocks([], None)
+        node_sections = [
+            b for b in blocks
+            if b.get("type") == "section"
+            and "accessory" in b
+            and b["accessory"].get("action_id") == "node_select"
+        ]
+        assert len(node_sections) == 0
+        # 자 버튼은 있어야 함
+        auto_sections = [
+            b for b in blocks
+            if b.get("type") == "section"
+            and "accessory" in b
+            and b["accessory"].get("action_id") == "node_select_auto"
+        ]
+        assert len(auto_sections) == 1
+
+    def test_context_block_shows_fixed_routing(self):
+        from seosoyoung.slackbot.handlers.node import _build_node_blocks
+
+        blocks = _build_node_blocks(_make_nodes(1), "node-0")
         context_blocks = [b for b in blocks if b.get("type") == "context"]
         assert len(context_blocks) == 1
         text_element = context_blocks[0]["elements"][0]["text"]
-        assert "http://my-server:4105" in text_element
+        assert "node-0" in text_element
+        assert "고정" in text_element
 
-    def test_button_value_contains_node_info(self):
+    def test_context_block_shows_auto_routing(self):
+        from seosoyoung.slackbot.handlers.node import _build_node_blocks
+
+        blocks = _build_node_blocks(_make_nodes(1), None)
+        context_blocks = [b for b in blocks if b.get("type") == "context"]
+        assert len(context_blocks) == 1
+        text_element = context_blocks[0]["elements"][0]["text"]
+        assert "자동" in text_element
+        assert "최소 세션 노드" in text_element
+
+    def test_button_value_is_node_id(self):
         from seosoyoung.slackbot.handlers.node import _build_node_blocks
 
         nodes = _make_nodes(1)
-        blocks = _build_node_blocks(nodes, "")
-        buttons = [
+        blocks = _build_node_blocks(nodes, None)
+        node_buttons = [
             b["accessory"]
             for b in blocks
-            if b.get("type") == "section" and "accessory" in b
+            if b.get("type") == "section"
+            and "accessory" in b
+            and b["accessory"].get("action_id") == "node_select"
         ]
-        value = json.loads(buttons[0]["value"])
-        assert value["nodeId"] == "node-0"
-        assert value["host"] == nodes[0]["host"]
-        assert value["port"] == nodes[0]["port"]
+        assert len(node_buttons) == 1
+        assert node_buttons[0]["value"] == "node-0"
 
 
 # ── _relative_time ───────────────────────────────────────────────
@@ -189,61 +198,76 @@ class TestRelativeTime:
         assert _relative_time(t) == "1분 전"
 
 
-# ── _update_soul_url ─────────────────────────────────────────────
+# ── _update_preferred_node ─────────────────────────────────────
 
 
-class TestUpdateSoulUrl:
+class TestUpdatePreferredNode:
     def test_updates_memory(self):
-        from seosoyoung.slackbot.handlers.node import _update_soul_url
+        from seosoyoung.slackbot.handlers.node import _update_preferred_node
+        from seosoyoung.slackbot.config import Config
 
-        original = os.environ.get("SEOSOYOUNG_SOUL_URL", "")
+        original = Config.orchestrator.preferred_node
         try:
             with patch("seosoyoung.slackbot.handlers.node.find_dotenv", return_value=""):
-                _update_soul_url("http://new-host:4105")
-            from seosoyoung.slackbot.config import Config
-            assert Config.claude.soul_url == "http://new-host:4105"
-            assert os.environ["SEOSOYOUNG_SOUL_URL"] == "http://new-host:4105"
+                _update_preferred_node("my-node")
+            assert Config.orchestrator.preferred_node == "my-node"
+            assert os.environ["SOULSTREAM_PREFERRED_NODE"] == "my-node"
         finally:
-            os.environ["SEOSOYOUNG_SOUL_URL"] = original
-            Config.claude.soul_url = original
+            Config.orchestrator.preferred_node = original
+            os.environ["SOULSTREAM_PREFERRED_NODE"] = original
+
+    def test_none_clears_preferred_node(self):
+        from seosoyoung.slackbot.handlers.node import _update_preferred_node
+        from seosoyoung.slackbot.config import Config
+
+        original = Config.orchestrator.preferred_node
+        try:
+            with patch("seosoyoung.slackbot.handlers.node.find_dotenv", return_value=""):
+                _update_preferred_node("my-node")
+                _update_preferred_node(None)
+            assert Config.orchestrator.preferred_node == ""
+            assert os.environ["SOULSTREAM_PREFERRED_NODE"] == ""
+        finally:
+            Config.orchestrator.preferred_node = original
+            os.environ["SOULSTREAM_PREFERRED_NODE"] = original
 
     def test_returns_false_when_no_dotenv(self):
-        from seosoyoung.slackbot.handlers.node import _update_soul_url
+        from seosoyoung.slackbot.handlers.node import _update_preferred_node
+        from seosoyoung.slackbot.config import Config
 
-        original = os.environ.get("SEOSOYOUNG_SOUL_URL", "")
+        original = Config.orchestrator.preferred_node
         try:
             with patch("seosoyoung.slackbot.handlers.node.find_dotenv", return_value=""):
-                result = _update_soul_url("http://x:1")
+                result = _update_preferred_node("x")
             assert result is False
         finally:
-            os.environ["SEOSOYOUNG_SOUL_URL"] = original
-            from seosoyoung.slackbot.config import Config
-            Config.claude.soul_url = original
+            Config.orchestrator.preferred_node = original
+            os.environ["SOULSTREAM_PREFERRED_NODE"] = original
 
     def test_writes_to_dotenv_file(self):
-        from seosoyoung.slackbot.handlers.node import _update_soul_url
+        from seosoyoung.slackbot.handlers.node import _update_preferred_node
+        from seosoyoung.slackbot.config import Config
 
-        original = os.environ.get("SEOSOYOUNG_SOUL_URL", "")
+        original = Config.orchestrator.preferred_node
         try:
             with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
-                f.write("SEOSOYOUNG_SOUL_URL=http://old:4105\n")
+                f.write("SOULSTREAM_PREFERRED_NODE=\n")
                 env_path = f.name
 
             with patch("seosoyoung.slackbot.handlers.node.find_dotenv", return_value=env_path):
-                result = _update_soul_url("http://new:5000")
+                result = _update_preferred_node("node-42")
 
             assert result is True
             with open(env_path) as f:
                 content = f.read()
-            assert "http://new:5000" in content
+            assert "node-42" in content
             os.unlink(env_path)
         finally:
-            os.environ["SEOSOYOUNG_SOUL_URL"] = original
-            from seosoyoung.slackbot.config import Config
-            Config.claude.soul_url = original
+            Config.orchestrator.preferred_node = original
+            os.environ["SOULSTREAM_PREFERRED_NODE"] = original
 
 
-# ── _fetch_orch_nodes ────────────────────────────────────────────
+# ── _fetch_orch_nodes ───────────────────────────────────────────
 
 
 class TestFetchOrchNodes:
@@ -290,7 +314,7 @@ class TestFetchOrchNodes:
                 _fetch_orch_nodes("http://orch:5200", "tok")
 
 
-# ── handle_node 통합 테스트 ──────────────────────────────────────
+# ── handle_node 통 테스트 ─────────────────────────────────────
 
 
 class TestHandleNode:
@@ -388,7 +412,7 @@ class TestHandleNode:
             Config.orchestrator.url = original_url
 
 
-# ── mention.py 통합: "노드" 명령어 라우팅 ────────────────────────
+# ── mention.py 통합: "노드" 명령어 라팅 ───────────────────────
 
 
 class TestNodeCommandRouting:

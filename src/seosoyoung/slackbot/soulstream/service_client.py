@@ -132,9 +132,18 @@ class SoulServiceClient:
         result = await client.execute(prompt="안녕")
     """
 
-    def __init__(self, base_url: str, token: str = ""):
+    def __init__(
+        self,
+        base_url: str,
+        token: str = "",
+        *,
+        preferred_node_id: Optional[str] = None,
+        event_stream_path: str = "/events/{session_id}/stream",
+    ):
         self.base_url = base_url.rstrip("/")
         self.token = token
+        self.preferred_node_id = preferred_node_id
+        self._event_stream_path = event_stream_path
         self._session: Optional[aiohttp.ClientSession] = None
 
     @property
@@ -255,6 +264,8 @@ class SoulServiceClient:
             # soul-server /execute가 body.caller_info가 있으면 HTTP Request 수집을
             # 건너뛰고 이 값을 그대로 사용한다 (Phase 2).
             data["caller_info"] = caller_info
+        if self.preferred_node_id:
+            data["node_id"] = self.preferred_node_id
 
         backoff = ExponentialBackoff()
         resolved_session_id = agent_session_id  # init 이벤트에서 갱신됨
@@ -460,7 +471,7 @@ class SoulServiceClient:
         SessionNotFoundError는 그대로 전파합니다.
         """
         session = await self._get_session()
-        url = f"{self.base_url}/events/{agent_session_id}/stream"
+        url = f"{self.base_url}{self._event_stream_path.format(session_id=agent_session_id)}"
 
         async with session.get(url) as response:
             if response.status == 404:
@@ -543,12 +554,9 @@ class SoulServiceClient:
         on_tool_result: Optional[Callable] = None,
         on_input_request: Optional[Callable] = None,
     ) -> ExecuteResult:
-        """세션 SSE 스트림에 재연결
-
-        GET /events/{agent_session_id}/stream
-        """
+        """세션 SSE 스트림에 재연결"""
         session = await self._get_session()
-        url = f"{self.base_url}/events/{agent_session_id}/stream"
+        url = f"{self.base_url}{self._event_stream_path.format(session_id=agent_session_id)}"
 
         async with session.get(url) as response:
             if response.status == 404:
