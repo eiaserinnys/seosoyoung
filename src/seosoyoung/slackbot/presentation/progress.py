@@ -78,6 +78,9 @@ def build_event_callbacks(
             "on_text_end": ...,
             "on_tool_start": ...,
             "on_tool_result": ...,
+            "on_input_request": ...,
+            "on_input_request_responded": ...,
+            "on_input_request_expired": ...,
             "on_compact": ...,
             "cleanup": ...,
         }
@@ -325,6 +328,57 @@ def build_event_callbacks(
         except Exception as e:
             logger.warning(f"input_request 메시지 게시 실패: {e}")
 
+    async def on_input_request_responded(request_id: str):
+        """다른 곳에서 AskUserQuestion 응답이 발생 → 슬랙 메시지를 응답 결과로 갱신.
+
+        멱등 가드: node.answered가 이미 True면 무시 (SSE 중복 도착 / actions.py 자체
+        클릭 후 동일 SSE 도착 모두에 안전).
+
+        node.answered 필드는 의미상 "처리 완료"(answered/expired 공용 멱등 플래그)로
+        사용한다. 실제 답변 여부와는 무관 — 이름이 헷갈리지만 후속 카드에서 'handled'로
+        rename 검토.
+
+        SSE responded 이벤트는 답변 내용을 포함하지 않으므로 일반화된 텍스트로 갱신한다.
+        슬랙봇 자체 클릭 직후 SSE가 도착하면 actions.py가 표시한 구체 답변 텍스트가
+        일반 텍스트로 덮어써질 수 있음 (수용 가능한 트레이드오프 — 후속 카드에서 해결).
+        """
+        node = node_map.find_input_request(request_id)
+        if not node or node.answered:
+            return  # 이미 처리됨 또는 알 수 없는 노드
+
+        node_map.mark_input_request_answered(request_id)
+
+        try:
+            pctx.client.chat_update(
+                channel=pctx.channel,
+                ts=node.msg_ts,
+                blocks=[],
+                text=":white_check_mark: 응답이 전달되었습니다",
+            )
+        except Exception as e:
+            logger.warning(f"input_request_responded UI 갱신 실패: {e}")
+
+    async def on_input_request_expired(request_id: str):
+        """AskUserQuestion 타임아웃 → 슬랙 메시지를 만료 표시로 갱신.
+
+        멱등 가드: node.answered가 이미 True면 무시 (responded 후 expired 도착 등).
+        """
+        node = node_map.find_input_request(request_id)
+        if not node or node.answered:
+            return
+
+        node_map.mark_input_request_answered(request_id)
+
+        try:
+            pctx.client.chat_update(
+                channel=pctx.channel,
+                ts=node.msg_ts,
+                blocks=[],
+                text=":hourglass: 응답 시간이 초과되었습니다",
+            )
+        except Exception as e:
+            logger.warning(f"input_request_expired UI 갱신 실패: {e}")
+
     # on_compact 콜백
     async def on_compact(trigger: str, message: str):
         try:
@@ -367,6 +421,8 @@ def build_event_callbacks(
         "on_tool_start": on_tool_start,
         "on_tool_result": on_tool_result,
         "on_input_request": on_input_request,
+        "on_input_request_responded": on_input_request_responded,
+        "on_input_request_expired": on_input_request_expired,
         "on_compact": on_compact,
         "cleanup": cleanup,
     }

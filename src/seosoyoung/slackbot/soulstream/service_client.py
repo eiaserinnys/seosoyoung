@@ -203,6 +203,8 @@ class SoulServiceClient:
         on_tool_start: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
         on_input_request: Optional[Callable] = None,
+        on_input_request_responded: Optional[Callable] = None,
+        on_input_request_expired: Optional[Callable] = None,
         allowed_tools: Optional[List[str]] = None,
         disallowed_tools: Optional[List[str]] = None,
         use_mcp: bool = True,
@@ -295,6 +297,8 @@ class SoulServiceClient:
                     on_tool_start=on_tool_start,
                     on_tool_result=on_tool_result,
                     on_input_request=on_input_request,
+                    on_input_request_responded=on_input_request_responded,
+                    on_input_request_expired=on_input_request_expired,
                 )
                 # init 이벤트에서 읽은 session_id를 보존
                 if result.agent_session_id:
@@ -316,6 +320,8 @@ class SoulServiceClient:
                         on_tool_start=on_tool_start,
                         on_tool_result=on_tool_result,
                         on_input_request=on_input_request,
+                        on_input_request_responded=on_input_request_responded,
+                        on_input_request_expired=on_input_request_expired,
                     )
 
                 return result
@@ -352,6 +358,8 @@ class SoulServiceClient:
                     on_tool_start=on_tool_start,
                     on_tool_result=on_tool_result,
                     on_input_request=on_input_request,
+                    on_input_request_responded=on_input_request_responded,
+                    on_input_request_expired=on_input_request_expired,
                 )
             except ConnectionLostError:
                 continue
@@ -383,6 +391,8 @@ class SoulServiceClient:
         on_tool_start: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
         on_input_request: Optional[Callable] = None,
+        on_input_request_responded: Optional[Callable] = None,
+        on_input_request_expired: Optional[Callable] = None,
     ) -> "ExecuteResult":
         """퍼시스턴트 리스닝 루프
 
@@ -416,6 +426,8 @@ class SoulServiceClient:
                         on_tool_start=on_tool_start,
                         on_tool_result=on_tool_result,
                         on_input_request=on_input_request,
+                        on_input_request_responded=on_input_request_responded,
+                        on_input_request_expired=on_input_request_expired,
                     ),
                     timeout=inactivity_timeout,
                 )
@@ -463,6 +475,8 @@ class SoulServiceClient:
         on_tool_start: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
         on_input_request: Optional[Callable] = None,
+        on_input_request_responded: Optional[Callable] = None,
+        on_input_request_expired: Optional[Callable] = None,
     ) -> Optional["ExecuteResult"]:
         """퍼시스턴트 재구독 1회
 
@@ -494,6 +508,8 @@ class SoulServiceClient:
                 on_tool_start=on_tool_start,
                 on_tool_result=on_tool_result,
                 on_input_request=on_input_request,
+                on_input_request_responded=on_input_request_responded,
+                on_input_request_expired=on_input_request_expired,
             )
 
             # agent_session_id가 없으면 이벤트 없는 빈 스트림
@@ -553,6 +569,8 @@ class SoulServiceClient:
         on_tool_start: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
         on_input_request: Optional[Callable] = None,
+        on_input_request_responded: Optional[Callable] = None,
+        on_input_request_expired: Optional[Callable] = None,
     ) -> ExecuteResult:
         """세션 SSE 스트림에 재연결"""
         session = await self._get_session()
@@ -579,6 +597,8 @@ class SoulServiceClient:
                 on_tool_start=on_tool_start,
                 on_tool_result=on_tool_result,
                 on_input_request=on_input_request,
+                on_input_request_responded=on_input_request_responded,
+                on_input_request_expired=on_input_request_expired,
             )
 
     async def health_check(self) -> dict:
@@ -719,6 +739,8 @@ class SoulServiceClient:
         on_tool_start: Optional[Callable] = None,     # (tool_name, tool_input, tool_use_id, event_id, parent_event_id) -> None
         on_tool_result: Optional[Callable] = None,    # (result, tool_use_id, is_error, event_id, parent_event_id) -> None
         on_input_request: Optional[Callable] = None,  # (request_id, questions, agent_session_id) -> None
+        on_input_request_responded: Optional[Callable] = None,  # (request_id) -> None
+        on_input_request_expired: Optional[Callable] = None,    # (request_id) -> None
     ) -> ExecuteResult:
         """SSE 이벤트 스트림 처리
 
@@ -832,6 +854,18 @@ class SoulServiceClient:
                             event.data.get("request_id", ""),
                             event.data.get("questions", []),
                             result_agent_session_id or "",
+                        )
+
+                elif event.event == "input_request_responded":
+                    if on_input_request_responded:
+                        await on_input_request_responded(
+                            event.data.get("request_id", ""),
+                        )
+
+                elif event.event == "input_request_expired":
+                    if on_input_request_expired:
+                        await on_input_request_expired(
+                            event.data.get("request_id", ""),
                         )
 
         except ConnectionLostError as e:

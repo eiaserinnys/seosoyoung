@@ -96,7 +96,9 @@ class TestReturnInterface:
         expected_keys = {
             "on_thinking", "on_text_start", "on_text_delta",
             "on_text_end", "on_tool_start", "on_tool_result",
-            "on_input_request", "on_compact", "cleanup",
+            "on_input_request",
+            "on_input_request_responded", "on_input_request_expired",
+            "on_compact", "cleanup",
         }
         assert set(cbs.keys()) == expected_keys
 
@@ -549,6 +551,170 @@ class TestOnInputRequest:
         questions = [{"question": "Q", "options": [{"label": "A"}]}]
         # 예외가 전파되지 않아야 함
         await cbs["on_input_request"]("req-004", questions, "sess-004")
+
+
+class TestOnInputRequestResponded:
+    """on_input_request_responded 콜백 테스트
+
+    SSE input_request_responded 이벤트가 도착했을 때 슬랙 메시지를
+    응답 결과로 갱신하는지 검증한다.
+    """
+
+    @pytest.mark.asyncio
+    async def test_returned_in_callback_dict(self):
+        """반환 dict에 on_input_request_responded 키가 포함된다"""
+        cbs, _, _, _ = _make_event_cbs()
+        assert "on_input_request_responded" in cbs
+        assert callable(cbs["on_input_request_responded"])
+
+    @pytest.mark.asyncio
+    async def test_updates_slack_message_when_node_exists(self):
+        """node_map에 등록된 request_id에 대해 chat_update가 호출된다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "ir_msg_ts_resp"}
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        # 먼저 input_request 이벤트로 노드를 등록
+        questions = [{"question": "Q", "options": [{"label": "A"}]}]
+        await cbs["on_input_request"]("req-resp-1", questions, "sess-resp-1")
+
+        # responded SSE 도착
+        await cbs["on_input_request_responded"]("req-resp-1")
+
+        # chat_update가 해당 메시지 ts로 호출되었는지 확인
+        client.chat_update.assert_called_once()
+        call_kwargs = client.chat_update.call_args[1]
+        assert call_kwargs["channel"] == pctx.channel
+        assert call_kwargs["ts"] == "ir_msg_ts_resp"
+        # 일반화된 텍스트로 갱신
+        assert "응답이 전달되었습니다" in call_kwargs["text"]
+
+        # node_map에 멱등 플래그가 세팅되었는지 확인
+        node = node_map.find_input_request("req-resp-1")
+        assert node is not None
+        assert node.answered is True
+
+    @pytest.mark.asyncio
+    async def test_idempotent_when_already_answered(self):
+        """이미 answered=True인 노드는 다시 chat_update 호출하지 않는다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "ir_msg_ts_resp_idem"}
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        questions = [{"question": "Q", "options": [{"label": "A"}]}]
+        await cbs["on_input_request"]("req-resp-2", questions, "sess-resp-2")
+
+        # 첫 번째 호출
+        await cbs["on_input_request_responded"]("req-resp-2")
+        assert client.chat_update.call_count == 1
+
+        # 두 번째 호출은 무시되어야 함
+        client.chat_update.reset_mock()
+        await cbs["on_input_request_responded"]("req-resp-2")
+        client.chat_update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_silent_when_node_unknown(self):
+        """node_map에 없는 request_id면 chat_update를 호출하지 않는다"""
+        client = MagicMock()
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        # 등록 없이 바로 responded 호출
+        await cbs["on_input_request_responded"]("req-unknown")
+
+        client.chat_update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_chat_update_failure_does_not_raise(self):
+        """chat_update 실패 시 예외가 전파되지 않는다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "ir_msg_ts_resp_fail"}
+        client.chat_update.side_effect = Exception("Slack API error")
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        questions = [{"question": "Q", "options": [{"label": "A"}]}]
+        await cbs["on_input_request"]("req-resp-3", questions, "sess-resp-3")
+
+        # 예외가 전파되지 않아야 함
+        await cbs["on_input_request_responded"]("req-resp-3")
+
+
+class TestOnInputRequestExpired:
+    """on_input_request_expired 콜백 테스트
+
+    SSE input_request_expired 이벤트가 도착했을 때 슬랙 메시지를
+    만료 표시로 갱신하는지 검증한다.
+    """
+
+    @pytest.mark.asyncio
+    async def test_returned_in_callback_dict(self):
+        """반환 dict에 on_input_request_expired 키가 포함된다"""
+        cbs, _, _, _ = _make_event_cbs()
+        assert "on_input_request_expired" in cbs
+        assert callable(cbs["on_input_request_expired"])
+
+    @pytest.mark.asyncio
+    async def test_updates_to_timeout_message(self):
+        """node_map에 등록된 request_id에 대해 만료 메시지로 chat_update"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "ir_msg_ts_exp"}
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        questions = [{"question": "Q", "options": [{"label": "A"}]}]
+        await cbs["on_input_request"]("req-exp-1", questions, "sess-exp-1")
+
+        await cbs["on_input_request_expired"]("req-exp-1")
+
+        client.chat_update.assert_called_once()
+        call_kwargs = client.chat_update.call_args[1]
+        assert call_kwargs["channel"] == pctx.channel
+        assert call_kwargs["ts"] == "ir_msg_ts_exp"
+        assert "초과" in call_kwargs["text"]
+
+        node = node_map.find_input_request("req-exp-1")
+        assert node is not None
+        assert node.answered is True
+
+    @pytest.mark.asyncio
+    async def test_idempotent_when_already_answered(self):
+        """이미 answered=True인 노드는 다시 chat_update 호출하지 않는다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "ir_msg_ts_exp_idem"}
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        questions = [{"question": "Q", "options": [{"label": "A"}]}]
+        await cbs["on_input_request"]("req-exp-2", questions, "sess-exp-2")
+
+        # responded로 먼저 처리됨
+        await cbs["on_input_request_responded"]("req-exp-2")
+        client.chat_update.reset_mock()
+
+        # 그 후 expired가 도착해도 무시
+        await cbs["on_input_request_expired"]("req-exp-2")
+        client.chat_update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_silent_when_node_unknown(self):
+        """node_map에 없는 request_id면 chat_update를 호출하지 않는다"""
+        client = MagicMock()
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        await cbs["on_input_request_expired"]("req-unknown-exp")
+
+        client.chat_update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_chat_update_failure_does_not_raise(self):
+        """chat_update 실패 시 예외가 전파되지 않는다"""
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "ir_msg_ts_exp_fail"}
+        client.chat_update.side_effect = Exception("Slack API error")
+        cbs, pctx, node_map, _ = _make_event_cbs(client=client)
+
+        questions = [{"question": "Q", "options": [{"label": "A"}]}]
+        await cbs["on_input_request"]("req-exp-3", questions, "sess-exp-3")
+
+        await cbs["on_input_request_expired"]("req-exp-3")
 
 
 class TestThinkingDelete:
