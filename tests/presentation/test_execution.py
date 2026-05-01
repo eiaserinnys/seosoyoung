@@ -54,6 +54,8 @@ class TestRunWithEventCallbacks:
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
             "on_input_request": MagicMock(),
+            "on_input_request_responded": MagicMock(),
+            "on_input_request_expired": MagicMock(),
             "cleanup": mock_cleanup,
         }
 
@@ -95,6 +97,8 @@ class TestRunWithEventCallbacks:
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
             "on_input_request": MagicMock(),
+            "on_input_request_responded": MagicMock(),
+            "on_input_request_expired": MagicMock(),
             "cleanup": MagicMock(),
         }
 
@@ -130,6 +134,8 @@ class TestRunWithEventCallbacks:
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
             "on_input_request": MagicMock(),
+            "on_input_request_responded": MagicMock(),
+            "on_input_request_expired": MagicMock(),
             "cleanup": MagicMock(),
         }
 
@@ -173,6 +179,8 @@ class TestRunWithEventCallbacks:
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
             "on_input_request": MagicMock(),
+            "on_input_request_responded": MagicMock(),
+            "on_input_request_expired": MagicMock(),
             "cleanup": MagicMock(),
         }
 
@@ -208,6 +216,8 @@ class TestRunWithEventCallbacks:
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
             "on_input_request": MagicMock(),
+            "on_input_request_responded": MagicMock(),
+            "on_input_request_expired": MagicMock(),
             "cleanup": MagicMock(),
         }
 
@@ -246,6 +256,8 @@ class TestRunWithEventCallbacks:
             "on_tool_start": mock_tool_start,
             "on_tool_result": mock_tool_result,
             "on_input_request": mock_input_request,
+            "on_input_request_responded": MagicMock(),
+            "on_input_request_expired": MagicMock(),
             "cleanup": MagicMock(),
         }
 
@@ -284,6 +296,8 @@ class TestRunWithEventCallbacks:
             "on_tool_start": MagicMock(),
             "on_tool_result": MagicMock(),
             "on_input_request": MagicMock(),
+            "on_input_request_responded": MagicMock(),
+            "on_input_request_expired": MagicMock(),
             "cleanup": MagicMock(),
         }
 

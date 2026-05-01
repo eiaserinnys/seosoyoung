@@ -88,6 +88,8 @@ def run_with_event_callbacks(
         on_tool_start=event_cbs["on_tool_start"],
         on_tool_result=event_cbs["on_tool_result"],
         on_input_request=event_cbs["on_input_request"],
+        on_input_request_responded=event_cbs["on_input_request_responded"],
+        on_input_request_expired=event_cbs["on_input_request_expired"],
     )
 
     try:
