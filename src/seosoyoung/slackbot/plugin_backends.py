@@ -362,6 +362,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         folder_id: str | None = None,
         system_prompt: str | None = None,
         agent_id: str | None = None,
+        caller_info: dict | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -414,6 +415,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         folder_id=_folder_id,
                         system_prompt=_system_prompt,
                         profile=_agent_id,
+                        caller_info=caller_info,
                     ),
                 )
             else:
@@ -454,6 +456,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                                 folder_id=_folder_id,
                                 system_prompt=_system_prompt,
                                 profile=_agent_id,
+                                caller_info=caller_info,
                             ),
                             on_compact_override=on_compact,
                         ),
@@ -475,6 +478,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                             folder_id=_folder_id,
                             system_prompt=_system_prompt,
                             profile=_agent_id,
+                            caller_info=caller_info,
                         ),
                     )
 

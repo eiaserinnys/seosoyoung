@@ -541,6 +541,105 @@ class TestResultProcessorMainMsgTsNone:
         assert "오류" in call_kwargs["text"]
 
 
+class TestRunForwardsCallerInfo:
+    """run()이 caller_info를 executor에 forward하는지 검증"""
+
+    @pytest.mark.asyncio
+    async def test_caller_info_forwarded_to_executor_text_only(self):
+        """text_only 모드에서 caller_info가 executor에 forward된다."""
+        mock_executor = MagicMock()
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+
+        backend = _make_backend(
+            executor=mock_executor,
+            session_manager=mock_session_mgr,
+        )
+
+        await backend.run(
+            prompt="test",
+            channel="C123",
+            thread_ts="1234.5678",
+            text_only=True,
+            caller_info={"source": "channel_observer"},
+        )
+
+        mock_executor.assert_called_once()
+        call_kwargs = mock_executor.call_args.kwargs
+        assert call_kwargs.get("caller_info") == {"source": "channel_observer"}
+
+    @pytest.mark.asyncio
+    async def test_caller_info_forwarded_with_update_message_fn(self):
+        """update_message_fn 경로에서도 caller_info가 forward된다."""
+        mock_executor = MagicMock()
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+
+        backend = _make_backend(
+            executor=mock_executor,
+            session_manager=mock_session_mgr,
+            update_message_fn=MagicMock(),
+        )
+
+        await backend.run(
+            prompt="test",
+            channel="C123",
+            thread_ts="1234.5678",
+            caller_info={"source": "trello_watcher"},
+        )
+
+        mock_executor.assert_called_once()
+        call_kwargs = mock_executor.call_args.kwargs
+        assert call_kwargs.get("caller_info") == {"source": "trello_watcher"}
+
+    @pytest.mark.asyncio
+    async def test_caller_info_forwarded_without_update_message_fn(self):
+        """update_message_fn=None 경로에서도 caller_info가 forward된다."""
+        mock_executor = MagicMock()
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+
+        backend = _make_backend(
+            executor=mock_executor,
+            session_manager=mock_session_mgr,
+        )
+
+        await backend.run(
+            prompt="test",
+            channel="C123",
+            thread_ts="1234.5678",
+            caller_info={"source": "slack"},
+        )
+
+        mock_executor.assert_called_once()
+        call_kwargs = mock_executor.call_args.kwargs
+        assert call_kwargs.get("caller_info") == {"source": "slack"}
+
+    @pytest.mark.asyncio
+    async def test_caller_info_default_none_propagates(self):
+        """caller_info를 생략하면 executor에 None으로 forward된다 (silent drop 아님)."""
+        mock_executor = MagicMock()
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get.return_value = None
+
+        backend = _make_backend(
+            executor=mock_executor,
+            session_manager=mock_session_mgr,
+        )
+
+        await backend.run(
+            prompt="test",
+            channel="C123",
+            thread_ts="1234.5678",
+        )
+
+        mock_executor.assert_called_once()
+        call_kwargs = mock_executor.call_args.kwargs
+        # 명시적으로 None이 전달되어야 함 (kwargs에 누락되어선 안 됨)
+        assert "caller_info" in call_kwargs
+        assert call_kwargs.get("caller_info") is None
+
+
 class TestConcurrentRun:
     """run()이 이벤트 루프를 블로킹하지 않고 병렬 실행되는지 검증"""
 

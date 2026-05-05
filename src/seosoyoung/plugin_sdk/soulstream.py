@@ -103,6 +103,7 @@ class SoulstreamBackend(Protocol):
         folder_id: str | None = None,
         system_prompt: str | None = None,
         agent_id: str | None = None,
+        caller_info: dict | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -118,6 +119,10 @@ class SoulstreamBackend(Protocol):
             folder_id: Soulstream folder ID to place the session in
             system_prompt: Claude API system 파라미터로 전달할 시스템 프롬프트
             agent_id: soul-server 에이전트 프로필 ID
+            caller_info: 호출 출처를 식별하는 메타데이터.
+                예: {"source": "channel_observer"}, {"source": "trello_watcher"},
+                {"source": "slack", "slack": {...}}. orch-server 푸시 알림 필터링과
+                세션 관찰성에 사용된다.
             **kwargs: Additional arguments
 
         Returns:
@@ -211,6 +216,7 @@ async def run(
     folder_id: str | None = None,
     system_prompt: str | None = None,
     agent_id: str | None = None,
+    caller_info: dict | None = None,
     **kwargs: Any,
 ) -> RunResult:
     """Execute Claude Code with the given prompt.
@@ -228,6 +234,10 @@ async def run(
         folder_id: Soulstream folder ID to place the session in
         system_prompt: Claude API system 파라미터로 전달할 시스템 프롬프트
         agent_id: soul-server 에이전트 프로필 ID
+        caller_info: 호출 출처를 식별하는 메타데이터.
+            예: {"source": "channel_observer"}, {"source": "trello_watcher"},
+            {"source": "slack", "slack": {...}}. orch-server 푸시 알림 필터링과
+            세션 관찰성에 사용된다.
         **kwargs: Additional arguments
 
     Returns:
@@ -254,6 +264,7 @@ async def run(
         folder_id=folder_id,
         system_prompt=system_prompt,
         agent_id=agent_id,
+        caller_info=caller_info,
         **kwargs,
     )
 
