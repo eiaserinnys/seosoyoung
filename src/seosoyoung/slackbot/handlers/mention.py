@@ -428,12 +428,17 @@ def create_session_and_run_claude(
             except Exception as e:
                 logger.warning(f"after_execute hook 실패 (무시): {e}")
 
-    # 슬랙 호출 맥락으로부터 caller_info 조립 (Phase 4)
+    # 슬랙 호출 맥락으로부터 caller_info 조립 (통합 스키마 v1)
+    # user_info는 위 get_user_role 1회 호출의 결과 — display_name·avatar_url·email을
+    # 함께 들고 있어 별도 users.info 재호출 없이 신원 필드 채움 (정본 하나 원칙).
     from seosoyoung.slackbot.soulstream.caller_info import build_slack_caller_info
     caller_info = build_slack_caller_info(
         channel_id=channel,
         user_id=user_id,
         thread_ts=session_thread_ts,
+        display_name=user_info.get("display_name") or None,
+        avatar_url=user_info.get("avatar_url") or None,
+        email=user_info.get("email") or None,
     )
 
     # Claude 실행 (placeholder → 콜백 빌드 → executor → cleanup)
