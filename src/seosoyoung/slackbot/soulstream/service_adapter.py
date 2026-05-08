@@ -177,8 +177,12 @@ class ClaudeServiceAdapter:
         user: str,
         *,
         attachment_paths: Optional[List[str]] = None,
+        caller_info: Optional[dict] = None,
     ) -> bool:
         """세션에 인터벤션 전송 (agent_session_id 기반)
+
+        F-9 fix(2026-05-08): caller_info를 service_client.intervene에 forward하여
+        InterventionSentEvent.caller_info까지 운반한다.
 
         Returns:
             True: 성공, False: 실패
@@ -189,6 +193,7 @@ class ClaudeServiceAdapter:
                 text=text,
                 user=user,
                 attachment_paths=attachment_paths,
+                caller_info=caller_info,
             )
             logger.info(f"[Remote] 인터벤션 전송 완료: session={agent_session_id}")
             return True

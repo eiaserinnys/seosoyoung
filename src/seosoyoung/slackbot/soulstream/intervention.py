@@ -28,6 +28,7 @@ class InterventionManager:
         session_id: Optional[str] = None,
         pending_session_interventions: Optional[dict] = None,
         pending_session_lock: Optional[Any] = None,
+        caller_info: Optional[dict] = None,
     ):
         """Soulstream에 HTTP intervene 요청 (agent_session_id 기반)
 
@@ -36,6 +37,11 @@ class InterventionManager:
 
         sync 스레드 컨텍스트에서 호출되므로
         run_in_new_loop로 격리된 이벤트 루프를 생성해 async 호출을 수행합니다.
+
+        F-9 fix(2026-05-08): caller_info를 service_adapter.intervene에 forward하고,
+        버퍼 보관 시에도 함께 저장하여 session_id 확보 후 flush될 때 운반되도록 한다.
+        이로 인해 슬랙 2차+ 메시지가 InterventionSentEvent.caller_info를 wire에 박아
+        unified-dashboard·soul-app에서 발신자(슬랙)의 아바타·이름이 표시된다.
         """
         from seosoyoung.utils.async_bridge import run_in_new_loop
 
@@ -47,6 +53,7 @@ class InterventionManager:
                         agent_session_id=session_id,
                         text=prompt,
                         user="intervention",
+                        caller_info=caller_info,
                     )
                 )
                 logger.info(f"[Remote] 인터벤션 전송 완료: thread={thread_ts}, session={session_id}")
@@ -55,12 +62,14 @@ class InterventionManager:
                 logger.warning(f"[Remote] 인터벤션 전송 실패: thread={thread_ts}, {e}")
                 return
 
-        # 2. session_id 미확보 → 버퍼에 보관
+        # 2. session_id 미확보 → 버퍼에 보관 (caller_info도 함께)
         if pending_session_interventions is not None and pending_session_lock is not None:
             with pending_session_lock:
                 if thread_ts not in pending_session_interventions:
                     pending_session_interventions[thread_ts] = []
-                pending_session_interventions[thread_ts].append((prompt, "intervention"))
+                pending_session_interventions[thread_ts].append(
+                    (prompt, "intervention", caller_info)
+                )
             logger.info(f"[Remote] 인터벤션 버퍼에 보관 (session_id 미확보): thread={thread_ts}")
             return
 

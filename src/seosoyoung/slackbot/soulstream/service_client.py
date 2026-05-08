@@ -525,12 +525,17 @@ class SoulServiceClient:
         user: str,
         *,
         attachment_paths: Optional[List[str]] = None,
+        caller_info: Optional[dict] = None,
     ) -> dict:
         """세션에 개입 메시지 전송
 
         POST /sessions/{agent_session_id}/intervene
         - 실행 중이면 intervention queue에 추가
         - 완료된 세션이면 자동 resume
+
+        F-9 fix(2026-05-08): caller_info를 body에 첨부하여 InterveneRequest.caller_info로
+        운반한다. 서버 task_manager가 이를 큐 message에 담아 InterventionSentEvent.caller_info로
+        emit하므로, 슬랙 2차+ 메시지가 unified-dashboard·soul-app에서 발신자 아바타로 표시된다.
         """
         session = await self._get_session()
         url = f"{self.base_url}/sessions/{agent_session_id}/intervene"
@@ -538,6 +543,8 @@ class SoulServiceClient:
         data = {"text": text, "user": user}
         if attachment_paths:
             data["attachment_paths"] = attachment_paths
+        if caller_info:
+            data["caller_info"] = caller_info
 
         async with session.post(url, json=data) as response:
             if response.status == 202:
