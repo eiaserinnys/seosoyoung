@@ -738,13 +738,14 @@ class SoulServiceClient:
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
         on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
-        # 세분화 이벤트 콜백
-        on_thinking: Optional[Callable] = None,       # (thinking_text, event_id, parent_event_id) -> None
-        on_text_start: Optional[Callable] = None,     # (event_id, parent_event_id) -> None
-        on_text_delta: Optional[Callable] = None,     # (text, event_id, parent_event_id) -> None
-        on_text_end: Optional[Callable] = None,       # (event_id, parent_event_id) -> None
-        on_tool_start: Optional[Callable] = None,     # (tool_name, tool_input, tool_use_id, event_id, parent_event_id) -> None
-        on_tool_result: Optional[Callable] = None,    # (result, tool_use_id, is_error, event_id, parent_event_id) -> None
+        # 세분화 이벤트 콜백 — wire payload의 parent_event_id 필드는 무시한다
+        # (단일 활성 슬롯 모델, presentation/node_map.py 참조)
+        on_thinking: Optional[Callable] = None,       # (thinking_text, event_id) -> None
+        on_text_start: Optional[Callable] = None,     # (event_id) -> None
+        on_text_delta: Optional[Callable] = None,     # (text, event_id) -> None
+        on_text_end: Optional[Callable] = None,       # (event_id) -> None
+        on_tool_start: Optional[Callable] = None,     # (tool_name, tool_input, tool_use_id, event_id) -> None
+        on_tool_result: Optional[Callable] = None,    # (result, tool_use_id, is_error, event_id) -> None
         on_input_request: Optional[Callable] = None,  # (request_id, questions, agent_session_id) -> None
         on_input_request_responded: Optional[Callable] = None,  # (request_id) -> None
         on_input_request_expired: Optional[Callable] = None,    # (request_id) -> None
@@ -805,16 +806,12 @@ class SoulServiceClient:
                         await on_thinking(
                             event.data.get("thinking", ""),
                             eid,
-                            event.data.get("parent_event_id"),
                         )
 
                 elif event.event == "text_start":
                     if on_text_start:
                         eid = int(event.id) if event.id is not None else None
-                        await on_text_start(
-                            eid,
-                            event.data.get("parent_event_id"),
-                        )
+                        await on_text_start(eid)
 
                 elif event.event == "text_delta":
                     if on_text_delta:
@@ -822,16 +819,12 @@ class SoulServiceClient:
                         await on_text_delta(
                             event.data.get("text", ""),
                             eid,
-                            event.data.get("parent_event_id"),
                         )
 
                 elif event.event == "text_end":
                     if on_text_end:
                         eid = int(event.id) if event.id is not None else None
-                        await on_text_end(
-                            eid,
-                            event.data.get("parent_event_id"),
-                        )
+                        await on_text_end(eid)
 
                 elif event.event == "tool_start":
                     if on_tool_start:
@@ -841,7 +834,6 @@ class SoulServiceClient:
                             event.data.get("tool_input", {}),
                             event.data.get("tool_use_id", ""),
                             eid,
-                            event.data.get("parent_event_id"),
                         )
 
                 elif event.event == "tool_result":
@@ -852,7 +844,6 @@ class SoulServiceClient:
                             event.data.get("tool_use_id", ""),
                             event.data.get("is_error", False),
                             eid,
-                            event.data.get("parent_event_id"),
                         )
 
                 elif event.event == "input_request":

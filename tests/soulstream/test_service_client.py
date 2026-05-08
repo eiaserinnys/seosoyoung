@@ -1393,7 +1393,7 @@ class TestPersistListening:
         get_response_2.content = _make_stream_reader(b"")
 
         received_deltas = []
-        async def on_text_delta(text, event_id, parent_event_id):
+        async def on_text_delta(text, event_id):
             received_deltas.append(text)
 
         session = self._make_persist_mock_session(

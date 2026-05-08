@@ -14,7 +14,6 @@ class SlackNode:
     event_id: int
     node_type: str           # "thinking" | "tool" | "text"
     msg_ts: str              # 슬랙 메시지 timestamp
-    parent_event_id: Optional[int] = None
     tool_use_id: Optional[str] = None
     tool_name: Optional[str] = None
     completed: bool = False
@@ -37,27 +36,28 @@ class SlackNodeMap:
     대시보드의 ProcessingContext를 슬랙에 맞게 번안.
     - _nodes: event_id -> SlackNode
     - _tool_use_index: tool_use_id -> event_id (tool_result 매칭용)
-    - _last_text_by_parent: parent_event_id -> event_id (text_delta/text_end가 찾을 대상)
+    - _active_text_event_id: text_start ~ text_end 사이의 활성 text 노드 단일 슬롯.
+      한 시점에 활성 text 블록은 1개라는 invariant에 기반 (Anthropic Messages API
+      스트리밍에서 text 블록은 시리얼). 이전 모델(`_last_text_by_parent` dict)이
+      `parent_event_id` 키에 의존했던 것을, wire 평탄화 후에도 동작하도록 단순화.
     """
 
     def __init__(self):
         self._nodes: dict[int, SlackNode] = {}
         self._tool_use_index: dict[str, int] = {}
-        self._last_text_by_parent: dict[Optional[int], int] = {}
+        self._active_text_event_id: Optional[int] = None
         self._input_requests: dict[str, InputRequestNode] = {}  # request_id -> InputRequestNode
 
     def add_thinking(
         self,
         event_id: int,
         msg_ts: str,
-        parent_event_id: Optional[int] = None,
     ) -> SlackNode:
         """thinking 이벤트에 대응하는 노드 등록"""
         node = SlackNode(
             event_id=event_id,
             node_type="thinking",
             msg_ts=msg_ts,
-            parent_event_id=parent_event_id,
         )
         self._nodes[event_id] = node
         return node
@@ -66,21 +66,19 @@ class SlackNodeMap:
         self,
         event_id: int,
         msg_ts: str,
-        parent_event_id: Optional[int] = None,
     ) -> SlackNode:
-        """text 노드 등록
+        """text 노드 등록.
 
-        _last_text_by_parent에 등록하여 find_text_node가
-        text_delta/text_end에서 대상 노드를 찾도록 한다.
+        활성 슬롯을 새 event_id로 갱신. 이전 활성 노드가 있으면 슬롯에서 *덮어쓴다*
+        (text_end 누락 fail-safe — 이전 dict 모델에서 같은 키로 덮어쓰던 동작과 등가).
         """
         node = SlackNode(
             event_id=event_id,
             node_type="text",
             msg_ts=msg_ts,
-            parent_event_id=parent_event_id,
         )
         self._nodes[event_id] = node
-        self._last_text_by_parent[parent_event_id] = event_id
+        self._active_text_event_id = event_id
         return node
 
     def add_tool(
@@ -88,7 +86,6 @@ class SlackNodeMap:
         event_id: int,
         msg_ts: str,
         tool_use_id: str,
-        parent_event_id: Optional[int] = None,
         tool_name: Optional[str] = None,
     ) -> SlackNode:
         """tool_start 이벤트에 대응하는 노드 등록"""
@@ -96,7 +93,6 @@ class SlackNodeMap:
             event_id=event_id,
             node_type="tool",
             msg_ts=msg_ts,
-            parent_event_id=parent_event_id,
             tool_use_id=tool_use_id,
             tool_name=tool_name,
         )
@@ -105,18 +101,15 @@ class SlackNodeMap:
             self._tool_use_index[tool_use_id] = event_id
         return node
 
-    def find_text_node(
-        self,
-        parent_event_id: Optional[int],
-    ) -> Optional[SlackNode]:
-        """parent_event_id에 대응하는 text 노드 검색
+    def find_text_node(self) -> Optional[SlackNode]:
+        """현재 활성 text 노드 반환 (없으면 None).
 
-        text_start에서 등록한 text 노드를 text_delta/text_end에서 찾는다.
+        text_start에서 등록한 text 노드를 text_delta/text_end가 찾는다.
+        text_end 처리 후 슬롯이 비워지므로 text 블록의 lifecycle을 정확히 따른다.
         """
-        event_id = self._last_text_by_parent.get(parent_event_id)
-        if event_id is None:
+        if self._active_text_event_id is None:
             return None
-        return self._nodes.get(event_id)
+        return self._nodes.get(self._active_text_event_id)
 
     def find_tool_by_use_id(
         self,
@@ -129,10 +122,15 @@ class SlackNodeMap:
         return self._nodes.get(event_id)
 
     def _remove_from_indexes(self, node: SlackNode) -> None:
-        """완료된 노드를 룩업 인덱스에서 제거 (노드 자체는 _nodes에 유지)"""
-        parent = node.parent_event_id
-        if self._last_text_by_parent.get(parent) == node.event_id:
-            del self._last_text_by_parent[parent]
+        """완료된 노드를 룩업 인덱스에서 제거 (노드 자체는 _nodes에 유지).
+
+        node_type == "text" 가드: 활성 텍스트 슬롯은 *text 노드만* 사용한다.
+        thinking/tool 노드의 event_id가 우연히 활성 슬롯 값과 같더라도(운영 환경에서
+        event_id는 SSE 스트림 내 단조증가라 충돌 0%이지만), invariant를 코드로 명시하여
+        후임이 추측하지 않도록 한다.
+        """
+        if node.node_type == "text" and self._active_text_event_id == node.event_id:
+            self._active_text_event_id = None
         if node.tool_use_id:
             self._tool_use_index.pop(node.tool_use_id, None)
 
