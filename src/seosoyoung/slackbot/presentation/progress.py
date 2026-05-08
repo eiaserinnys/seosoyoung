@@ -150,7 +150,7 @@ def build_event_callbacks(
         except Exception as e:
             logger.debug(f"thinking 메시지 삭제 실패 (무시): ts={msg_ts}, err={e}")
 
-    async def on_thinking(thinking_text: str, event_id, parent_event_id):
+    async def on_thinking(thinking_text: str, event_id):
         try:
             if mode == "clean" and _board[0] is not None:
                 item_id = f"thinking_{event_id}"
@@ -167,7 +167,7 @@ def build_event_callbacks(
                     text=text,
                 )
                 msg_ts = reply["ts"]
-                node = node_map.add_thinking(event_id, msg_ts, parent_event_id)
+                node = node_map.add_thinking(event_id, msg_ts)
                 if thinking_text:
                     node.text_buffer = thinking_text
                 # [clean 모드만] 설정된 시간 후 자동 삭제
@@ -176,7 +176,7 @@ def build_event_callbacks(
         except Exception as e:
             logger.warning(f"thinking 메시지 생성 실패: {e}")
 
-    async def on_text_start(event_id, parent_event_id):
+    async def on_text_start(event_id):
         try:
             if mode == "clean":
                 # clean 모드: placeholder를 재사용하여 텍스트 누적 시작
@@ -190,11 +190,11 @@ def build_event_callbacks(
                     text=text,
                 )
                 msg_ts = reply["ts"]
-                node_map.add_text(event_id, msg_ts, parent_event_id)
+                node_map.add_text(event_id, msg_ts)
         except Exception as e:
             logger.warning(f"text_start 처리 실패: {e}")
 
-    async def on_text_delta(text: str, event_id, parent_event_id):
+    async def on_text_delta(text: str, event_id):
         try:
             if mode == "clean":
                 # clean 모드: placeholder에 누적 텍스트 갱신
@@ -204,10 +204,10 @@ def build_event_callbacks(
                     display_text = format_thinking_text(_text_buffer[0])
                     update_message(pctx.client, pctx.channel, ts, display_text)
             else:
-                # full dump 모드: text 노드 찾아서 갱신
-                node = node_map.find_text_node(parent_event_id)
+                # full dump 모드: 활성 text 노드를 찾아서 갱신
+                node = node_map.find_text_node()
                 if not node:
-                    logger.debug(f"text_delta: text 노드 없음 (parent_event_id={parent_event_id})")
+                    logger.debug(f"text_delta: 활성 text 노드 없음 (event_id={event_id})")
                     return
                 node.text_buffer += text
                 display_text = format_thinking_text(node.text_buffer)
@@ -215,7 +215,7 @@ def build_event_callbacks(
         except Exception as e:
             logger.warning(f"text_delta 갱신 실패: {e}")
 
-    async def on_text_end(event_id, parent_event_id):
+    async def on_text_end(event_id):
         try:
             if mode == "clean":
                 # clean 모드: placeholder의 텍스트를 완료 상태로 갱신
@@ -227,10 +227,10 @@ def build_event_callbacks(
                     except Exception as e:
                         logger.warning(f"text_end 갱신 실패: {e}")
             else:
-                # full dump 모드: text 노드를 완료 처리
-                node = node_map.find_text_node(parent_event_id)
+                # full dump 모드: 활성 text 노드를 완료 처리
+                node = node_map.find_text_node()
                 if not node:
-                    logger.debug(f"text_end: text 노드 없음 (event_id={event_id}, parent_event_id={parent_event_id})")
+                    logger.debug(f"text_end: 활성 text 노드 없음 (event_id={event_id})")
                     return
                 # SSE 재연결 시 이미 처리한 이벤트가 재생될 수 있음 — 중복 방지
                 if node.completed:
@@ -247,13 +247,13 @@ def build_event_callbacks(
         except Exception as e:
             logger.warning(f"text_end 처리 실패: {e}")
 
-    async def on_tool_start(tool_name: str, tool_input, tool_use_id: str, event_id, parent_event_id):
+    async def on_tool_start(tool_name: str, tool_input, tool_use_id: str, event_id):
         try:
             if mode == "clean" and _board[0] is not None:
                 item_id = f"tool_{event_id}"
                 content = format_tool_initial(tool_name, tool_input)
                 _board[0].add(item_id, content)
-                node_map.add_tool(event_id, "", tool_use_id, parent_event_id, tool_name)
+                node_map.add_tool(event_id, "", tool_use_id, tool_name=tool_name)
             else:
                 # keep 모드 또는 board 생성 실패 시: 기존 로직 그대로
                 text = format_tool_initial(tool_name, tool_input)
@@ -263,11 +263,11 @@ def build_event_callbacks(
                     text=text,
                 )
                 msg_ts = reply["ts"]
-                node_map.add_tool(event_id, msg_ts, tool_use_id, parent_event_id, tool_name)
+                node_map.add_tool(event_id, msg_ts, tool_use_id, tool_name=tool_name)
         except Exception as e:
             logger.warning(f"tool_start 메시지 생성 실패: {e}")
 
-    async def on_tool_result(result, tool_use_id: str, is_error, event_id, parent_event_id):
+    async def on_tool_result(result, tool_use_id: str, is_error, event_id):
         try:
             node = node_map.find_tool_by_use_id(tool_use_id)
             if not node:

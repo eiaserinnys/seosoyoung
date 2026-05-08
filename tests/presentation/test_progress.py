@@ -120,7 +120,7 @@ class TestPlaceholder:
             placeholder_ts="ph_ts_001", client=client, initial_board=board,
         )
 
-        await cbs["on_thinking"]("analyzing...", "evt1", None)
+        await cbs["on_thinking"]("analyzing...", "evt1")
 
         # board.add와 schedule_remove가 호출됨
         board.add.assert_called_once()
@@ -144,7 +144,7 @@ class TestPlaceholder:
             placeholder_ts="ph_ts_002", client=client,
         )
 
-        await cbs["on_text_start"]("evt1", None)
+        await cbs["on_text_start"]("evt1")
 
         for c in client.chat_delete.call_args_list:
             assert c != call(channel="C123", ts="ph_ts_002")
@@ -159,10 +159,10 @@ class TestPlaceholder:
         )
 
         # thinking 노드를 먼저 생성
-        await cbs["on_thinking"]("initial", "evt1", None)
+        await cbs["on_thinking"]("initial", "evt1")
         client.chat_delete.reset_mock()
 
-        await cbs["on_text_delta"]("more text", "evt2", None)
+        await cbs["on_text_delta"]("more text", "evt2")
 
         for c in client.chat_delete.call_args_list:
             assert c != call(channel="C123", ts="ph_ts_003")
@@ -176,7 +176,7 @@ class TestPlaceholder:
             placeholder_ts="ph_ts_004", client=client,
         )
 
-        await cbs["on_tool_start"]("Grep", {"pattern": "foo"}, "tu1", "evt1", None)
+        await cbs["on_tool_start"]("Grep", {"pattern": "foo"}, "tu1", "evt1")
 
         for c in client.chat_delete.call_args_list:
             assert c != call(channel="C123", ts="ph_ts_004")
@@ -350,7 +350,7 @@ class TestThinkingComplete:
 
     Phase 3 이후: thinking과 text는 분리되었다.
     - clean 모드: on_text_end는 _placeholder_ts를 사용하여 갱신/삭제
-    - keep 모드: on_text_end는 find_text_node(parent_event_id)로 노드 검색
+    - keep 모드: on_text_end는 find_text_node()로 활성 슬롯 노드 검색
     """
 
     @pytest.mark.asyncio
@@ -362,9 +362,9 @@ class TestThinkingComplete:
         )
 
         # text_start → text_delta → text_end 시퀀스
-        await cbs["on_text_start"]("evt_ts1", None)
-        await cbs["on_text_delta"]("analyzing code...", "evt_td1", None)
-        await cbs["on_text_end"]("evt_text_end", None)
+        await cbs["on_text_start"]("evt_ts1")
+        await cbs["on_text_delta"]("analyzing code...", "evt_td1")
+        await cbs["on_text_end"]("evt_text_end")
 
         # chat_update가 placeholder_msg_ts에 대해 호출됨
         update_calls = [
@@ -393,11 +393,11 @@ class TestThinkingComplete:
         cbs, pctx, node_map, _ = _make_event_cbs(mode="keep", client=client)
 
         # keep 모드: text_start가 새 text 노드를 생성
-        await cbs["on_text_start"]("evt_ts1", "parent_1")
-        await cbs["on_text_delta"]("analyzing...", "evt_td1", "parent_1")
+        await cbs["on_text_start"]("evt_ts1")
+        await cbs["on_text_delta"]("analyzing...", "evt_td1")
 
-        # text_end 트리거 — 같은 parent_event_id
-        await cbs["on_text_end"]("evt_text_end", "parent_1")
+        # text_end 트리거 — 활성 텍스트 슬롯
+        await cbs["on_text_end"]("evt_text_end")
 
         # chat_update가 format_thinking_complete() 결과로 호출됨
         update_calls = [
@@ -428,12 +428,12 @@ class TestToolResult:
         )
 
         # tool 시작 → board.add 호출
-        await cbs["on_tool_start"]("Grep", {"pattern": "error"}, "tu_001", "evt_t1", None)
+        await cbs["on_tool_start"]("Grep", {"pattern": "error"}, "tu_001", "evt_t1")
         board.add.assert_called_once()
         assert board.add.call_args[0][0] == "tool_evt_t1"
 
         # tool 결과 수신 → board.update + schedule_remove 호출
-        await cbs["on_tool_result"]("3 matches found", "tu_001", False, "evt_result", "evt_t1")
+        await cbs["on_tool_result"]("3 matches found", "tu_001", False, "evt_result")
         board.update.assert_called_once()
         assert board.update.call_args[0][0] == "tool_evt_t1"
         assert "Grep" in board.update.call_args[0][1]
@@ -452,10 +452,10 @@ class TestToolResult:
         cbs, pctx, node_map, _ = _make_event_cbs(mode="keep", client=client)
 
         # tool 시작
-        await cbs["on_tool_start"]("Read", {"file_path": "/a/b.py"}, "tu_002", "evt_t2", None)
+        await cbs["on_tool_start"]("Read", {"file_path": "/a/b.py"}, "tu_002", "evt_t2")
 
         # tool 결과 수신
-        await cbs["on_tool_result"]("file content here", "tu_002", False, "evt_result", "evt_t2")
+        await cbs["on_tool_result"]("file content here", "tu_002", False, "evt_result")
 
         # chat_update가 format_tool_result() 결과로 호출됨
         update_calls = [
@@ -478,8 +478,8 @@ class TestToolResult:
         client.chat_postMessage.return_value = {"ts": "tool_msg_ts"}
         cbs, pctx, node_map, _ = _make_event_cbs(mode="keep", client=client)
 
-        await cbs["on_tool_start"]("Bash", {"command": "exit 1"}, "tu_003", "evt_t3", None)
-        await cbs["on_tool_result"]("command failed", "tu_003", True, "evt_result", "evt_t3")
+        await cbs["on_tool_start"]("Bash", {"command": "exit 1"}, "tu_003", "evt_t3")
+        await cbs["on_tool_result"]("command failed", "tu_003", True, "evt_result")
 
         update_calls = [
             c for c in client.chat_update.call_args_list
@@ -731,7 +731,7 @@ class TestThinkingDelete:
             initial_board=board,
         )
 
-        await cbs["on_thinking"]("analyzing...", "evt1", None)
+        await cbs["on_thinking"]("analyzing...", "evt1")
 
         # board.add와 schedule_remove가 호출됨
         board.add.assert_called_once()
@@ -752,7 +752,7 @@ class TestThinkingDelete:
             mode="keep", client=client,
         )
 
-        await cbs["on_thinking"]("analyzing...", "evt1", None)
+        await cbs["on_thinking"]("analyzing...", "evt1")
         await asyncio.sleep(0)
 
         delete_calls = [
@@ -771,7 +771,7 @@ class TestThinkingDelete:
             mode="clean", client=client, placeholder_ts="ph_ts",
         )
 
-        await cbs["on_thinking"]("analyzing...", "evt1", None)
+        await cbs["on_thinking"]("analyzing...", "evt1")
         # 예약된 태스크가 실행 — 예외가 조용히 처리되어야 함
         await asyncio.sleep(0)
 
@@ -781,3 +781,84 @@ class TestThinkingDelete:
             if c[1].get("ts") == "thinking_msg_ts"
         ]
         assert len(delete_calls) == 0
+
+
+class TestKeepModeMultiTurnIsolation:
+    """🔴 #5 / 🔵 #8 — keep 모드 멀티턴 텍스트 격리 검증.
+
+    이전 모델(`_last_text_by_parent[parent_event_id]`) 폐기 후, 단일 활성 슬롯 모델이
+    멀티턴 시리얼 케이스에서 *이전 모델과 등가*임을 white-box로 보호한다.
+    """
+
+    @pytest.mark.asyncio
+    async def test_keep_mode_multiturn_text_isolation(self):
+        """🔴 #5 — keep 모드에서 두 턴의 텍스트가 격리되어 누적된다.
+
+        턴 1: text_start → delta("hello") → end
+        턴 2: text_start → delta("world") → end
+        검증: ts_turn1에 hello만, ts_turn2에 world만 누적된다 (오누적 0건).
+        """
+        client = MagicMock()
+        client.chat_postMessage.side_effect = [
+            {"ts": "ts_turn1"},
+            {"ts": "ts_turn2"},
+        ]
+        cbs, pctx, node_map, _ = _make_event_cbs(mode="keep", client=client)
+
+        # 턴 1
+        await cbs["on_text_start"]("evt1")
+        await cbs["on_text_delta"]("hello", "evt2")
+        await cbs["on_text_end"]("evt3")
+
+        # 턴 2
+        await cbs["on_text_start"]("evt4")
+        await cbs["on_text_delta"]("world", "evt5")
+        await cbs["on_text_end"]("evt6")
+
+        updates_turn1 = [c for c in client.chat_update.call_args_list if c[1].get("ts") == "ts_turn1"]
+        updates_turn2 = [c for c in client.chat_update.call_args_list if c[1].get("ts") == "ts_turn2"]
+
+        # 턴1 메시지에는 hello, 턴2 메시지에는 world가 갱신되어야 한다
+        assert any("hello" in c[1]["text"] for c in updates_turn1), \
+            "turn1 메시지에 hello 누적 실패"
+        assert any("world" in c[1]["text"] for c in updates_turn2), \
+            "turn2 메시지에 world 누적 실패"
+
+        # 오누적 0건 — 턴1 메시지에 world가, 턴2 메시지에 hello가 끼어들지 않는다
+        assert not any("world" in c[1]["text"] for c in updates_turn1), \
+            "turn1 메시지에 world가 잘못 누적됨"
+        assert not any("hello" in c[1]["text"] for c in updates_turn2), \
+            "turn2 메시지에 hello가 잘못 누적됨"
+
+    @pytest.mark.asyncio
+    async def test_keep_mode_parent_none_simulation(self):
+        """🔵 #8 — wire가 parent_event_id를 송출하지 않는 미래 시뮬레이션.
+
+        Phase 2-B-1 재발사 후 (백엔드 fallback 라인 제거 후) 슬랙봇이 받게 될 wire
+        모양을 시뮬레이션. 단일 활성 슬롯 모델은 parent_event_id를 보지 않으므로
+        test_keep_mode_multiturn_text_isolation과 동일하게 동작해야 한다.
+
+        이 케이스는 시그니처 자체에 parent_event_id가 없으므로 wire 변화 후에도
+        멀티턴 등가성이 유지됨을 명시적으로 보호한다.
+        """
+        client = MagicMock()
+        client.chat_postMessage.side_effect = [
+            {"ts": "ts_t1"},
+            {"ts": "ts_t2"},
+        ]
+        cbs, pctx, node_map, _ = _make_event_cbs(mode="keep", client=client)
+
+        # 두 턴 시퀀스 (parent_event_id 무관)
+        await cbs["on_text_start"]("e1")
+        await cbs["on_text_delta"]("alpha", "e2")
+        await cbs["on_text_end"]("e3")
+        await cbs["on_text_start"]("e4")
+        await cbs["on_text_delta"]("beta", "e5")
+        await cbs["on_text_end"]("e6")
+
+        u1 = [c for c in client.chat_update.call_args_list if c[1].get("ts") == "ts_t1"]
+        u2 = [c for c in client.chat_update.call_args_list if c[1].get("ts") == "ts_t2"]
+        assert any("alpha" in c[1]["text"] for c in u1)
+        assert any("beta" in c[1]["text"] for c in u2)
+        assert not any("beta" in c[1]["text"] for c in u1)
+        assert not any("alpha" in c[1]["text"] for c in u2)

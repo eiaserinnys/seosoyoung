@@ -279,11 +279,11 @@ class TestProgressIntegration:
         cbs = build_event_callbacks(pctx, node_map, mode="keep")
 
         # tool 시작
-        await cbs["on_tool_start"]("Bash", {"command": "cat .env"}, "tu_001", "evt_t1", None)
+        await cbs["on_tool_start"]("Bash", {"command": "cat .env"}, "tu_001", "evt_t1")
 
         # API 키가 포함된 tool 결과
         secret_result = "ANTHROPIC_API_KEY=sk-ant-abcdefghijklmnopqrstu1234567890\nPORT=3000"
-        await cbs["on_tool_result"](secret_result, "tu_001", False, "evt_result", "evt_t1")
+        await cbs["on_tool_result"](secret_result, "tu_001", False, "evt_result")
 
         # chat_update 호출 확인
         update_calls = [
@@ -325,12 +325,12 @@ class TestProgressIntegration:
         cbs = build_event_callbacks(pctx, node_map, mode="keep")
 
         # tool 시작
-        await cbs["on_tool_start"]("Read", {"file_path": "/a/b.py"}, "tu_002", "evt_t2", None)
+        await cbs["on_tool_start"]("Read", {"file_path": "/a/b.py"}, "tu_002", "evt_t2")
 
         # 비문자열 결과 (리스트, 딕셔너리 등)
         non_string_result = [{"type": "text", "text": "content here"}]
         # 예외 없이 처리돼야 함
-        await cbs["on_tool_result"](non_string_result, "tu_002", False, "evt_result2", "evt_t2")
+        await cbs["on_tool_result"](non_string_result, "tu_002", False, "evt_result2")
 
         update_calls = [
             c for c in client.chat_update.call_args_list
