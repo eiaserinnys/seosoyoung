@@ -271,11 +271,38 @@ class TestIntervene:
             user="user1",
         )
         assert result is True
+        # F-9 fix(2026-05-08): caller_info=None이 명시적으로 forward됨 (graceful default).
         mock_client.intervene.assert_awaited_once_with(
             agent_session_id="sess-abc",
             text="추가 지시",
             user="user1",
             attachment_paths=None,
+            caller_info=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_intervene_with_caller_info(self, adapter, mock_client):
+        """F-9 fix(2026-05-08): caller_info가 service_client.intervene까지 forward."""
+        mock_client.intervene.return_value = {"queued": True}
+        ci = {
+            "source": "slack",
+            "display_name": "동료",
+            "avatar_url": "https://slack/img.png",
+            "user_id": "U123",
+        }
+        result = await adapter.intervene(
+            agent_session_id="sess-abc",
+            text="추가 지시",
+            user="U123",
+            caller_info=ci,
+        )
+        assert result is True
+        mock_client.intervene.assert_awaited_once_with(
+            agent_session_id="sess-abc",
+            text="추가 지시",
+            user="U123",
+            attachment_paths=None,
+            caller_info=ci,
         )
 
     @pytest.mark.asyncio

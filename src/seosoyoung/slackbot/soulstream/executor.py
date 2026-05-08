@@ -187,6 +187,8 @@ class ClaudeExecutor:
         if not lock.acquire(blocking=False):
             # 인터벤션: pending에 저장 후 interrupt
             # 인터벤션은 기존 세션 복구이므로 profile은 초기 세션 생성 시점에만 필요
+            # F-9 fix(2026-05-08): caller_info를 _handle_intervention까지 운반하여
+            # 슬랙 2차+ 메시지가 InterventionSentEvent.caller_info로 wire되도록 한다.
             self._handle_intervention(
                 thread_ts, prompt, msg_ts,
                 on_compact=on_compact,
@@ -204,6 +206,7 @@ class ClaudeExecutor:
                 on_input_request=on_input_request,
                 on_input_request_responded=on_input_request_responded,
                 on_input_request_expired=on_input_request_expired,
+                caller_info=caller_info,
             )
             return
 
@@ -259,6 +262,7 @@ class ClaudeExecutor:
         on_input_request=None,
         on_input_request_responded=None,
         on_input_request_expired=None,
+        caller_info: Optional[dict] = None,
     ):
         """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
 
@@ -270,6 +274,9 @@ class ClaudeExecutor:
         처리되는데, 이 큐가 context를 함께 저장하는 메커니즘이 없다.
         따라서 인터벤션이 flush되어 실행될 때 context 없이 프롬프트만 전달된다.
         이 제한은 인터벤션 기능 전체의 리팩터링 시 별도로 해결한다.
+
+        F-9 fix(2026-05-08): caller_info를 fire_interrupt_remote에 forward하여
+        2차+ 메시지의 발신자 신원이 InterventionSentEvent.caller_info까지 운반되도록 한다.
         """
         logger.info(f"인터벤션 발생: thread={thread_ts}")
 
@@ -279,6 +286,7 @@ class ClaudeExecutor:
             session_id=self.get_session_id(thread_ts),
             pending_session_interventions=self._pending_session_interventions,
             pending_session_lock=self._pending_session_lock,
+            caller_info=caller_info,
         )
 
     def _run_with_lock(
@@ -460,13 +468,22 @@ class ClaudeExecutor:
 
         if pending:
             adapter = self._get_service_adapter()
-            for (pending_prompt, pending_user) in pending:
+            # F-9 fix(2026-05-08): tuple 형식이 (prompt, user)에서 (prompt, user, caller_info)로
+            # 확장됐다 (intervention.py:fire_interrupt_remote가 caller_info도 저장).
+            # 구버전 2-tuple(메모리에 남아있던 데이터 등)도 graceful 처리.
+            for entry in pending:
+                if len(entry) == 3:
+                    pending_prompt, pending_user, pending_caller_info = entry
+                else:
+                    pending_prompt, pending_user = entry
+                    pending_caller_info = None
                 try:
                     from seosoyoung.utils.async_bridge import run_in_new_loop as _run
                     _run(adapter.intervene(
                         agent_session_id=session_id,
                         text=pending_prompt,
                         user=pending_user,
+                        caller_info=pending_caller_info,
                     ))
                     logger.info(f"[Remote] 버퍼된 인터벤션 flush: thread={thread_ts}, session={session_id}")
                 except Exception as e:
