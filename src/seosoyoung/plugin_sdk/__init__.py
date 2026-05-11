@@ -60,6 +60,7 @@ from seosoyoung.plugin_sdk.mention import (
 )
 from seosoyoung.plugin_sdk.caller_info import (
     build_bot_caller_info,
+    build_slack_caller_info,  # R-5 G-15: re-export of seosoyoung.slackbot.soulstream.caller_info
     get_host_preferred_node,
 )
 
@@ -90,7 +91,8 @@ __all__ = [
     "SoulstreamBackend",
     # Mention types
     "MentionTrackingBackend",
-    # Caller info helpers (R-4 atom G-12, G-14)
+    # Caller info helpers (R-4 atom G-12, G-14; R-5 atom G-15)
     "build_bot_caller_info",
+    "build_slack_caller_info",
     "get_host_preferred_node",
 ]

@@ -176,7 +176,13 @@ class SlackBackendImpl(SlackBackend):
             return ReactionResult(ok=False, error=str(e))
 
     async def get_user_info(self, user_id: str) -> UserInfo | None:
-        """Get information about a user."""
+        """Get information about a user.
+
+        R-5 G-15 (2026-05-11): `avatar_url`(profile.image_192) + `email`(profile.email)
+        채움 추가 — `build_slack_caller_info` 6-arg 호출에 forward되어 reaction
+        trigger 등 plugin 측 진입의 caller_info에 신원이 박힘.
+        host slackbot `auth.py:62-63 get_user_role` 패턴과 §9 대칭.
+        """
         try:
             result = self._client.users_info(user=user_id)
             user = result.get("user", {})
@@ -187,6 +193,8 @@ class SlackBackendImpl(SlackBackend):
                 real_name=profile.get("real_name", ""),
                 display_name=profile.get("display_name", ""),
                 is_bot=user.get("is_bot", False),
+                avatar_url=profile.get("image_192", ""),  # R-5 G-15
+                email=profile.get("email", ""),            # R-5 G-15
             )
         except Exception as e:
             logger.error(f"get_user_info failed: {e}")

@@ -74,6 +74,16 @@ def build_bot_caller_info(
     return info
 
 
+# R-5 G-15 (2026-05-11): build_slack_caller_info re-export.
+# 정본은 `seosoyoung.slackbot.soulstream.caller_info` (R-2 G-9 fix `a5e2686`).
+# Plugin은 plugin_sdk만 import — host의 정본 helper를 plugin_sdk가 wrapping
+# (R-4 `get_host_preferred_node` 패턴과 §9 대칭).
+# cyclic 위험 0: slackbot.soulstream.caller_info는 plugin_sdk를 import 안 함 (pure function).
+# R-4 G-12 옵션 B(복제 구현)와 다르게 *옵션 A* — `build_slack_caller_info`가 *같은 리포 내*
+# 정본이라 옵션 A가 더 simple한 §3 정합.
+from seosoyoung.slackbot.soulstream.caller_info import build_slack_caller_info  # noqa: E402, F401
+
+
 def get_host_preferred_node() -> Optional[str]:
     """Host(seosoyoung 슬랙봇)의 preferred_node를 동적으로 조회 (R-4, atom G-14).
 

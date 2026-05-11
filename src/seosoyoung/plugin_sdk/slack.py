@@ -26,13 +26,21 @@ T = TypeVar("T")
 
 @dataclass
 class UserInfo:
-    """Slack user information."""
+    """Slack user information.
+
+    R-5 G-15 (2026-05-11): `avatar_url`(profile.image_192) + `email`(profile.email)
+    필드 추가 — `build_slack_caller_info` 6-arg 호출에 forward되어 plugin reaction
+    trigger의 caller_info에 신원이 박힘 (unified-dashboard owner fallback 차단,
+    R-2 G-9 fix §9 대칭).
+    """
 
     id: str
     name: str
     real_name: str = ""
     display_name: str = ""
     is_bot: bool = False
+    avatar_url: str = ""  # R-5 G-15: profile.image_192
+    email: str = ""       # R-5 G-15: profile.email
 
 
 @dataclass
