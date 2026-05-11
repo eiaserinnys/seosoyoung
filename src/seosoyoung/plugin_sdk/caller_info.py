@@ -44,7 +44,7 @@ def build_bot_caller_info(
 
     soul_common.auth.caller_info.build_bot_caller_info의 plugin-side 동등 구현.
     plugin_sdk가 soul_common을 직접 import하지 않도록 *복제 구현* — cross-import
-    회귀 테스트(`tests/test_plugin_sdk_caller_info_signature.py`)가 두 정본의
+    회귀 테스트(`seosoyoung-plugins/tests/test_caller_info_signature_regression.py`)가 두 정본의
     시그니처·반환 dict 정합을 보장한다.
 
     호출 정본:
