@@ -38,6 +38,7 @@ from seosoyoung.plugin_sdk.plugin import (
 from seosoyoung.plugin_sdk import slack
 from seosoyoung.plugin_sdk import soulstream
 from seosoyoung.plugin_sdk import mention
+from seosoyoung.plugin_sdk import caller_info
 
 # Also export commonly used types from submodules
 from seosoyoung.plugin_sdk.slack import (
@@ -57,6 +58,10 @@ from seosoyoung.plugin_sdk.soulstream import (
 from seosoyoung.plugin_sdk.mention import (
     MentionTrackingBackend,
 )
+from seosoyoung.plugin_sdk.caller_info import (
+    build_bot_caller_info,
+    get_host_preferred_node,
+)
 
 __all__ = [
     # Core plugin types
@@ -70,6 +75,7 @@ __all__ = [
     "slack",
     "soulstream",
     "mention",
+    "caller_info",
     # Slack types
     "Message",
     "ReactionResult",
@@ -84,4 +90,7 @@ __all__ = [
     "SoulstreamBackend",
     # Mention types
     "MentionTrackingBackend",
+    # Caller info helpers (R-4 atom G-12, G-14)
+    "build_bot_caller_info",
+    "get_host_preferred_node",
 ]
