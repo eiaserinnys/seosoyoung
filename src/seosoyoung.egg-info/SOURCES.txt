@@ -5,6 +5,7 @@ src/seosoyoung/__init__.py
 src/seosoyoung.egg-info/PKG-INFO
 src/seosoyoung.egg-info/SOURCES.txt
 src/seosoyoung.egg-info/dependency_links.txt
+src/seosoyoung.egg-info/requires.txt
 src/seosoyoung.egg-info/top_level.txt
 src/seosoyoung/core/__init__.py
 src/seosoyoung/core/context.py
@@ -23,6 +24,7 @@ src/seosoyoung/mcp/tools/slack_messaging.py
 src/seosoyoung/mcp/tools/thread_files.py
 src/seosoyoung/mcp/tools/user_profile.py
 src/seosoyoung/plugin_sdk/__init__.py
+src/seosoyoung/plugin_sdk/caller_info.py
 src/seosoyoung/plugin_sdk/hooks.py
 src/seosoyoung/plugin_sdk/mention.py
 src/seosoyoung/plugin_sdk/plugin.py
@@ -66,6 +68,7 @@ src/seosoyoung/slackbot/handlers/home.py
 src/seosoyoung/slackbot/handlers/mention.py
 src/seosoyoung/slackbot/handlers/mention_tracker.py
 src/seosoyoung/slackbot/handlers/message.py
+src/seosoyoung/slackbot/handlers/node.py
 src/seosoyoung/slackbot/presentation/__init__.py
 src/seosoyoung/slackbot/presentation/activity_board.py
 src/seosoyoung/slackbot/presentation/execution.py
@@ -79,6 +82,7 @@ src/seosoyoung/slackbot/slack/formatting.py
 src/seosoyoung/slackbot/slack/helpers.py
 src/seosoyoung/slackbot/slack/message_formatter.py
 src/seosoyoung/slackbot/soulstream/__init__.py
+src/seosoyoung/slackbot/soulstream/caller_info.py
 src/seosoyoung/slackbot/soulstream/engine_types.py
 src/seosoyoung/slackbot/soulstream/executor.py
 src/seosoyoung/slackbot/soulstream/intervention.py
@@ -91,10 +95,14 @@ src/seosoyoung/slackbot/soulstream/session_context.py
 src/seosoyoung/slackbot/soulstream/types.py
 src/seosoyoung/utils/__init__.py
 src/seosoyoung/utils/async_bridge.py
+tests/test_auth_role.py
 tests/test_cogito_manifest.py
 tests/test_cogito_sources.py
 tests/test_formatting.py
+tests/test_markdown_to_mrkdwn.py
 tests/test_marker_parser.py
 tests/test_plugin_backends.py
+tests/test_plugin_sdk_caller_info.py
+tests/test_plugin_sdk_soulstream.py
 tests/test_slack_message_formatter.py
 tests/test_slack_rich_message.py

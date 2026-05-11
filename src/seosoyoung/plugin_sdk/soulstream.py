@@ -119,10 +119,35 @@ class SoulstreamBackend(Protocol):
             folder_id: Soulstream folder ID to place the session in
             system_prompt: Claude API system 파라미터로 전달할 시스템 프롬프트
             agent_id: soul-server 에이전트 프로필 ID
-            caller_info: 호출 출처를 식별하는 메타데이터.
-                예: {"source": "channel_observer"}, {"source": "trello_watcher"},
-                {"source": "slack", "slack": {...}}. orch-server 푸시 알림 필터링과
-                세션 관찰성에 사용된다.
+            caller_info: 호출 출처를 식별하는 v1 caller_info dict (atom 스키마 ed3a216d).
+                plugin_sdk helper로 조립 권장 (R-4 G-12 + R-5 G-15 §9 대칭):
+
+                    from seosoyoung.plugin_sdk.caller_info import (
+                        build_bot_caller_info,
+                        build_slack_caller_info,
+                        get_host_preferred_node,
+                    )
+
+                    # 자동 봇 (channel_observer / trello_watcher 등)
+                    info = build_bot_caller_info(
+                        source="channel_observer",
+                        display_name="채널 관찰자",
+                        agent_node=get_host_preferred_node(),
+                    )
+
+                    # 사용자 슬랙 진입 (reaction trigger 등) — R-5 G-15
+                    user = await slack.get_user_info(user_id)
+                    info = build_slack_caller_info(
+                        channel_id=channel, user_id=user_id, thread_ts=thread_ts,
+                        display_name=(user.display_name or user.real_name) if user else None,
+                        avatar_url=user.avatar_url if user else None,
+                        email=user.email if user else None,
+                    )
+
+                orch-server 푸시 알림 필터링과 세션 관찰성에 사용된다.
+                단일 키 dict (source만 박는 패턴)는 deprecated (R-4 G-12) — display_name/
+                avatar_url 부재 시 unified-dashboard owner fallback 발동
+                (R-2 G-9 회귀 부류).
             **kwargs: Additional arguments
 
         Returns:
@@ -234,10 +259,35 @@ async def run(
         folder_id: Soulstream folder ID to place the session in
         system_prompt: Claude API system 파라미터로 전달할 시스템 프롬프트
         agent_id: soul-server 에이전트 프로필 ID
-        caller_info: 호출 출처를 식별하는 메타데이터.
-            예: {"source": "channel_observer"}, {"source": "trello_watcher"},
-            {"source": "slack", "slack": {...}}. orch-server 푸시 알림 필터링과
-            세션 관찰성에 사용된다.
+        caller_info: 호출 출처를 식별하는 v1 caller_info dict (atom 스키마 ed3a216d).
+            plugin_sdk helper로 조립 권장 (R-4 G-12 + R-5 G-15 §9 대칭):
+
+                from seosoyoung.plugin_sdk.caller_info import (
+                    build_bot_caller_info,
+                    build_slack_caller_info,
+                    get_host_preferred_node,
+                )
+
+                # 자동 봇 (channel_observer / trello_watcher 등)
+                info = build_bot_caller_info(
+                    source="channel_observer",
+                    display_name="채널 관찰자",
+                    agent_node=get_host_preferred_node(),
+                )
+
+                # 사용자 슬랙 진입 (reaction trigger 등) — R-5 G-15
+                user = await slack.get_user_info(user_id)
+                info = build_slack_caller_info(
+                    channel_id=channel, user_id=user_id, thread_ts=thread_ts,
+                    display_name=(user.display_name or user.real_name) if user else None,
+                    avatar_url=user.avatar_url if user else None,
+                    email=user.email if user else None,
+                )
+
+            orch-server 푸시 알림 필터링과 세션 관찰성에 사용된다.
+            단일 키 dict (source만 박는 패턴)는 deprecated (R-4 G-12) — display_name/
+            avatar_url 부재 시 unified-dashboard owner fallback 발동
+            (R-2 G-9 회귀 부류).
         **kwargs: Additional arguments
 
     Returns:

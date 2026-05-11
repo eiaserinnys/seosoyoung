@@ -19,6 +19,7 @@ import pytest
 from seosoyoung.plugin_sdk.caller_info import (
     SYSTEM_PORTRAIT_BASE,
     build_bot_caller_info,
+    build_slack_caller_info,  # R-5 G-15
     get_host_preferred_node,
 )
 
@@ -94,6 +95,53 @@ class TestSystemPortraitBaseConstant:
     def test_value(self):
         """`/api/system/portraits` — orch-server `create_system_portraits_router` prefix."""
         assert SYSTEM_PORTRAIT_BASE == "/api/system/portraits"
+
+
+class TestBuildSlackCallerInfoReExportR5:
+    """T-G15-E: plugin_sdk.build_slack_caller_info **identity** = 정본 (옵션 A §3 회귀 안전망).
+
+    R-5 atom G-15: plugin_sdk가 `seosoyoung.slackbot.soulstream.caller_info`의 정본을
+    *re-export*. 두 import 경로가 *같은 함수 객체*를 가리켜야 §3 정본 단일.
+    후행 세션이 plugin_sdk/caller_info.py에 build_slack_caller_info를 *복제 구현*으로
+    잘못 추가하면 본 회귀 테스트가 명시적으로 실패한다.
+    """
+
+    def test_function_identity_same_as_canonical(self):
+        """plugin_sdk.build_slack_caller_info **is** slackbot.soulstream.caller_info.build_slack_caller_info."""
+        from seosoyoung.slackbot.soulstream.caller_info import (
+            build_slack_caller_info as canonical,
+        )
+        # function identity check — 같은 객체여야 함 (옵션 A re-export 정합)
+        assert build_slack_caller_info is canonical, (
+            "plugin_sdk.build_slack_caller_info와 slackbot.soulstream.caller_info.build_slack_caller_info"
+            "가 같은 함수 객체여야 합니다 (옵션 A re-export §3 정본 단일). "
+            "후행 세션이 *복제 구현*으로 잘못 추가했으면 본 테스트가 실패합니다."
+        )
+
+    def test_callable_via_reexport(self):
+        """re-export된 helper가 정상 호출 가능 (sanity check)."""
+        result = build_slack_caller_info(
+            channel_id="C12345",
+            user_id="U67890",
+            thread_ts="1234567890.123456",
+            display_name="앨리스",
+            avatar_url="https://avatars.slack-edge.com/alice_192.jpg",
+            email="alice@example.com",
+        )
+        # 정본의 동작과 동일
+        assert result["source"] == "slack"
+        assert result["user_id"] == "U67890"
+        assert result["display_name"] == "앨리스"
+        assert result["avatar_url"] == "https://avatars.slack-edge.com/alice_192.jpg"
+        assert result["email"] == "alice@example.com"
+        assert result["slack"]["channel_id"] == "C12345"
+        assert result["slack"]["thread_ts"] == "1234567890.123456"
+
+    def test_reexport_in_init_namespace(self):
+        """`seosoyoung.plugin_sdk`에서 직접 import 가능 (`build_slack_caller_info`)."""
+        from seosoyoung.plugin_sdk import build_slack_caller_info as via_init
+        # __init__.py L61-64 export + L93-95 __all__와 정본 정합
+        assert via_init is build_slack_caller_info
 
 
 class TestGetHostPreferredNode:
