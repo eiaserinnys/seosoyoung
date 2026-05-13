@@ -419,8 +419,11 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 #   `await on_text_delta(...)` 호출은 그 새 이벤트 루프 안에서
                 #   발생하므로 async 콜백 정의는 안전.
                 #   누적기는 list.append만 수행하여 GIL로 thread-safe.
-                caller_on_text_delta = kwargs.get("on_text_delta")
-                caller_on_thinking = kwargs.get("on_thinking")
+                # kwargs.pop으로 빼서 비-text_only 분기 진입 시(이 분기는 take되지
+                # 않지만, 안전상) executor에 중복 전달되지 않도록 정리. 본 분기 안에서는
+                # 누적기로 wrap한 콜백만 executor에 전달한다 (정본 하나).
+                caller_on_text_delta = kwargs.pop("on_text_delta", None)
+                caller_on_thinking = kwargs.pop("on_thinking", None)
 
                 async def _accumulate_text(text, _eid):
                     accumulated_text.append(text or "")
