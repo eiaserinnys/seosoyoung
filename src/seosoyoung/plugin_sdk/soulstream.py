@@ -62,6 +62,21 @@ class RunResult:
     session_id: str | None = None
     error: str = ""
     output: str = ""
+    transcript: str = ""
+    """text_only 모드에서만 채워지는 누적 텍스트 (thinking + 중간 text_delta + final output).
+
+    채널 개입(channel_observer)처럼 본체 Claude Code 세션의 *전체* assistant 출력
+    어디든 `<utterance>` 태그를 검색해야 하는 호출자를 위해 backend가 자체적으로
+    누적하여 노출한다. 비-text_only 모드 또는 옛 backend에서는 빈 문자열.
+
+    호출자는 다음 패턴으로 graceful degrade한다 (옛 backend 호환):
+        source = getattr(result, "transcript", "") or result.output or ""
+
+    조립 순서는 thinking 묶음 + text_delta 묶음 + output이며, *발화 순서를
+    보존하지 않는다*. utterance 추출은 ``re.findall``이 텍스트 어디든 잡아내므로
+    파싱 결과에 영향 없음. transcript를 디버그·UI 표시 용도로 쓰는 호출자가
+    생기면 그때 SSE 순서 보존 정책을 별도 결정한다.
+    """
 
 
 @dataclass
