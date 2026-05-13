@@ -107,6 +107,13 @@ def get_host_preferred_node() -> Optional[str]:
         from seosoyoung.slackbot.config import Config
 
         return Config.orchestrator.preferred_node or None
-    except (ImportError, AttributeError):
+    except (ImportError, AttributeError, KeyError):
         # plugin_sdk가 host 외부에서 로드되는 환경(unit test 등) — graceful None.
+        # KeyError: Config import 시점에 SlackConfig가 OPERATOR_USER_ID 등 envvar를
+        # `os.environ[...]`로 즉시 검증 → unit test에 envvar 없으면 KeyError.
+        # docstring의 graceful None 약속을 envvar 부재 케이스로 확장.
+        # NOTE: 프로덕션 슬랙봇이 정상 부팅한 뒤에는 Config singleton이 이미 import
+        #       완료된 상태이므로 본 호출 경로에서 KeyError가 발생할 시점이 없다.
+        #       본 catch는 test 환경 전용 graceful path이며, 프로덕션 silent
+        #       degrade는 발생하지 않는다.
         return None

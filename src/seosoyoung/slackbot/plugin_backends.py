@@ -399,6 +399,10 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             # text_only=False일 때는 None이 정상 — executor가 _process_result()로 자체 처리.
             on_result_fn = None
 
+            # transcript 누적기 (text_only 모드에서만 사용)
+            accumulated_thinking: list[str] = []
+            accumulated_text: list[str] = []
+
             if text_only:
                 # text_only 모드: presentation 없이 실행하여 슬랙 게시를 건너뜀
                 # on_result 콜백으로 출력 텍스트를 캡처
@@ -406,6 +410,30 @@ class SoulstreamBackendImpl(SoulstreamBackend):
 
                 def capture_result(result, _thread_ts, _user_message):
                     captured_output.append(result.output or "")
+
+                # async/sync 경계 안전성 근거:
+                #   self._executor 내부는 run_in_new_loop(coro) →
+                #   별도 스레드에서 asyncio.run으로 새 이벤트 루프를 띄워 SSE 처리
+                #   코루틴을 실행한다 (utils/async_bridge.py:13-43).
+                #   service_client.py:806/819에서 `await on_thinking(...)` /
+                #   `await on_text_delta(...)` 호출은 그 새 이벤트 루프 안에서
+                #   발생하므로 async 콜백 정의는 안전.
+                #   누적기는 list.append만 수행하여 GIL로 thread-safe.
+                # kwargs.pop으로 빼서 비-text_only 분기 진입 시(이 분기는 take되지
+                # 않지만, 안전상) executor에 중복 전달되지 않도록 정리. 본 분기 안에서는
+                # 누적기로 wrap한 콜백만 executor에 전달한다 (정본 하나).
+                caller_on_text_delta = kwargs.pop("on_text_delta", None)
+                caller_on_thinking = kwargs.pop("on_thinking", None)
+
+                async def _accumulate_text(text, _eid):
+                    accumulated_text.append(text or "")
+                    if caller_on_text_delta:
+                        await caller_on_text_delta(text, _eid)
+
+                async def _accumulate_thinking(text, _eid):
+                    accumulated_thinking.append(text or "")
+                    if caller_on_thinking:
+                        await caller_on_thinking(text, _eid)
 
                 await loop.run_in_executor(
                     None,
@@ -419,6 +447,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         role=role,
                         context=context,
                         on_result=capture_result,
+                        on_text_delta=_accumulate_text,
+                        on_thinking=_accumulate_thinking,
                         model=model,
                         folder_id=_folder_id,
                         system_prompt=_system_prompt,
@@ -495,11 +525,23 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             new_session_id = session.session_id if session else session_id
             output = captured_output[0] if (text_only and captured_output) else ""
 
+            # transcript는 text_only 모드에서만 누적된다.
+            # 조립 순서: thinking 묶음 + text_delta 묶음 + final output.
+            # *발화 순서를 보존하지 않는다* — utterance 추출은 re.findall이
+            # 텍스트 어디든 잡아내므로 순서 무관. RunResult.transcript docstring 참조.
+            transcript = (
+                ("".join(accumulated_thinking)
+                 + "".join(accumulated_text)
+                 + (("\n" + output) if output else ""))
+                if text_only else ""
+            )
+
             return RunResult(
                 ok=True,
                 status=RunStatus.COMPLETED,
                 session_id=new_session_id,
                 output=output,
+                transcript=transcript,
             )
         except Exception as e:
             logger.error(f"soulstream.run failed: {e}")
