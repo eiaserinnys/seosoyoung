@@ -399,41 +399,71 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             # text_only=False일 때는 None이 정상 — executor가 _process_result()로 자체 처리.
             on_result_fn = None
 
-            # transcript 누적기 (text_only 모드에서만 사용)
-            accumulated_thinking: list[str] = []
-            accumulated_text: list[str] = []
+            # 블록 단위 utterance 매치 누적 (text_only 모드에서만 사용).
+            # 사이클 260518.01: 누적 transcript 정책 폐기 — thinking / text_start~end /
+            # complete 각 블록의 *그 블록 텍스트만*에서 ``<utterance>`` 매치 추출.
+            # 우발 토큰이 다른 블록의 닫힘 태그와 짝지어지지 않는다.
+            captured_utterances: list[str] = []
+            # text 블록 버퍼 — text_start ~ text_end 사이 delta 누적, text_end에서 처리.
+            text_block_buffer: list[str] = []
 
             if text_only:
                 # text_only 모드: presentation 없이 실행하여 슬랙 게시를 건너뜀
                 # on_result 콜백으로 출력 텍스트를 캡처
                 captured_output: list[str] = []
 
-                def capture_result(result, _thread_ts, _user_message):
-                    captured_output.append(result.output or "")
-
                 # async/sync 경계 안전성 근거:
                 #   self._executor 내부는 run_in_new_loop(coro) →
                 #   별도 스레드에서 asyncio.run으로 새 이벤트 루프를 띄워 SSE 처리
                 #   코루틴을 실행한다 (utils/async_bridge.py:13-43).
-                #   service_client.py:806/819에서 `await on_thinking(...)` /
-                #   `await on_text_delta(...)` 호출은 그 새 이벤트 루프 안에서
-                #   발생하므로 async 콜백 정의는 안전.
-                #   누적기는 list.append만 수행하여 GIL로 thread-safe.
+                #   service_client.py에서 ``await on_thinking(...)`` /
+                #   ``await on_text_delta(...)`` / ``await on_text_end(...)`` 호출은
+                #   그 새 이벤트 루프 안에서 발생하므로 async 콜백 정의는 안전.
+                #   누적기는 list.append/extend만 수행하여 GIL로 thread-safe.
                 # kwargs.pop으로 빼서 비-text_only 분기 진입 시(이 분기는 take되지
                 # 않지만, 안전상) executor에 중복 전달되지 않도록 정리. 본 분기 안에서는
-                # 누적기로 wrap한 콜백만 executor에 전달한다 (정본 하나).
+                # 게이트 콜백만 executor에 전달한다 (정본 하나).
                 caller_on_text_delta = kwargs.pop("on_text_delta", None)
                 caller_on_thinking = kwargs.pop("on_thinking", None)
+                caller_on_text_end = kwargs.pop("on_text_end", None)
 
-                async def _accumulate_text(text, _eid):
-                    accumulated_text.append(text or "")
+                from seosoyoung.plugin_sdk.utterance import (
+                    extract_utterance_matches,
+                )
+
+                def capture_result(result, _thread_ts, _user_message):
+                    out = result.output or ""
+                    captured_output.append(out)
+                    # complete 블록: final output 안에서도 매치 검색.
+                    # text 블록에 이미 같은 본문이 잡혔어도 backend는 dedupe하지 않는다 —
+                    # 호출자(``_execute_intervene``)가 strip 동일성으로 1회만 게시.
+                    if out:
+                        captured_utterances.extend(extract_utterance_matches(out))
+
+                async def _on_thinking_block(text, _eid):
+                    # thinking 블록: 한 이벤트 = 한 블록. 즉시 매치 검색.
+                    if text:
+                        captured_utterances.extend(extract_utterance_matches(text))
+                    if caller_on_thinking:
+                        await caller_on_thinking(text, _eid)
+
+                async def _on_text_delta_buffer(text, _eid):
+                    # text 블록 진행 중 — buffer에 누적만. 매치는 text_end에서.
+                    if text:
+                        text_block_buffer.append(text)
                     if caller_on_text_delta:
                         await caller_on_text_delta(text, _eid)
 
-                async def _accumulate_thinking(text, _eid):
-                    accumulated_thinking.append(text or "")
-                    if caller_on_thinking:
-                        await caller_on_thinking(text, _eid)
+                async def _on_text_end_block(_eid):
+                    # text 블록 종료 — buffer 전체에서 매치 검색 후 비움.
+                    if text_block_buffer:
+                        block_text = "".join(text_block_buffer)
+                        text_block_buffer.clear()
+                        captured_utterances.extend(
+                            extract_utterance_matches(block_text)
+                        )
+                    if caller_on_text_end:
+                        await caller_on_text_end(_eid)
 
                 await loop.run_in_executor(
                     None,
@@ -447,8 +477,9 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         role=role,
                         context=context,
                         on_result=capture_result,
-                        on_text_delta=_accumulate_text,
-                        on_thinking=_accumulate_thinking,
+                        on_text_delta=_on_text_delta_buffer,
+                        on_text_end=_on_text_end_block,
+                        on_thinking=_on_thinking_block,
                         model=model,
                         folder_id=_folder_id,
                         system_prompt=_system_prompt,
@@ -525,23 +556,24 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             new_session_id = session.session_id if session else session_id
             output = captured_output[0] if (text_only and captured_output) else ""
 
-            # transcript는 text_only 모드에서만 누적된다.
-            # 조립 순서: thinking 묶음 + text_delta 묶음 + final output.
-            # *발화 순서를 보존하지 않는다* — utterance 추출은 re.findall이
-            # 텍스트 어디든 잡아내므로 순서 무관. RunResult.transcript docstring 참조.
-            transcript = (
-                ("".join(accumulated_thinking)
-                 + "".join(accumulated_text)
-                 + (("\n" + output) if output else ""))
-                if text_only else ""
-            )
+            # 누락 보호: text 블록이 ``text_end`` 없이 종료된 케이스(SSE 비정상 종료 등)에
+            # 대비하여 잔여 buffer에서도 마지막 한 번 매치 검색.
+            # 정상 흐름에서는 ``_on_text_end_block``이 buffer를 비웠으므로 no-op.
+            if text_only and text_block_buffer:
+                from seosoyoung.plugin_sdk.utterance import (
+                    extract_utterance_matches,
+                )
+
+                trailing = "".join(text_block_buffer)
+                text_block_buffer.clear()
+                captured_utterances.extend(extract_utterance_matches(trailing))
 
             return RunResult(
                 ok=True,
                 status=RunStatus.COMPLETED,
                 session_id=new_session_id,
                 output=output,
-                transcript=transcript,
+                utterances=list(captured_utterances) if text_only else [],
             )
         except Exception as e:
             logger.error(f"soulstream.run failed: {e}")

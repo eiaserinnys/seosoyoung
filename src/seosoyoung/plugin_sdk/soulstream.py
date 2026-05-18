@@ -62,20 +62,25 @@ class RunResult:
     session_id: str | None = None
     error: str = ""
     output: str = ""
-    transcript: str = ""
-    """text_only 모드에서만 채워지는 누적 텍스트 (thinking + 중간 text_delta + final output).
+    utterances: list[str] = field(default_factory=list)
+    """text_only 모드에서만 채워지는 *블록 단위* ``<utterance>`` 매치 list (사이클 260518.01).
 
-    채널 개입(channel_observer)처럼 본체 Claude Code 세션의 *전체* assistant 출력
-    어디든 `<utterance>` 태그를 검색해야 하는 호출자를 위해 backend가 자체적으로
-    누적하여 노출한다. 비-text_only 모드 또는 옛 backend에서는 빈 문자열.
+    backend가 SSE 이벤트의 *블록 종료 시점*에 그 블록 텍스트 안에서만
+    ``<utterance>(.*?)</utterance>`` non-greedy 매치를 돌려 strip된 본문을 list에
+    누적한다. 블록 정의:
 
-    호출자는 다음 패턴으로 graceful degrade한다 (옛 backend 호환):
-        source = getattr(result, "transcript", "") or result.output or ""
+    - **thinking 블록**: 한 ``thinking`` 이벤트의 텍스트 1건.
+    - **text 블록**: ``text_start`` → N× ``text_delta`` → ``text_end`` 트리오로 묶인 한 덩이.
+    - **complete 블록**: 본체 final output (``output`` 필드의 내용).
 
-    조립 순서는 thinking 묶음 + text_delta 묶음 + output이며, *발화 순서를
-    보존하지 않는다*. utterance 추출은 ``re.findall``이 텍스트 어디든 잡아내므로
-    파싱 결과에 영향 없음. transcript를 디버그·UI 표시 용도로 쓰는 호출자가
-    생기면 그때 SSE 순서 보존 정책을 별도 결정한다.
+    *직전 사이클*(260513.01)의 ``transcript`` 누적 정책을 폐기한다 — 누적 transcript에서
+    thinking 묶음의 우발 ``<utterance>`` 토큰이 text 묶음의 정상 ``</utterance>`` 닫힘
+    태그와 인접하여 한 덩이 매치로 분석 텍스트 전체를 흘리는 사고를 차단한다.
+
+    빈 매치(``<utterance></utterance>``) 항목은 ``""``로 list에 포함된다 — 호출자가
+    빈 문자열 필터·dedupe·게시 정책을 결정한다 (책임 분리). 매치가 없으면 빈 list.
+
+    비-text_only 모드에서는 빈 list (backend가 본 필드를 채우지 않음).
     """
 
 
