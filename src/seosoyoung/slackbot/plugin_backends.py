@@ -425,11 +425,27 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 # 게이트 콜백만 executor에 전달한다 (정본 하나).
                 caller_on_text_delta = kwargs.pop("on_text_delta", None)
                 caller_on_thinking = kwargs.pop("on_thinking", None)
+                caller_on_text_start = kwargs.pop("on_text_start", None)
                 caller_on_text_end = kwargs.pop("on_text_end", None)
 
                 from seosoyoung.plugin_sdk.utterance import (
                     extract_utterance_matches,
                 )
+
+                def _flush_text_buffer() -> None:
+                    """잔여 buffer를 추출·비움. text_start / text_end / 종료 fallback에서 공통 사용.
+
+                    SSE 이벤트가 사실상 단일 thread 순차 처리되어 ``text_end`` 누락은
+                    드물지만, 블록 경계 boundary signal로 ``text_start``를 추가해
+                    두 트리오의 텍스트가 한 블록으로 잘못 합쳐지는 동질 결함을 차단한다
+                    (code-reviewer P2 권고, 사이클 260518.01).
+                    """
+                    if text_block_buffer:
+                        block_text = "".join(text_block_buffer)
+                        text_block_buffer.clear()
+                        captured_utterances.extend(
+                            extract_utterance_matches(block_text)
+                        )
 
                 def capture_result(result, _thread_ts, _user_message):
                     out = result.output or ""
@@ -447,6 +463,13 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                     if caller_on_thinking:
                         await caller_on_thinking(text, _eid)
 
+                async def _on_text_start_block(_eid):
+                    # 새 text 블록 진입 — 직전 블록 buffer에 잔여가 있으면 먼저 flush.
+                    # ``text_end`` 누락 시 두 트리오가 한 블록으로 합쳐지는 결함 차단.
+                    _flush_text_buffer()
+                    if caller_on_text_start:
+                        await caller_on_text_start(_eid)
+
                 async def _on_text_delta_buffer(text, _eid):
                     # text 블록 진행 중 — buffer에 누적만. 매치는 text_end에서.
                     if text:
@@ -456,12 +479,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
 
                 async def _on_text_end_block(_eid):
                     # text 블록 종료 — buffer 전체에서 매치 검색 후 비움.
-                    if text_block_buffer:
-                        block_text = "".join(text_block_buffer)
-                        text_block_buffer.clear()
-                        captured_utterances.extend(
-                            extract_utterance_matches(block_text)
-                        )
+                    _flush_text_buffer()
                     if caller_on_text_end:
                         await caller_on_text_end(_eid)
 
@@ -477,6 +495,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         role=role,
                         context=context,
                         on_result=capture_result,
+                        on_text_start=_on_text_start_block,
                         on_text_delta=_on_text_delta_buffer,
                         on_text_end=_on_text_end_block,
                         on_thinking=_on_thinking_block,
@@ -558,7 +577,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
 
             # 누락 보호: text 블록이 ``text_end`` 없이 종료된 케이스(SSE 비정상 종료 등)에
             # 대비하여 잔여 buffer에서도 마지막 한 번 매치 검색.
-            # 정상 흐름에서는 ``_on_text_end_block``이 buffer를 비웠으므로 no-op.
+            # 정상 흐름에서는 ``_on_text_end_block`` / ``_on_text_start_block``의
+            # ``_flush_text_buffer``가 buffer를 비웠으므로 no-op.
             if text_only and text_block_buffer:
                 from seosoyoung.plugin_sdk.utterance import (
                     extract_utterance_matches,
