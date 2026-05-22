@@ -274,11 +274,15 @@ class SoulServiceClient:
 
         async with session.post(url, json=data) as response:
             if response.status == 409:
-                raise SessionConflictError(
-                    f"이미 실행 중인 세션이 있습니다: {agent_session_id}"
-                )
+                error = await self._parse_error(response)
+                if self._is_session_conflict_error(error):
+                    raise SessionConflictError(error)
+                raise SoulServiceError(f"실행 실패: {error}")
             elif response.status == 503:
-                raise RateLimitError("동시 실행 제한을 초과했습니다")
+                error = await self._parse_error(response)
+                if self._is_rate_limit_error(error):
+                    raise RateLimitError(error)
+                raise SoulServiceError(f"실행 실패: {error}")
             elif response.status != 200:
                 error = await self._parse_error(response)
                 raise SoulServiceError(f"실행 실패: {error}")
@@ -973,15 +977,46 @@ class SoulServiceClient:
         try:
             data = await response.json()
             if "error" in data:
-                return data["error"].get("message", str(data["error"]))
+                return self._format_error(data["error"])
             if "detail" in data:
                 detail = data["detail"]
                 if isinstance(detail, dict) and "error" in detail:
-                    return detail["error"].get("message", str(detail["error"]))
+                    return self._format_error(detail["error"])
                 return str(detail)
             return str(data)
         except Exception:
             return f"HTTP {response.status}"
+
+    @staticmethod
+    def _format_error(error: object) -> str:
+        """서버의 structured error를 사람이 읽을 수 있게 보존한다."""
+        if not isinstance(error, dict):
+            return str(error)
+        message = error.get("message") or str(error)
+        code = error.get("code")
+        if code:
+            return f"{code}: {message}"
+        return str(message)
+
+    @staticmethod
+    def _is_session_conflict_error(error: str) -> bool:
+        """409 중 실제 세션 실행 충돌만 SessionConflictError로 분류한다."""
+        lowered = error.lower()
+        return (
+            "session_already_running" in lowered
+            or "session already running" in lowered
+            or "이미 실행 중" in error
+        )
+
+    @staticmethod
+    def _is_rate_limit_error(error: str) -> bool:
+        """503 중 실제 동시 실행 제한만 RateLimitError로 분류한다."""
+        lowered = error.lower()
+        return (
+            "rate_limit_exceeded" in lowered
+            or "동시 실행 제한" in error
+            or "concurrent" in lowered
+        )
 
 
 # === 하위 호환 별칭 ===

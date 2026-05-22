@@ -140,18 +140,18 @@ class ClaudeServiceAdapter:
                     session_id=result.agent_session_id,
                 )
 
-        except SessionConflictError:
+        except SessionConflictError as e:
             return ClaudeResult(
                 success=False,
                 output="",
-                error="이미 실행 중인 세션이 있습니다.",
+                error=str(e) or "이미 실행 중인 세션이 있습니다.",
             )
 
-        except RateLimitError:
+        except RateLimitError as e:
             return ClaudeResult(
                 success=False,
                 output="",
-                error="동시 실행 제한을 초과했습니다. 잠시 후 다시 시도해주세요.",
+                error=str(e) or "동시 실행 제한을 초과했습니다. 잠시 후 다시 시도해주세요.",
             )
 
         except SoulServiceError as e:

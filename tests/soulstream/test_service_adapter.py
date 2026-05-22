@@ -169,22 +169,26 @@ class TestExecute:
     @pytest.mark.asyncio
     async def test_conflict_error(self, adapter, mock_client):
         """SessionConflictError → ClaudeResult(success=False)"""
-        mock_client.execute.side_effect = SessionConflictError("conflict")
+        mock_client.execute.side_effect = SessionConflictError(
+            "SESSION_ALREADY_RUNNING: Session already running"
+        )
 
         result = await adapter.execute(prompt="hello")
 
         assert result.success is False
-        assert "이미 실행 중" in result.error
+        assert result.error == "SESSION_ALREADY_RUNNING: Session already running"
 
     @pytest.mark.asyncio
     async def test_rate_limit_error(self, adapter, mock_client):
         """RateLimitError → ClaudeResult(success=False)"""
-        mock_client.execute.side_effect = RateLimitError("rate limit")
+        mock_client.execute.side_effect = RateLimitError(
+            "RATE_LIMIT_EXCEEDED: Too many concurrent sessions"
+        )
 
         result = await adapter.execute(prompt="hello")
 
         assert result.success is False
-        assert "동시 실행 제한" in result.error
+        assert result.error == "RATE_LIMIT_EXCEEDED: Too many concurrent sessions"
 
     @pytest.mark.asyncio
     async def test_service_error(self, adapter, mock_client):

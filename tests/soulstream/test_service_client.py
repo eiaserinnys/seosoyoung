@@ -146,22 +146,56 @@ class TestSoulServiceClientExecute:
 
     @pytest.mark.asyncio
     async def test_execute_conflict_raises(self, client):
-        """409 응답 시 SessionConflictError"""
-        mock_response = MagicMock()
+        """409 중 실제 세션 실행 충돌은 SessionConflictError."""
+        mock_response = AsyncMock()
         mock_response.status = 409
+        mock_response.json = AsyncMock(return_value={
+            "detail": {
+                "error": {
+                    "code": "SESSION_ALREADY_RUNNING",
+                    "message": "Session already running: sess-1",
+                }
+            }
+        })
         client._session = _mock_session(mock_response)
 
-        with pytest.raises(SessionConflictError):
+        with pytest.raises(SessionConflictError, match="SESSION_ALREADY_RUNNING"):
+            await client.execute("hello")
+
+    @pytest.mark.asyncio
+    async def test_execute_non_conflict_409_preserves_server_error(self, client):
+        """라우팅/설정 409는 '이미 실행 중'으로 덮어쓰지 않는다."""
+        mock_response = AsyncMock()
+        mock_response.status = 409
+        mock_response.json = AsyncMock(return_value={
+            "detail": {
+                "error": {
+                    "code": "NODE_BACKEND_MISMATCH",
+                    "message": "Node does not support requested backend",
+                }
+            }
+        })
+        client._session = _mock_session(mock_response)
+
+        with pytest.raises(SoulServiceError, match="NODE_BACKEND_MISMATCH"):
             await client.execute("hello")
 
     @pytest.mark.asyncio
     async def test_execute_rate_limit_raises(self, client):
-        """503 응답 시 RateLimitError"""
-        mock_response = MagicMock()
+        """503 중 동시 실행 제한은 RateLimitError."""
+        mock_response = AsyncMock()
         mock_response.status = 503
+        mock_response.json = AsyncMock(return_value={
+            "detail": {
+                "error": {
+                    "code": "RATE_LIMIT_EXCEEDED",
+                    "message": "동시 실행 제한 초과",
+                }
+            }
+        })
         client._session = _mock_session(mock_response)
 
-        with pytest.raises(RateLimitError):
+        with pytest.raises(RateLimitError, match="RATE_LIMIT_EXCEEDED"):
             await client.execute("hello")
 
     @pytest.mark.asyncio
@@ -1223,6 +1257,20 @@ class TestParseError:
         mock_response.json = AsyncMock(return_value={"error": {"message": "bad request"}})
         result = await client._parse_error(mock_response)
         assert result == "bad request"
+
+    @pytest.mark.asyncio
+    async def test_parse_error_preserves_error_code(self, client):
+        mock_response = AsyncMock()
+        mock_response.json = AsyncMock(return_value={
+            "detail": {
+                "error": {
+                    "code": "AGENT_PROFILE_REQUIRED",
+                    "message": "New execute requests require profile or agentId",
+                }
+            }
+        })
+        result = await client._parse_error(mock_response)
+        assert result == "AGENT_PROFILE_REQUIRED: New execute requests require profile or agentId"
 
     @pytest.mark.asyncio
     async def test_parse_error_with_detail_field(self, client):
