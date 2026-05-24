@@ -709,6 +709,26 @@ class TestHandleSSEEvents:
         assert result.claude_session_id == "sess-123"
 
     @pytest.mark.asyncio
+    async def test_assistant_message_fallback_when_complete_has_no_result(self, client):
+        """assistant_message 최종 본문을 complete.result가 비었을 때 최종 응답으로 사용한다."""
+        sse_data = (
+            b"event:assistant_message\n"
+            b'data:{"type":"assistant_message","content":"final answer"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","claude_session_id":"sess-123"}\n'
+            b"\n"
+        )
+
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+
+        result = await client._handle_sse_events(mock_response)
+        assert result.success is True
+        assert result.result == "final answer"
+        assert result.claude_session_id == "sess-123"
+
+    @pytest.mark.asyncio
     async def test_error_event(self, client):
         """error 이벤트로 실패 결과 반환"""
         sse_data = (

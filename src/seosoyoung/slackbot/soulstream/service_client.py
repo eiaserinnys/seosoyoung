@@ -761,6 +761,7 @@ class SoulServiceClient:
         재연결은 execute()에서 reconnect_stream()을 통해 처리합니다.
         """
         result_text = ""
+        latest_assistant_text = ""
         result_agent_session_id = None
         result_claude_session_id = None
         error_message = None
@@ -794,11 +795,16 @@ class SoulServiceClient:
                         await on_debug(message)
 
                 elif event.event == "complete":
-                    result_text = event.data.get("result", "")
+                    result_text = event.data.get("result", "") or latest_assistant_text
                     result_claude_session_id = event.data.get("claude_session_id")
 
                 elif event.event == "error":
                     error_message = event.data.get("message", "알 수 없는 오류")
+
+                elif event.event == "assistant_message":
+                    content = event.data.get("content", "")
+                    if isinstance(content, str) and content:
+                        latest_assistant_text = content
 
                 elif event.event == "credential_alert":
                     if on_credential_alert:
