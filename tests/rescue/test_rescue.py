@@ -67,7 +67,8 @@ class TestRescueConfig:
 
         from seosoyoung.rescue.config import RescueConfig
 
-        assert RescueConfig.get_working_dir() == Path.cwd()
+        with patch.dict(os.environ, {}, clear=True):
+            assert RescueConfig.get_working_dir() == Path.cwd()
 
 
 class TestRescueMain:

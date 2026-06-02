@@ -692,6 +692,31 @@ class TestHandleSSEEvents:
         assert session_ids == ["sess-init-123"]
 
     @pytest.mark.asyncio
+    async def test_init_event_accepts_orch_camel_case_session_id(self, client):
+        """orch session events init은 agentSessionId camelCase를 보낸다."""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agentSessionId":"sess-orch-123"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+
+        session_ids = []
+
+        async def on_session(sid):
+            session_ids.append(sid)
+
+        result = await client._handle_sse_events(mock_response, on_session=on_session)
+        assert result.success is True
+        assert result.agent_session_id == "sess-orch-123"
+        assert session_ids == ["sess-orch-123"]
+
+    @pytest.mark.asyncio
     async def test_complete_event(self, client):
         """complete 이벤트로 성공 결과 반환"""
         sse_data = (
@@ -879,6 +904,96 @@ class TestHandleSSEEvents:
         assert len(events) == 2
         assert events[0].id == "evt-42"
         assert events[1].id is None  # complete에는 id 없음
+
+    @pytest.mark.asyncio
+    async def test_session_event_callbacks_and_cursor(self, client):
+        """orch user/intervention/history 이벤트를 listener 콜백으로 전달한다."""
+        sse_data = (
+            b"event:init\n"
+            b'id:10\n'
+            b'data:{"agentSessionId":"sess-orch-123"}\n'
+            b"\n"
+            b"event:history_sync\n"
+            b'id:11\n'
+            b'data:{"last_event_id":42}\n'
+            b"\n"
+            b"event:user_message\n"
+            b'id:12\n'
+            b'data:{"text":"from web","caller_info":{"source":"browser"}}\n'
+            b"\n"
+            b"event:intervention_sent\n"
+            b'id:13\n'
+            b'data:{"text":"from app","callerInfo":{"source":"soul-app"}}\n'
+            b"\n"
+        )
+
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+
+        event_ids = []
+        history_events = []
+        user_events = []
+        intervention_events = []
+
+        async def on_event_id(event_id):
+            event_ids.append(event_id)
+
+        async def on_history_sync(data):
+            history_events.append(data)
+
+        async def on_user_message(data):
+            user_events.append(data)
+
+        async def on_intervention_sent(data):
+            intervention_events.append(data)
+
+        result = await client._handle_sse_events(
+            mock_response,
+            on_event_id=on_event_id,
+            on_history_sync=on_history_sync,
+            on_user_message=on_user_message,
+            on_intervention_sent=on_intervention_sent,
+        )
+
+        assert result.success is True
+        assert result.agent_session_id == "sess-orch-123"
+        assert event_ids == [10, 11, 12, 13]
+        assert history_events == [{"last_event_id": 42}]
+        assert user_events == [{"text": "from web", "caller_info": {"source": "browser"}}]
+        assert intervention_events == [{"text": "from app", "callerInfo": {"source": "soul-app"}}]
+
+    @pytest.mark.asyncio
+    async def test_listen_session_events_uses_after_id(self, client):
+        """background listener는 orch session events를 after_id 커서로 구독한다."""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agentSessionId":"sess-orch-123"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+
+        session = _mock_session(mock_response, method="get")
+        client._session = session
+        client._event_stream_path = "/sessions/{session_id}/events"
+
+        result = await client.listen_session_events("sess-orch-123", last_event_id=42)
+
+        call_kwargs = session.get.call_args
+        assert call_kwargs.args[0] == "http://localhost:3105/sessions/sess-orch-123/events"
+        assert call_kwargs.kwargs["params"] == {"after_id": 42}
+        assert result.agent_session_id == "sess-orch-123"
+
+    @pytest.mark.asyncio
+    async def test_parse_sse_stream_uses_dynamic_read_timeout(self, client):
+        """read_timeout 콜백이 0 이하를 반환하면 스트림 읽기를 종료한다."""
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(b"")
+
+        with pytest.raises(asyncio.TimeoutError):
+            async for _ in client._parse_sse_stream(mock_response, read_timeout=lambda: 0):
+                pass
 
 
 class TestSSEReconnection:

@@ -542,6 +542,7 @@ def register_mention_handlers(app, dependencies: dict):
                     session_manager=session_manager,
                     update_message_fn=dependencies.get("update_message_fn"),
                     plugin_manager=pm,
+                    persistent_listener_manager=dependencies.get("persistent_listener_manager"),
                 )
                 return
             logger.debug("스레드에서 멘션됨 (세션 없음) - 원샷 답변")

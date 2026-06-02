@@ -14,6 +14,7 @@ from seosoyoung.slackbot.auth import check_permission, get_user_role
 from pathlib import Path
 from seosoyoung.slackbot.soulstream.session import SessionManager, SessionRuntime
 from seosoyoung.slackbot.soulstream.executor import ClaudeExecutor
+from seosoyoung.slackbot.presentation.session_listener import PersistentSessionListenerManager
 from seosoyoung.slackbot.slack.helpers import send_long_message, resolve_operator_dm
 from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers
@@ -69,6 +70,30 @@ def _check_restart_on_session_stop():
 
 # 세션 종료 콜백 설정
 session_runtime.set_on_session_stopped(_check_restart_on_session_stop)
+
+
+def _build_persistent_listener_manager():
+    """orch session event background listener 생성.
+
+    본 사이클은 orch execute-proxy 경유만 지원한다. Config.orchestrator.url이
+    없으면 standalone soul-server 직결 경로이므로 listener를 만들지 않는다.
+    """
+    if not Config.orchestrator.url:
+        return None
+
+    def _client_factory():
+        from seosoyoung.slackbot.soulstream.service_client import SoulServiceClient
+
+        return SoulServiceClient(
+            base_url=f"{Config.orchestrator.url}/api",
+            token=Config.orchestrator.token,
+            event_stream_path="/sessions/{session_id}/events",
+        )
+
+    return PersistentSessionListenerManager(client_factory=_client_factory)
+
+
+persistent_listener_manager = _build_persistent_listener_manager()
 
 
 def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
@@ -151,6 +176,7 @@ executor = ClaudeExecutor(
     list_runner_ref=lambda: _trello_refs["list_runner"],
     parse_markers_fn=parse_markers,
     agent_id=Config.claude.agent_id,
+    persistent_listener_manager=persistent_listener_manager,
 )
 
 # 멘션 트래커 (채널 관찰자-멘션 핸들러 통합용)
@@ -242,6 +268,7 @@ def _build_dependencies():
         "plugin_manager": plugin_manager,
         # 디버깅용: 실행 중인 agent_session_id 조회
         "get_agent_session_id": executor.get_session_id,
+        "persistent_listener_manager": persistent_listener_manager,
         # App Home: 소울스트림 세션 현황 표시
         "soul_url": Config.claude.soul_url,
         "dashboard_url": Config.claude.dashboard_url,
@@ -265,6 +292,8 @@ def notify_startup():
 
 def notify_shutdown():
     """봇 종료 알림 (운영자 DM)"""
+    if persistent_listener_manager is not None:
+        persistent_listener_manager.stop_all()
     try:
         channel = resolve_operator_dm(app.client, Config.slack.operator_user_id)
         app.client.chat_postMessage(channel=channel, text=Config.bot.shutdown_message)

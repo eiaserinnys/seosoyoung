@@ -194,6 +194,55 @@ class TestExecutorRemoteBranch:
 
         assert captured_kwargs.get("caller_info") is None
 
+    def test_successful_result_starts_persistent_listener(self, tmp_path):
+        """성공한 Slack 실행은 complete 후 background session listener를 시작한다."""
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+
+        listener = MagicMock()
+        executor = _make_executor(
+            tmp_path,
+            persistent_listener_manager=listener,
+        )
+        executor.session_manager.create(
+            thread_ts="1234.5678",
+            channel_id="C123",
+            user_id="U123",
+            role="admin",
+        )
+        pctx = _make_pctx(thread_ts="1234.5678", channel="C123")
+        result = ClaudeResult(success=True, output="done", session_id="sess-1")
+
+        executor._process_result(pctx, result, "1234.5678")
+
+        listener.start_or_refresh.assert_called_once_with(
+            "sess-1",
+            channel="C123",
+            thread_ts="1234.5678",
+            slack_client=pctx.client,
+        )
+
+    def test_failed_result_does_not_start_persistent_listener(self, tmp_path):
+        """실패한 실행 결과는 listener를 시작하지 않는다."""
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+
+        listener = MagicMock()
+        executor = _make_executor(
+            tmp_path,
+            persistent_listener_manager=listener,
+        )
+        executor.session_manager.create(
+            thread_ts="1234.5678",
+            channel_id="C123",
+            user_id="U123",
+            role="admin",
+        )
+        pctx = _make_pctx(thread_ts="1234.5678", channel="C123")
+        result = ClaudeResult(success=False, output="", error="boom", session_id="sess-1")
+
+        executor._process_result(pctx, result, "1234.5678")
+
+        listener.start_or_refresh.assert_not_called()
+
     def test_remote_viewer_role_has_disallowed_tools(self, executor, session):
         """viewer role에서 disallowed_tools가 설정됨"""
         pctx = _make_pctx()

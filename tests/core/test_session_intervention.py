@@ -186,7 +186,7 @@ class TestInterventionRemoteSessionBased:
 
         assert "thread_123" in pending
         assert len(pending["thread_123"]) == 1
-        assert pending["thread_123"][0] == ("새 질문", "intervention")
+        assert pending["thread_123"][0] == ("새 질문", "intervention", None)
 
     def test_fire_interrupt_remote_fallback_without_buffer(self):
         """버퍼 없이 session_id도 없으면 경고만 로깅"""
@@ -248,10 +248,10 @@ class TestSessionBufferFlush:
 
         # mock adapter 설정
         mock_adapter = MagicMock()
-        mock_adapter.intervene_by_session = AsyncMock(return_value=True)
-        executor._service_adapter = mock_adapter
+        mock_adapter.intervene = AsyncMock(return_value=True)
 
-        with patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop") as mock_run:
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter), \
+             patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop") as mock_run:
             # 원래 run_in_new_loop을 무시 (실행하지 않음)
             mock_run.return_value = True
             executor._register_session_id("thread_123", "sess-abc")
@@ -283,9 +283,9 @@ class TestSessionBufferFlush:
 
         # adapter는 호출되지 않아야 함
         mock_adapter = MagicMock()
-        executor._service_adapter = mock_adapter
 
-        executor._register_session_id("thread_123", "sess-abc")
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._register_session_id("thread_123", "sess-abc")
 
         # adapter의 어떤 메서드도 호출되지 않음
-        mock_adapter.intervene_by_session.assert_not_called()
+        mock_adapter.intervene.assert_not_called()

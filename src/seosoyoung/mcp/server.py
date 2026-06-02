@@ -1,7 +1,6 @@
 """seosoyoung MCP 서버 정의"""
 
 import logging
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -21,9 +20,19 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP("seosoyoung-attach")
 
+
+async def _get_tools_compat() -> dict:
+    """FastMCP 3.x list_tools()를 기존 테스트/호출자의 get_tools() 형태로 노출."""
+    tools = await mcp.list_tools()
+    return {tool.name: tool for tool in tools}
+
+
+if not hasattr(mcp, "get_tools"):
+    mcp.get_tools = _get_tools_compat
+
 reflect = Reflector(
     name="mcp-seosoyoung",
-    description=f"{os.environ.get('BOT_NAME', '봇')} 봇 전용 MCP 서버",
+    description="서소영 봇 전용 MCP 서버",
     version_from="git",
     source_root=str(Path(__file__).resolve().parent),
     port=3104,

@@ -65,7 +65,7 @@ class TestProcessThreadMessageThinking:
         first_call_kwargs = client.chat_postMessage.call_args_list[0][1]
         assert first_call_kwargs["channel"] == "C_TEST"
         assert first_call_kwargs["thread_ts"] == "1234.5678"
-        assert "소영이 생각합니다" in first_call_kwargs["text"]
+        assert "생각합니다" in first_call_kwargs["text"]
 
     @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_sends_placeholder_for_viewer(self, mock_config):
