@@ -55,6 +55,7 @@ def process_thread_message(
     get_user_role, run_claude_in_session, log_prefix="메시지",
     session_manager=None, update_message_fn=None,
     plugin_manager=None,
+    persistent_listener_manager=None,
 ):
     """세션이 있는 스레드에서 메시지를 처리하는 공통 로직.
 
@@ -230,6 +231,9 @@ def process_thread_message(
         email=user_info.get("email") or None,
     )
 
+    if persistent_listener_manager is not None:
+        persistent_listener_manager.record_slack_input(session.session_id)
+
     # Claude 실행 (placeholder → 콜백 빌드 → executor → cleanup)
     run_with_event_callbacks(
         pctx,
@@ -320,6 +324,7 @@ def _handle_dm_message(event, say, client, dependencies):
             session_manager=session_manager,
             update_message_fn=dependencies.get("update_message_fn"),
             plugin_manager=pm,
+            persistent_listener_manager=dependencies.get("persistent_listener_manager"),
         )
         return
 
@@ -435,6 +440,7 @@ def register_message_handlers(app, dependencies: dict):
             session_manager=session_manager,
             update_message_fn=dependencies.get("update_message_fn"),
             plugin_manager=pm,
+            persistent_listener_manager=dependencies.get("persistent_listener_manager"),
         )
 
     @app.event("reaction_added")

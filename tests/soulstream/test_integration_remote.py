@@ -95,9 +95,9 @@ class TestIntegrationBasicFlow:
         )
 
         mock_adapter = MagicMock()
-        executor._service_adapter = mock_adapter
 
-        with patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop", return_value=mock_result):
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter), \
+             patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop", return_value=mock_result):
             executor._execute_once(
                 "1234.5678", "안녕", "1234.0001",
                 on_compact=_noop_compact,
@@ -123,9 +123,9 @@ class TestIntegrationBasicFlow:
 
         on_result = MagicMock()
         mock_adapter = MagicMock()
-        executor._service_adapter = mock_adapter
 
-        with patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop", return_value=mock_result):
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter), \
+             patch("seosoyoung.slackbot.soulstream.executor.run_in_new_loop", return_value=mock_result):
             executor._execute_once(
                 "1234.5678", "hello", "1234.0001",
                 on_compact=_noop_compact,
@@ -178,16 +178,16 @@ class TestIntegrationIntervention:
 
         mock_adapter = MagicMock()
         mock_adapter.execute = mock_execute
-        executor._service_adapter = mock_adapter
 
-        executor._execute_remote(
-            "1234.5678", "hello",
-            on_compact=_noop_compact,
-            presentation=pctx,
-            session_id=None,
-            user_message=None,
-            on_result=None,
-        )
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id=None,
+                user_message=None,
+                on_result=None,
+            )
 
         # 실행 완료 후에는 session_id 매핑이 해제됨 (정상 동작)
         assert executor.get_session_id("1234.5678") is None
@@ -195,12 +195,12 @@ class TestIntegrationIntervention:
     def test_intervention_uses_session_based_api(self, executor, session):
         """session_id 확보 후 인터벤션은 session 기반 API를 사용"""
         mock_adapter = MagicMock()
-        executor._service_adapter = mock_adapter
         executor._register_session_id("1234.5678", "sess-abc")
 
         pctx = _make_pctx()
 
-        with patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter), \
+             patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
             mock_run.return_value = True
             executor._handle_intervention(
                 "1234.5678", "추가 지시", "1234.0002",
@@ -217,20 +217,20 @@ class TestIntegrationIntervention:
     def test_intervention_buffered_before_session_id(self, executor, session):
         """session_id 미확보 상태에서 인터벤션은 버퍼에 보관"""
         mock_adapter = MagicMock()
-        executor._service_adapter = mock_adapter
         # session_id는 아직 등록 안 됨
 
         pctx = _make_pctx()
 
-        executor._handle_intervention(
-            "1234.5678", "빨리 해줘", "1234.0002",
-            on_compact=_noop_compact,
-            presentation=pctx,
-            role="admin",
-            user_message=None,
-            on_result=None,
-            session_id=None,
-        )
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._handle_intervention(
+                "1234.5678", "빨리 해줘", "1234.0002",
+                on_compact=_noop_compact,
+                presentation=pctx,
+                role="admin",
+                user_message=None,
+                on_result=None,
+                session_id=None,
+            )
 
         # 버퍼에 보관되었는지 확인
         assert "1234.5678" in executor._pending_session_interventions
@@ -239,7 +239,6 @@ class TestIntegrationIntervention:
     def test_buffered_interventions_flushed_on_session_register(self, executor, session):
         """session_id 등록 시 버퍼된 인터벤션이 flush"""
         mock_adapter = MagicMock()
-        executor._service_adapter = mock_adapter
 
         # 버퍼에 인터벤션 추가
         executor._pending_session_interventions["1234.5678"] = [
@@ -247,7 +246,8 @@ class TestIntegrationIntervention:
             ("추가 지시2", "intervention"),
         ]
 
-        with patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter), \
+             patch("seosoyoung.utils.async_bridge.run_in_new_loop") as mock_run:
             mock_run.return_value = True
             executor._register_session_id("1234.5678", "sess-new")
 
@@ -438,17 +438,17 @@ class TestIntegrationDebugEvents:
 
         mock_adapter = MagicMock()
         mock_adapter.execute = mock_execute
-        executor._service_adapter = mock_adapter
 
         # 예외 없이 정상 완료되어야 함
-        executor._execute_remote(
-            "1234.5678", "hello",
-            on_compact=_noop_compact,
-            presentation=pctx,
-            session_id=None,
-            user_message=None,
-            on_result=None,
-        )
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_compact=_noop_compact,
+                presentation=pctx,
+                session_id=None,
+                user_message=None,
+                on_result=None,
+            )
 
 
 # === 5. 컴팩션 테스트 ===

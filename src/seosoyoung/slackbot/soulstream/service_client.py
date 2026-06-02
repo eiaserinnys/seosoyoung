@@ -612,6 +612,70 @@ class SoulServiceClient:
                 on_input_request_expired=on_input_request_expired,
             )
 
+    async def listen_session_events(
+        self,
+        agent_session_id: str,
+        *,
+        last_event_id: Optional[int] = None,
+        read_timeout: Optional[Callable[[], float | None] | float] = None,
+        on_event_id: Optional[Callable[[int], Awaitable[None]]] = None,
+        on_history_sync: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_user_message: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_intervention_sent: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_complete: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
+        on_credential_alert: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_thinking: Optional[Callable] = None,
+        on_text_start: Optional[Callable] = None,
+        on_text_delta: Optional[Callable] = None,
+        on_text_end: Optional[Callable] = None,
+        on_tool_start: Optional[Callable] = None,
+        on_tool_result: Optional[Callable] = None,
+        on_input_request: Optional[Callable] = None,
+        on_input_request_responded: Optional[Callable] = None,
+        on_input_request_expired: Optional[Callable] = None,
+    ) -> ExecuteResult:
+        """세션 이벤트 스트림을 구독한다.
+
+        오케스트레이터의 GET /api/sessions/{id}/events 경로를 위해 분리된 API다.
+        execute()의 초기 실행 결과 반환을 막지 않는 background listener가 사용한다.
+        """
+        session = await self._get_session()
+        url = f"{self.base_url}{self._event_stream_path.format(session_id=agent_session_id)}"
+        params = {"after_id": last_event_id} if last_event_id is not None else None
+
+        async with session.get(url, params=params) as response:
+            if response.status == 404:
+                raise SessionNotFoundError(
+                    f"세션을 찾을 수 없습니다: {agent_session_id}"
+                )
+            elif response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"세션 이벤트 구독 실패: {error}")
+
+            return await self._handle_sse_events(
+                response=response,
+                read_timeout=read_timeout,
+                on_event_id=on_event_id,
+                on_history_sync=on_history_sync,
+                on_user_message=on_user_message,
+                on_intervention_sent=on_intervention_sent,
+                on_complete=on_complete,
+                on_compact=on_compact,
+                on_debug=on_debug,
+                on_credential_alert=on_credential_alert,
+                on_thinking=on_thinking,
+                on_text_start=on_text_start,
+                on_text_delta=on_text_delta,
+                on_text_end=on_text_end,
+                on_tool_start=on_tool_start,
+                on_tool_result=on_tool_result,
+                on_input_request=on_input_request,
+                on_input_request_responded=on_input_request_responded,
+                on_input_request_expired=on_input_request_expired,
+            )
+
     async def health_check(self) -> dict:
         """헬스 체크"""
         session = await self._get_session()
@@ -738,6 +802,12 @@ class SoulServiceClient:
     async def _handle_sse_events(
         self,
         response: aiohttp.ClientResponse,
+        read_timeout: Optional[Callable[[], float | None] | float] = None,
+        on_event_id: Optional[Callable[[int], Awaitable[None]]] = None,
+        on_history_sync: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_user_message: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_intervention_sent: Optional[Callable[[dict], Awaitable[None]]] = None,
+        on_complete: Optional[Callable[[dict], Awaitable[None]]] = None,
         on_compact: Optional[Callable[[str, str], Awaitable[None]]] = None,
         on_debug: Optional[Callable[[str], Awaitable[None]]] = None,
         on_session: Optional[Callable[[str], Awaitable[None]]] = None,
@@ -766,11 +836,25 @@ class SoulServiceClient:
         result_claude_session_id = None
         error_message = None
 
+        stream = (
+            self._parse_sse_stream(response)
+            if read_timeout is None
+            else self._parse_sse_stream(response, read_timeout=read_timeout)
+        )
+
         try:
-            async for event in self._parse_sse_stream(response):
+            async for event in stream:
+                eid = self._event_id_as_int(event.id)
+                if on_event_id and eid is not None:
+                    await on_event_id(eid)
+
                 if event.event == "init":
                     # 첫 이벤트: agent_session_id 확보
-                    result_agent_session_id = event.data.get("agent_session_id", "")
+                    result_agent_session_id = (
+                        event.data.get("agent_session_id")
+                        or event.data.get("agentSessionId")
+                        or ""
+                    )
                     if on_session and result_agent_session_id:
                         await on_session(result_agent_session_id)
 
@@ -797,6 +881,8 @@ class SoulServiceClient:
                 elif event.event == "complete":
                     result_text = event.data.get("result", "") or latest_assistant_text
                     result_claude_session_id = event.data.get("claude_session_id")
+                    if on_complete:
+                        await on_complete(event.data)
 
                 elif event.event == "error":
                     error_message = event.data.get("message", "알 수 없는 오류")
@@ -810,9 +896,20 @@ class SoulServiceClient:
                     if on_credential_alert:
                         await on_credential_alert(event.data)
 
+                elif event.event == "history_sync":
+                    if on_history_sync:
+                        await on_history_sync(event.data)
+
+                elif event.event == "user_message":
+                    if on_user_message:
+                        await on_user_message(event.data)
+
+                elif event.event == "intervention_sent":
+                    if on_intervention_sent:
+                        await on_intervention_sent(event.data)
+
                 elif event.event == "thinking":
                     if on_thinking:
-                        eid = int(event.id) if event.id is not None else None
                         await on_thinking(
                             event.data.get("thinking", ""),
                             eid,
@@ -820,12 +917,10 @@ class SoulServiceClient:
 
                 elif event.event == "text_start":
                     if on_text_start:
-                        eid = int(event.id) if event.id is not None else None
                         await on_text_start(eid)
 
                 elif event.event == "text_delta":
                     if on_text_delta:
-                        eid = int(event.id) if event.id is not None else None
                         await on_text_delta(
                             event.data.get("text", ""),
                             eid,
@@ -833,12 +928,10 @@ class SoulServiceClient:
 
                 elif event.event == "text_end":
                     if on_text_end:
-                        eid = int(event.id) if event.id is not None else None
                         await on_text_end(eid)
 
                 elif event.event == "tool_start":
                     if on_tool_start:
-                        eid = int(event.id) if event.id is not None else None
                         await on_tool_start(
                             event.data.get("tool_name", ""),
                             event.data.get("tool_input", {}),
@@ -848,7 +941,6 @@ class SoulServiceClient:
 
                 elif event.event == "tool_result":
                     if on_tool_result:
-                        eid = int(event.id) if event.id is not None else None
                         await on_tool_result(
                             event.data.get("result", ""),
                             event.data.get("tool_use_id", ""),
@@ -906,6 +998,7 @@ class SoulServiceClient:
     async def _parse_sse_stream(
         self,
         response: aiohttp.ClientResponse,
+        read_timeout: Optional[Callable[[], float | None] | float] = None,
     ) -> AsyncIterator[SSEEvent]:
         """SSE 스트림 파싱
 
@@ -919,7 +1012,7 @@ class SoulServiceClient:
 
         while True:
             try:
-                line_bytes = await response.content.readline()
+                line_bytes = await self._read_sse_line(response, read_timeout)
 
                 if not line_bytes:
                     logger.debug(f"[SSE] 스트림 종료 (마지막 이벤트: {last_event_name})")
@@ -977,6 +1070,30 @@ class SoulServiceClient:
                 raise ConnectionLostError(
                     f"Soulstream 연결이 끊어졌습니다: {e}"
                 )
+
+    async def _read_sse_line(
+        self,
+        response: aiohttp.ClientResponse,
+        read_timeout: Optional[Callable[[], float | None] | float],
+    ) -> bytes:
+        if read_timeout is None:
+            return await response.content.readline()
+
+        timeout = read_timeout() if callable(read_timeout) else read_timeout
+        if timeout is None:
+            return await response.content.readline()
+        if timeout <= 0:
+            raise asyncio.TimeoutError
+        return await asyncio.wait_for(response.content.readline(), timeout=timeout)
+
+    @staticmethod
+    def _event_id_as_int(event_id: Optional[str]) -> Optional[int]:
+        if event_id is None:
+            return None
+        try:
+            return int(event_id)
+        except (TypeError, ValueError):
+            return None
 
     async def _parse_error(self, response: aiohttp.ClientResponse) -> str:
         """에러 응답 파싱"""

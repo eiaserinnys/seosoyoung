@@ -81,6 +81,7 @@ class ClaudeExecutor:
         list_runner_ref: Optional[Callable] = None,
         parse_markers_fn: Optional[Callable] = None,
         agent_id: str = "",
+        persistent_listener_manager: Any = None,
     ):
         self.session_manager = session_manager
         self.session_runtime = session_runtime
@@ -95,6 +96,7 @@ class ClaudeExecutor:
         self.list_runner_ref = list_runner_ref
         self._parse_markers_fn = parse_markers_fn
         self._agent_id = agent_id
+        self._persistent_listener_manager = persistent_listener_manager
 
         # 하위 호환 프로퍼티 (기존 코드에서 직접 접근하는 경우 대비)
         self.get_session_lock = session_runtime.get_session_lock
@@ -637,3 +639,25 @@ class ClaudeExecutor:
             self._result_processor.handle_success(presentation, result)
         else:
             self._result_processor.handle_error(presentation, result.error)
+
+        self._maybe_start_persistent_listener(presentation, result, thread_ts)
+
+    def _maybe_start_persistent_listener(self, presentation: Any, result, thread_ts: str) -> None:
+        if self._persistent_listener_manager is None:
+            return
+        if presentation is None:
+            return
+        if not getattr(result, "success", False):
+            return
+        session_id = getattr(result, "session_id", None)
+        if not session_id:
+            return
+        try:
+            self._persistent_listener_manager.start_or_refresh(
+                session_id,
+                channel=presentation.channel,
+                thread_ts=thread_ts,
+                slack_client=presentation.client,
+            )
+        except Exception as e:
+            logger.warning(f"[SSE:listener] 시작 실패 (무시): {e}")

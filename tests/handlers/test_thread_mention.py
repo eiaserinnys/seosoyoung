@@ -74,6 +74,27 @@ class TestProcessThreadMessage:
         kwargs = run_claude.call_args.kwargs
         assert kwargs["role"] == "admin"
 
+    def test_records_slack_input_activity(self):
+        """Slack-origin 후속 입력은 persistent listener inactivity timer를 리셋한다."""
+        from seosoyoung.slackbot.handlers.message import process_thread_message
+
+        event = {"user": "U123", "text": "질문"}
+        session = MagicMock()
+        session.session_id = "sess-1"
+        say = MagicMock()
+        client = MagicMock()
+        get_user_role = MagicMock(return_value={"username": "admin", "role": "admin"})
+        run_claude = MagicMock()
+        listener = MagicMock()
+
+        process_thread_message(
+            event, event["text"], "thread_1", "ts_1", "C123",
+            session, say, client, get_user_role, run_claude,
+            persistent_listener_manager=listener,
+        )
+
+        listener.record_slack_input.assert_called_once_with("sess-1")
+
     def test_handles_file_attachment(self):
         """파일 첨부 처리"""
         from seosoyoung.slackbot.handlers.message import process_thread_message

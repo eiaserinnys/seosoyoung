@@ -93,10 +93,14 @@ class TestCompactSessionSync:
             success=True, output="compacted", session_id="sess_123"
         )
 
-        with patch(
-            "seosoyoung.rescue.engine_adapter.run_in_new_loop",
-            return_value=mock_result,
-        ):
+        mock_runner = MagicMock()
+        mock_runner.compact_session.return_value = "compact-coroutine-placeholder"
+
+        with patch("seosoyoung.rescue.engine_adapter.create_runner", return_value=mock_runner), \
+             patch(
+                 "seosoyoung.rescue.engine_adapter.run_in_new_loop",
+                 return_value=mock_result,
+             ):
             result = compact_session_sync("sess_123")
 
         assert result.success is True

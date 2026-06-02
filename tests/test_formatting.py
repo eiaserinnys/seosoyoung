@@ -88,7 +88,7 @@ class TestFormatInitialPlaceholder:
 
     def test_contains_placeholder_text(self):
         result = format_initial_placeholder()
-        assert "*소영이 생각합니다...*" in result
+        assert "*생각합니다...*" in result
 
     def test_custom_emoji_via_env(self):
         with patch.dict(os.environ, {"SOULSTREAM_EMOJI_THINKING": ":ssy-thinking:"}):
@@ -591,5 +591,4 @@ class TestFormatInputRequestAnswered:
         result = format_input_request_answered(questions, answers)
         assert "*Q1*" in result
         assert "> " not in result.split("\n")[-1] or result.count("\n") == 0
-
 
