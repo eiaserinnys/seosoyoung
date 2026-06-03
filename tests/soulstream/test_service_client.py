@@ -437,6 +437,27 @@ class TestSoulServiceClientIntervene:
         assert body["attachment_paths"] == ["/path/to/file.png"]
 
     @pytest.mark.asyncio
+    async def test_intervene_with_context_items(self, client):
+        """context_items 포함 전송"""
+        mock_response = AsyncMock()
+        mock_response.status = 202
+        mock_response.json = AsyncMock(return_value={"queued": True})
+        session = _mock_session(mock_response)
+        client._session = session
+        context_items = [
+            {"key": "attachments", "label": "첨부 파일", "content": "파일: map.png"},
+        ]
+
+        await client.intervene(
+            "sess-123", "look at this", "user1",
+            context_items=context_items,
+        )
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert body["context_items"] == context_items
+
+    @pytest.mark.asyncio
     async def test_intervene_not_found(self, client):
         """404 응답 시 SessionNotFoundError"""
         mock_response = MagicMock()
@@ -961,6 +982,33 @@ class TestHandleSSEEvents:
         assert history_events == [{"last_event_id": 42}]
         assert user_events == [{"text": "from web", "caller_info": {"source": "browser"}}]
         assert intervention_events == [{"text": "from app", "callerInfo": {"source": "soul-app"}}]
+
+    @pytest.mark.asyncio
+    async def test_thinking_event_accepts_codex_text_payload(self, client):
+        """Codex app-server thinking payload의 text 키도 thinking 콜백으로 전달한다."""
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agentSessionId":"sess-orch-123"}\n'
+            b"\n"
+            b"event:thinking\n"
+            b'id:12\n'
+            b'data:{"text":"checking files"}\n'
+            b"\n"
+        )
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+        thinking_events = []
+
+        async def on_thinking(text, event_id):
+            thinking_events.append((text, event_id))
+
+        result = await client._handle_sse_events(
+            mock_response,
+            on_thinking=on_thinking,
+        )
+
+        assert result.success is True
+        assert thinking_events == [("checking files", 12)]
 
     @pytest.mark.asyncio
     async def test_listen_session_events_uses_after_id(self, client):

@@ -122,6 +122,14 @@ class TestProcessThreadMessage:
 
         assert result is True
         run_claude.assert_called_once()
+        context_items = run_claude.call_args.kwargs["context"]
+        attachment_items = [
+            item for item in context_items
+            if item.get("key") == "attachments"
+        ]
+        assert len(attachment_items) == 1
+        assert "test.txt" in attachment_items[0]["content"]
+        assert "hello" in attachment_items[0]["content"]
 
     def test_user_info_failure(self):
         """사용자 정보 조회 실패 시 에러 메시지"""

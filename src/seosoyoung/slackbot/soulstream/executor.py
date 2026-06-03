@@ -209,6 +209,7 @@ class ClaudeExecutor:
                 on_input_request_responded=on_input_request_responded,
                 on_input_request_expired=on_input_request_expired,
                 caller_info=caller_info,
+                context=context,
             )
             return
 
@@ -265,17 +266,12 @@ class ClaudeExecutor:
         on_input_request_responded=None,
         on_input_request_expired=None,
         caller_info: Optional[dict] = None,
+        context: Optional[list] = None,
     ):
         """인터벤션 처리: 실행 중인 스레드에 새 메시지가 도착한 경우
 
         Soulstream에 interrupt를 전송하여 현재 실행을 중단시킵니다.
         Soulstream 측에서 interrupt를 받으면 새 프롬프트로 이어서 실행합니다.
-
-        알려진 제한: context(structured context items)는 이 경로에서 전달되지 않는다.
-        인터벤션은 fire_interrupt_remote → pending_session_interventions 큐 경로를 통해
-        처리되는데, 이 큐가 context를 함께 저장하는 메커니즘이 없다.
-        따라서 인터벤션이 flush되어 실행될 때 context 없이 프롬프트만 전달된다.
-        이 제한은 인터벤션 기능 전체의 리팩터링 시 별도로 해결한다.
 
         F-9 fix(2026-05-08): caller_info를 fire_interrupt_remote에 forward하여
         2차+ 메시지의 발신자 신원이 InterventionSentEvent.caller_info까지 운반되도록 한다.
@@ -289,6 +285,7 @@ class ClaudeExecutor:
             pending_session_interventions=self._pending_session_interventions,
             pending_session_lock=self._pending_session_lock,
             caller_info=caller_info,
+            context_items=context,
         )
 
     def _run_with_lock(
@@ -471,14 +468,18 @@ class ClaudeExecutor:
         if pending:
             adapter = self._get_service_adapter()
             # F-9 fix(2026-05-08): tuple 형식이 (prompt, user)에서 (prompt, user, caller_info)로
-            # 확장됐다 (intervention.py:fire_interrupt_remote가 caller_info도 저장).
+            # 확장됐다. Persistent SSE hotfix: context_items까지 함께 저장한다.
             # 구버전 2-tuple(메모리에 남아있던 데이터 등)도 graceful 처리.
             for entry in pending:
-                if len(entry) == 3:
+                if len(entry) == 4:
+                    pending_prompt, pending_user, pending_caller_info, pending_context_items = entry
+                elif len(entry) == 3:
                     pending_prompt, pending_user, pending_caller_info = entry
+                    pending_context_items = None
                 else:
                     pending_prompt, pending_user = entry
                     pending_caller_info = None
+                    pending_context_items = None
                 try:
                     from seosoyoung.utils.async_bridge import run_in_new_loop as _run
                     _run(adapter.intervene(
@@ -486,6 +487,7 @@ class ClaudeExecutor:
                         text=pending_prompt,
                         user=pending_user,
                         caller_info=pending_caller_info,
+                        context_items=pending_context_items,
                     ))
                     logger.info(f"[Remote] 버퍼된 인터벤션 flush: thread={thread_ts}, session={session_id}")
                 except Exception as e:
