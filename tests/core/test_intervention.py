@@ -107,9 +107,13 @@ class TestInterventionHandling:
                     user_message=None,
                     on_result=None,
                     session_id="session_abc",
+                    context=[{"key": "attachments", "content": "파일: map.png"}],
                 )
 
         mock_fire.assert_called_once()
+        assert mock_fire.call_args.kwargs["context_items"] == [
+            {"key": "attachments", "content": "파일: map.png"},
+        ]
 
 
 class TestInterventionViaRun:
@@ -135,12 +139,16 @@ class TestInterventionViaRun:
                     msg_ts="msg_456",
                     on_compact=_noop_compact,
                     presentation=pctx,
+                    context=[{"key": "attachments", "content": "파일: map.png"}],
                 )
 
         # say는 호출되지 않아야 함
         say.assert_not_called()
         # fire_interrupt_remote가 호출됨
         mock_fire.assert_called_once()
+        assert mock_fire.call_args.kwargs["context_items"] == [
+            {"key": "attachments", "content": "파일: map.png"},
+        ]
 
 
 class TestInterruptedExecution:

@@ -164,9 +164,17 @@ class TestInterventionRemoteSessionBased:
                 prompt="새 질문",
                 service_adapter=adapter,
                 session_id="sess-abc",
+                context_items=[{"key": "attachments", "content": "파일: map.png"}],
             )
 
         mock_run.assert_called_once()
+        adapter.intervene.assert_called_once_with(
+            agent_session_id="sess-abc",
+            text="새 질문",
+            user="intervention",
+            caller_info=None,
+            context_items=[{"key": "attachments", "content": "파일: map.png"}],
+        )
 
     def test_fire_interrupt_remote_without_session_id_buffers(self):
         """session_id 미확보 시 버퍼에 보관"""
@@ -182,11 +190,15 @@ class TestInterventionRemoteSessionBased:
             session_id=None,
             pending_session_interventions=pending,
             pending_session_lock=lock,
+            context_items=[{"key": "attachments", "content": "파일: map.png"}],
         )
 
         assert "thread_123" in pending
         assert len(pending["thread_123"]) == 1
-        assert pending["thread_123"][0] == ("새 질문", "intervention", None)
+        assert pending["thread_123"][0] == (
+            "새 질문", "intervention", None,
+            [{"key": "attachments", "content": "파일: map.png"}],
+        )
 
     def test_fire_interrupt_remote_fallback_without_buffer(self):
         """버퍼 없이 session_id도 없으면 경고만 로깅"""

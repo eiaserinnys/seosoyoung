@@ -530,6 +530,7 @@ class SoulServiceClient:
         *,
         attachment_paths: Optional[List[str]] = None,
         caller_info: Optional[dict] = None,
+        context_items: Optional[List[dict]] = None,
     ) -> dict:
         """세션에 개입 메시지 전송
 
@@ -549,6 +550,8 @@ class SoulServiceClient:
             data["attachment_paths"] = attachment_paths
         if caller_info:
             data["caller_info"] = caller_info
+        if context_items:
+            data["context_items"] = context_items
 
         async with session.post(url, json=data) as response:
             if response.status == 202:
@@ -911,7 +914,7 @@ class SoulServiceClient:
                 elif event.event == "thinking":
                     if on_thinking:
                         await on_thinking(
-                            event.data.get("thinking", ""),
+                            event.data.get("thinking") or event.data.get("text", ""),
                             eid,
                         )
 

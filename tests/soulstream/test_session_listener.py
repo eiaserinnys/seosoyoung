@@ -130,6 +130,47 @@ async def test_external_user_event_survives_marker_post_failure():
 
 
 @pytest.mark.asyncio
+async def test_external_turn_posts_thinking_and_updates_tool_message_in_place():
+    manager = PersistentSessionListenerManager(client_factory=MagicMock())
+    slack_client = MagicMock()
+    slack_client.chat_postMessage.side_effect = [
+        {"ts": "marker-ts"},
+        {"ts": "thinking-ts"},
+        {"ts": "tool-ts"},
+    ]
+    state = manager._create_state(
+        "sess-1", channel="C123", thread_ts="1000.0001", slack_client=slack_client,
+    )
+
+    await manager._handle_external_input(
+        state,
+        {
+            "text": "웹 입력",
+            "caller_info": {"source": "browser", "display_name": "Jubok Kim"},
+        },
+    )
+    await manager._dispatch_current(state, "on_thinking", "검토 중", 101)
+    await manager._dispatch_current(
+        state, "on_tool_start", "Read", {"file_path": "/tmp/a.txt"}, "toolu-1", 102,
+    )
+    await manager._dispatch_current(
+        state, "on_tool_result", "file contents", "toolu-1", False, 103,
+    )
+
+    assert slack_client.chat_postMessage.call_count == 3
+    thinking_call = slack_client.chat_postMessage.call_args_list[1].kwargs
+    tool_call = slack_client.chat_postMessage.call_args_list[2].kwargs
+    assert thinking_call["thread_ts"] == "1000.0001"
+    assert "검토 중" in thinking_call["text"]
+    assert tool_call["thread_ts"] == "1000.0001"
+    assert "Read" in tool_call["text"]
+    slack_client.chat_update.assert_called_once()
+    update_call = slack_client.chat_update.call_args.kwargs
+    assert update_call["ts"] == "tool-ts"
+    assert "file contents" in update_call["text"]
+
+
+@pytest.mark.asyncio
 async def test_slack_origin_event_does_not_echo_but_resets_activity():
     now = [100.0]
     manager = PersistentSessionListenerManager(

@@ -178,6 +178,7 @@ class ClaudeServiceAdapter:
         *,
         attachment_paths: Optional[List[str]] = None,
         caller_info: Optional[dict] = None,
+        context_items: Optional[list] = None,
     ) -> bool:
         """세션에 인터벤션 전송 (agent_session_id 기반)
 
@@ -194,6 +195,7 @@ class ClaudeServiceAdapter:
                 user=user,
                 attachment_paths=attachment_paths,
                 caller_info=caller_info,
+                context_items=context_items,
             )
             logger.info(f"[Remote] 인터벤션 전송 완료: session={agent_session_id}")
             return True

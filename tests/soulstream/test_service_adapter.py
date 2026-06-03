@@ -282,6 +282,7 @@ class TestIntervene:
             user="user1",
             attachment_paths=None,
             caller_info=None,
+            context_items=None,
         )
 
     @pytest.mark.asyncio
@@ -307,6 +308,32 @@ class TestIntervene:
             user="U123",
             attachment_paths=None,
             caller_info=ci,
+            context_items=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_intervene_with_context_items(self, adapter, mock_client):
+        """파일 첨부 context_items를 service_client.intervene까지 forward."""
+        mock_client.intervene.return_value = {"queued": True}
+        context_items = [
+            {"key": "attachments", "label": "첨부 파일", "content": "파일: map.png"},
+        ]
+
+        result = await adapter.intervene(
+            agent_session_id="sess-abc",
+            text="파일 확인",
+            user="U123",
+            context_items=context_items,
+        )
+
+        assert result is True
+        mock_client.intervene.assert_awaited_once_with(
+            agent_session_id="sess-abc",
+            text="파일 확인",
+            user="U123",
+            attachment_paths=None,
+            caller_info=None,
+            context_items=context_items,
         )
 
     @pytest.mark.asyncio
