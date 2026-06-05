@@ -10,8 +10,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from seosoyoung.slackbot.presentation.activity_board import ActivityBoard, BOARD_EMPTY_TEXT
 from seosoyoung.slackbot.presentation.node_map import SlackNodeMap
-from seosoyoung.slackbot.presentation.progress import build_event_callbacks
+from seosoyoung.slackbot.presentation.progress import (
+    build_event_callbacks,
+    post_initial_placeholder,
+)
 from seosoyoung.slackbot.presentation.session_events import (
     is_slack_origin_event,
     post_external_user_message,
@@ -257,6 +261,22 @@ class PersistentSessionListenerManager:
             await callbacks["cleanup"]()
 
     def _build_turn_callbacks(self, state: _ListenerState) -> dict[str, Callable]:
+        placeholder_ts = post_initial_placeholder(
+            state.slack_client,
+            state.channel,
+            state.thread_ts,
+        )
+        board = None
+        try:
+            reply = state.slack_client.chat_postMessage(
+                channel=state.channel,
+                thread_ts=state.thread_ts,
+                text=BOARD_EMPTY_TEXT,
+            )
+            board = ActivityBoard(state.slack_client, state.channel, reply["ts"])
+        except Exception as exc:
+            logger.warning("[SSE:listener] placeholder B 게시 실패: %s", exc)
+
         pctx = PresentationContext(
             channel=state.channel,
             thread_ts=state.thread_ts,
@@ -268,7 +288,13 @@ class PersistentSessionListenerManager:
             is_existing_thread=True,
             is_thread_reply=True,
         )
-        return build_event_callbacks(pctx, SlackNodeMap(), mode="keep")
+        return build_event_callbacks(
+            pctx,
+            SlackNodeMap(),
+            mode="clean",
+            initial_placeholder_ts=placeholder_ts,
+            initial_board=board,
+        )
 
     async def _dispatch_current(
         self,
