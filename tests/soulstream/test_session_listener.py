@@ -1,10 +1,11 @@
 """Slack thread persistent session event listener 테스트."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from seosoyoung.slackbot.presentation.activity_board import BOARD_EMPTY_TEXT
 from seosoyoung.slackbot.presentation.session_listener import (
     DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
     PersistentSessionListenerManager,
@@ -102,7 +103,8 @@ async def test_external_user_event_posts_marker_and_resets_activity():
 
     assert state.last_input_at == 150.0
     assert state.current_callbacks is not None
-    slack_client.chat_postMessage.assert_called_once_with(
+    assert slack_client.chat_postMessage.call_count == 3
+    slack_client.chat_postMessage.assert_any_call(
         channel="C123",
         thread_ts="1000.0001",
         text="[웹] Jubok Kim: 웹 입력",
@@ -130,13 +132,15 @@ async def test_external_user_event_survives_marker_post_failure():
 
 
 @pytest.mark.asyncio
-async def test_external_turn_posts_thinking_and_updates_tool_message_in_place():
+@patch("seosoyoung.slackbot.presentation.progress._event_delete_delay", return_value=3600)
+@patch("seosoyoung.slackbot.presentation.progress._thinking_delete_delay", return_value=3600)
+async def test_external_turn_uses_activity_board_clean_mode(_thinking_delay, _event_delay):
     manager = PersistentSessionListenerManager(client_factory=MagicMock())
     slack_client = MagicMock()
     slack_client.chat_postMessage.side_effect = [
         {"ts": "marker-ts"},
-        {"ts": "thinking-ts"},
-        {"ts": "tool-ts"},
+        {"ts": "placeholder-a-ts"},
+        {"ts": "board-ts"},
     ]
     state = manager._create_state(
         "sess-1", channel="C123", thread_ts="1000.0001", slack_client=slack_client,
@@ -158,16 +162,117 @@ async def test_external_turn_posts_thinking_and_updates_tool_message_in_place():
     )
 
     assert slack_client.chat_postMessage.call_count == 3
-    thinking_call = slack_client.chat_postMessage.call_args_list[1].kwargs
-    tool_call = slack_client.chat_postMessage.call_args_list[2].kwargs
-    assert thinking_call["thread_ts"] == "1000.0001"
-    assert "검토 중" in thinking_call["text"]
-    assert tool_call["thread_ts"] == "1000.0001"
-    assert "Read" in tool_call["text"]
-    slack_client.chat_update.assert_called_once()
-    update_call = slack_client.chat_update.call_args.kwargs
-    assert update_call["ts"] == "tool-ts"
-    assert "file contents" in update_call["text"]
+    board_post = slack_client.chat_postMessage.call_args_list[2].kwargs
+    assert board_post == {
+        "channel": "C123",
+        "thread_ts": "1000.0001",
+        "text": BOARD_EMPTY_TEXT,
+    }
+    assert slack_client.chat_update.call_count == 3
+    assert all(c.kwargs["ts"] == "board-ts" for c in slack_client.chat_update.call_args_list)
+    rendered_updates = "\n".join(c.kwargs["text"] for c in slack_client.chat_update.call_args_list)
+    assert "검토 중" in rendered_updates
+    assert "Read" in rendered_updates
+    assert "file contents" in rendered_updates
+
+    await manager._handle_complete(state, {})
+
+    slack_client.chat_delete.assert_has_calls([
+        call(channel="C123", ts="placeholder-a-ts"),
+        call(channel="C123", ts="board-ts"),
+    ])
+
+
+def test_build_turn_callbacks_passes_clean_mode_placeholders():
+    manager = PersistentSessionListenerManager(client_factory=MagicMock())
+    slack_client = MagicMock()
+    slack_client.chat_postMessage.return_value = {"ts": "board-ts"}
+    state = manager._create_state(
+        "sess-1", channel="C123", thread_ts="1000.0001", slack_client=slack_client,
+    )
+    expected_callbacks = {"cleanup": AsyncMock()}
+    board = MagicMock(name="board")
+
+    with (
+        patch(
+            "seosoyoung.slackbot.presentation.session_listener.post_initial_placeholder",
+            return_value="placeholder-a-ts",
+        ) as mock_post_placeholder,
+        patch(
+            "seosoyoung.slackbot.presentation.session_listener.ActivityBoard",
+            return_value=board,
+        ) as mock_board_cls,
+        patch(
+            "seosoyoung.slackbot.presentation.session_listener.build_event_callbacks",
+            return_value=expected_callbacks,
+        ) as mock_build_callbacks,
+    ):
+        callbacks = manager._build_turn_callbacks(state)
+
+    assert callbacks is expected_callbacks
+    mock_post_placeholder.assert_called_once_with(slack_client, "C123", "1000.0001")
+    slack_client.chat_postMessage.assert_called_once_with(
+        channel="C123",
+        thread_ts="1000.0001",
+        text=BOARD_EMPTY_TEXT,
+    )
+    mock_board_cls.assert_called_once_with(slack_client, "C123", "board-ts")
+    call_args = mock_build_callbacks.call_args
+    assert call_args.args[1].__class__.__name__ == "SlackNodeMap"
+    assert call_args.kwargs["mode"] == "clean"
+    assert call_args.kwargs["initial_placeholder_ts"] == "placeholder-a-ts"
+    assert call_args.kwargs["initial_board"] is board
+
+
+@pytest.mark.asyncio
+@patch("seosoyoung.slackbot.presentation.progress._thinking_delete_delay", return_value=3600)
+async def test_external_turn_cleanup_isolated_per_turn(_thinking_delay):
+    manager = PersistentSessionListenerManager(client_factory=MagicMock())
+    slack_client = MagicMock()
+    slack_client.chat_postMessage.side_effect = [
+        {"ts": "marker-1"},
+        {"ts": "placeholder-a-1"},
+        {"ts": "board-1"},
+        {"ts": "marker-2"},
+        {"ts": "placeholder-a-2"},
+        {"ts": "board-2"},
+    ]
+    state = manager._create_state(
+        "sess-1", channel="C123", thread_ts="1000.0001", slack_client=slack_client,
+    )
+
+    await manager._handle_external_input(
+        state,
+        {
+            "text": "첫 번째 웹 입력",
+            "caller_info": {"source": "browser", "display_name": "Jubok Kim"},
+        },
+    )
+    await manager._dispatch_current(state, "on_thinking", "첫 번째 검토", 101)
+    await manager._handle_complete(state, {})
+
+    slack_client.chat_delete.assert_has_calls([
+        call(channel="C123", ts="placeholder-a-1"),
+        call(channel="C123", ts="board-1"),
+    ])
+    first_turn_delete_count = slack_client.chat_delete.call_count
+
+    await manager._handle_external_input(
+        state,
+        {
+            "text": "두 번째 웹 입력",
+            "caller_info": {"source": "browser", "display_name": "Jubok Kim"},
+        },
+    )
+    assert slack_client.chat_delete.call_count == first_turn_delete_count
+
+    await manager._dispatch_current(state, "on_thinking", "두 번째 검토", 201)
+    await manager._handle_complete(state, {})
+
+    slack_client.chat_delete.assert_has_calls([
+        call(channel="C123", ts="placeholder-a-2"),
+        call(channel="C123", ts="board-2"),
+    ])
 
 
 @pytest.mark.asyncio
