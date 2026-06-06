@@ -309,6 +309,95 @@ class TestMentionHandlerThreadSession:
             # 세션 생성 경로로 진행
             handler_deps["session_manager"].create.assert_called_once()
 
+    def test_channel_mention_mapped_user_passes_folder_id(self, handler_deps):
+        """새 채널 멘션 + 매핑된 사용자 → 매핑 folder_id로 실행"""
+        folder_id = "9374c7e6-df4c-4adb-b27b-7787216698c4"
+        handler_deps["session_manager"].get.return_value = None
+        mock_session = MagicMock()
+        mock_session.message_count = 0
+        handler_deps["session_manager"].create.return_value = mock_session
+
+        with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process, \
+             patch("seosoyoung.slackbot.handlers.mention._get_channel_messages", return_value=[]), \
+             patch("seosoyoung.slackbot.handlers.mention.Config") as mock_config:
+            mock_config.slack.user_folder_map = {"U0A9ELR53R8": folder_id}
+
+            from seosoyoung.slackbot.handlers.mention import register_mention_handlers
+
+            app = MagicMock()
+            captured_handler = None
+
+            def capture_handler(event_type):
+                def decorator(func):
+                    nonlocal captured_handler
+                    captured_handler = func
+                    return func
+                return decorator
+
+            app.event = capture_handler
+            register_mention_handlers(app, handler_deps)
+
+            event = {
+                "user": "U0A9ELR53R8",
+                "text": "<@BOT> 새 질문",
+                "channel": "C123",
+                "ts": "ts_1",
+            }
+
+            say = MagicMock()
+            client = MagicMock()
+            client.chat_postMessage.return_value = {"ts": "msg_ts"}
+
+            captured_handler(event, say, client)
+
+            mock_process.assert_not_called()
+            handler_deps["run_claude_in_session"].assert_called_once()
+            assert handler_deps["run_claude_in_session"].call_args.kwargs["folder_id"] == folder_id
+
+    def test_channel_mention_unmapped_user_passes_default_folder_id(self, handler_deps):
+        """새 채널 멘션 + 매핑 없는 사용자 → 기본 claude folder_id로 실행"""
+        handler_deps["session_manager"].get.return_value = None
+        mock_session = MagicMock()
+        mock_session.message_count = 0
+        handler_deps["session_manager"].create.return_value = mock_session
+
+        with patch("seosoyoung.slackbot.handlers.mention.process_thread_message") as mock_process, \
+             patch("seosoyoung.slackbot.handlers.mention._get_channel_messages", return_value=[]), \
+             patch("seosoyoung.slackbot.handlers.mention.Config") as mock_config:
+            mock_config.slack.user_folder_map = {"U0A9ELR53R8": "mapped-folder"}
+
+            from seosoyoung.slackbot.handlers.mention import register_mention_handlers
+
+            app = MagicMock()
+            captured_handler = None
+
+            def capture_handler(event_type):
+                def decorator(func):
+                    nonlocal captured_handler
+                    captured_handler = func
+                    return func
+                return decorator
+
+            app.event = capture_handler
+            register_mention_handlers(app, handler_deps)
+
+            event = {
+                "user": "U_OTHER",
+                "text": "<@BOT> 새 질문",
+                "channel": "C123",
+                "ts": "ts_1",
+            }
+
+            say = MagicMock()
+            client = MagicMock()
+            client.chat_postMessage.return_value = {"ts": "msg_ts"}
+
+            captured_handler(event, say, client)
+
+            mock_process.assert_not_called()
+            handler_deps["run_claude_in_session"].assert_called_once()
+            assert handler_deps["run_claude_in_session"].call_args.kwargs["folder_id"] == "claude"
+
 
     def test_thread_mention_with_session_restart_pending(self, handler_deps):
         """스레드 멘션 + 세션 있음 + 재시작 대기 → 안내 메시지"""

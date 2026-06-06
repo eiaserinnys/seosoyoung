@@ -6,7 +6,11 @@
 import re
 import logging
 
-from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.config import (
+    Config,
+    DEFAULT_SOULSTREAM_FOLDER_ID,
+    resolve_folder_id,
+)
 from seosoyoung.slackbot.reflect import reflect
 from seosoyoung.slackbot.slack import download_files_sync, build_file_context
 from seosoyoung.slackbot.slack.message_formatter import format_slack_message
@@ -100,6 +104,14 @@ def _get_channel_messages(client, channel: str, limit: int = 20) -> list[dict]:
     except Exception as e:
         logger.warning(f"채널 히스토리 가져오기 실패: {e}")
         return []
+
+
+def _get_user_folder_map() -> dict[str, str]:
+    """Config.slack.user_folder_map을 dict로 반환"""
+    mapping = getattr(getattr(Config, "slack", None), "user_folder_map", {})
+    if isinstance(mapping, dict):
+        return mapping
+    return {}
 
 
 _ADMIN_COMMANDS = frozenset({
@@ -440,6 +452,11 @@ def create_session_and_run_claude(
         avatar_url=user_info.get("avatar_url") or None,
         email=user_info.get("email") or None,
     )
+    folder_id = resolve_folder_id(
+        user_id,
+        _get_user_folder_map(),
+        DEFAULT_SOULSTREAM_FOLDER_ID,
+    )
 
     # Claude 실행 (placeholder → 콜백 빌드 → executor → cleanup)
     run_with_event_callbacks(
@@ -456,6 +473,7 @@ def create_session_and_run_claude(
             user_message=clean_text,
             on_result=on_result,
             caller_info=caller_info,
+            folder_id=folder_id,
         ),
         on_compact_wrapper=lambda cb: wrap_on_compact_with_memory(
             cb, pm, session_thread_ts,
