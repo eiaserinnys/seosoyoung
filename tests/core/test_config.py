@@ -163,6 +163,63 @@ class TestConfigBoolParsing:
         assert config_module.Config.debug is False
 
 
+class TestSlackUserFolderMap:
+    """Slack user_id별 Soulstream folder_id 설정 테스트"""
+
+    def test_user_folder_map_default_empty(self):
+        """SLACK_USER_FOLDER_MAP 미설정 시 빈 dict"""
+        config_module = reload_config_with_env({})
+
+        assert config_module.Config.slack.user_folder_map == {}
+
+    def test_user_folder_map_blank_is_empty_without_error(self, caplog):
+        """빈 문자열은 조용히 빈 dict"""
+        config_module = reload_config_with_env({"SLACK_USER_FOLDER_MAP": ""})
+
+        assert config_module.Config.slack.user_folder_map == {}
+        assert "SLACK_USER_FOLDER_MAP" not in caplog.text
+
+    def test_user_folder_map_valid_json(self):
+        """JSON object를 Slack user_id → folder_id dict로 파싱"""
+        folder_id = "9374c7e6-df4c-4adb-b27b-7787216698c4"
+        config_module = reload_config_with_env({
+            "SLACK_USER_FOLDER_MAP": f'{{"U0A9ELR53R8":"{folder_id}"}}',
+        })
+
+        assert config_module.Config.slack.user_folder_map == {
+            "U0A9ELR53R8": folder_id,
+        }
+
+    def test_user_folder_map_invalid_json_logs_error(self, caplog):
+        """잘못된 JSON은 빈 dict + ERROR 로그"""
+        caplog.set_level("ERROR")
+
+        config_module = reload_config_with_env({
+            "SLACK_USER_FOLDER_MAP": "{not-json",
+        })
+
+        assert config_module.Config.slack.user_folder_map == {}
+        assert "SLACK_USER_FOLDER_MAP 파싱 실패" in caplog.text
+
+    def test_resolve_folder_id_uses_mapping(self):
+        """매핑된 사용자는 해당 folder_id 반환"""
+        from seosoyoung.slackbot.config import resolve_folder_id
+
+        folder_id = "9374c7e6-df4c-4adb-b27b-7787216698c4"
+
+        assert resolve_folder_id(
+            "U0A9ELR53R8",
+            {"U0A9ELR53R8": folder_id},
+            "claude",
+        ) == folder_id
+
+    def test_resolve_folder_id_falls_back_to_default(self):
+        """매핑 없는 사용자는 기본 folder_id 반환"""
+        from seosoyoung.slackbot.config import resolve_folder_id
+
+        assert resolve_folder_id("U_OTHER", {}, "claude") == "claude"
+
+
 # NOTE: TestConfigListParsing (translate.channels) 제거됨
 # Config.translate는 플러그인 아키텍처로 이동하여 Config에서 제거됨
 # 채널 리스트 파싱은 이제 plugins/translate/plugin.py에서 YAML config로 처리

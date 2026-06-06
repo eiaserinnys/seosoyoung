@@ -176,6 +176,52 @@ class TestDmFirstMessage:
         # Claude 실행이 호출되어야 함
         deps["run_claude_in_session"].assert_called_once()
 
+    @patch("seosoyoung.slackbot.handlers.mention._get_channel_messages", return_value=[])
+    @patch("seosoyoung.slackbot.handlers.mention.Config")
+    @patch("seosoyoung.slackbot.handlers.message.Config")
+    def test_dm_first_message_mapped_user_passes_folder_id(
+        self, mock_msg_config, mock_mention_config, mock_get_msgs
+    ):
+        """DM 첫 메시지 + 매핑된 사용자 → 매핑 folder_id로 실행"""
+        folder_id = "9374c7e6-df4c-4adb-b27b-7787216698c4"
+        mock_msg_config.BOT_USER_ID = "B_BOT"
+        mock_msg_config.TRANSLATE_CHANNELS = []
+        mock_msg_config.CHANNEL_OBSERVER_TRIGGER_WORDS = []
+        mock_mention_config.CHANNEL_OBSERVER_CHANNELS = []
+        mock_mention_config.slack.user_folder_map = {"U0A9ELR53R8": folder_id}
+
+        from seosoyoung.slackbot.handlers.message import register_message_handlers
+
+        mock_session = MagicMock(source_type="thread", last_seen_ts="", message_count=0)
+        deps = _make_deps(
+            get_user_role=MagicMock(return_value={
+                "username": "tester",
+                "role": "admin",
+                "user_id": "U0A9ELR53R8",
+                "allowed_tools": [],
+            })
+        )
+        deps["session_manager"].create.return_value = mock_session
+
+        handlers = _register_and_capture(register_message_handlers, deps)
+
+        event = {
+            "user": "U0A9ELR53R8",
+            "channel": "D_DM",
+            "channel_type": "im",
+            "text": "안녕하세요 질문이 있습니다",
+            "ts": "1234.5678",
+        }
+
+        say = MagicMock()
+        client = MagicMock()
+        client.chat_postMessage.return_value = {"ts": "reply_ts"}
+
+        handlers["message"](event, say, client)
+
+        deps["run_claude_in_session"].assert_called_once()
+        assert deps["run_claude_in_session"].call_args.kwargs["folder_id"] == folder_id
+
     @patch("seosoyoung.slackbot.handlers.message.Config")
     def test_dm_empty_message_ignored(self, mock_config):
         """빈 DM 메시지 → 무시"""

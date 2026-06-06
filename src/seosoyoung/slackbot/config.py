@@ -5,6 +5,8 @@
 - 그 외 설정: @dataclass 하위 그룹 (모듈 로드 시 평가)
 """
 
+import json
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +15,10 @@ from typing import List
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv(usecwd=True))
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_SOULSTREAM_FOLDER_ID = "claude"
 
 
 class ConfigurationError(Exception):
@@ -42,6 +48,48 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
     return value.lower() == "true"
 
 
+def parse_slack_user_folder_map(raw: str | None) -> dict[str, str]:
+    """SLACK_USER_FOLDER_MAP JSON 문자열을 user_id → folder_id dict로 파싱"""
+    if raw is None or not raw.strip():
+        return {}
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        logger.error(f"SLACK_USER_FOLDER_MAP 파싱 실패: {e}")
+        return {}
+
+    if not isinstance(parsed, dict):
+        logger.error("SLACK_USER_FOLDER_MAP 파싱 실패: JSON object가 아닙니다")
+        return {}
+
+    result: dict[str, str] = {}
+    for user_id, folder_id in parsed.items():
+        if (
+            not isinstance(user_id, str)
+            or not isinstance(folder_id, str)
+            or not user_id.strip()
+            or not folder_id.strip()
+        ):
+            logger.error(
+                "SLACK_USER_FOLDER_MAP 파싱 실패: "
+                "Slack user_id와 folder_id는 비어 있지 않은 문자열이어야 합니다"
+            )
+            return {}
+        result[user_id.strip()] = folder_id.strip()
+
+    return result
+
+
+def resolve_folder_id(
+    user_id: str,
+    mapping: dict[str, str],
+    default: str | None,
+) -> str | None:
+    """Slack user_id에 해당하는 Soulstream folder_id를 반환"""
+    return mapping.get(user_id) or default
+
+
 @dataclass
 class SlackConfig:
     """Slack 연결 설정"""
@@ -52,6 +100,11 @@ class SlackConfig:
     operator_user_id: str = os.environ["OPERATOR_USER_ID"]
     # 미설정 시 빈 문자열 → 슬랙 버튼 미표시
     workspace_url: str = os.getenv("SLACK_WORKSPACE_URL", "")
+    user_folder_map: dict[str, str] = field(
+        default_factory=lambda: parse_slack_user_folder_map(
+            os.getenv("SLACK_USER_FOLDER_MAP")
+        )
+    )
 
 
 @dataclass
