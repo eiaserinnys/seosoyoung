@@ -71,10 +71,21 @@ class Message:
     user: str = ""
     thread_ts: str | None = None
     channel: str = ""
+    subtype: str = ""
+    bot_id: str = ""
     # Rich data (Optional, 하위 호환)
     reactions: list[Reaction] = field(default_factory=list)
     files: list[FileInfo] = field(default_factory=list)
     blocks: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class MessagePage:
+    """Slack messages plus pagination metadata."""
+
+    messages: list[Message] = field(default_factory=list)
+    next_cursor: str = ""
+    has_more: bool = False
 
 
 @dataclass
@@ -163,6 +174,17 @@ class SlackBackend(Protocol):
         limit: int = 100,
     ) -> list[Message]:
         """Get recent messages in a channel."""
+        ...
+
+    async def get_channel_history_page(
+        self,
+        channel: str,
+        oldest: str | None = None,
+        latest: str | None = None,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> MessagePage:
+        """Get one paginated channel history page."""
         ...
 
     async def open_dm(self, user_id: str) -> str | None:
@@ -333,6 +355,35 @@ async def get_channel_history(
     """
     backend = _require_backend()
     return await backend.get_channel_history(channel, limit)
+
+
+async def get_channel_history_page(
+    channel: str,
+    oldest: str | None = None,
+    latest: str | None = None,
+    cursor: str | None = None,
+    limit: int = 100,
+) -> MessagePage:
+    """Get one paginated Slack channel history page.
+
+    Args:
+        channel: Channel ID
+        oldest: Only messages after this Slack timestamp
+        latest: Only messages before this Slack timestamp
+        cursor: Slack pagination cursor
+        limit: Maximum messages in the page
+
+    Returns:
+        MessagePage with messages and next cursor.
+    """
+    backend = _require_backend()
+    return await backend.get_channel_history_page(
+        channel,
+        oldest=oldest,
+        latest=latest,
+        cursor=cursor,
+        limit=limit,
+    )
 
 
 async def open_dm(user_id: str) -> str | None:

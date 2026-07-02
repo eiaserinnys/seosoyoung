@@ -42,6 +42,7 @@ from seosoyoung.plugin_sdk import caller_info
 
 # Also export commonly used types from submodules
 from seosoyoung.plugin_sdk.slack import (
+    MessagePage,
     Message,
     ReactionResult,
     SendMessageResult,
@@ -79,6 +80,7 @@ __all__ = [
     "caller_info",
     # Slack types
     "Message",
+    "MessagePage",
     "ReactionResult",
     "SendMessageResult",
     "SlackBackend",

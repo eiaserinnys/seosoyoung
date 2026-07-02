@@ -205,6 +205,64 @@ class TestGetChannelHistoryRichFields:
         assert len(messages[1].reactions) == 0
 
 
+class TestGetChannelHistoryPage:
+    """get_channel_history_page 페이지네이션 테스트"""
+
+    @pytest.mark.asyncio
+    async def test_passes_pagination_args_to_slack_client(self):
+        """oldest/latest/cursor/limit을 conversations_history에 전달"""
+        raw_msg = {"ts": "1234.000001", "text": "candidate", "user": "U1"}
+        client = MagicMock()
+        client.conversations_history.return_value = {
+            "messages": [raw_msg],
+            "has_more": True,
+            "response_metadata": {"next_cursor": "next-page"},
+        }
+        backend = SlackBackendImpl(client)
+
+        page = await backend.get_channel_history_page(
+            "C123",
+            oldest="1230.000000",
+            latest="1235.000000",
+            cursor="cursor-1",
+            limit=42,
+        )
+
+        client.conversations_history.assert_called_once_with(
+            channel="C123",
+            limit=42,
+            oldest="1230.000000",
+            latest="1235.000000",
+            cursor="cursor-1",
+        )
+        assert page.has_more is True
+        assert page.next_cursor == "next-page"
+        assert len(page.messages) == 1
+        assert page.messages[0].channel == "C123"
+        assert page.messages[0].ts == "1234.000001"
+
+    @pytest.mark.asyncio
+    async def test_omits_none_pagination_args(self):
+        """None인 페이지 인자는 Slack client 호출에서 제외"""
+        client = MagicMock()
+        client.conversations_history.return_value = {
+            "messages": [],
+            "has_more": False,
+            "response_metadata": {},
+        }
+        backend = SlackBackendImpl(client)
+
+        page = await backend.get_channel_history_page("C123", limit=100)
+
+        client.conversations_history.assert_called_once_with(
+            channel="C123",
+            limit=100,
+        )
+        assert page.messages == []
+        assert page.has_more is False
+        assert page.next_cursor == ""
+
+
 # ============================================================================
 # SlackBackendImpl.get_thread_replies 테스트
 # ============================================================================

@@ -5,7 +5,19 @@ R-5 fix(2026-05-11): UserInfo dataclass에 `avatar_url`(profile.image_192) +
 신원 forward (R-2 G-9 fix §9 대칭).
 """
 
+import pytest
+
+from seosoyoung.plugin_sdk import slack
 from seosoyoung.plugin_sdk.slack import UserInfo
+
+
+class FakeSlackBackend:
+    def __init__(self):
+        self.calls = []
+
+    async def get_channel_history_page(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return slack.MessagePage(next_cursor="next", has_more=True)
 
 
 class TestUserInfoDataclassR5:
@@ -50,3 +62,31 @@ class TestUserInfoDataclassR5:
         only_email = UserInfo(id="U2", name="carol", email="c@x.com")
         assert only_email.avatar_url == ""
         assert only_email.email == "c@x.com"
+
+
+class TestChannelHistoryPageApi:
+    @pytest.mark.asyncio
+    async def test_delegates_to_backend(self):
+        backend = FakeSlackBackend()
+        slack.set_backend(backend)
+
+        page = await slack.get_channel_history_page(
+            "C123",
+            oldest="1000.000000",
+            cursor="abc",
+            limit=25,
+        )
+
+        assert page.next_cursor == "next"
+        assert page.has_more is True
+        assert backend.calls == [
+            (
+                ("C123",),
+                {
+                    "oldest": "1000.000000",
+                    "latest": None,
+                    "cursor": "abc",
+                    "limit": 25,
+                },
+            )
+        ]

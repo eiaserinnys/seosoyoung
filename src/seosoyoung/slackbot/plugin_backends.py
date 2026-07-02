@@ -18,6 +18,7 @@ from seosoyoung.plugin_sdk import slack, soulstream, mention
 from seosoyoung.plugin_sdk.slack import (
     FileInfo,
     Message,
+    MessagePage,
     Reaction,
     ReactionResult,
     SendMessageResult,
@@ -67,6 +68,22 @@ def _parse_files(raw: list[dict]) -> list[FileInfo]:
         )
         for f in raw
     ]
+
+
+def _parse_message(raw: dict, *, channel: str) -> Message:
+    """Slack API message dict를 plugin_sdk Message로 변환."""
+    return Message(
+        ts=raw.get("ts", ""),
+        text=raw.get("text", ""),
+        user=raw.get("user", ""),
+        thread_ts=raw.get("thread_ts"),
+        channel=channel,
+        subtype=raw.get("subtype", ""),
+        bot_id=raw.get("bot_id", ""),
+        reactions=_parse_reactions(raw.get("reactions", [])),
+        files=_parse_files(raw.get("files", [])),
+        blocks=raw.get("blocks", []),
+    )
 
 
 class SlackBackendImpl(SlackBackend):
@@ -213,21 +230,7 @@ class SlackBackendImpl(SlackBackend):
                 ts=thread_ts,
                 limit=limit,
             )
-            messages = []
-            for msg in result.get("messages", []):
-                messages.append(
-                    Message(
-                        ts=msg.get("ts", ""),
-                        text=msg.get("text", ""),
-                        user=msg.get("user", ""),
-                        thread_ts=msg.get("thread_ts"),
-                        channel=channel,
-                        reactions=_parse_reactions(msg.get("reactions", [])),
-                        files=_parse_files(msg.get("files", [])),
-                        blocks=msg.get("blocks", []),
-                    )
-                )
-            return messages
+            return [_parse_message(msg, channel=channel) for msg in result.get("messages", [])]
         except Exception as e:
             logger.error(f"get_thread_replies failed: {e}")
             return []
@@ -243,24 +246,45 @@ class SlackBackendImpl(SlackBackend):
                 channel=channel,
                 limit=limit,
             )
-            messages = []
-            for msg in result.get("messages", []):
-                messages.append(
-                    Message(
-                        ts=msg.get("ts", ""),
-                        text=msg.get("text", ""),
-                        user=msg.get("user", ""),
-                        thread_ts=msg.get("thread_ts"),
-                        channel=channel,
-                        reactions=_parse_reactions(msg.get("reactions", [])),
-                        files=_parse_files(msg.get("files", [])),
-                        blocks=msg.get("blocks", []),
-                    )
-                )
-            return messages
+            return [_parse_message(msg, channel=channel) for msg in result.get("messages", [])]
         except Exception as e:
             logger.error(f"get_channel_history failed: {e}")
             return []
+
+    async def get_channel_history_page(
+        self,
+        channel: str,
+        oldest: str | None = None,
+        latest: str | None = None,
+        cursor: str | None = None,
+        limit: int = 100,
+    ) -> MessagePage:
+        """Get one paginated channel history page."""
+        try:
+            params: dict[str, Any] = {
+                "channel": channel,
+                "limit": limit,
+            }
+            if oldest is not None:
+                params["oldest"] = oldest
+            if latest is not None:
+                params["latest"] = latest
+            if cursor is not None:
+                params["cursor"] = cursor
+
+            result = self._client.conversations_history(**params)
+            metadata = result.get("response_metadata", {}) or {}
+            return MessagePage(
+                messages=[
+                    _parse_message(msg, channel=channel)
+                    for msg in result.get("messages", [])
+                ],
+                next_cursor=metadata.get("next_cursor", "") or "",
+                has_more=bool(result.get("has_more", False)),
+            )
+        except Exception as e:
+            logger.error(f"get_channel_history_page failed: {e}")
+            return MessagePage()
 
     async def open_dm(self, user_id: str) -> str | None:
         """Open a DM channel with a user."""
