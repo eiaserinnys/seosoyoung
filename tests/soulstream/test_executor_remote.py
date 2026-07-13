@@ -357,7 +357,6 @@ class TestExecutorRemoteDebug:
             text="rate limit warning: 80% used",
         )
 
-
 class TestGetServiceAdapter:
     """_get_service_adapter 매번 새 인스턴스 생성 테스트"""
 

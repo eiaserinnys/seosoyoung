@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from seosoyoung.slackbot.reflect import reflect
+from seosoyoung.slackbot.soulstream.debug_policy import is_user_facing_debug_message
 from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult, CompactCallback
 from seosoyoung.slackbot.soulstream.intervention import InterventionManager
 from seosoyoung.slackbot.soulstream.result_processor import ResultProcessor
@@ -542,9 +543,12 @@ class ClaudeExecutor:
         """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
 
-        # debug 콜백: rate_limit 경고 등을 슬랙 스레드에 전송
+        # 사용자 대응이 필요한 레거시 rate-limit debug만 슬랙 스레드에 전송
         async def on_debug(message: str) -> None:
             if presentation is None:
+                return
+            if not is_user_facing_debug_message(message):
+                logger.debug("[Remote] Slack 게시에서 내부 debug 제외: %s", message)
                 return
             try:
                 presentation.client.chat_postMessage(
