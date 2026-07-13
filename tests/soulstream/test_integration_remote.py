@@ -433,7 +433,7 @@ class TestIntegrationDebugEvents:
             nonlocal captured_on_debug
             captured_on_debug = kwargs.get("on_debug")
             if captured_on_debug:
-                await captured_on_debug("debug info")
+                await captured_on_debug("rate limit warning: 80% used")
             return ClaudeResult(success=True, output="still works", session_id="s-1")
 
         mock_adapter = MagicMock()
