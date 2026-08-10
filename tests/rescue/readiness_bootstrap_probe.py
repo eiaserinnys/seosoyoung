@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from types import ModuleType
 from unittest.mock import patch
@@ -56,6 +57,9 @@ with (
     patch.object(bootstrap, "RescueBotApp", FakeBot),
     patch.object(bootstrap, "SocketModeHandler", FakeSocketModeHandler),
     patch.object(bootstrap.threading, "Event", return_value=FakeWaiter()),
+    patch.object(bootstrap.logger, "info")
+    if os.environ.get("SUPPRESS_READINESS_MARKER") == "1"
+    else patch.object(bootstrap.logger, "debug"),
 ):
     bootstrap.main()
 
@@ -63,8 +67,8 @@ print(
     "CONTRACT="
     + json.dumps(
         {
-            "marker": bootstrap.READINESS_MARKER,
-            "condition": bootstrap.HANIEL_READY_CONDITION,
+            "marker_hex": bootstrap.READINESS_MARKER.encode().hex(),
+            "condition_hex": bootstrap.HANIEL_READY_CONDITION.encode().hex(),
         }
     ),
     file=sys.stdout,

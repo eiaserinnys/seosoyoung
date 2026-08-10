@@ -9,17 +9,22 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parents[2]
 PROBE = Path(__file__).with_name("readiness_bootstrap_probe.py")
 
 
-def test_rescue_bootstrap_emits_owned_marker_after_socket_connect() -> None:
+def _run_probe(*, suppress_marker: bool = False):
     env = {
         **os.environ,
         "RESCUE_SLACK_BOT_TOKEN": "xoxb-readiness-contract",
         "RESCUE_SLACK_APP_TOKEN": "xapp-readiness-contract",
         "RESCUE_SHUTDOWN_PORT": "0",
     }
+    env.pop("SUPPRESS_READINESS_MARKER", None)
+    if suppress_marker:
+        env["SUPPRESS_READINESS_MARKER"] = "1"
     result = subprocess.run(
         [sys.executable, str(PROBE)],
         cwd=ROOT,
@@ -29,19 +34,31 @@ def test_rescue_bootstrap_emits_owned_marker_after_socket_connect() -> None:
         timeout=10,
         check=False,
     )
-    observed = result.stdout + result.stderr
+    return result
 
+
+def _assert_contract(result) -> None:
+    observed = result.stdout + result.stderr
     assert result.returncode == 0, observed
     contract_line = next(
         line for line in result.stdout.splitlines() if line.startswith("CONTRACT=")
     )
     contract = json.loads(contract_line.removeprefix("CONTRACT="))
-    assert contract["condition"].startswith("log:")
-    assert re.search(contract["condition"].removeprefix("log:"), contract["marker"])
-    assert contract["marker"] in observed
-    assert result.stdout.index("FUNCTIONAL_INIT_READY") < result.stdout.index(
-        contract["marker"]
-    )
+    condition = bytes.fromhex(contract["condition_hex"]).decode()
+    marker = bytes.fromhex(contract["marker_hex"]).decode()
+    assert condition.startswith("log:")
+    assert re.search(condition.removeprefix("log:"), marker)
+    assert marker in observed
+    assert result.stdout.index("FUNCTIONAL_INIT_READY") < result.stdout.index(marker)
+
+
+def test_rescue_bootstrap_emits_owned_marker_after_socket_connect() -> None:
+    _assert_contract(_run_probe())
+
+
+def test_rescue_contract_fails_when_product_marker_is_suppressed() -> None:
+    with pytest.raises(AssertionError):
+        _assert_contract(_run_probe(suppress_marker=True))
 
 
 def test_rescue_workflow_covers_contract_with_minimum_permissions() -> None:
