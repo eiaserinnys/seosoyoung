@@ -1,0 +1,6 @@
+{
+  "schema_version": "haniel.readiness-contract.v1",
+  "service": "rescue-bot",
+  "marker": "[Rescue] Bot is running!",
+  "ready": "log:\\[Rescue\\] Bot is running!"
+}

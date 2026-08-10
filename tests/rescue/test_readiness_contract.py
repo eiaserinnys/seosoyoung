@@ -13,6 +13,7 @@ import pytest
 
 ROOT = Path(__file__).parents[2]
 PROBE = Path(__file__).with_name("readiness_bootstrap_probe.py")
+CONTRACT = ROOT / "readiness-contract.json"
 
 
 def _run_probe(*, suppress_marker: bool = False):
@@ -49,11 +50,24 @@ def _assert_contract(result) -> None:
     assert condition.startswith("log:")
     assert re.search(condition.removeprefix("log:"), marker)
     assert marker in observed
+    assert "FUNCTIONAL_INIT_READY" in result.stdout
+    assert marker in result.stdout
     assert result.stdout.index("FUNCTIONAL_INIT_READY") < result.stdout.index(marker)
 
 
 def test_rescue_bootstrap_emits_owned_marker_after_socket_connect() -> None:
     _assert_contract(_run_probe())
+
+
+def test_rescue_publishes_machine_readable_readiness_contract() -> None:
+    from seosoyoung.rescue.readiness import HANIEL_READY_CONDITION, READINESS_MARKER
+
+    assert json.loads(CONTRACT.read_text(encoding="utf-8")) == {
+        "schema_version": "haniel.readiness-contract.v1",
+        "service": "rescue-bot",
+        "marker": READINESS_MARKER,
+        "ready": HANIEL_READY_CONDITION,
+    }
 
 
 def test_rescue_contract_fails_when_product_marker_is_suppressed() -> None:
@@ -74,5 +88,6 @@ def test_rescue_workflow_covers_contract_with_minimum_permissions() -> None:
         "tests/rescue/readiness_bootstrap_probe.py",
         "tests/rescue/test_readiness_contract.py",
         ".github/workflows/readiness-contract.yml",
+        "readiness-contract.json",
     ):
         assert path in workflow
