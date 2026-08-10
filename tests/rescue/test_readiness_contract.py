@@ -1,56 +1,60 @@
-"""Installed Slack Bolt marker and workflow path contract for rescue-bot."""
+"""Subprocess-observed readiness contract for rescue-bot."""
 
 from __future__ import annotations
 
-from importlib.metadata import distribution, version
+import json
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
+PROBE = Path(__file__).with_name("readiness_bootstrap_probe.py")
 
 
-def _numeric_version(value: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in value.split(".") if part.isdigit())
-
-
-def _installed_slack_bolt_source(relative_path: str) -> str:
-    package = distribution("slack-bolt")
-    return package.locate_file(relative_path).read_text(encoding="utf-8")
-
-
-def test_rescue_marker_is_owned_by_installed_slack_bolt() -> None:
-    bootstrap = (ROOT / "src/seosoyoung/rescue/main.py").read_text(encoding="utf-8")
-    builtin_handler = _installed_slack_bolt_source(
-        "slack_bolt/adapter/socket_mode/builtin/__init__.py"
+def test_rescue_bootstrap_emits_owned_marker_after_socket_connect() -> None:
+    env = {
+        **os.environ,
+        "RESCUE_SLACK_BOT_TOKEN": "xoxb-readiness-contract",
+        "RESCUE_SLACK_APP_TOKEN": "xapp-readiness-contract",
+        "RESCUE_SHUTDOWN_PORT": "0",
+    }
+    result = subprocess.run(
+        [sys.executable, str(PROBE)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
     )
-    base_handler = _installed_slack_bolt_source(
-        "slack_bolt/adapter/socket_mode/base_handler.py"
+    observed = result.stdout + result.stderr
+
+    assert result.returncode == 0, observed
+    contract_line = next(
+        line for line in result.stdout.splitlines() if line.startswith("CONTRACT=")
     )
-    utilities = _installed_slack_bolt_source("slack_bolt/util/utils.py")
-
-    assert "handler = SocketModeHandler" in bootstrap
-    assert bootstrap.index("handler.start()") > bootstrap.index(
-        "handler = SocketModeHandler"
+    contract = json.loads(contract_line.removeprefix("CONTRACT="))
+    assert contract["condition"].startswith("log:")
+    assert re.search(contract["condition"].removeprefix("log:"), contract["marker"])
+    assert contract["marker"] in observed
+    assert result.stdout.index("FUNCTIONAL_INIT_READY") < result.stdout.index(
+        contract["marker"]
     )
-    assert "class SocketModeHandler(BaseSocketModeHandler):" in builtin_handler
-    start_body = base_handler.split("    def start(self):", 1)[1]
-    connect = start_body.index("self.connect()")
-    log_marker = start_body.index("self.app.logger.info(get_boot_message())")
-    print_marker = start_body.index("print(get_boot_message())")
-    block = start_body.index("Event().wait()")
-    assert connect < print_marker < block
-    assert connect < log_marker < block
-    assert 'return "Bolt app is running!"' in utilities
-    assert _numeric_version(version("slack-bolt")) >= (1, 18, 0)
 
 
-def test_rescue_workflow_covers_every_contract_input() -> None:
+def test_rescue_workflow_covers_contract_with_minimum_permissions() -> None:
     workflow = (ROOT / ".github/workflows/readiness-contract.yml").read_text(
         encoding="utf-8"
     )
+    assert "permissions:\n  contents: read" in workflow
     for path in (
         "pyproject.toml",
         "requirements.txt",
         "src/seosoyoung/rescue/main.py",
+        "src/seosoyoung/rescue/readiness.py",
+        "tests/rescue/readiness_bootstrap_probe.py",
         "tests/rescue/test_readiness_contract.py",
         ".github/workflows/readiness-contract.yml",
     ):

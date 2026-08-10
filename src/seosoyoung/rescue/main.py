@@ -43,6 +43,7 @@ _ensure_sdk_installed()
 
 import logging
 import re
+import signal
 import sys
 import threading
 from dataclasses import dataclass
@@ -56,8 +57,11 @@ from seosoyoung.rescue.config import RescueConfig
 from seosoyoung.rescue.engine_adapter import create_runner, interrupt, compact_session_sync
 from seosoyoung.rescue.claude.engine_types import EngineResult
 from seosoyoung.rescue.reflect import reflect
+from seosoyoung.rescue.readiness import HANIEL_READY_CONDITION, READINESS_MARKER
 from seosoyoung.rescue.session import Session, SessionManager
 from seosoyoung.rescue.slack_utils import update_message
+
+__all__ = ["HANIEL_READY_CONDITION", "READINESS_MARKER", "main"]
 
 # 로깅 설정
 logging.basicConfig(
@@ -664,7 +668,11 @@ def main():
         bot.handle_message(event, say, client)
 
     handler = SocketModeHandler(slack_app, RescueConfig.SLACK_APP_TOKEN)
-    handler.start()
+    handler.connect()
+    logger.info(READINESS_MARKER)
+    if sys.platform == "win32":
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+    threading.Event().wait()
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ on:
       - pyproject.toml
       - requirements.txt
       - src/seosoyoung/rescue/main.py
+      - src/seosoyoung/rescue/readiness.py
+      - tests/rescue/readiness_bootstrap_probe.py
       - tests/rescue/test_readiness_contract.py
       - .github/workflows/readiness-contract.yml
   push:
@@ -13,11 +15,16 @@ on:
       - pyproject.toml
       - requirements.txt
       - src/seosoyoung/rescue/main.py
+      - src/seosoyoung/rescue/readiness.py
+      - tests/rescue/readiness_bootstrap_probe.py
       - tests/rescue/test_readiness_contract.py
       - .github/workflows/readiness-contract.yml
   schedule:
     - cron: "23 4 * * 1"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   readiness-contract:
