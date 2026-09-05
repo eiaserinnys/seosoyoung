@@ -6,7 +6,15 @@ SocketModeHandler 기동 없이 management app만 단독으로 테스트한다.
 
 from fastapi.testclient import TestClient
 from cogito import Reflector
-from seosoyoung.slackbot.shutdown import create_management_app
+from seosoyoung.slackbot.shutdown import ShutdownDispatcher, create_management_app
+
+
+def _make_dispatcher(callback=lambda: None):
+    dispatcher = ShutdownDispatcher()
+    assert dispatcher.begin_runtime_import()
+    dispatcher.bind_shutdown_handler(callback)
+    assert dispatcher.begin_runtime()
+    return dispatcher
 
 
 class TestBotReflectEndpoints:
@@ -37,7 +45,7 @@ class TestBotReflectEndpoints:
             name="soulstream_integration",
             description="soulstream에 Claude Code 세션 위임 및 SSE 스트리밍",
         )
-        return create_management_app(reflect, lambda: None)
+        return create_management_app(reflect, _make_dispatcher())
 
     def test_level0_identity(self):
         client = TestClient(self._make_app())
@@ -76,7 +84,10 @@ class TestBotShutdownEndpoint:
         reflect = Reflector(
             name="bot", description="t", version_from="1.0.0", language="python", port=3106,
         )
-        app = create_management_app(reflect, lambda: called.append(True))
+        app = create_management_app(
+            reflect,
+            _make_dispatcher(lambda: called.append(True)),
+        )
         client = TestClient(app)
 
         resp = client.post("/shutdown")
@@ -84,3 +95,15 @@ class TestBotShutdownEndpoint:
         assert resp.json()["status"] == "shutting down"
         time.sleep(0.3)
         assert called, "shutdown callback was not invoked"
+
+    def test_shutdown_claims_bootstrap_before_response_returns(self):
+        reflect = Reflector(
+            name="bot", description="t", version_from="1.0.0", language="python", port=3106,
+        )
+        dispatcher = ShutdownDispatcher()
+        client = TestClient(create_management_app(reflect, dispatcher))
+
+        resp = client.post("/shutdown")
+
+        assert resp.status_code == 200
+        assert dispatcher.begin_runtime_import() is False
