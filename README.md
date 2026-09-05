@@ -197,7 +197,7 @@ cp .env.example .env
 # Each plugin may also need its own config file in config/ (e.g., trello.yaml, memory.yaml)
 
 # Run the bot
-python -m seosoyoung.slackbot.main
+python -m seosoyoung.slackbot
 
 # Run the MCP server (separate process)
 python -m seosoyoung.mcp

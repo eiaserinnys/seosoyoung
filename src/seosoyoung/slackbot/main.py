@@ -5,6 +5,8 @@
 
 import os
 import signal
+from collections.abc import Callable
+
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
@@ -139,6 +141,11 @@ def _shutdown_with_session_wait(restart_type: RestartType, source: str) -> None:
             f"[{source}] DM 채널 resolve 실패, 세션 대기 모드로 진입: {e}"
         )
         restart_manager.request_system_shutdown(restart_type)
+
+
+def handle_management_shutdown() -> None:
+    """Handle a management /shutdown request through the canonical flow."""
+    _shutdown_with_session_wait(RestartType.RESTART, "HTTP /shutdown")
 
 
 def _signal_handler(signum, frame):
@@ -344,28 +351,17 @@ def init_bot_user_id():
         logger.error(f"봇 ID 조회 실패: {e}")
 
 
-def main():
+def main(
+    runtime_entered: Callable[[], None] = lambda: None,
+) -> None:
     """봇 메인 진입점"""
+    runtime_entered()
     logger.info("SeoSoyoung 봇을 시작합니다...")
     logger.info(f"LOG_PATH: {Config.get_log_path()}")
     logger.info(f"ADMIN_USERS: {Config.auth.admin_users}")
     logger.info(f"ALLOWED_USERS: {Config.auth.allowed_users}")
     logger.info(f"DEBUG: {Config.debug}")
 
-    # Management 서버 시작 (cogito /reflect + graceful shutdown)
-    from seosoyoung.slackbot.shutdown import create_management_app, start_management_server
-
-    _SHUTDOWN_PORT = int(os.environ["SHUTDOWN_PORT"])
-
-    def _on_shutdown_request():
-        """graceful shutdown 요청을 받았을 때
-
-        활성 세션이 있으면 사용자에게 확인을 받은 후 종료합니다.
-        """
-        _shutdown_with_session_wait(RestartType.RESTART, "HTTP /shutdown")
-
-    _app = create_management_app(reflect, _on_shutdown_request)
-    start_management_server(_app, _SHUTDOWN_PORT)
     init_bot_user_id()
 
     # Initialize plugin SDK backends (must be before plugin load)
@@ -384,7 +380,3 @@ def main():
     notify_startup()
     handler = SocketModeHandler(app, Config.slack.app_token)
     handler.start()
-
-
-if __name__ == "__main__":
-    main()
