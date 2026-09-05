@@ -191,7 +191,7 @@ class TestShutdownDispatcher:
         delivered = []
         assert dispatcher.begin_runtime_import() is True
         dispatcher.bind_shutdown_handler(lambda: delivered.append("shutdown"))
-        runtime = Mock(side_effect=lambda entered, _run_work: entered())
+        runtime = Mock(side_effect=lambda entered: entered())
         assert dispatcher.run_runtime(runtime) is True
 
         dispatcher.request_shutdown()
@@ -220,7 +220,7 @@ class TestShutdownDispatcher:
         requester = threading.Thread(target=request_shutdown)
         requester.start()
 
-        def runtime_main(entered, _run_runtime_work):
+        def runtime_main(entered):
             events.append("runtime-main")
             entered()
             request_runtime.set()
@@ -230,42 +230,6 @@ class TestShutdownDispatcher:
         requester.join(1.0)
 
         assert events[:2] == ["runtime-main", "shutdown-requested"]
-
-    def test_runtime_work_and_shutdown_request_have_one_atomic_order(self):
-        dispatcher = ShutdownDispatcher()
-        events = []
-        work_entered = threading.Event()
-        release_work = threading.Event()
-        request_done = threading.Event()
-        assert dispatcher.begin_runtime_import() is True
-        dispatcher.bind_shutdown_handler(lambda: events.append("shutdown-delivered"))
-
-        def request_shutdown():
-            work_entered.wait(1.0)
-            dispatcher.request_shutdown()
-            events.append("shutdown-requested")
-            request_done.set()
-
-        requester = threading.Thread(target=request_shutdown)
-        requester.start()
-
-        def start_new_work():
-            events.append("work-started")
-            work_entered.set()
-            assert request_done.wait(0.05) is False
-            release_work.set()
-
-        def runtime_main(entered, run_work):
-            entered()
-            assert run_work(start_new_work) is True
-
-        assert dispatcher.run_runtime(runtime_main) is True
-        requester.join(1.0)
-
-        assert release_work.is_set()
-        assert events[:2] == ["work-started", "shutdown-requested"]
-        assert dispatcher.run_runtime_work(lambda: events.append("late-work")) is False
-        assert "late-work" not in events
 
     def test_callback_failure_is_preserved_without_automatic_retry(self):
         dispatcher = ShutdownDispatcher()
@@ -340,6 +304,7 @@ def test_bootstrap_shutdown_during_import_never_starts_runtime(monkeypatch):
 def test_management_handler_preserves_restart_exit_in_isolated_process():
     script = r"""
 import sys
+import threading
 from types import ModuleType
 from unittest.mock import MagicMock
 
@@ -353,6 +318,7 @@ sys.modules["slack_bolt"] = slack_bolt
 sys.modules["slack_bolt.adapter.socket_mode"] = socket_mode
 
 from seosoyoung.slackbot import main as runtime
+from seosoyoung.slackbot.shutdown import ShutdownDispatcher
 
 runtime.session_runtime.get_running_session_count = MagicMock(return_value=0)
 runtime.notify_shutdown = MagicMock()
@@ -366,44 +332,32 @@ runtime.init_plugin_backends = MagicMock()
 runtime._load_plugins = MagicMock()
 runtime._dispatch_plugin_startup = MagicMock()
 runtime.notify_startup = MagicMock()
-runtime.main(lambda: None, lambda _work: False)
-runtime._dispatch_plugin_startup.assert_not_called()
-runtime.SocketModeHandler.assert_not_called()
-
-runtime._dispatch_plugin_startup.reset_mock()
-runtime.notify_startup.reset_mock()
-runtime.SocketModeHandler.reset_mock()
-work_gates = iter((True, False))
-def run_work(work):
-    if not next(work_gates):
-        return False
-    work()
-    return True
-runtime.main(lambda: None, run_work)
+handler = runtime.SocketModeHandler.return_value
+runtime.main(lambda: None)
 runtime._dispatch_plugin_startup.assert_called_once_with()
 runtime.notify_startup.assert_called_once_with()
 runtime.SocketModeHandler.assert_called_once_with(runtime.app, runtime.Config.slack.app_token)
-runtime.SocketModeHandler.return_value.connect.assert_not_called()
+handler.start.assert_called_once_with()
+handler.connect.assert_not_called()
 
-runtime._dispatch_plugin_startup.reset_mock()
-runtime.notify_startup.reset_mock()
-runtime.SocketModeHandler.reset_mock()
-handler = runtime.SocketModeHandler.return_value
-handler.app.logger.level = 20
-waiter = MagicMock()
-runtime.threading.Event = MagicMock(return_value=waiter)
-admitted = []
-def run_all_work(work):
-    admitted.append(work)
-    work()
-    return True
-runtime.main(lambda: None, run_all_work)
-runtime._dispatch_plugin_startup.assert_called_once_with()
-handler.connect.assert_called_once_with()
-handler.start.assert_not_called()
-handler.app.logger.info.assert_called_once_with("⚡️ Bolt app is running!")
-waiter.wait.assert_called_once_with()
-assert admitted == [runtime._dispatch_plugin_startup, handler.connect]
+handler.start.reset_mock()
+sdk_start_entered = threading.Event()
+release_sdk_start = threading.Event()
+shutdown_delivered = threading.Event()
+handler.start.side_effect = lambda: (sdk_start_entered.set(), release_sdk_start.wait(1.0))
+dispatcher = ShutdownDispatcher()
+assert dispatcher.begin_runtime_import() is True
+dispatcher.bind_shutdown_handler(shutdown_delivered.set)
+runtime_thread = threading.Thread(target=lambda: dispatcher.run_runtime(runtime.main))
+runtime_thread.start()
+assert sdk_start_entered.wait(1.0) is True
+assert dispatcher.request_shutdown() is True
+dispatcher.complete_shutdown_response()
+assert shutdown_delivered.wait(0.1) is True
+release_sdk_start.set()
+runtime_thread.join(1.0)
+assert runtime_thread.is_alive() is False
+handler.start.assert_called_once_with()
 """
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).parents[2] / "src")
@@ -548,7 +502,7 @@ def test_runtime_loader_runs_only_after_management_http_is_ready():
         events.append("runtime-import")
         return SimpleNamespace(
             handle_management_shutdown=lambda: events.append("shutdown"),
-            main=lambda entered, _allowed: (entered(), events.append("runtime-start")),
+            main=lambda entered: (entered(), events.append("runtime-start")),
         )
 
     bootstrap.run(port=port, runtime_loader=load_runtime)

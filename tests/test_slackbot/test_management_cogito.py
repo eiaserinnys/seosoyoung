@@ -13,7 +13,7 @@ def _make_dispatcher(callback=lambda: None):
     dispatcher = ShutdownDispatcher()
     assert dispatcher.begin_runtime_import()
     dispatcher.bind_shutdown_handler(callback)
-    assert dispatcher.run_runtime(lambda entered, _allowed: entered())
+    assert dispatcher.run_runtime(lambda entered: entered())
     return dispatcher
 
 

@@ -127,27 +127,9 @@ class ShutdownDispatcher:
             self._handler = handler
         self._deliver_shutdown_if_ready()
 
-    def run_runtime_work(self, start_work: Callable[[], None]) -> bool:
-        """Order one finite work-admission call against shutdown acceptance.
-
-        The callable must return after admission. Long-lived waits belong outside
-        this lock; the Slack adapter's finite ``connect`` call is the admission
-        boundary, while its process-lifetime wait is not.
-        """
-        with self._lock:
-            if not self._runtime_started:
-                raise RuntimeError("Runtime must enter before admitting work")
-            if self._shutdown_requested:
-                return False
-            start_work()
-            return True
-
     def run_runtime(
         self,
-        runtime_main: Callable[
-            [Callable[[], None], Callable[[Callable[[], None]], bool]],
-            None,
-        ],
+        runtime_main: Callable[[Callable[[], None]], None],
     ) -> bool:
         """Invoke runtime with an atomic entry handoff to its first instruction."""
         self._lock.acquire()
@@ -171,7 +153,7 @@ class ShutdownDispatcher:
             if self._shutdown_requested:
                 return False
 
-            runtime_main(mark_runtime_entered, self.run_runtime_work)
+            runtime_main(mark_runtime_entered)
             if not runtime_entered:
                 raise RuntimeError("Runtime did not confirm entry")
             return True
