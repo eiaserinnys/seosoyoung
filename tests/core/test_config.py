@@ -1,7 +1,9 @@
 """Config 클래스 테스트"""
 
-import importlib
+import importlib.util
 import os
+import sys
+from itertools import count
 from pathlib import Path
 from unittest.mock import patch
 
@@ -27,19 +29,30 @@ _MINIMAL_ENV = {
     "SOUL_DASHBOARD_URL": "https://soul.eiaserinnys.me/#",
 }
 
+_ISOLATED_MODULE_SEQUENCE = count()
+
 
 def reload_config_with_env(env_vars: dict):
-    """환경변수를 설정하고 config 모듈 재로드
+    """환경변수를 설정하고 격리된 config 모듈을 로드
 
-    dotenv.load_dotenv를 mock하여 .env 파일 로드를 방지.
+    canonical 모듈과 이를 참조하는 handler의 Config class identity를 바꾸지 않는다.
+    dotenv.load_dotenv를 mock하여 .env 파일 로드를 방지한다.
     _MINIMAL_ENV 기본 환경변수 위에 env_vars를 덮어씁니다.
     """
     merged = {**_MINIMAL_ENV, **env_vars}
+    module_name = f"_test_slackbot_config_{next(_ISOLATED_MODULE_SEQUENCE)}"
+    config_path = Path(__file__).parents[2] / "src/seosoyoung/slackbot/config.py"
+    spec = importlib.util.spec_from_file_location(module_name, config_path)
+    assert spec is not None and spec.loader is not None
+    config_module = importlib.util.module_from_spec(spec)
     with patch.dict(os.environ, merged, clear=True):
         with patch("dotenv.load_dotenv"):
-            import seosoyoung.slackbot.config as config_module
-            importlib.reload(config_module)
-            return config_module
+            sys.modules[module_name] = config_module
+            try:
+                spec.loader.exec_module(config_module)
+            finally:
+                sys.modules.pop(module_name, None)
+    return config_module
 
 
 class TestConfigValidation:
@@ -105,25 +118,25 @@ class TestConfigPaths:
 
     def test_get_log_path_default(self):
         """LOG_PATH 환경변수 없을 때 기본 경로 반환"""
-        with patch.dict(os.environ, _MINIMAL_ENV, clear=True):
-            with patch("dotenv.load_dotenv"):
-                import seosoyoung.slackbot.config as config_module
-                importlib.reload(config_module)
+        config_module = reload_config_with_env({})
 
-                result = config_module.Config.get_log_path()
-                expected = str(Path.cwd() / "logs")
-                assert result == expected
+        with patch.dict(os.environ, _MINIMAL_ENV, clear=True):
+            result = config_module.Config.get_log_path()
+        expected = str(Path.cwd() / "logs")
+        assert result == expected
 
     def test_get_log_path_from_env(self):
         """LOG_PATH 환경변수 설정 시 해당 경로 반환"""
         custom_path = "/custom/log/path"
-        with patch.dict(os.environ, {**_MINIMAL_ENV, "LOG_PATH": custom_path}, clear=True):
-            with patch("dotenv.load_dotenv"):
-                import seosoyoung.slackbot.config as config_module
-                importlib.reload(config_module)
+        config_module = reload_config_with_env({"LOG_PATH": custom_path})
 
-                result = config_module.Config.get_log_path()
-                assert result == custom_path
+        with patch.dict(
+            os.environ,
+            {**_MINIMAL_ENV, "LOG_PATH": custom_path},
+            clear=True,
+        ):
+            result = config_module.Config.get_log_path()
+        assert result == custom_path
 
 
 class TestConfigurationError:

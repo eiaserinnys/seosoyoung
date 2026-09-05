@@ -16,6 +16,8 @@ from seosoyoung.slackbot.shutdown import (
     start_management_server,
 )
 
+RESTART_EXIT_CODE = 43
+
 
 def _load_runtime() -> ModuleType:
     return importlib.import_module("seosoyoung.slackbot.main")
@@ -38,19 +40,16 @@ def run(
 
     try:
         if not dispatcher.begin_runtime_import():
-            return
+            handle.stop()
+            management_stopped = True
+            raise SystemExit(RESTART_EXIT_CODE)
 
         runtime = load_runtime()
         dispatcher.bind_shutdown_handler(runtime.handle_management_shutdown)
-        if not dispatcher.begin_runtime():
-            # Finish any in-flight /shutdown response before the real handler can
-            # terminate the process. The dispatcher keeps delivery exactly once.
+        if not dispatcher.run_runtime(runtime.main):
             handle.stop()
             management_stopped = True
-            dispatcher.deliver_shutdown()
             return
-
-        runtime.main()
     finally:
         if not management_stopped:
             handle.stop()

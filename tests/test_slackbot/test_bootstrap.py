@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 import socket
+import subprocess
+import sys
 import threading
-import time
+from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
+from cogito import Reflector
 from fastapi import FastAPI
 
 from seosoyoung.slackbot import __main__ as bootstrap
@@ -115,6 +121,31 @@ class TestManagementServerStartup:
                     startup_timeout=1.0,
                 )
 
+    @pytest.mark.timeout(5)
+    def test_startup_timeout_stops_slow_lifespan_thread_before_returning(self):
+        @asynccontextmanager
+        async def slow_lifespan(_app):
+            await asyncio.sleep(0.6)
+            yield
+
+        app = FastAPI(lifespan=slow_lifespan)
+        port = _free_port()
+        threads_before = {thread.ident for thread in threading.enumerate()}
+
+        with pytest.raises(ManagementServerStartupError, match="/reflect"):
+            start_management_server(app, port, startup_timeout=0.05)
+
+        leaked = [
+            thread
+            for thread in threading.enumerate()
+            if thread.name == "slackbot-management"
+            and thread.ident not in threads_before
+            and thread.is_alive()
+        ]
+        assert leaked == []
+        with socket.socket() as rebound:
+            rebound.bind(("127.0.0.1", port))
+
 
 class TestShutdownDispatcher:
     def test_request_before_import_blocks_runtime(self):
@@ -132,10 +163,12 @@ class TestShutdownDispatcher:
         dispatcher.request_shutdown()
         dispatcher.request_shutdown()
         dispatcher.bind_shutdown_handler(lambda: delivered.append("shutdown"))
-        dispatcher.deliver_shutdown()
+        dispatcher.complete_shutdown_response()
 
         assert delivered == ["shutdown"]
-        assert dispatcher.begin_runtime() is False
+        runtime = Mock()
+        assert dispatcher.run_runtime(runtime) is False
+        runtime.assert_not_called()
 
     def test_request_between_handler_bind_and_runtime_start_blocks_runtime(self):
         dispatcher = ShutdownDispatcher()
@@ -144,9 +177,11 @@ class TestShutdownDispatcher:
         dispatcher.bind_shutdown_handler(lambda: delivered.append("shutdown"))
 
         dispatcher.request_shutdown()
-        dispatcher.deliver_shutdown()
+        dispatcher.complete_shutdown_response()
 
-        assert dispatcher.begin_runtime() is False
+        runtime = Mock()
+        assert dispatcher.run_runtime(runtime) is False
+        runtime.assert_not_called()
         assert delivered == ["shutdown"]
 
     def test_request_after_runtime_start_is_delivered_once(self):
@@ -154,14 +189,62 @@ class TestShutdownDispatcher:
         delivered = []
         assert dispatcher.begin_runtime_import() is True
         dispatcher.bind_shutdown_handler(lambda: delivered.append("shutdown"))
-        assert dispatcher.begin_runtime() is True
+        runtime = Mock(side_effect=lambda entered, _allowed: entered())
+        assert dispatcher.run_runtime(runtime) is True
 
         dispatcher.request_shutdown()
         dispatcher.request_shutdown()
-        dispatcher.deliver_shutdown()
-        dispatcher.deliver_shutdown()
+        dispatcher.complete_shutdown_response()
+        dispatcher.complete_shutdown_response()
 
+        runtime.assert_called_once()
+        assert callable(runtime.call_args.args[0])
         assert delivered == ["shutdown"]
+
+    def test_runtime_invocation_and_request_have_one_atomic_order(self):
+        dispatcher = ShutdownDispatcher()
+        events = []
+        request_runtime = threading.Event()
+        request_done = threading.Event()
+        assert dispatcher.begin_runtime_import() is True
+        dispatcher.bind_shutdown_handler(lambda: events.append("shutdown-delivered"))
+
+        def request_shutdown():
+            request_runtime.wait()
+            dispatcher.request_shutdown()
+            events.append("shutdown-requested")
+            request_done.set()
+
+        requester = threading.Thread(target=request_shutdown)
+        requester.start()
+
+        def runtime_main(entered, _runtime_work_allowed):
+            events.append("runtime-main")
+            entered()
+            request_runtime.set()
+            request_done.wait(1.0)
+
+        assert dispatcher.run_runtime(runtime_main) is True
+        requester.join(1.0)
+
+        assert events[:2] == ["runtime-main", "shutdown-requested"]
+
+    def test_callback_failure_is_preserved_without_automatic_retry(self):
+        dispatcher = ShutdownDispatcher()
+        failure = RuntimeError("shutdown failed after an unknown side effect")
+        handler = Mock(side_effect=failure)
+        assert dispatcher.begin_runtime_import() is True
+        dispatcher.bind_shutdown_handler(handler)
+        dispatcher.request_shutdown()
+
+        with pytest.raises(RuntimeError) as first:
+            dispatcher.complete_shutdown_response()
+        with pytest.raises(RuntimeError) as second:
+            dispatcher.complete_shutdown_response()
+
+        assert first.value is failure
+        assert second.value is failure
+        handler.assert_called_once_with()
 
 
 def test_bootstrap_shutdown_before_import_never_calls_runtime_loader(monkeypatch):
@@ -180,8 +263,10 @@ def test_bootstrap_shutdown_before_import_never_calls_runtime_loader(monkeypatch
     monkeypatch.setattr(bootstrap, "start_management_server", start_server)
     runtime_loader = Mock()
 
-    bootstrap.run(port=3106, runtime_loader=runtime_loader)
+    with pytest.raises(SystemExit) as raised:
+        bootstrap.run(port=3106, runtime_loader=runtime_loader)
 
+    assert raised.value.code == 43
     runtime_loader.assert_not_called()
     handle.stop.assert_called_once_with()
 
@@ -198,7 +283,7 @@ def test_bootstrap_shutdown_during_import_never_starts_runtime(monkeypatch):
 
     def load_runtime():
         captured["dispatcher"].request_shutdown()
-        captured["dispatcher"].deliver_shutdown()
+        captured["dispatcher"].complete_shutdown_response()
         return SimpleNamespace(
             handle_management_shutdown=lambda: delivered.append("shutdown"),
             main=runtime_start,
@@ -214,18 +299,62 @@ def test_bootstrap_shutdown_during_import_never_starts_runtime(monkeypatch):
     handle.stop.assert_called_once_with()
 
 
-def test_management_handler_uses_existing_graceful_shutdown(monkeypatch):
-    from seosoyoung.slackbot import main as runtime
+def test_management_handler_preserves_restart_exit_in_isolated_process():
+    script = r"""
+import sys
+from types import ModuleType
+from unittest.mock import MagicMock
 
-    graceful_shutdown = Mock()
-    monkeypatch.setattr(runtime, "_shutdown_with_session_wait", graceful_shutdown)
+slack_bolt = ModuleType("slack_bolt")
+slack_app = MagicMock()
+slack_app.event = MagicMock(return_value=lambda function: function)
+slack_bolt.App = MagicMock(return_value=slack_app)
+socket_mode = ModuleType("slack_bolt.adapter.socket_mode")
+socket_mode.SocketModeHandler = MagicMock()
+sys.modules["slack_bolt"] = slack_bolt
+sys.modules["slack_bolt.adapter.socket_mode"] = socket_mode
 
-    runtime.handle_management_shutdown()
+from seosoyoung.slackbot import main as runtime
 
-    graceful_shutdown.assert_called_once_with(
-        runtime.RestartType.RESTART,
-        "HTTP /shutdown",
+runtime.session_runtime.get_running_session_count = MagicMock(return_value=0)
+runtime.notify_shutdown = MagicMock()
+runtime.os._exit = MagicMock()
+runtime.handle_management_shutdown()
+runtime.os._exit.assert_called_once_with(runtime.RestartType.RESTART.value)
+assert runtime.RestartType.RESTART.value == 43
+
+runtime.init_bot_user_id = MagicMock()
+runtime.init_plugin_backends = MagicMock()
+runtime._load_plugins = MagicMock()
+runtime._dispatch_plugin_startup = MagicMock()
+runtime.notify_startup = MagicMock()
+runtime.main(lambda: None, lambda: False)
+runtime._dispatch_plugin_startup.assert_not_called()
+runtime.SocketModeHandler.assert_not_called()
+
+runtime._dispatch_plugin_startup.reset_mock()
+runtime.notify_startup.reset_mock()
+runtime.SocketModeHandler.reset_mock()
+work_gates = iter((True, False))
+runtime.main(lambda: None, lambda: next(work_gates))
+runtime._dispatch_plugin_startup.assert_called_once_with()
+runtime.notify_startup.assert_called_once_with()
+runtime.SocketModeHandler.assert_not_called()
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).parents[2] / "src")
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).parents[2],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
     )
+
+    assert result.returncode == 0, result.stderr[-2000:]
 
 
 @pytest.mark.timeout(5)
@@ -239,9 +368,61 @@ def test_runtime_loader_runs_only_after_management_http_is_ready():
         events.append("runtime-import")
         return SimpleNamespace(
             handle_management_shutdown=lambda: events.append("shutdown"),
-            main=lambda: events.append("runtime-start"),
+            main=lambda entered, _allowed: (entered(), events.append("runtime-start")),
         )
 
     bootstrap.run(port=port, runtime_loader=load_runtime)
 
     assert events == [("reflect", 200), "runtime-import", "runtime-start"]
+
+
+@pytest.mark.timeout(5)
+def test_shutdown_delivery_follows_final_asgi_response_body_send():
+    port = _free_port()
+    events = []
+    dispatcher = ShutdownDispatcher()
+    assert dispatcher.begin_runtime_import() is True
+    dispatcher.bind_shutdown_handler(lambda: events.append("shutdown-delivered"))
+    reflector = Reflector(
+        name="bot",
+        description="test",
+        version_from="1.0.0",
+        language="python",
+        port=port,
+    )
+    app = shutdown_module.create_management_app(reflector, dispatcher)
+
+    class DelayedFinalBody:
+        def __init__(self, wrapped_app):
+            self.wrapped_app = wrapped_app
+
+        async def __call__(self, scope, receive, send):
+            async def observed_send(message):
+                if (
+                    scope["type"] == "http"
+                    and scope["path"] == "/shutdown"
+                    and message["type"] == "http.response.body"
+                    and not message.get("more_body", False)
+                ):
+                    await asyncio.sleep(0.45)
+                    await send(message)
+                    events.append("response-body-sent")
+                    return
+                await send(message)
+
+            await self.wrapped_app(scope, receive, observed_send)
+
+    handle = start_management_server(DelayedFinalBody(app), port, startup_timeout=2.0)
+    try:
+        request = Request(
+            f"http://127.0.0.1:{port}/shutdown",
+            data=b"",
+            method="POST",
+        )
+        with urlopen(request, timeout=2.0) as response:
+            assert response.status == 200
+            assert response.read()
+    finally:
+        handle.stop()
+
+    assert events == ["response-body-sent", "shutdown-delivered"]

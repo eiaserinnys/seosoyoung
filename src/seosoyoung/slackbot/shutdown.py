@@ -16,6 +16,8 @@ import uvicorn
 from cogito import Reflector
 from cogito.endpoint import mount_cogito
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTask
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +49,10 @@ class ShutdownDispatcher:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._shutdown_requested = False
-        self._delivery_allowed = False
+        self._response_completed = False
+        self._delivery_in_progress = False
         self._shutdown_delivered = False
+        self._delivery_error: BaseException | None = None
         self._runtime_import_started = False
         self._runtime_started = False
         self._handler: Callable[[], None] | None = None
@@ -61,20 +65,41 @@ class ShutdownDispatcher:
             self._shutdown_requested = True
             return True
 
-    def deliver_shutdown(self) -> None:
-        """Deliver a recorded request once the HTTP response may complete."""
-        handler = None
+    def _deliver_shutdown_if_ready(self) -> None:
+        handler: Callable[[], None] | None = None
         with self._lock:
-            self._delivery_allowed = True
+            if self._delivery_error is not None:
+                raise self._delivery_error
             if (
                 self._shutdown_requested
+                and self._response_completed
                 and not self._shutdown_delivered
+                and not self._delivery_in_progress
                 and self._handler is not None
             ):
-                self._shutdown_delivered = True
+                self._delivery_in_progress = True
                 handler = self._handler
-        if handler is not None:
+
+        if handler is None:
+            return
+
+        try:
             handler()
+        except BaseException as exc:
+            with self._lock:
+                self._delivery_in_progress = False
+                self._delivery_error = exc
+            raise
+        else:
+            with self._lock:
+                self._delivery_in_progress = False
+                self._shutdown_delivered = True
+
+    def complete_shutdown_response(self) -> None:
+        """Mark the final ASGI response body sent, then deliver once if possible."""
+        with self._lock:
+            self._response_completed = True
+        self._deliver_shutdown_if_ready()
 
     def begin_runtime_import(self) -> bool:
         """Claim the import phase unless shutdown already owns the process."""
@@ -88,34 +113,52 @@ class ShutdownDispatcher:
 
     def bind_shutdown_handler(self, handler: Callable[[], None]) -> None:
         """Bind the real graceful handler and deliver any mature pending request."""
-        deliver_now = False
         with self._lock:
             if not self._runtime_import_started:
                 raise RuntimeError("Runtime import must start before handler binding")
             if self._handler is not None:
                 raise RuntimeError("Shutdown handler was already bound")
             self._handler = handler
-            if (
-                self._shutdown_requested
-                and self._delivery_allowed
-                and not self._shutdown_delivered
-            ):
-                self._shutdown_delivered = True
-                deliver_now = True
-        if deliver_now:
-            handler()
+        self._deliver_shutdown_if_ready()
 
-    def begin_runtime(self) -> bool:
-        """Claim user-work acceptance unless a shutdown request won the race."""
+    def runtime_work_allowed(self) -> bool:
+        """Return false once shutdown owns all later plugin/work admission."""
         with self._lock:
+            return not self._shutdown_requested
+
+    def run_runtime(
+        self,
+        runtime_main: Callable[[Callable[[], None], Callable[[], bool]], None],
+    ) -> bool:
+        """Invoke runtime with an atomic entry handoff to its first instruction."""
+        self._lock.acquire()
+        lock_owned = True
+        runtime_entered = False
+
+        def mark_runtime_entered() -> None:
+            nonlocal lock_owned, runtime_entered
+            if runtime_entered or not lock_owned:
+                raise RuntimeError("Runtime entry was already confirmed")
+            self._runtime_started = True
+            runtime_entered = True
+            lock_owned = False
+            self._lock.release()
+
+        try:
             if self._handler is None:
                 raise RuntimeError("Shutdown handler must be bound before runtime start")
             if self._runtime_started:
                 raise RuntimeError("Runtime was already started")
             if self._shutdown_requested:
                 return False
-            self._runtime_started = True
+
+            runtime_main(mark_runtime_entered, self.runtime_work_allowed)
+            if not runtime_entered:
+                raise RuntimeError("Runtime did not confirm entry")
             return True
+        finally:
+            if lock_owned:
+                self._lock.release()
 
 
 def create_management_app(
@@ -129,11 +172,14 @@ def create_management_app(
     @app.post("/shutdown")
     async def shutdown():
         first_request = shutdown_dispatcher.request_shutdown()
-        if first_request:
-            delivery = threading.Timer(0.1, shutdown_dispatcher.deliver_shutdown)
-            delivery.daemon = True
-            delivery.start()
-        return {"status": "shutting down"}
+        return JSONResponse(
+            {"status": "shutting down"},
+            background=(
+                BackgroundTask(shutdown_dispatcher.complete_shutdown_response)
+                if first_request
+                else None
+            ),
+        )
 
     return app
 
@@ -212,9 +258,12 @@ def start_management_server(
 
         finished.wait(min(0.02, max(0.0, deadline - time.monotonic())))
 
-    server.should_exit = True
-    thread.join(min(1.0, startup_timeout))
     failure_message = "Management server /reflect did not become ready before deadline"
     if last_probe_error is not None:
         failure.append(last_probe_error)
+    try:
+        handle.stop()
+    except RuntimeError as exc:
+        failure.insert(0, exc)
+        failure_message += "; cooperative cleanup also failed"
     _raise_startup_failure(failure_message, failure)

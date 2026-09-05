@@ -5,6 +5,8 @@
 
 import os
 import signal
+from collections.abc import Callable
+
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
@@ -349,8 +351,12 @@ def init_bot_user_id():
         logger.error(f"봇 ID 조회 실패: {e}")
 
 
-def main():
+def main(
+    runtime_entered: Callable[[], None] = lambda: None,
+    runtime_work_allowed: Callable[[], bool] = lambda: True,
+) -> None:
     """봇 메인 진입점"""
+    runtime_entered()
     logger.info("SeoSoyoung 봇을 시작합니다...")
     logger.info(f"LOG_PATH: {Config.get_log_path()}")
     logger.info(f"ADMIN_USERS: {Config.auth.admin_users}")
@@ -371,7 +377,13 @@ def main():
     )
 
     _load_plugins()
+    if not runtime_work_allowed():
+        logger.info("Management shutdown claimed runtime before plugin startup")
+        return
     _dispatch_plugin_startup()  # on_startup hooks (trello watcher, channel observer, etc.)
     notify_startup()
+    if not runtime_work_allowed():
+        logger.info("Management shutdown claimed runtime before Slack admission")
+        return
     handler = SocketModeHandler(app, Config.slack.app_token)
     handler.start()
