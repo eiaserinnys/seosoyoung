@@ -3,8 +3,11 @@
 앱 초기화와 진입점만 담당합니다.
 """
 
+import logging
 import os
 import signal
+import sys
+import threading
 from collections.abc import Callable
 
 from slack_bolt import App
@@ -353,7 +356,9 @@ def init_bot_user_id():
 
 def main(
     runtime_entered: Callable[[], None] = lambda: None,
-    runtime_work_allowed: Callable[[], bool] = lambda: True,
+    run_runtime_work: Callable[[Callable[[], None]], bool] = (
+        lambda work: (work(), True)[1]
+    ),
 ) -> None:
     """봇 메인 진입점"""
     runtime_entered()
@@ -377,13 +382,21 @@ def main(
     )
 
     _load_plugins()
-    if not runtime_work_allowed():
+    if not run_runtime_work(_dispatch_plugin_startup):
         logger.info("Management shutdown claimed runtime before plugin startup")
         return
-    _dispatch_plugin_startup()  # on_startup hooks (trello watcher, channel observer, etc.)
     notify_startup()
-    if not runtime_work_allowed():
+    handler = SocketModeHandler(app, Config.slack.app_token)
+    if not run_runtime_work(handler.connect):
         logger.info("Management shutdown claimed runtime before Slack admission")
         return
-    handler = SocketModeHandler(app, Config.slack.app_token)
-    handler.start()
+
+    # Preserve SocketModeHandler.start() after its connect() admission boundary.
+    boot_message = "⚡️ Bolt app is running!"
+    if handler.app.logger.level > logging.INFO:
+        print(boot_message)
+    else:
+        handler.app.logger.info(boot_message)
+    if sys.platform == "win32":
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+    threading.Event().wait()

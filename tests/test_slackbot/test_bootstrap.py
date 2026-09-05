@@ -13,11 +13,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
 from cogito import Reflector
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from seosoyoung.slackbot import __main__ as bootstrap
 from seosoyoung.slackbot import shutdown as shutdown_module
@@ -189,7 +191,7 @@ class TestShutdownDispatcher:
         delivered = []
         assert dispatcher.begin_runtime_import() is True
         dispatcher.bind_shutdown_handler(lambda: delivered.append("shutdown"))
-        runtime = Mock(side_effect=lambda entered, _allowed: entered())
+        runtime = Mock(side_effect=lambda entered, _run_work: entered())
         assert dispatcher.run_runtime(runtime) is True
 
         dispatcher.request_shutdown()
@@ -218,7 +220,7 @@ class TestShutdownDispatcher:
         requester = threading.Thread(target=request_shutdown)
         requester.start()
 
-        def runtime_main(entered, _runtime_work_allowed):
+        def runtime_main(entered, _run_runtime_work):
             events.append("runtime-main")
             entered()
             request_runtime.set()
@@ -228,6 +230,42 @@ class TestShutdownDispatcher:
         requester.join(1.0)
 
         assert events[:2] == ["runtime-main", "shutdown-requested"]
+
+    def test_runtime_work_and_shutdown_request_have_one_atomic_order(self):
+        dispatcher = ShutdownDispatcher()
+        events = []
+        work_entered = threading.Event()
+        release_work = threading.Event()
+        request_done = threading.Event()
+        assert dispatcher.begin_runtime_import() is True
+        dispatcher.bind_shutdown_handler(lambda: events.append("shutdown-delivered"))
+
+        def request_shutdown():
+            work_entered.wait(1.0)
+            dispatcher.request_shutdown()
+            events.append("shutdown-requested")
+            request_done.set()
+
+        requester = threading.Thread(target=request_shutdown)
+        requester.start()
+
+        def start_new_work():
+            events.append("work-started")
+            work_entered.set()
+            assert request_done.wait(0.05) is False
+            release_work.set()
+
+        def runtime_main(entered, run_work):
+            entered()
+            assert run_work(start_new_work) is True
+
+        assert dispatcher.run_runtime(runtime_main) is True
+        requester.join(1.0)
+
+        assert release_work.is_set()
+        assert events[:2] == ["work-started", "shutdown-requested"]
+        assert dispatcher.run_runtime_work(lambda: events.append("late-work")) is False
+        assert "late-work" not in events
 
     def test_callback_failure_is_preserved_without_automatic_retry(self):
         dispatcher = ShutdownDispatcher()
@@ -328,7 +366,7 @@ runtime.init_plugin_backends = MagicMock()
 runtime._load_plugins = MagicMock()
 runtime._dispatch_plugin_startup = MagicMock()
 runtime.notify_startup = MagicMock()
-runtime.main(lambda: None, lambda: False)
+runtime.main(lambda: None, lambda _work: False)
 runtime._dispatch_plugin_startup.assert_not_called()
 runtime.SocketModeHandler.assert_not_called()
 
@@ -336,10 +374,36 @@ runtime._dispatch_plugin_startup.reset_mock()
 runtime.notify_startup.reset_mock()
 runtime.SocketModeHandler.reset_mock()
 work_gates = iter((True, False))
-runtime.main(lambda: None, lambda: next(work_gates))
+def run_work(work):
+    if not next(work_gates):
+        return False
+    work()
+    return True
+runtime.main(lambda: None, run_work)
 runtime._dispatch_plugin_startup.assert_called_once_with()
 runtime.notify_startup.assert_called_once_with()
-runtime.SocketModeHandler.assert_not_called()
+runtime.SocketModeHandler.assert_called_once_with(runtime.app, runtime.Config.slack.app_token)
+runtime.SocketModeHandler.return_value.connect.assert_not_called()
+
+runtime._dispatch_plugin_startup.reset_mock()
+runtime.notify_startup.reset_mock()
+runtime.SocketModeHandler.reset_mock()
+handler = runtime.SocketModeHandler.return_value
+handler.app.logger.level = 20
+waiter = MagicMock()
+runtime.threading.Event = MagicMock(return_value=waiter)
+admitted = []
+def run_all_work(work):
+    admitted.append(work)
+    work()
+    return True
+runtime.main(lambda: None, run_all_work)
+runtime._dispatch_plugin_startup.assert_called_once_with()
+handler.connect.assert_called_once_with()
+handler.start.assert_not_called()
+handler.app.logger.info.assert_called_once_with("⚡️ Bolt app is running!")
+waiter.wait.assert_called_once_with()
+assert admitted == [runtime._dispatch_plugin_startup, handler.connect]
 """
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).parents[2] / "src")
@@ -355,6 +419,122 @@ runtime.SocketModeHandler.assert_not_called()
     )
 
     assert result.returncode == 0, result.stderr[-2000:]
+
+
+def _call_shutdown_with_failed_final_send(app: FastAPI) -> None:
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/shutdown",
+        "raw_path": b"/shutdown",
+        "query_string": b"",
+        "headers": [],
+        "client": ("127.0.0.1", 12345),
+        "server": ("127.0.0.1", 3106),
+        "root_path": "",
+    }
+    request_sent = False
+
+    async def receive():
+        nonlocal request_sent
+        if not request_sent:
+            request_sent = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if (
+            message["type"] == "http.response.body"
+            and not message.get("more_body", False)
+        ):
+            raise ConnectionError("client disconnected before final body send")
+
+    asyncio.run(app(scope, receive, send))
+
+
+def test_failed_final_send_still_delivers_accepted_shutdown_once():
+    delivered = []
+    dispatcher = ShutdownDispatcher()
+    assert dispatcher.begin_runtime_import() is True
+    dispatcher.bind_shutdown_handler(lambda: delivered.append("shutdown"))
+    reflector = Reflector(
+        name="bot", description="test", version_from="1.0.0", language="python", port=3106,
+    )
+    app = shutdown_module.create_management_app(reflector, dispatcher)
+
+    with pytest.raises(ConnectionError, match="client disconnected"):
+        _call_shutdown_with_failed_final_send(app)
+
+    assert delivered == ["shutdown"]
+    duplicate = TestClient(app).post("/shutdown")
+    assert duplicate.status_code == 200
+    assert delivered == ["shutdown"]
+
+
+def test_callback_failure_is_visible_to_later_shutdown_http_without_retry():
+    handler = Mock(side_effect=RuntimeError("shutdown callback failed"))
+    dispatcher = ShutdownDispatcher()
+    assert dispatcher.begin_runtime_import() is True
+    dispatcher.bind_shutdown_handler(handler)
+    reflector = Reflector(
+        name="bot", description="test", version_from="1.0.0", language="python", port=3106,
+    )
+    client = TestClient(
+        shutdown_module.create_management_app(reflector, dispatcher),
+        raise_server_exceptions=False,
+    )
+
+    first = client.post("/shutdown")
+    duplicate = client.post("/shutdown")
+
+    assert first.status_code == 200
+    assert duplicate.status_code == 500
+    assert duplicate.json() == {
+        "status": "shutdown_failed",
+        "code": "shutdown_callback_failed",
+    }
+    handler.assert_called_once_with()
+
+
+@pytest.mark.timeout(5)
+def test_callback_failure_is_visible_through_live_management_http():
+    handler = Mock(side_effect=RuntimeError("shutdown callback failed"))
+    dispatcher = ShutdownDispatcher()
+    assert dispatcher.begin_runtime_import() is True
+    dispatcher.bind_shutdown_handler(handler)
+    port = _free_port()
+    reflector = Reflector(
+        name="bot", description="test", version_from="1.0.0", language="python", port=port,
+    )
+    handle = start_management_server(
+        shutdown_module.create_management_app(reflector, dispatcher),
+        port,
+        startup_timeout=2.0,
+    )
+
+    try:
+        request = Request(
+            f"http://127.0.0.1:{port}/shutdown",
+            data=b"",
+            method="POST",
+        )
+        with urlopen(request, timeout=2.0) as response:
+            assert response.status == 200
+            assert response.read()
+
+        with pytest.raises(HTTPError) as failed:
+            urlopen(request, timeout=2.0)
+        assert failed.value.code == 500
+        assert b'"code":"shutdown_callback_failed"' in failed.value.read()
+        handler.assert_called_once_with()
+        assert handle.thread.is_alive()
+        with urlopen(f"http://127.0.0.1:{port}/reflect", timeout=2.0) as response:
+            assert response.status == 200
+    finally:
+        handle.stop()
 
 
 @pytest.mark.timeout(5)

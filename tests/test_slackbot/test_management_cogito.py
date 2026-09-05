@@ -103,6 +103,10 @@ class TestBotShutdownEndpoint:
                 self.requests += 1
                 return self.requests == 1
 
+            @property
+            def delivery_failed(self):
+                return False
+
             def complete_shutdown_response(self):
                 self.completions += 1
 

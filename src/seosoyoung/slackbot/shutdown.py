@@ -17,7 +17,7 @@ from cogito import Reflector
 from cogito.endpoint import mount_cogito
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from starlette.background import BackgroundTask
+from starlette.types import Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,12 @@ class ShutdownDispatcher:
                 return False
             self._shutdown_requested = True
             return True
+
+    @property
+    def delivery_failed(self) -> bool:
+        """Return whether the single shutdown callback attempt failed."""
+        with self._lock:
+            return self._delivery_error is not None
 
     def _deliver_shutdown_if_ready(self) -> None:
         handler: Callable[[], None] | None = None
@@ -121,14 +127,27 @@ class ShutdownDispatcher:
             self._handler = handler
         self._deliver_shutdown_if_ready()
 
-    def runtime_work_allowed(self) -> bool:
-        """Return false once shutdown owns all later plugin/work admission."""
+    def run_runtime_work(self, start_work: Callable[[], None]) -> bool:
+        """Order one finite work-admission call against shutdown acceptance.
+
+        The callable must return after admission. Long-lived waits belong outside
+        this lock; the Slack adapter's finite ``connect`` call is the admission
+        boundary, while its process-lifetime wait is not.
+        """
         with self._lock:
-            return not self._shutdown_requested
+            if not self._runtime_started:
+                raise RuntimeError("Runtime must enter before admitting work")
+            if self._shutdown_requested:
+                return False
+            start_work()
+            return True
 
     def run_runtime(
         self,
-        runtime_main: Callable[[Callable[[], None], Callable[[], bool]], None],
+        runtime_main: Callable[
+            [Callable[[], None], Callable[[Callable[[], None]], bool]],
+            None,
+        ],
     ) -> bool:
         """Invoke runtime with an atomic entry handoff to its first instruction."""
         self._lock.acquire()
@@ -152,13 +171,32 @@ class ShutdownDispatcher:
             if self._shutdown_requested:
                 return False
 
-            runtime_main(mark_runtime_entered, self.runtime_work_allowed)
+            runtime_main(mark_runtime_entered, self.run_runtime_work)
             if not runtime_entered:
                 raise RuntimeError("Runtime did not confirm entry")
             return True
         finally:
             if lock_owned:
                 self._lock.release()
+
+
+class _ShutdownResponse(JSONResponse):
+    """Complete the accepted shutdown after success or terminal send failure."""
+
+    def __init__(self, on_response_finished: Callable[[], None] | None) -> None:
+        super().__init__({"status": "shutting down"})
+        self._on_response_finished = on_response_finished
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        except BaseException:
+            if self._on_response_finished is not None:
+                self._on_response_finished()
+            raise
+        else:
+            if self._on_response_finished is not None:
+                self._on_response_finished()
 
 
 def create_management_app(
@@ -172,13 +210,16 @@ def create_management_app(
     @app.post("/shutdown")
     async def shutdown():
         first_request = shutdown_dispatcher.request_shutdown()
-        return JSONResponse(
-            {"status": "shutting down"},
-            background=(
-                BackgroundTask(shutdown_dispatcher.complete_shutdown_response)
-                if first_request
-                else None
-            ),
+        if shutdown_dispatcher.delivery_failed:
+            return JSONResponse(
+                {
+                    "status": "shutdown_failed",
+                    "code": "shutdown_callback_failed",
+                },
+                status_code=500,
+            )
+        return _ShutdownResponse(
+            shutdown_dispatcher.complete_shutdown_response if first_request else None
         )
 
     return app
