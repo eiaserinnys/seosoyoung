@@ -193,6 +193,33 @@ class TestRunAutoPresentation:
         assert presentation.dm_thread_ts == "9999.0001"
 
 
+class TestGetSessionId:
+    """실행 중 SSE ID와 영속 세션 ID 조회 우선순위."""
+
+    def test_active_sse_session_id_wins(self):
+        active_lookup = MagicMock(return_value="active-session")
+        session_manager = MagicMock()
+        session_manager.get.return_value = MagicMock(session_id="stored-session")
+        backend = _make_backend(
+            session_manager=session_manager,
+            active_session_lookup=active_lookup,
+        )
+
+        assert backend.get_session_id("1234.5678") == "active-session"
+        active_lookup.assert_called_once_with("1234.5678")
+        session_manager.get.assert_not_called()
+
+    def test_stored_session_is_fallback_when_no_run_is_active(self):
+        session_manager = MagicMock()
+        session_manager.get.return_value = MagicMock(session_id="stored-session")
+        backend = _make_backend(
+            session_manager=session_manager,
+            active_session_lookup=MagicMock(return_value=None),
+        )
+
+        assert backend.get_session_id("1234.5678") == "stored-session"
+
+
 class TestRunAutoEventCallbacks:
     """run()에서 세분화 이벤트 콜백 자동 생성 테스트"""
 
