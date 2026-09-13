@@ -373,6 +373,7 @@ def main(
         data_dir=Path(Config.get_session_path()).parent / "data",
         update_message_fn=update_message,
         mention_tracker=_mention_tracker,
+        active_session_lookup=executor.get_session_id,
     )
 
     _load_plugins()

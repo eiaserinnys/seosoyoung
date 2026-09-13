@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, Callable, TYPE_CHECKING
 
 from seosoyoung.plugin_sdk import slack, soulstream, mention
 from seosoyoung.plugin_sdk.slack import (
@@ -312,6 +312,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         data_dir: Path,
         slack_client=None,
         update_message_fn=None,
+        active_session_lookup: Callable[[str], str | None] | None = None,
     ):
         """Initialize with Claude executor and session manager.
 
@@ -323,6 +324,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             slack_client: Slack WebClient instance (for auto-constructing PresentationContext)
             update_message_fn: (client, channel, ts, text, *, blocks=None) -> None
                                전달하면 on_compact가 None일 때 자동 생성됨
+            active_session_lookup: 실행 중인 thread의 SSE session ID 조회 함수
         """
         self._executor = executor
         self._session_manager = session_manager
@@ -330,6 +332,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         self._data_dir = data_dir
         self._slack_client = slack_client
         self._update_message_fn = update_message_fn
+        self._active_session_lookup = active_session_lookup
 
     def _build_presentation(
         self,
@@ -651,6 +654,10 @@ class SoulstreamBackendImpl(SoulstreamBackend):
 
     def get_session_id(self, thread_ts: str) -> str | None:
         """Get the Claude Code session ID for a thread."""
+        if self._active_session_lookup is not None:
+            active_session_id = self._active_session_lookup(thread_ts)
+            if active_session_id:
+                return active_session_id
         session = self._session_manager.get(thread_ts)
         return session.session_id if session else None
 
@@ -697,6 +704,7 @@ def init_plugin_backends(
     data_dir: Path,
     update_message_fn=None,
     mention_tracker: "MentionTracker | None" = None,
+    active_session_lookup: Callable[[str], str | None] | None = None,
 ) -> None:
     """Initialize plugin SDK backends.
 
@@ -711,6 +719,7 @@ def init_plugin_backends(
         update_message_fn: (client, channel, ts, text, *, blocks=None) -> None
                            전달하면 워처 등에서 on_compact가 자동 생성됨
         mention_tracker: MentionTracker instance for mention tracking backend
+        active_session_lookup: 실행 중인 thread의 SSE session ID 조회 함수
     """
     # Initialize Slack backend
     slack_backend = SlackBackendImpl(slack_client)
@@ -722,6 +731,7 @@ def init_plugin_backends(
         executor, session_manager, restart_manager, data_dir,
         slack_client=slack_client,
         update_message_fn=update_message_fn,
+        active_session_lookup=active_session_lookup,
     )
     soulstream.set_backend(soulstream_backend)
     logger.info("plugin_sdk.soulstream backend initialized")
