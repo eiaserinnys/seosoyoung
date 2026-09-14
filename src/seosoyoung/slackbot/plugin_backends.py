@@ -301,6 +301,24 @@ class SlackBackendImpl(SlackBackend):
 # ============================================================================
 
 
+def _text_only_failure(captured_result: list[Any]) -> str | None:
+    """text_only 실행의 실패 사유를 돌려준다. 정상이면 None.
+
+    - on_result 콜백이 한 번도 불리지 않음 → executor 내부 예외 (콜백 호출 전에 종료).
+    - 콜백은 불렸으나 ``success=False`` → 원격 실행 실패 (Soul service error, 타임아웃 등).
+    """
+    if not captured_result:
+        return "executor가 결과를 반환하지 않았습니다 (실행 예외)"
+    result = captured_result[-1]
+    if getattr(result, "success", False):
+        return None
+    return (
+        getattr(result, "error", None)
+        or getattr(result, "output", None)
+        or "원격 실행 실패 (사유 미상)"
+    )
+
+
 class SoulstreamBackendImpl(SoulstreamBackend):
     """Soulstream backend implementation using ClaudeExecutor."""
 
@@ -438,6 +456,11 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 # text_only 모드: presentation 없이 실행하여 슬랙 게시를 건너뜀
                 # on_result 콜백으로 출력 텍스트를 캡처
                 captured_output: list[str] = []
+                # executor가 on_result로 넘긴 ClaudeResult 원본. 실행 실패(success=False)를
+                # ok=True·빈 utterances로 감싸 "매치 없음"으로 조용히 넘기던 결함 차단
+                # (2026-09-14, NODE_COMMAND_TIMEOUT 사고). 콜백이 한 번도 안 불리면
+                # executor 내부 예외로 본다 — 그 경로도 실패로 전파.
+                captured_result: list[Any] = []
 
                 # async/sync 경계 안전성 근거:
                 #   self._executor 내부는 run_in_new_loop(coro) →
@@ -475,6 +498,7 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         )
 
                 def capture_result(result, _thread_ts, _user_message):
+                    captured_result.append(result)
                     out = result.output or ""
                     captured_output.append(out)
                     # complete 블록: final output 안에서도 매치 검색.
@@ -601,6 +625,20 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             session = self._session_manager.get(thread_ts)
             new_session_id = session.session_id if session else session_id
             output = captured_output[0] if (text_only and captured_output) else ""
+
+            if text_only:
+                failure = _text_only_failure(captured_result)
+                if failure is not None:
+                    logger.error(
+                        f"soulstream.run(text_only) 실패: thread_ts={thread_ts} "
+                        f"session_id={new_session_id} error={failure}"
+                    )
+                    return RunResult(
+                        ok=False,
+                        status=RunStatus.FAILED,
+                        session_id=new_session_id,
+                        error=failure,
+                    )
 
             # 누락 보호: text 블록이 ``text_end`` 없이 종료된 케이스(SSE 비정상 종료 등)에
             # 대비하여 잔여 buffer에서도 마지막 한 번 매치 검색.
