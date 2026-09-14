@@ -698,3 +698,74 @@ class TestConcurrentRun:
         # 병렬이면 ~1초, 직렬이면 ~3초
         assert elapsed < 2.0, f"Expected <2s (parallel), got {elapsed:.2f}s (serial)"
         assert all(r.ok for r in results)
+
+
+class TestTextOnlyFailurePropagation:
+    """text_only 실행 실패가 RunResult.ok=False로 전파되는지 검증 (2026-09-14 사고).
+
+    사고: orch `NODE_COMMAND_TIMEOUT`으로 세션 생성이 실패했는데 backend가
+    ok=True·utterances=[]를 돌려줘 채널 관찰자가 "<utterance> 매치 없음"으로
+    조용히 넘어갔다.
+    """
+
+    @staticmethod
+    def _run_text_only(executor):
+        session_mgr = MagicMock()
+        session_mgr.get.return_value = None
+        backend = _make_backend(executor=executor, session_manager=session_mgr)
+        return backend.run(
+            prompt="(채널 개입 트리거)",
+            channel="C123",
+            thread_ts="1234.5678",
+            text_only=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_failed_claude_result_is_propagated(self):
+        """executor가 success=False 결과를 on_result로 넘기면 ok=False + error."""
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+
+        def fake_executor(**kwargs):
+            kwargs["on_result"](
+                ClaudeResult(
+                    success=False,
+                    output="",
+                    error="Soulstream 오류: NODE_COMMAND_TIMEOUT: create_session timed out",
+                ),
+                kwargs["thread_ts"],
+                kwargs["prompt"],
+            )
+
+        result = await self._run_text_only(fake_executor)
+
+        assert result.ok is False
+        assert "NODE_COMMAND_TIMEOUT" in result.error
+        assert result.utterances == []
+
+    @pytest.mark.asyncio
+    async def test_missing_result_callback_is_failure(self):
+        """executor가 on_result를 한 번도 부르지 않으면(내부 예외) ok=False."""
+        result = await self._run_text_only(MagicMock())
+
+        assert result.ok is False
+        assert result.error
+
+    @pytest.mark.asyncio
+    async def test_successful_result_keeps_utterances(self):
+        """정상 성공 경로는 회귀 없이 ok=True + complete 블록 utterance 추출."""
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+
+        def fake_executor(**kwargs):
+            kwargs["on_result"](
+                ClaudeResult(
+                    success=True,
+                    output="분석 메모\n<utterance>안녕하십니까</utterance>",
+                ),
+                kwargs["thread_ts"],
+                kwargs["prompt"],
+            )
+
+        result = await self._run_text_only(fake_executor)
+
+        assert result.ok is True
+        assert result.utterances == ["안녕하십니까"]
