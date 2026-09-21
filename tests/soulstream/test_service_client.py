@@ -260,6 +260,76 @@ class TestSoulServiceClientExecute:
         assert body["agent_session_id"] == "existing-sess"
 
     @pytest.mark.asyncio
+    async def test_execute_includes_model_preset_for_new_session(self, client):
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"new-sess-preset"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.execute("hello", model_preset="codex-5.6-sol")
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert body["model_preset"] == "codex-5.6-sol"
+
+    @pytest.mark.asyncio
+    async def test_execute_omits_model_preset_for_resume(self, client):
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"existing-sess"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"resumed"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.execute(
+            "continue",
+            agent_session_id="existing-sess",
+            model_preset="codex-5.6-sol",
+        )
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert "model_preset" not in body
+
+    @pytest.mark.asyncio
+    async def test_execute_omits_unset_model_preset(self, client):
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"new-sess-default"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.execute("hello")
+
+        call_kwargs = session.post.call_args
+        body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert "model_preset" not in body
+
+    @pytest.mark.asyncio
     async def test_execute_includes_tool_settings_in_body(self, client):
         """allowed_tools/disallowed_tools/use_mcp가 HTTP body에 포함되는지 확인"""
         sse_data = (

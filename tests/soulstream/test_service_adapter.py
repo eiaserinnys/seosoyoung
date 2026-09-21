@@ -91,6 +91,21 @@ class TestExecute:
         assert call_kwargs["agent_session_id"] == "sess-abc-123"
 
     @pytest.mark.asyncio
+    async def test_model_preset_is_forwarded_to_client(self, adapter, mock_client):
+        mock_client.execute.return_value = ExecuteResult(
+            success=True,
+            result="done",
+            agent_session_id="sess-codex",
+        )
+
+        await adapter.execute(
+            prompt="hello",
+            model_preset="codex-5.6-sol",
+        )
+
+        assert mock_client.execute.call_args.kwargs["model_preset"] == "codex-5.6-sol"
+
+    @pytest.mark.asyncio
     async def test_success_with_update_marker(self, adapter, mock_client):
         """<!-- UPDATE --> 마커 추출"""
         mock_client.execute.return_value = ExecuteResult(

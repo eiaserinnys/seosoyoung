@@ -113,6 +113,25 @@ class TestConfigConsistency:
         assert callable(Config.get_search_index_path)
 
 
+class TestClaudeConfig:
+    """Soulstream 실행 프로필 설정 테스트."""
+
+    def test_model_preset_reads_optional_environment_value(self):
+        config_module = reload_config_with_env({
+            "SEOSOYOUNG_MODEL_PRESET": "codex-5.6-sol",
+        })
+
+        assert config_module.Config.claude.model_preset == "codex-5.6-sol"
+
+    @pytest.mark.parametrize("value", [None, "", "   "])
+    def test_model_preset_blank_or_missing_is_unset(self, value):
+        env = {} if value is None else {"SEOSOYOUNG_MODEL_PRESET": value}
+
+        config_module = reload_config_with_env(env)
+
+        assert config_module.Config.claude.model_preset is None
+
+
 class TestConfigPaths:
     """경로 설정 테스트"""
 

@@ -183,6 +183,7 @@ executor = ClaudeExecutor(
     list_runner_ref=lambda: _trello_refs["list_runner"],
     parse_markers_fn=parse_markers,
     agent_id=Config.claude.agent_id,
+    model_preset=Config.claude.model_preset,
     persistent_listener_manager=persistent_listener_manager,
 )
 
