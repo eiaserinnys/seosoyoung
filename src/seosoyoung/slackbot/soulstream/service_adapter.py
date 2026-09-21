@@ -64,6 +64,7 @@ class ClaudeServiceAdapter:
         folder_id: Optional[str] = None,
         system_prompt: Optional[str] = None,
         profile: Optional[str] = None,
+        model_preset: Optional[str] = None,
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
         caller_info: Optional[dict] = None,
@@ -112,6 +113,7 @@ class ClaudeServiceAdapter:
                 folder_id=folder_id,
                 system_prompt=system_prompt,
                 profile=profile,
+                model_preset=model_preset,
                 persist_listening=persist_listening,
                 caller_info=caller_info,
             )

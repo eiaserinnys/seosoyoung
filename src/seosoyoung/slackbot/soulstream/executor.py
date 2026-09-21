@@ -82,6 +82,7 @@ class ClaudeExecutor:
         list_runner_ref: Optional[Callable] = None,
         parse_markers_fn: Optional[Callable] = None,
         agent_id: str = "",
+        model_preset: Optional[str] = None,
         persistent_listener_manager: Any = None,
     ):
         self.session_manager = session_manager
@@ -97,6 +98,7 @@ class ClaudeExecutor:
         self.list_runner_ref = list_runner_ref
         self._parse_markers_fn = parse_markers_fn
         self._agent_id = agent_id
+        self._model_preset = model_preset
         self._persistent_listener_manager = persistent_listener_manager
 
         # 하위 호환 프로퍼티 (기존 코드에서 직접 접근하는 경우 대비)
@@ -595,6 +597,7 @@ class ClaudeExecutor:
                 folder_id=folder_id,
                 system_prompt=system_prompt,
                 profile=profile,
+                model_preset=self._model_preset,
                 persist_listening=persist_listening,
                 caller_info=caller_info,
             )
