@@ -251,8 +251,7 @@ class TestLoreSearchRouting:
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search", return_value=0.9), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_answer_language", side_effect=slow_language), \
-             patch("seosoyoung.slackbot.handlers.lore_search.search_lore", side_effect=search), \
-             patch("seosoyoung.slackbot.handlers.lore_search.time.monotonic", return_value=10.0):
+             patch("seosoyoung.slackbot.handlers.lore_search.search_lore", side_effect=search):
             handled = try_handle_lore_search(
                 "日本語で設定を探して", MagicMock(return_value={"ts": "placeholder"}),
                 client=MagicMock(), channel="C123", thread_ts="thread-1",
@@ -294,7 +293,7 @@ class TestLoreSearchRouting:
         client.chat_update.assert_not_called()
         logger.warning.assert_called_once()
 
-    def test_progress_updates_only_when_changed_and_at_least_one_second_apart(self):
+    def test_progress_updates_every_new_message_and_suppresses_duplicates(self):
         result = _search_body([{"title": "아리엘라", "source_type": "lore", "text": "설정"}])
         client = MagicMock()
 
@@ -303,13 +302,14 @@ class TestLoreSearchRouting:
             on_progress("너무 빠른 단계")
             on_progress("다음 단계")
             on_progress("다음 단계")
+            on_progress("마지막 단계")
+            on_progress("마지막 단계")
             return result
 
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search", return_value=0.9), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_answer_language", return_value=(0.05, "ko")), \
-             patch("seosoyoung.slackbot.handlers.lore_search.search_lore", side_effect=stream), \
-             patch("seosoyoung.slackbot.handlers.lore_search.time.monotonic", side_effect=[10.0, 10.5, 11.1, 12.2]):
+             patch("seosoyoung.slackbot.handlers.lore_search.search_lore", side_effect=stream):
             try_handle_lore_search(
                 "질의", MagicMock(return_value={"ts": "placeholder"}),
                 client=client, channel="C123", thread_ts="thread-1",
@@ -320,7 +320,9 @@ class TestLoreSearchRouting:
         ]
         assert progress_texts == [
             "🔎 로어를 찾고 있습니다 · 첫 단계",
+            "🔎 로어를 찾고 있습니다 · 너무 빠른 단계",
             "🔎 로어를 찾고 있습니다 · 다음 단계",
+            "🔎 로어를 찾고 있습니다 · 마지막 단계",
         ]
 
     def test_score_below_threshold_skips_search(self):
@@ -340,7 +342,7 @@ class TestResultBlocks:
             "title": "act3_z1_8_ending · r2_act3_ending · dialogue",
             "id": "shay:act3_z1_8_ending:dialogue",
             "source_type": "shay",
-            "text": "펜릭스 헤이븐: 불장난은 끝이야, 그림자.\n성채수를 태워서 대악마를\n펜릭스 헤이븐 [en]: Playtime's over.",
+            "text": "펜릭스 헤이븐: 불장난은 끝이야, 그림자.\n성채수를 태워서 대악마를\n펜릭스 헤이븐 [en]: Playtime's over, Shadow.\nYou're burning the Arbor to free\nthe Archdemon, aren't you?\n아리엘라의 그림자: 하! 한심하긴.",
             "translations": {},
             "path": "act3/ending.json",
             "relevance": 0.86,
@@ -354,9 +356,14 @@ class TestResultBlocks:
         assert "ID shay:act3_z1_8_ending:dialogue" in blocks[4]["elements"][0]["text"]
         assert blocks[5]["elements"][0]["type"] == "rich_text_quote"
         quote_elements = blocks[5]["elements"][0]["elements"]
+        quote_text = "".join(element["text"] for element in quote_elements)
         assert quote_elements[0] == {"type": "text", "text": "펜릭스 헤이븐", "style": {"bold": True}}
-        assert "\n성채수를 태워서 대악마를" in "".join(element["text"] for element in quote_elements)
+        assert "\n성채수를 태워서 대악마를" in quote_text
+        assert "아리엘라의 그림자" in quote_text
+        assert "하! 한심하긴." in quote_text
         assert "Playtime's over" not in serialized
+        assert "You're burning the Arbor to free" not in serialized
+        assert "the Archdemon, aren't you?" not in serialized
         assert blocks[-1]["type"] == "actions"
 
     def test_lore_section_displays_headings_and_full_body_over_3000_characters(self):

@@ -8,7 +8,6 @@ import json
 import logging
 import re
 import threading
-import time
 from typing import Any, Callable
 
 import requests
@@ -202,9 +201,15 @@ def _display_text(item: dict[str, Any], language: str) -> tuple[str, bool]:
 
 def _dialogue_elements(text: str) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
+    skip_english_continuation = False
     for line in text.splitlines():
         match = re.match(r"^([^:\n]{1,80}):(?: ?)(.*)$", line)
-        if match and match.group(1).endswith(" [en]"):
+        if match:
+            if match.group(1).endswith(" [en]"):
+                skip_english_continuation = True
+                continue
+            skip_english_continuation = False
+        elif skip_english_continuation:
             continue
         if elements:
             elements.append({"type": "text", "text": "\n"})
@@ -374,18 +379,13 @@ def try_handle_lore_search(query: str, say, *, client, channel: str, thread_ts: 
     placeholder = say(text="🔎 로어를 찾고 있습니다", thread_ts=thread_ts)
     progress_lock = threading.Lock()
     last_progress_message = None
-    last_progress_update = None
 
     def update_progress(message: str) -> None:
-        nonlocal last_progress_message, last_progress_update
-        now = time.monotonic()
+        nonlocal last_progress_message
         with progress_lock:
             if message == last_progress_message:
                 return
-            if last_progress_update is not None and now - last_progress_update < 1.0:
-                return
             last_progress_message = message
-            last_progress_update = now
         try:
             client.chat_update(
                 channel=channel,
