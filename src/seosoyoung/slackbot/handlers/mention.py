@@ -578,7 +578,9 @@ def register_mention_handlers(app, dependencies: dict):
 
         # 일반 질문: 세션 생성 + Claude 실행 (공유 함수 사용)
         clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
-        if try_handle_lore_search(clean_text, say=say, thread_ts=thread_ts or ts):
+        if try_handle_lore_search(
+            clean_text, say=say, client=client, channel=channel, thread_ts=thread_ts or ts,
+        ):
             return
         create_session_and_run_claude(
             event, clean_text, channel, ts, thread_ts, user_id,

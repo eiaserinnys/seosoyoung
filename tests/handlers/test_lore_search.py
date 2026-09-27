@@ -13,6 +13,7 @@ from seosoyoung.slackbot.handlers.lore_search import (
     try_handle_lore_search,
 )
 from seosoyoung.slackbot.handlers import mention
+from seosoyoung.slackbot.config import Config
 
 
 def _config(**overrides):
@@ -81,13 +82,17 @@ class TestLoreSearchRouting:
         config = _config(**{missing: ""})
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", config, create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search") as judge:
-            handled = try_handle_lore_search("로어를 찾아줘", MagicMock(), "thread-1")
+            handled = try_handle_lore_search(
+                "로어를 찾아줘", MagicMock(), client=MagicMock(), channel="C123", thread_ts="thread-1",
+            )
 
         assert handled is False
         judge.assert_not_called()
 
     def test_score_at_threshold_searches_and_posts_block_kit_to_the_thread(self):
         say = MagicMock()
+        say.return_value = {"ts": "placeholder-1"}
+        client = MagicMock()
         response = {
             "search_url": "https://lore-search.example",
             "results": [{"title": "루카", "source_type": "lore", "excerpt": "설정 발췌", "path": "lore/luka.yaml"}],
@@ -95,42 +100,63 @@ class TestLoreSearchRouting:
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search", return_value=0.7), \
              patch("seosoyoung.slackbot.handlers.lore_search.search_lore", return_value=response) as search:
-            handled = try_handle_lore_search("루카 설정 찾아줘", say, "thread-1")
+            handled = try_handle_lore_search(
+                "루카 설정 찾아줘", say, client=client, channel="C123", thread_ts="thread-1",
+            )
 
         assert handled is True
         search.assert_called_once_with("루카 설정 찾아줘", "https://lore-search.example/", "lore-test-key")
-        kwargs = say.call_args.kwargs
-        assert kwargs["thread_ts"] == "thread-1"
-        assert kwargs["blocks"][-1]["elements"][0]["url"] == "https://lore-search.example"
+        say.assert_called_once_with(text=Config.bot.thinking_text, thread_ts="thread-1")
+        update = client.chat_update.call_args.kwargs
+        assert update["channel"] == "C123"
+        assert update["ts"] == "placeholder-1"
+        assert update["blocks"][-1]["elements"][0]["url"] == "https://lore-search.example"
+        client.chat_delete.assert_not_called()
 
     def test_score_below_threshold_skips_search(self):
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search", return_value=0.69), \
              patch("seosoyoung.slackbot.handlers.lore_search.search_lore") as search:
-            handled = try_handle_lore_search("대사 고쳐줘", MagicMock(), "thread-1")
+            say = MagicMock()
+            handled = try_handle_lore_search(
+                "대사 고쳐줘", say, client=MagicMock(), channel="C123", thread_ts="thread-1",
+            )
 
         assert handled is False
         search.assert_not_called()
+        say.assert_not_called()
 
     def test_jev_failure_is_logged_and_falls_back(self):
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search", side_effect=RuntimeError("secret")), \
              patch("seosoyoung.slackbot.handlers.lore_search.search_lore") as search, \
              patch("seosoyoung.slackbot.handlers.lore_search.logger") as logger:
-            handled = try_handle_lore_search("질의", MagicMock(), "thread-1")
+            say = MagicMock()
+            handled = try_handle_lore_search(
+                "질의", say, client=MagicMock(), channel="C123", thread_ts="thread-1",
+            )
 
         assert handled is False
         search.assert_not_called()
+        say.assert_not_called()
         logger.warning.assert_called_once()
 
     def test_search_failure_is_logged_and_falls_back(self):
+        say = MagicMock()
+        say.return_value = {"ts": "placeholder-2"}
+        client = MagicMock()
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search", return_value=0.9), \
              patch("seosoyoung.slackbot.handlers.lore_search.search_lore", side_effect=RuntimeError("secret")), \
              patch("seosoyoung.slackbot.handlers.lore_search.logger") as logger:
-            handled = try_handle_lore_search("질의", MagicMock(), "thread-1")
+            handled = try_handle_lore_search(
+                "질의", say, client=client, channel="C123", thread_ts="thread-1",
+            )
 
         assert handled is False
+        say.assert_called_once_with(text=Config.bot.thinking_text, thread_ts="thread-1")
+        client.chat_delete.assert_called_once_with(channel="C123", ts="placeholder-2")
+        client.chat_update.assert_not_called()
         logger.warning.assert_called_once()
 
     def test_result_blocks_have_bounded_section_text_and_a_site_button(self):
@@ -188,11 +214,14 @@ class TestMentionHandlerIntegration:
         }
         say = MagicMock()
 
+        client = MagicMock()
         with patch("seosoyoung.slackbot.handlers.mention.try_handle_lore_search", return_value=True) as route, \
              patch("seosoyoung.slackbot.handlers.mention.create_session_and_run_claude") as general:
-            handler(event, say, MagicMock())
+            handler(event, say, client)
 
-        route.assert_called_once_with("루카 설정 찾아줘", say=say, thread_ts="1234567890.000001")
+        route.assert_called_once_with(
+            "루카 설정 찾아줘", say=say, client=client, channel="C123", thread_ts="1234567890.000001",
+        )
         general.assert_not_called()
 
     def test_existing_session_thread_skips_lore_search(self):

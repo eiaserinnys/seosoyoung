@@ -113,7 +113,7 @@ def build_search_blocks(body: dict[str, Any]) -> list[dict[str, Any]]:
     return blocks
 
 
-def try_handle_lore_search(query: str, say, thread_ts: str) -> bool:
+def try_handle_lore_search(query: str, say, *, client, channel: str, thread_ts: str) -> bool:
     config = getattr(Config, "lore_search", None)
     values = (
         getattr(config, "jev_api_key", None),
@@ -132,14 +132,22 @@ def try_handle_lore_search(query: str, say, thread_ts: str) -> bool:
     if score < INTENT_THRESHOLD:
         return False
 
+    placeholder = say(text=Config.bot.thinking_text, thread_ts=thread_ts)
     try:
         result = search_lore(query, search_url, search_api_key)
     except Exception as error:
         logger.warning("Lore-search request failed exception_type=%s", type(error).__name__)
+        try:
+            client.chat_delete(channel=channel, ts=placeholder["ts"])
+        except Exception as cleanup_error:
+            logger.warning(
+                "Lore-search placeholder cleanup failed exception_type=%s",
+                type(cleanup_error).__name__,
+            )
         return False
 
     blocks = build_search_blocks(result)
     result_count = min(len(result["results"]), MAX_RESULTS)
     text = f"로어 검색 결과 {result_count}건" if result_count else "로어 검색 결과가 없습니다."
-    say(text=text, blocks=blocks, thread_ts=thread_ts)
+    client.chat_update(channel=channel, ts=placeholder["ts"], text=text, blocks=blocks)
     return True
