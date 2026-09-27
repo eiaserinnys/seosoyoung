@@ -20,6 +20,7 @@ from seosoyoung.slackbot.presentation.session_listener import PersistentSessionL
 from seosoyoung.slackbot.slack.helpers import send_long_message, resolve_operator_dm
 from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.handlers import register_all_handlers
+from seosoyoung.slackbot.handlers.lore_search import log_lore_search_routing_status
 from seosoyoung.slackbot.handlers.actions import send_restart_confirmation
 from seosoyoung.core.plugin_manager import PluginManager
 from seosoyoung.core.plugin_config import load_plugin_registry, load_plugin_config
@@ -358,6 +359,7 @@ def main(
     """봇 메인 진입점"""
     runtime_entered()
     logger.info("SeoSoyoung 봇을 시작합니다...")
+    log_lore_search_routing_status()
     logger.info(f"LOG_PATH: {Config.get_log_path()}")
     logger.info(f"ADMIN_USERS: {Config.auth.admin_users}")
     logger.info(f"ALLOWED_USERS: {Config.auth.allowed_users}")

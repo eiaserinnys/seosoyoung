@@ -9,6 +9,8 @@ import pytest
 from seosoyoung.slackbot.handlers.lore_search import (
     build_search_blocks,
     judge_lore_search,
+    log_lore_search_routing_status,
+    missing_lore_search_settings,
     search_lore,
     try_handle_lore_search,
 )
@@ -48,9 +50,12 @@ class TestJevIntentRequest:
         assert kwargs["json"]["model"] == "jev-latest"
         state = json.loads(kwargs["json"]["state"])
         assert state["user_prompt"] == "루카가 왜 떠났는지 찾아줘"
-        assert "대사 고쳐줘" in state["instructions"]
-        assert "X가 Y를 유혹하는 대사를 찾아줘" in state["instructions"]
-        assert "X가 Y를 유혹하는 새 대사를 써줘" in state["instructions"]
+        assert state["instructions"] == (
+            "사용자 발화가 엠버 앤 블레이드의 인물, 사건, 세계관, 설정, 대사처럼 이미 존재하는 "
+            "로어 자료를 찾아서 보여 달라는 요청인지 0에서 1 사이로 판단한다. 판단 기준은 주제가 "
+            "아니라 요청하는 행동이다. 대사든 설정이든 기존 자료를 찾거나 확인하려는 요청이면 "
+            "검색이다. 새로 쓰기, 고치기, 번역, 일반 상담과 잡담은 검색이 아니다."
+        )
         assert kwargs["json"]["questions"]["lore_search"]["type"] == "noul"
 
     def test_rejects_missing_or_out_of_range_score(self):
@@ -79,6 +84,29 @@ class TestLoreSearchApiRequest:
 
 
 class TestLoreSearchRouting:
+    @pytest.mark.parametrize(
+        ("config", "status", "missing"),
+        [
+            (_config(), "enabled", "none"),
+            (_config(lore_search_url=""), "disabled", "LORE_SEARCH_URL"),
+        ],
+    )
+    def test_startup_status_logs_enabled_state_and_setting_names_only(self, config, status, missing):
+        with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", config, create=True), \
+             patch("seosoyoung.slackbot.handlers.lore_search.logger") as logger:
+            log_lore_search_routing_status()
+
+        logger.info.assert_called_once_with(
+            "Lore-search routing status=%s missing_settings=%s",
+            status,
+            missing,
+        )
+
+    def test_missing_settings_names_match_disabled_routing_values(self):
+        config = _config(jev_api_key=" ", lore_search_api_key=None)
+        with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", config, create=True):
+            assert missing_lore_search_settings() == ["JEV_API_KEY", "LORE_SEARCH_API_KEY"]
+
     @pytest.mark.parametrize("missing", ["jev_api_key", "lore_search_url", "lore_search_api_key"])
     def test_any_missing_environment_value_disables_the_feature(self, missing):
         config = _config(**{missing: ""})
@@ -102,12 +130,19 @@ class TestLoreSearchRouting:
         query = "그림자가 펜릭스를 유혹하는 대사를 찾아줘"
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search", return_value=0.7), \
-             patch("seosoyoung.slackbot.handlers.lore_search.search_lore", return_value=response) as search:
+             patch("seosoyoung.slackbot.handlers.lore_search.search_lore", return_value=response) as search, \
+             patch("seosoyoung.slackbot.handlers.lore_search.logger") as logger:
             handled = try_handle_lore_search(
                 query, say, client=client, channel="C123", thread_ts="thread-1",
             )
 
         assert handled is True
+        logger.info.assert_called_once_with(
+            "Jev lore-search intent score=%s threshold=%.1f decision=%s",
+            0.7,
+            0.7,
+            "search",
+        )
         search.assert_called_once_with(query, "https://lore-search.example/", "lore-test-key")
         say.assert_called_once_with(text=Config.bot.thinking_text, thread_ts="thread-1")
         update = client.chat_update.call_args.kwargs
@@ -130,9 +165,10 @@ class TestLoreSearchRouting:
         search.assert_not_called()
         say.assert_not_called()
         logger.info.assert_called_once_with(
-            "Jev lore-search routing skipped score_below_threshold score=%.2f threshold=%.1f",
+            "Jev lore-search intent score=%s threshold=%.1f decision=%s",
             0.69,
             0.7,
+            "general",
         )
 
     def test_jev_failure_is_logged_and_falls_back(self):

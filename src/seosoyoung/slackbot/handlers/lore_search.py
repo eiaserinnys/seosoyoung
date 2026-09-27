@@ -20,6 +20,31 @@ SEARCH_TIMEOUT_SECONDS = 100
 INTENT_THRESHOLD = 0.7
 MAX_RESULTS = 5
 MAX_EXCERPT_LENGTH = 240
+LORE_SEARCH_SETTING_NAMES = (
+    ("jev_api_key", "JEV_API_KEY"),
+    ("lore_search_url", "LORE_SEARCH_URL"),
+    ("lore_search_api_key", "LORE_SEARCH_API_KEY"),
+)
+
+
+def missing_lore_search_settings() -> list[str]:
+    config = getattr(Config, "lore_search", None)
+    missing = []
+    for attribute, setting_name in LORE_SEARCH_SETTING_NAMES:
+        value = getattr(config, attribute, None)
+        if not isinstance(value, str) or not value.strip():
+            missing.append(setting_name)
+    return missing
+
+
+def log_lore_search_routing_status() -> None:
+    missing = missing_lore_search_settings()
+    status = "enabled" if not missing else "disabled"
+    logger.info(
+        "Lore-search routing status=%s missing_settings=%s",
+        status,
+        ",".join(missing) or "none",
+    )
 
 
 def judge_lore_search(user_prompt: str, api_key: str) -> float:
@@ -27,13 +52,10 @@ def judge_lore_search(user_prompt: str, api_key: str) -> float:
         "stage": "intent",
         "user_prompt": user_prompt,
         "instructions": (
-            "사용자 발화가 엠버 앤 블레이드의 인물, 사건, 세계관, 설정 또는 기존 대사를 "
-            "로어 검색으로 찾아 달라는 요청인지 0에서 1 사이로 판단한다. 예를 들어 "
-            "'X가 Y를 유혹하는 대사를 찾아줘'는 기존 대사 검색 요청이고, "
-            "'X가 Y를 유혹하는 새 대사를 써줘'는 창작 요청이다. '대사 고쳐줘'처럼 "
-            "대사를 새로 쓰거나 고치기, "
-            "번역, 일반 상담과 잡담은 검색 요청이 아니다. 질문형인지보다 실제 정본 정보를 찾으려는 "
-            "의도를 본다."
+            "사용자 발화가 엠버 앤 블레이드의 인물, 사건, 세계관, 설정, 대사처럼 이미 존재하는 "
+            "로어 자료를 찾아서 보여 달라는 요청인지 0에서 1 사이로 판단한다. 판단 기준은 주제가 "
+            "아니라 요청하는 행동이다. 대사든 설정이든 기존 자료를 찾거나 확인하려는 요청이면 "
+            "검색이다. 새로 쓰기, 고치기, 번역, 일반 상담과 잡담은 검색이 아니다."
         ),
     }
     payload = {
@@ -116,27 +138,26 @@ def build_search_blocks(body: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def try_handle_lore_search(query: str, say, *, client, channel: str, thread_ts: str) -> bool:
-    config = getattr(Config, "lore_search", None)
-    values = (
-        getattr(config, "jev_api_key", None),
-        getattr(config, "lore_search_url", None),
-        getattr(config, "lore_search_api_key", None),
-    )
-    if any(not isinstance(value, str) or not value.strip() for value in values):
+    if missing_lore_search_settings():
         return False
 
-    jev_api_key, search_url, search_api_key = values
+    config = Config.lore_search
+    jev_api_key = config.jev_api_key
+    search_url = config.lore_search_url
+    search_api_key = config.lore_search_api_key
     try:
         score = judge_lore_search(query, jev_api_key)
     except Exception as error:
         logger.warning("Jev lore-search routing failed exception_type=%s", type(error).__name__)
         return False
+    decision = "search" if score >= INTENT_THRESHOLD else "general"
+    logger.info(
+        "Jev lore-search intent score=%s threshold=%.1f decision=%s",
+        score,
+        INTENT_THRESHOLD,
+        decision,
+    )
     if score < INTENT_THRESHOLD:
-        logger.info(
-            "Jev lore-search routing skipped score_below_threshold score=%.2f threshold=%.1f",
-            score,
-            INTENT_THRESHOLD,
-        )
         return False
 
     placeholder = say(text=Config.bot.thinking_text, thread_ts=thread_ts)
