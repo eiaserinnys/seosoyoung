@@ -203,6 +203,15 @@ class BotIdentityConfig:
     )
 
 
+@dataclass
+class LoreSearchConfig:
+    """Optional lore-search mention routing settings."""
+
+    jev_api_key: str | None = os.getenv("JEV_API_KEY")
+    lore_search_url: str | None = os.getenv("LORE_SEARCH_URL")
+    lore_search_api_key: str | None = os.getenv("LORE_SEARCH_API_KEY")
+
+
 class Config:
     """애플리케이션 설정
 
@@ -220,6 +229,7 @@ class Config:
     orchestrator = OrchestratorConfig()
     emoji = EmojiConfig()
     bot = BotIdentityConfig()
+    lore_search = LoreSearchConfig()
 
     # ========================================
     # 경로 설정 (런타임에 cwd 기준 계산)
