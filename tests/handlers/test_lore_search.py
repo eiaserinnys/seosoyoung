@@ -343,8 +343,10 @@ class TestResultBlocks:
             "id": "shay:act3_z1_8_ending:dialogue",
             "source_type": "shay",
             "text": "펜릭스 헤이븐: 불장난은 끝이야, 그림자.\n성채수를 태워서 대악마를\n펜릭스 헤이븐 [en]: Playtime's over, Shadow.\nYou're burning the Arbor to free\nthe Archdemon, aren't you?\n아리엘라의 그림자: 하! 한심하긴.",
-            "translations": {},
-            "path": "act3/ending.json",
+            "translations": {
+                "ja": "フェンリクス: 遊びは終わりだ、影よ。\n樹木を燃やして悪魔を解放するつもりだね？\nアリエラ: なんて愚かなんだ。",
+            },
+            "path": "narrative/_rev2/_core/_act3/z1_boss/act3_z1_8_ending.yaml",
             "relevance": 0.86,
             "participants": ["펜릭스 헤이븐", "아리엘라의 그림자"],
         }])
@@ -353,18 +355,28 @@ class TestResultBlocks:
         assert blocks[0]["text"]["text"] == "📜 로어 검색 결과"
         assert blocks[2]["type"] == "divider"
         assert blocks[3]["text"]["text"] == "*1. 펜릭스 헤이븐 ↔ 아리엘라의 그림자*"
-        assert "ID shay:act3_z1_8_ending:dialogue" in blocks[4]["elements"][0]["text"]
+        assert blocks[4]["elements"][0]["text"] == "대사 · act3_z1_8_ending (dialogue) · 관련도 0.86"
         assert blocks[5]["elements"][0]["type"] == "rich_text_quote"
         quote_elements = blocks[5]["elements"][0]["elements"]
         quote_text = "".join(element["text"] for element in quote_elements)
         assert quote_elements[0] == {"type": "text", "text": "펜릭스 헤이븐", "style": {"bold": True}}
-        assert "\n성채수를 태워서 대악마를" in quote_text
-        assert "아리엘라의 그림자" in quote_text
-        assert "하! 한심하긴." in quote_text
+        assert quote_text == (
+            "펜릭스 헤이븐: 불장난은 끝이야, 그림자. 성채수를 태워서 대악마를\n"
+            "아리엘라의 그림자: 하! 한심하긴."
+        )
         assert "Playtime's over" not in serialized
         assert "You're burning the Arbor to free" not in serialized
         assert "the Archdemon, aren't you?" not in serialized
         assert blocks[-1]["type"] == "actions"
+
+        japanese_blocks = build_search_blocks(body, language="ja")
+        japanese_quote = "".join(
+            element["text"] for element in japanese_blocks[5]["elements"][0]["elements"]
+        )
+        assert japanese_quote == (
+            "フェンリクス: 遊びは終わりだ、影よ。 樹木を燃やして悪魔を解放するつもりだね？\n"
+            "アリエラ: なんて愚かなんだ。"
+        )
 
     def test_lore_section_displays_headings_and_full_body_over_3000_characters(self):
         long_body = "### 기본 정보\n" + ("아리엘라의 설정입니다. " * 260)
@@ -376,6 +388,7 @@ class TestResultBlocks:
             "path": "characters/ar.yaml",
             "relevance": 0.94,
         }]))
+        assert blocks[4]["elements"][0]["text"] == "설정 문서 · characters/ar.yaml · 관련도 0.94"
         body_blocks = [block for block in blocks if block["type"] == "section" and block is not blocks[3]]
         rendered = "".join(block["text"]["text"] for block in body_blocks)
         assert len(long_body) > 3000

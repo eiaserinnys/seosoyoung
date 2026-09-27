@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import threading
+from pathlib import PurePosixPath
 from typing import Any, Callable
 
 import requests
@@ -211,13 +212,18 @@ def _dialogue_elements(text: str) -> list[dict[str, Any]]:
             skip_english_continuation = False
         elif skip_english_continuation:
             continue
-        if elements:
-            elements.append({"type": "text", "text": "\n"})
         if match:
+            if elements:
+                elements.append({"type": "text", "text": "\n"})
             elements.append({"type": "text", "text": match.group(1), "style": {"bold": True}})
             elements.append({"type": "text", "text": ": " + match.group(2)})
-        elif line:
-            elements.append({"type": "text", "text": line})
+        else:
+            continuation = line.strip()
+            if not continuation:
+                continue
+            if elements:
+                elements.append({"type": "text", "text": " "})
+            elements.append({"type": "text", "text": continuation})
     return elements
 
 
@@ -306,14 +312,14 @@ def build_search_blocks(body: dict[str, Any], language: str = "ko") -> list[dict
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*{index}. {_slack_text(displayed_title)}*"}},
         ])
         meta = ["대사" if is_dialogue else "설정 문서" if item.get("source_type") == "lore" else "자료"]
-        participants = item.get("participants")
-        if is_dialogue and isinstance(participants, list) and participants:
-            meta.append("등장: " + _slack_text(", ".join(str(name) for name in participants)))
         path = str(item.get("path") or "")
-        if path:
+        if is_dialogue and path:
+            filename = PurePosixPath(path).stem
+            section = title.rsplit("·", 1)[-1].strip() if "·" in title else ""
+            location = f"{filename} ({section})" if section else filename
+            meta.append(_slack_text(location))
+        elif path:
             meta.append(_slack_text(path))
-        if is_dialogue and _is_internal_dialogue_title(title) and item.get("id"):
-            meta.append("ID " + _slack_text(item["id"]))
         relevance = item.get("relevance")
         if isinstance(relevance, (int, float)) and not isinstance(relevance, bool):
             meta.append(f"관련도 {relevance:.2f}")
