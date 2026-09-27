@@ -49,6 +49,8 @@ class TestJevIntentRequest:
         state = json.loads(kwargs["json"]["state"])
         assert state["user_prompt"] == "루카가 왜 떠났는지 찾아줘"
         assert "대사 고쳐줘" in state["instructions"]
+        assert "X가 Y를 유혹하는 대사를 찾아줘" in state["instructions"]
+        assert "X가 Y를 유혹하는 새 대사를 써줘" in state["instructions"]
         assert kwargs["json"]["questions"]["lore_search"]["type"] == "noul"
 
     def test_rejects_missing_or_out_of_range_score(self):
@@ -97,15 +99,16 @@ class TestLoreSearchRouting:
             "search_url": "https://lore-search.example",
             "results": [{"title": "루카", "source_type": "lore", "excerpt": "설정 발췌", "path": "lore/luka.yaml"}],
         }
+        query = "그림자가 펜릭스를 유혹하는 대사를 찾아줘"
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search", return_value=0.7), \
              patch("seosoyoung.slackbot.handlers.lore_search.search_lore", return_value=response) as search:
             handled = try_handle_lore_search(
-                "루카 설정 찾아줘", say, client=client, channel="C123", thread_ts="thread-1",
+                query, say, client=client, channel="C123", thread_ts="thread-1",
             )
 
         assert handled is True
-        search.assert_called_once_with("루카 설정 찾아줘", "https://lore-search.example/", "lore-test-key")
+        search.assert_called_once_with(query, "https://lore-search.example/", "lore-test-key")
         say.assert_called_once_with(text=Config.bot.thinking_text, thread_ts="thread-1")
         update = client.chat_update.call_args.kwargs
         assert update["channel"] == "C123"
@@ -116,7 +119,8 @@ class TestLoreSearchRouting:
     def test_score_below_threshold_skips_search(self):
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \
              patch("seosoyoung.slackbot.handlers.lore_search.judge_lore_search", return_value=0.69), \
-             patch("seosoyoung.slackbot.handlers.lore_search.search_lore") as search:
+             patch("seosoyoung.slackbot.handlers.lore_search.search_lore") as search, \
+             patch("seosoyoung.slackbot.handlers.lore_search.logger") as logger:
             say = MagicMock()
             handled = try_handle_lore_search(
                 "대사 고쳐줘", say, client=MagicMock(), channel="C123", thread_ts="thread-1",
@@ -125,6 +129,11 @@ class TestLoreSearchRouting:
         assert handled is False
         search.assert_not_called()
         say.assert_not_called()
+        logger.info.assert_called_once_with(
+            "Jev lore-search routing skipped score_below_threshold score=%.2f threshold=%.1f",
+            0.69,
+            0.7,
+        )
 
     def test_jev_failure_is_logged_and_falls_back(self):
         with patch("seosoyoung.slackbot.handlers.lore_search.Config.lore_search", _config(), create=True), \

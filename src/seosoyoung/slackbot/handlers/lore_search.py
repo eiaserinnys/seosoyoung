@@ -27,8 +27,10 @@ def judge_lore_search(user_prompt: str, api_key: str) -> float:
         "stage": "intent",
         "user_prompt": user_prompt,
         "instructions": (
-            "사용자 발화가 엠버 앤 블레이드의 인물, 사건, 세계관, 설정, 기존 대사에 관한 정보를 "
-            "로어 검색으로 찾아 달라는 요청인지 0에서 1 사이로 판단한다. '대사 고쳐줘'처럼 "
+            "사용자 발화가 엠버 앤 블레이드의 인물, 사건, 세계관, 설정 또는 기존 대사를 "
+            "로어 검색으로 찾아 달라는 요청인지 0에서 1 사이로 판단한다. 예를 들어 "
+            "'X가 Y를 유혹하는 대사를 찾아줘'는 기존 대사 검색 요청이고, "
+            "'X가 Y를 유혹하는 새 대사를 써줘'는 창작 요청이다. '대사 고쳐줘'처럼 "
             "대사를 새로 쓰거나 고치기, "
             "번역, 일반 상담과 잡담은 검색 요청이 아니다. 질문형인지보다 실제 정본 정보를 찾으려는 "
             "의도를 본다."
@@ -130,6 +132,11 @@ def try_handle_lore_search(query: str, say, *, client, channel: str, thread_ts: 
         logger.warning("Jev lore-search routing failed exception_type=%s", type(error).__name__)
         return False
     if score < INTENT_THRESHOLD:
+        logger.info(
+            "Jev lore-search routing skipped score_below_threshold score=%.2f threshold=%.1f",
+            score,
+            INTENT_THRESHOLD,
+        )
         return False
 
     placeholder = say(text=Config.bot.thinking_text, thread_ts=thread_ts)
