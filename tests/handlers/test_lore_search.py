@@ -49,14 +49,15 @@ class TestJevIntentRequest:
         assert kwargs["headers"]["Authorization"] == "Bearer jev-test-key"
         assert kwargs["json"]["model"] == "jev-latest"
         state = json.loads(kwargs["json"]["state"])
-        assert state["user_prompt"] == "루카가 왜 떠났는지 찾아줘"
-        assert state["instructions"] == (
-            "사용자 발화가 엠버 앤 블레이드의 인물, 사건, 세계관, 설정, 대사처럼 이미 존재하는 "
-            "로어 자료를 찾아서 보여 달라는 요청인지 0에서 1 사이로 판단한다. 판단 기준은 주제가 "
-            "아니라 요청하는 행동이다. 대사든 설정이든 기존 자료를 찾거나 확인하려는 요청이면 "
-            "검색이다. 새로 쓰기, 고치기, 번역, 일반 상담과 잡담은 검색이 아니다."
-        )
-        assert kwargs["json"]["questions"]["lore_search"]["type"] == "noul"
+        assert state == {
+            "context": "엠버 앤 블레이드 게임의 로어(인물, 사건, 세계관, 설정, 대사)를 다루는 슬랙 봇에게 온 발화",
+            "user_prompt": "루카가 왜 떠났는지 찾아줘",
+        }
+        assert kwargs["json"]["questions"]["lore_search"] == {
+            "type": "noul",
+            "instructions": "이 발화가 로어 정보나 기존 대사를 찾아 달라는 질의인가?",
+            "criteria": {"true": "요청함", "false": "요청하지 않음"},
+        }
 
     def test_rejects_missing_or_out_of_range_score(self):
         with patch(
