@@ -1,3 +1,4 @@
+# 기존 멘션·DM·세션 라우팅을 공유하는 대형 모듈이다. 신규 검색 판단은 lore_search.py에 둔다.
 """@seosoyoung 멘션 핸들러
 
 멘션 이벤트 처리 및 DM 채널에서 공유하는 명령어/세션 생성 함수를 제공합니다.
@@ -33,6 +34,7 @@ from seosoyoung.slackbot.handlers.auth import (
     handle_setup_token,
 )
 from seosoyoung.slackbot.handlers.node import handle_node
+from seosoyoung.slackbot.handlers.lore_search import try_handle_lore_search
 from seosoyoung.slackbot.soulstream.session_context import build_initial_context, format_hybrid_context
 
 logger = logging.getLogger(__name__)
@@ -576,6 +578,8 @@ def register_mention_handlers(app, dependencies: dict):
 
         # 일반 질문: 세션 생성 + Claude 실행 (공유 함수 사용)
         clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
+        if try_handle_lore_search(clean_text, say=say, thread_ts=thread_ts or ts):
+            return
         create_session_and_run_claude(
             event, clean_text, channel, ts, thread_ts, user_id,
             say, client, dependencies,
