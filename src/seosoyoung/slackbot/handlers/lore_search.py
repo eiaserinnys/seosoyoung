@@ -272,7 +272,12 @@ def _dialogue_title(item: dict[str, Any], title: str) -> str:
     return " ↔ ".join(dict.fromkeys(names)) or "대사"
 
 
+def _strip_markdown_links(text: str) -> str:
+    return re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+
+
 def _body_blocks(item: dict[str, Any], text: str) -> list[dict[str, Any]]:
+    text = _strip_markdown_links(text)
     if item.get("source_type") == "shay":
         return _rich_text_blocks(_dialogue_elements(text))
     safe_text = _slack_text(text)

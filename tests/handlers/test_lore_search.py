@@ -397,6 +397,33 @@ class TestResultBlocks:
         assert len(blocks) <= 50
         assert all(len(block["text"]["text"]) <= 3000 for block in blocks if block["type"] == "section")
 
+    def test_markdown_links_show_only_their_labels_in_lore_and_dialogue_bodies(self):
+        linked_text = "[芬利克斯](fx.yaml), [망각의 성채](sanctuary.yaml)"
+        blocks = build_search_blocks(_search_body([
+            {"title": "펜릭스 설정", "source_type": "lore", "text": linked_text},
+            {
+                "title": "ending · dialogue",
+                "source_type": "shay",
+                "text": f"펜릭스 헤이븐: {linked_text}",
+                "path": "act3_z1_8_ending.yaml",
+                "participants": ["펜릭스 헤이븐"],
+            },
+        ]))
+
+        lore_body = next(
+            block["text"]["text"] for block in blocks
+            if block["type"] == "section" and "芬利克斯" in block["text"]["text"]
+        )
+        dialogue_body = "".join(
+            element["text"] for block in blocks if block["type"] == "rich_text"
+            for element in block["elements"][0]["elements"]
+        )
+
+        assert lore_body == "芬利克斯, 망각의 성채"
+        assert dialogue_body == "펜릭스 헤이븐: 芬利克斯, 망각의 성채"
+        assert "fx.yaml" not in lore_body + dialogue_body
+        assert "sanctuary.yaml" not in lore_body + dialogue_body
+
     def test_blocks_cap_long_body_with_search_site_suffix(self):
         huge = "내용 " * 50000
         blocks = build_search_blocks(_search_body([{
