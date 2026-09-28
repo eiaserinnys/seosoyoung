@@ -294,6 +294,7 @@ def build_search_blocks(body: dict[str, Any], language: str = "ko") -> list[dict
         1 for item in results
         if normalized_language != "ko" and not _display_text(item, normalized_language)[1]
     )
+    near_miss_count = sum(1 for item in results if item.get("near_miss") is True)
     blocks: list[dict[str, Any]] = [
         {"type": "header", "text": {"type": "plain_text", "text": "📜 로어 검색 결과"}},
     ]
@@ -304,6 +305,8 @@ def build_search_blocks(body: dict[str, Any], language: str = "ko") -> list[dict
         summary += f" · 요청하신 {LANGUAGES[normalized_language][0]} 번역이 없어 한국어로 보여 드립니다"
     elif fallback_count:
         summary += f" · 일부 결과는 {LANGUAGES[normalized_language][0]} 번역이 없어 한국어로 보여 드립니다"
+    if near_miss_count:
+        summary += f" · 합격선에 조금 못 미친 근접 결과 {near_miss_count}건 포함"
     blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": summary}]})
 
     search_url = body.get("search_url")
@@ -316,7 +319,8 @@ def build_search_blocks(body: dict[str, Any], language: str = "ko") -> list[dict
             {"type": "divider"},
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*{index}. {_slack_text(displayed_title)}*"}},
         ])
-        meta = ["대사" if is_dialogue else "설정 문서" if item.get("source_type") == "lore" else "자료"]
+        meta = (["근접 결과"] if item.get("near_miss") is True else [])
+        meta.append("대사" if is_dialogue else "설정 문서" if item.get("source_type") == "lore" else "자료")
         path = str(item.get("path") or "")
         if is_dialogue and path:
             filename = PurePosixPath(path).stem

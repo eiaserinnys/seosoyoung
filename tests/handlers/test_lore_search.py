@@ -337,6 +337,41 @@ class TestLoreSearchRouting:
 
 
 class TestResultBlocks:
+    def test_near_miss_result_is_labeled_and_counted(self):
+        blocks = build_search_blocks(_search_body([{
+            "title": "장면 · 구간",
+            "source_type": "shay",
+            "text": "화자: 대사",
+            "path": "act0_c_1_core.yaml",
+            "relevance": 0.46,
+            "near_miss": True,
+            "participants": ["화자"],
+        }]))
+
+        assert blocks[1]["elements"][0]["text"] == (
+            "질의 「아리엘라 설정」 · 적중 1건 · 합격선에 조금 못 미친 근접 결과 1건 포함"
+        )
+        assert blocks[4]["elements"][0]["text"] == (
+            "근접 결과 · 대사 · act0_c_1_core (구간) · 관련도 0.46"
+        )
+
+    @pytest.mark.parametrize("include_near_miss", [False, True])
+    def test_false_or_missing_near_miss_keeps_existing_text(self, include_near_miss):
+        item = {
+            "title": "아리엘라 설정",
+            "source_type": "lore",
+            "text": "설정",
+            "path": "characters/ar.yaml",
+            "relevance": 0.72,
+        }
+        if include_near_miss:
+            item["near_miss"] = False
+
+        blocks = build_search_blocks(_search_body([item]))
+
+        assert blocks[1]["elements"][0]["text"] == "질의 「아리엘라 설정」 · 적중 1건"
+        assert blocks[4]["elements"][0]["text"] == "설정 문서 · characters/ar.yaml · 관련도 0.72"
+
     def test_dialogue_uses_rich_text_quote_and_removes_english_source_lines(self):
         body = _search_body([{
             "title": "act3_z1_8_ending · r2_act3_ending · dialogue",
