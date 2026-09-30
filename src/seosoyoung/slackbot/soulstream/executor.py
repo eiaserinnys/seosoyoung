@@ -597,7 +597,11 @@ class ClaudeExecutor:
                 folder_id=folder_id,
                 system_prompt=system_prompt,
                 profile=profile,
-                model_preset=self._model_preset,
+                model_preset=(
+                    self._model_preset
+                    if profile is None or profile == self._agent_id
+                    else None
+                ),
                 persist_listening=persist_listening,
                 caller_info=caller_info,
             )
