@@ -194,11 +194,12 @@ class TestExecutorRemoteBranch:
 
         assert captured_kwargs.get("caller_info") is None
 
-    def test_configured_model_preset_is_forwarded_to_adapter(self, tmp_path):
+    @pytest.mark.parametrize("profile, expected_preset", [(None, "codex-5.6-sol"), ("seosoyoung", "codex-5.6-sol"), ("seosoyoung-intervene", None)])
+    def test_configured_model_preset_is_forwarded_to_adapter(self, tmp_path, profile, expected_preset):
         """Executor 설정의 preset은 신규 실행 경계까지 명시적으로 전달된다."""
         from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
 
-        executor = _make_executor(tmp_path, model_preset="codex-5.6-sol")
+        executor = _make_executor(tmp_path, agent_id="seosoyoung", model_preset="codex-5.6-sol")
         pctx = _make_pctx()
         captured_kwargs = {}
 
@@ -215,11 +216,12 @@ class TestExecutorRemoteBranch:
                 on_compact=_noop_compact,
                 presentation=pctx,
                 session_id=None,
+                profile=profile,
                 user_message=None,
                 on_result=None,
             )
 
-        assert captured_kwargs["model_preset"] == "codex-5.6-sol"
+        assert captured_kwargs["model_preset"] == expected_preset
 
     def test_successful_result_starts_persistent_listener(self, tmp_path):
         """성공한 Slack 실행은 complete 후 background session listener를 시작한다."""

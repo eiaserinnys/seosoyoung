@@ -600,6 +600,12 @@ class SoulServiceClient:
                 )
             elif response.status != 200:
                 error = await self._parse_error(response)
+                if response.status in (502, 503, 504):
+                    # 배포 중 gateway 오류도 기존 SSE 재연결 한도 안에서 재시도한다.
+                    raise ConnectionLostError(
+                        f"스트림 재연결 실패: {error}",
+                        agent_session_id=agent_session_id,
+                    )
                 raise SoulServiceError(f"스트림 재연결 실패: {error}")
 
             return await self._handle_sse_events(

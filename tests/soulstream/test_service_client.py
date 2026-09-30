@@ -1122,6 +1122,56 @@ class TestSSEReconnection:
         return SoulServiceClient(base_url="http://localhost:3105", token="test")
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("statuses", [
+        [502, 200], [503, 200], [504, 200], [502] * 5, [403],
+    ])
+    async def test_http_reconnect_preserves_session_and_retry_budget(self, client, statuses):
+        """실제 HTTP 상태 분류를 거쳐 기존 세션 재구독과 실패 한도를 확인한다."""
+        import aiohttp
+
+        initial = MagicMock(status=200)
+        initial.content.readline = AsyncMock(side_effect=[
+            b"event:init\n",
+            b'data:{"agent_session_id":"sess-existing"}\n',
+            b"\n",
+            aiohttp.ClientPayloadError("Connection lost"),
+        ])
+        session = _mock_session(initial)
+        responses = []
+        for status in statuses:
+            response = MagicMock(status=status)
+            response.json = AsyncMock(side_effect=ValueError("not JSON"))
+            response.content = _make_stream_reader(
+                b"event:complete\n"
+                b'data:{"type":"complete","result":"resumed"}\n\n'
+            )
+            responses.append(MockAsyncContextManager(response))
+        session.get.side_effect = responses
+        client._session = session
+
+        with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+            if statuses == [403]:
+                with pytest.raises(SoulServiceError, match="HTTP 403"):
+                    await client.execute("hello")
+            else:
+                result = await client.execute("hello")
+                assert result.success is (statuses[-1] == 200)
+                if result.success:
+                    assert result.result == "resumed"
+                else:
+                    assert "5회 재시도 실패" in result.error
+
+        session.post.assert_called_once()
+        assert session.get.call_count == len(statuses)
+        assert all(
+            call.args[0] == "http://localhost:3105/events/sess-existing/stream"
+            for call in session.get.call_args_list
+        )
+        assert [call.args[0] for call in sleep.call_args_list] == [
+            1.0, 2.0, 4.0, 8.0, 16.0,
+        ][:len(statuses)]
+
+    @pytest.mark.asyncio
     async def test_connection_lost_triggers_reconnect(self, client):
         """연결 끊김 시 reconnect_stream()으로 재연결하여 결과를 받는다"""
         import aiohttp
