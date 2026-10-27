@@ -29,6 +29,7 @@ from seosoyoung.slackbot.marker_parser import parse_markers
 from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
 from seosoyoung.slackbot.plugin_backends import init_plugin_backends
 from seosoyoung.slackbot.reflect import reflect
+from seosoyoung.slackbot.daily_todo.atom_client import AtomMcpClient
 
 # 로깅 설정
 logger = setup_logging()
@@ -282,6 +283,7 @@ def _build_dependencies():
         "soul_url": Config.claude.soul_url,
         "dashboard_url": Config.claude.dashboard_url,
         "slack_workspace_url": Config.slack.workspace_url,
+        "daily_todo_atom_client": AtomMcpClient,
     }
 
 
@@ -348,6 +350,7 @@ def init_bot_user_id():
     try:
         auth_result = app.client.auth_test()
         Config.slack.bot_user_id = auth_result["user_id"]
+        Config.slack.team_id = auth_result["team_id"]
         logger.info(f"BOT_USER_ID: {Config.slack.bot_user_id}")
     except Exception as e:
         logger.error(f"봇 ID 조회 실패: {e}")

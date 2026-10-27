@@ -303,6 +303,12 @@ def _handle_dm_message(event, say, client, dependencies):
     channel = event["channel"]
     user_id = event["user"]
 
+    if thread_ts:
+        from seosoyoung.slackbot.handlers.daily_todo import try_handle_number_reply
+
+        if try_handle_number_reply(event, say, client, dependencies):
+            return
+
     # 스레드 메시지: 기존 세션에서 후속 처리
     if thread_ts:
         logger.info(f"DM 스레드 답글 수신: user={user_id}, channel={channel}, thread_ts={thread_ts}, ts={ts}, text={text[:50]}")
