@@ -255,9 +255,9 @@ def set_task_completion(
     return "".join(lines)
 
 
-def set_task_number(content: str, todo_id: str, number: int) -> str:
-    """Write the canonical display number before one task's completion markup."""
-    if number < 1:
+def set_task_number(content: str, todo_id: str, number: int | None) -> str:
+    """Set or remove one task's display number without changing its row content."""
+    if number is not None and number < 1:
         raise ValueError("TODO number must be positive")
     lines = content.splitlines(keepends=True)
     plain_lines = [line.rstrip("\r\n") for line in lines]
@@ -297,7 +297,11 @@ def set_task_number(content: str, todo_id: str, number: int) -> str:
         leading_length = len(body) - len(body.lstrip())
         leading = body[:leading_length]
         task_body = body[leading_length:]
-    updated_body = f"{leading}**{number}.** {task_body}"
+    updated_body = (
+        f"{leading}**{number}.** {task_body}"
+        if number is not None
+        else f"{leading}{task_body}"
+    )
     if updated_body == body:
         return content
 

@@ -47,7 +47,7 @@ def read_delivery_number_map(
 def assign_todo_numbers(
     items: Sequence[TodoItem], prior_number_to_todo_id: Mapping[int | str, str]
 ) -> dict[int, str]:
-    """Keep old assignments and append eligible new items without reuse."""
+    """Return current eligible assignments, preserving their prior numbers."""
     number_to_id: dict[int, str] = {}
     id_to_number: dict[str, int] = {}
     for raw_number, todo_id in prior_number_to_todo_id.items():
@@ -62,10 +62,22 @@ def assign_todo_numbers(
         id_to_number[todo_id] = number
 
     next_number = max(number_to_id, default=0) + 1
+    eligible_ids = {
+        item.todo_id
+        for item in items
+        if not item.is_completed and not item.is_group and not item.is_blocked
+    }
+    number_to_id = {
+        number: todo_id
+        for number, todo_id in number_to_id.items()
+        if todo_id in eligible_ids
+    }
+    id_to_number = {todo_id: number for number, todo_id in number_to_id.items()}
+
     for item in items:
-        if item.todo_id in id_to_number:
-            continue
         if item.is_completed or item.is_group or item.is_blocked:
+            continue
+        if item.todo_id in id_to_number:
             continue
         number_to_id[next_number] = item.todo_id
         id_to_number[item.todo_id] = next_number

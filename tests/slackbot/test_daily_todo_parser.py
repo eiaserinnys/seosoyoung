@@ -205,6 +205,26 @@ def test_number_display_is_parsed_and_kept_outside_completion_markup():
     assert "~~8." not in completed
 
 
+def test_task_number_can_be_removed_without_changing_the_rest_of_its_row():
+    from seosoyoung.slackbot.daily_todo.parser import parse_todo_items, set_task_number
+
+    content = (
+        "## 회사일\r\n"
+        "- **8.** ~~작업~~ — 상세 메모 (10/27 완료 확인) <!--todo:task-->\r\n"
+    )
+
+    cleared = set_task_number(content, "task", None)
+
+    assert cleared == (
+        "## 회사일\r\n"
+        "- ~~작업~~ — 상세 메모 (10/27 완료 확인) <!--todo:task-->\r\n"
+    )
+    item = parse_todo_items(cleared)[0]
+    assert item.display_number is None
+    assert item.is_completed
+    assert item.text == "~~작업~~ — 상세 메모 (10/27 완료 확인)"
+
+
 def test_completion_edit_changes_only_selected_task_name_and_annotation():
     from seosoyoung.slackbot.daily_todo.parser import set_task_completion
 
