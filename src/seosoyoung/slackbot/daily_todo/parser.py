@@ -33,11 +33,15 @@ class TodoItem:
     is_completed: bool
     is_blocked: bool
     is_group: bool
+    display_number: int | None = None
 
 
 _METADATA_MARKER_RE = re.compile(r"<!--\s*daily-todo\b", re.IGNORECASE)
 _TODO_ID_RE = re.compile(r"<!--\s*todo:([^>]+?)\s*-->", re.IGNORECASE)
 _LIST_LINE_RE = re.compile(r"^(?P<indent>\s*)[-*+]\s+(?P<body>.*)$")
+_NUMBERED_TASK_PREFIX_RE = re.compile(
+    r"^(?P<leading>\s*)\*\*(?P<number>\d+)\.\*\*(?P<spacing>\s+)"
+)
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+(.+?)\s*#*\s*$")
 _BLOCKED_RE = re.compile(r"(?:^|[\s(（])(?:보류|취소)(?:중|됨|함|$|[\s)）.,;])")
 
@@ -102,7 +106,7 @@ def parse_todo_items(content: str) -> list[TodoItem]:
     """Read ID-bearing TODO rows while retaining their Markdown tree positions."""
     lines = content.splitlines()
     list_rows: dict[int, tuple[int, str]] = {}
-    item_rows: list[tuple[str, int, int, str, str]] = []
+    item_rows: list[tuple[str, int, int, str, str, int | None]] = []
     category = ""
 
     for line_index, line in enumerate(lines):
@@ -137,6 +141,10 @@ def parse_todo_items(content: str) -> list[TodoItem]:
             row_body = _TODO_ID_RE.sub("", row_body)
             row_body = re.sub(r"<!--.*?-->", "", row_body).strip()
             row_body = re.sub(r"^\[[ xX]\]\s*", "", row_body)
+            display_match = _NUMBERED_TASK_PREFIX_RE.match(row_body)
+            display_number = int(display_match.group("number")) if display_match else None
+            if display_match:
+                row_body = row_body[display_match.end() :]
             item_rows.append(
                 (
                     todo_match.group(1).strip(),
@@ -144,6 +152,7 @@ def parse_todo_items(content: str) -> list[TodoItem]:
                     row_indent,
                     row_body,
                     category,
+                    display_number,
                 )
             )
             # Status is recomputed from this exact row when constructing the
@@ -152,7 +161,7 @@ def parse_todo_items(content: str) -> list[TodoItem]:
     bullet_positions = sorted(list_rows.items())
     items: list[TodoItem] = []
     seen_ids: set[str] = set()
-    for todo_id, row_index, indent, row_text, item_category in item_rows:
+    for todo_id, row_index, indent, row_text, item_category, display_number in item_rows:
         if todo_id in seen_ids:
             raise DailyTodoFormatError(f"duplicate todo ID: {todo_id}")
         seen_ids.add(todo_id)
@@ -168,7 +177,7 @@ def parse_todo_items(content: str) -> list[TodoItem]:
             other_index > row_index
             and other_index < next_sibling
             and other_indent > indent
-            for other_id, other_index, other_indent, _, _ in item_rows
+            for other_id, other_index, other_indent, _, _, _ in item_rows
             if other_id != todo_id
         )
         items.append(
@@ -181,6 +190,7 @@ def parse_todo_items(content: str) -> list[TodoItem]:
                 is_completed=bool(re.search(r"~~.+?~~", row_text)),
                 is_blocked=bool(_BLOCKED_RE.search(row_text)),
                 is_group=has_child,
+                display_number=display_number,
             )
         )
     return items
@@ -235,6 +245,63 @@ def set_task_completion(
     return "".join(lines)
 
 
+def set_task_number(content: str, todo_id: str, number: int) -> str:
+    """Write the canonical display number before one task's completion markup."""
+    if number < 1:
+        raise ValueError("TODO number must be positive")
+    lines = content.splitlines(keepends=True)
+    plain_lines = [line.rstrip("\r\n") for line in lines]
+    target_line_index: int | None = None
+
+    for line_index, line in enumerate(plain_lines):
+        for todo_match in _TODO_ID_RE.finditer(line):
+            if todo_match.group(1).strip() != todo_id:
+                continue
+            if _LIST_LINE_RE.match(line):
+                target_line_index = line_index
+            else:
+                for previous_index in range(line_index - 1, -1, -1):
+                    if _HEADING_RE.match(plain_lines[previous_index]):
+                        break
+                    if _LIST_LINE_RE.match(plain_lines[previous_index]):
+                        target_line_index = previous_index
+                        break
+            break
+        if target_line_index is not None:
+            break
+
+    if target_line_index is None:
+        raise KeyError(f"todo ID not found: {todo_id}")
+
+    original = plain_lines[target_line_index]
+    list_match = _LIST_LINE_RE.match(original)
+    if list_match is None:
+        raise DailyTodoFormatError("TODO ID is not attached to a list row")
+    body_start = list_match.start("body")
+    body = original[body_start:]
+    numbered = _NUMBERED_TASK_PREFIX_RE.match(body)
+    if numbered:
+        leading = numbered.group("leading")
+        task_body = body[numbered.end() :]
+    else:
+        leading_length = len(body) - len(body.lstrip())
+        leading = body[:leading_length]
+        task_body = body[leading_length:]
+    updated_body = f"{leading}**{number}.** {task_body}"
+    if updated_body == body:
+        return content
+
+    line_ending = lines[target_line_index][len(original) :]
+    lines[target_line_index] = original[:body_start] + updated_body + line_ending
+    return "".join(lines)
+
+
+def strip_task_number_prefix(text: str) -> str:
+    """Return task text without an Atom display number prefix."""
+    match = _NUMBERED_TASK_PREFIX_RE.match(text)
+    return f"{match.group('leading')}{text[match.end():]}" if match else text
+
+
 def _edit_task_line(line: str, *, completed: bool, annotation: str) -> str:
     list_match = _LIST_LINE_RE.match(line)
     if list_match is None:
@@ -242,19 +309,22 @@ def _edit_task_line(line: str, *, completed: bool, annotation: str) -> str:
 
     prefix_end = list_match.start("body")
     body = line[prefix_end:]
-    start, end, already_struck = _task_name_span(body)
+    number_match = _NUMBERED_TASK_PREFIX_RE.match(body)
+    number_prefix = body[: number_match.end()] if number_match else ""
+    task_body = body[number_match.end() :] if number_match else body
+    start, end, already_struck = _task_name_span(task_body)
     if completed and not already_struck:
-        body = body[:start] + "~~" + body[start:end] + "~~" + body[end:]
+        task_body = task_body[:start] + "~~" + task_body[start:end] + "~~" + task_body[end:]
     elif not completed and already_struck:
-        body = body[:start] + body[start + 2 : end - 2] + body[end:]
+        task_body = task_body[:start] + task_body[start + 2 : end - 2] + task_body[end:]
 
     marker = f" ({annotation})" if annotation else ""
     if completed:
-        if marker and not body.rstrip().endswith(marker):
-            body = body.rstrip() + marker + body[len(body.rstrip()) :]
-    elif marker and body.rstrip().endswith(marker):
-        body = body.rstrip()[: -len(marker)] + body[len(body.rstrip()) :]
-    return line[:prefix_end] + body
+        if marker and not task_body.rstrip().endswith(marker):
+            task_body = task_body.rstrip() + marker + task_body[len(task_body.rstrip()) :]
+    elif marker and task_body.rstrip().endswith(marker):
+        task_body = task_body.rstrip()[: -len(marker)] + task_body[len(task_body.rstrip()) :]
+    return line[:prefix_end] + number_prefix + task_body
 
 
 def _task_name_span(body: str) -> tuple[int, int, bool]:

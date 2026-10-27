@@ -12,6 +12,7 @@ from seosoyoung.slackbot.daily_todo.parser import (
     TodoItem,
     parse_daily_todo_card,
     parse_todo_items,
+    strip_task_number_prefix,
 )
 from seosoyoung.slackbot.formatting import markdown_to_mrkdwn
 
@@ -20,6 +21,7 @@ MAX_BLOCKS = 50
 MAX_SECTION_CHARS = 3000
 MAX_MESSAGE_TEXT_CHARS = 39000
 MAX_ACTIONS = 10
+ACTION_ID_PREFIX = "daily_todo_set_completion:"
 _LIST_RE = re.compile(r"^(?P<indent>\s*)[-*+]\s+(?P<body>.*)$")
 _TODO_MARKER_RE = re.compile(r"<!--\s*todo:[^>]+?\s*-->", re.IGNORECASE)
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->")
@@ -73,6 +75,8 @@ def render_daily_todo_messages(
 
     group_lines = _group_line_indices(markdown)
     segments: list[_Segment] = []
+    category_order: list[str] = []
+    completed_rows: dict[str, list[str]] = {}
     current_category = ""
     current_lines: list[str] = []
     current_buttons: list[dict[str, Any]] = []
@@ -101,6 +105,8 @@ def render_daily_todo_messages(
         if category_match:
             flush_segment()
             current_category = category_match.group(1).strip().strip("*`")
+            if current_category not in category_order:
+                category_order.append(current_category)
             ancestors = []
             start_segment()
             continue
@@ -115,6 +121,18 @@ def render_daily_todo_messages(
         item = item_by_line.get(line_index)
         if list_match:
             indent = len(list_match.group("indent"))
+            if (
+                item
+                and item.is_completed
+                and not item.is_blocked
+                and item.todo_id not in number_by_id
+                and indent == 0
+                and line_index not in group_lines
+            ):
+                completed_rows.setdefault(current_category, []).append(
+                    _render_list_line(original_line, item=item, number=None)
+                )
+                continue
             while ancestors and ancestors[-1][0] >= indent:
                 ancestors.pop()
 
@@ -161,6 +179,13 @@ def render_daily_todo_messages(
             current_lines.append(markdown_to_mrkdwn(clean_line))
 
     flush_segment()
+    archived_completed = [category for category in category_order if completed_rows.get(category)]
+    if archived_completed:
+        archived_lines = ["*이전 완료*"]
+        for category in archived_completed:
+            archived_lines.append(f"*{category}*")
+            archived_lines.extend(completed_rows[category])
+        segments.append(_Segment(archived_lines, [], []))
 
     header_text = "*일일 TODO*"
     header_template = {"type": "section", "text": {"type": "mrkdwn", "text": header_text}}
@@ -170,7 +195,7 @@ def render_daily_todo_messages(
         "type": "section",
         "text": {
             "type": "mrkdwn",
-            "text": f"{_short_date(date)} 확인 · <{todo_url}|오늘 TODO>\n오늘 추가하거나 바꿀 일이 있으신가요?",
+            "text": f"{_short_date(date)} 확인\n<{todo_url}|오늘 TODO>\n오늘 추가하거나 바꿀 일이 있으신가요?",
         },
     }
     flat_units.append(([footer], []))
@@ -221,7 +246,7 @@ def _group_line_indices(markdown: str) -> set[int]:
 def _render_list_line(line: str, *, item: TodoItem | None, number: int | None) -> str:
     match = _LIST_RE.match(line)
     assert match is not None
-    body = _strip_comments(match.group("body")).strip()
+    body = strip_task_number_prefix(_strip_comments(match.group("body")).strip())
     body = markdown_to_mrkdwn(body)
     prefix = f"*{number}.* " if number is not None else ""
     return f"{match.group('indent')}• {prefix}{body}".rstrip()
@@ -250,7 +275,7 @@ def _button(
     }
     return {
         "type": "button",
-        "action_id": "daily_todo_set_completion",
+        "action_id": f"{ACTION_ID_PREFIX}{number}",
         "text": {"type": "plain_text", "text": f"↺{number}" if target_state == "reopen" else f"✓{number}"},
         "accessibility_label": label[:75],
         "value": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),

@@ -54,7 +54,7 @@ def get_user_role(user_id: str, client) -> dict | None:
             or ""
         )
         return {
-            "user_id": user_id,
+            "user_id": user.get("id", user_id),
             "username": username,
             "role": role,
             "allowed_tools": Config.auth.role_tools[role],

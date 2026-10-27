@@ -9,11 +9,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from seosoyoung.slackbot.config import Config
+from seosoyoung.slackbot.daily_todo.rendering import ACTION_ID_PREFIX
 
 logger = logging.getLogger(__name__)
 
 _NUMBER_REPLY_RE = re.compile(r"^\s*(\d+(?:[\s,]+\d+)*)\s*(?:완료)?\s*$")
 _HEADER_BLOCK_RE = re.compile(r"^daily_todo_header:([^:]+):([^:]+):(\d+)$")
+_ACTION_ID_RE = re.compile(rf"^{re.escape(ACTION_ID_PREFIX)}(\d+)$")
 
 
 def parse_number_reply(text: str) -> list[int] | None:
@@ -79,20 +81,22 @@ def try_handle_number_reply(event, say, client, dependencies: dict) -> bool:
 
 
 def register_daily_todo_handlers(app, dependencies: dict) -> None:
-    @app.action("daily_todo_set_completion")
+    @app.action(_ACTION_ID_RE)
     def handle_daily_todo_action(ack, body, action, client):
         ack()
         try:
             payload = json.loads(action.get("value", ""))
             if not isinstance(payload, dict):
                 raise ValueError("invalid action payload")
+            action_match = _ACTION_ID_RE.fullmatch(action.get("action_id", ""))
+            if not action_match or int(action_match.group(1)) != int(payload.get("number", 0)):
+                raise ValueError("TODO button number does not match its action ID")
             if body.get("message", {}).get("user") != Config.slack.bot_user_id:
                 raise ValueError("TODO 버튼 메시지의 봇 신원을 확인할 수 없습니다.")
             part_index = _part_index_from_action(body)
             _complete(
                 dependencies,
                 client,
-                body=body,
                 channel_id=body["channel"]["id"],
                 message_ts=body["message"]["ts"],
                 source_card_id=payload["source_card_id"],
@@ -103,7 +107,7 @@ def register_daily_todo_handlers(app, dependencies: dict) -> None:
                 actual_user_id=body["user"]["id"],
                 actual_team_id=body["team"]["id"],
                 actual_bot_user_id=Config.slack.bot_user_id or "",
-                confirmed_at=_slack_timestamp(body.get("action_ts")),
+                confirmed_at=_slack_timestamp(action.get("action_ts")),
                 is_button=True,
                 expected_number_to_todo_id={payload["number"]: payload["todo_id"]},
                 reaction_ts=None,
@@ -138,7 +142,6 @@ def _complete(
     confirmed_at: str,
     is_button: bool,
     expected_number_to_todo_id: dict[int | str, str] | None = None,
-    body: dict | None = None,
     say=None,
     thread_ts: str | None = None,
     reaction_ts: str | None = None,
@@ -219,10 +222,6 @@ def _complete(
             )
         except Exception:
             logger.info("TODO 번호 답장에 ✅ 반응을 추가하지 못했습니다", exc_info=True)
-        if say:
-            say(text="✅ TODO 완료를 반영했습니다.", thread_ts=thread_ts)
-    else:
-        _notify_success(client, body, channel_id, actual_user_id, target_state, numbers[0])
     return True
 
 
@@ -305,14 +304,6 @@ def _slack_timestamp(value: Any) -> str:
 
 def event_ts_from_time(value: str) -> str:
     return str(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
-
-
-def _notify_success(client, body, channel_id: str, user_id: str, target_state: str, number: int) -> None:
-    text = f"{'↺' if target_state == 'reopen' else '✅'} {number}번 TODO를 {'다시 열었습니다' if target_state == 'reopen' else '완료했습니다'}."
-    try:
-        client.chat_postEphemeral(channel=channel_id, user=user_id, text=text)
-    except Exception:
-        logger.debug("TODO 버튼 성공 안내 전송 실패", exc_info=True)
 
 
 def _notify_failure(client, *, channel_id: str, user_id: str, thread_ts, say, is_button: bool, text: str) -> None:

@@ -137,6 +137,37 @@ def test_todo_rows_keep_category_tree_and_stable_ids():
     assert items[1].text == "외부 확인 대기"
 
 
+def test_number_display_is_parsed_and_kept_outside_completion_markup():
+    from seosoyoung.slackbot.daily_todo.parser import (
+        parse_todo_items,
+        set_task_completion,
+        set_task_number,
+    )
+
+    content = "## 회사일\n- 작업 — 메모 <!--todo:2026-10-27:8-->"
+    numbered = set_task_number(content, "2026-10-27:8", 8)
+    item = parse_todo_items(numbered)[0]
+    completed = set_task_completion(
+        numbered,
+        "2026-10-27:8",
+        completed=True,
+        annotation="10/27 완료 확인",
+    )
+    reopened = set_task_completion(
+        completed,
+        "2026-10-27:8",
+        completed=False,
+        annotation="10/27 완료 확인",
+    )
+
+    assert numbered == "## 회사일\n- **8.** 작업 — 메모 <!--todo:2026-10-27:8-->"
+    assert item.display_number == 8
+    assert item.text == "작업 — 메모"
+    assert "- **8.** ~~작업~~ — 메모 (10/27 완료 확인)" in completed
+    assert "- **8.** 작업 — 메모" in reopened
+    assert "~~8." not in completed
+
+
 def test_completion_edit_changes_only_selected_task_name_and_annotation():
     from seosoyoung.slackbot.daily_todo.parser import set_task_completion
 

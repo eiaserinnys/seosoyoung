@@ -25,8 +25,12 @@ from seosoyoung.slackbot.daily_todo.parser import (
     parse_daily_todo_card,
     parse_todo_items,
     replace_daily_todo_metadata,
+    set_task_number,
 )
-from seosoyoung.slackbot.daily_todo.rendering import render_daily_todo_messages
+from seosoyoung.slackbot.daily_todo.rendering import (
+    ACTION_ID_PREFIX,
+    render_daily_todo_messages,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +38,12 @@ logger = logging.getLogger(__name__)
 
 class PublishRejected(ValueError):
     """A publish is missing explicit context or would replace a success."""
+
+
+EXPECTED_TEAM_ID = "T08JMN15Q01"
+EXPECTED_BOT_USER_ID = "U0A8XJZ6Q5S"
+EXPECTED_BOT_ID = "B0A8U1860D8"
+EXPECTED_RECIPIENT_USER_ID = "U08HWT0C6K1"
 
 
 async def publish_daily_todo(
@@ -45,6 +55,7 @@ async def publish_daily_todo(
     todo_node_id: str,
     recipient_user_id: str,
     target_session_id: str,
+    get_user_role,
     force: bool = False,
     reason: str | None = None,
 ) -> dict[str, Any]:
@@ -53,13 +64,29 @@ async def publish_daily_todo(
         raise PublishRejected("card, node, recipient and target session are required")
     if force and not (reason and reason.strip()):
         raise PublishRejected("--force requires a non-empty --reason")
+    if recipient_user_id != EXPECTED_RECIPIENT_USER_ID:
+        raise PublishRejected("daily TODO recipient must be the configured company director")
 
     auth = slack_client.auth_test()
-    team_id = auth["team_id"]
-    bot_user_id = auth["user_id"]
+    team_id = auth.get("team_id")
+    bot_user_id = auth.get("user_id")
+    bot_id = auth.get("bot_id")
+    if (
+        team_id != EXPECTED_TEAM_ID
+        or bot_user_id != EXPECTED_BOT_USER_ID
+        or bot_id != EXPECTED_BOT_ID
+    ):
+        raise PublishRejected("Slack team or bot identity does not match the configured company bot")
+    recipient_role = get_user_role(recipient_user_id, slack_client)
+    if (
+        not recipient_role
+        or recipient_role.get("user_id") != EXPECTED_RECIPIENT_USER_ID
+        or recipient_role.get("is_bot")
+        or recipient_role.get("role") not in {"admin", "viewer"}
+    ):
+        raise PublishRejected("configured Slack recipient identity could not be verified")
     channel = slack_client.conversations_open(users=recipient_user_id)["channel"]["id"]
-    user = slack_client.users_info(user=recipient_user_id)["user"]
-    username = user.get("name", recipient_user_id)
+    username = recipient_role.get("username") or recipient_user_id
     date = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
     delivery_id = str(uuid.uuid4())
     todo_url = f"https://atom.eiaserinnys.me/#{todo_node_id}"
@@ -69,6 +96,15 @@ async def publish_daily_todo(
     if parsed.metadata.get("date") != date:
         raise PublishRejected("the selected card is not today's Asia/Seoul TODO")
     _reject_successful_resend(parsed.metadata, force=force)
+    carry_delivery = await _get_carry_source_delivery(
+        atom_client,
+        parsed.metadata,
+        current_card_id=card_id,
+        recipient_user_id=recipient_user_id,
+        team_id=team_id,
+        bot_user_id=bot_user_id,
+        channel_id=channel,
+    )
 
     card, delivery, mapping = await _save_pending_delivery(
         atom_client,
@@ -128,26 +164,32 @@ async def publish_daily_todo(
                 logger.exception("Failed TODO delivery's partial messages could not be cleaned up")
         raise
 
-    for part in sent_parts:
-        session = session_manager.create(
-            thread_ts=part["message_ts"],
-            channel_id=channel,
-            user_id=recipient_user_id,
-            username=username,
-            role="viewer",
-        )
-        if session:
-            session_manager.update_session_id(part["message_ts"], target_session_id)
+    session_mapping = _persist_message_sessions(
+        session_manager,
+        sent_parts,
+        channel_id=channel,
+        user_id=recipient_user_id,
+        username=username,
+        role=recipient_role["role"],
+        target_session_id=target_session_id,
+    )
 
-    actions_cleanup_error = None
+    cleanup_errors: list[str] = []
     if prior_active_id and prior_active_id != delivery_id:
         old_delivery = _find_delivery_by_id(delivery["_metadata"], prior_active_id)
         if old_delivery:
             try:
                 _remove_old_daily_todo_actions(slack_client, old_delivery)
             except Exception as exc:
-                actions_cleanup_error = str(exc)
+                cleanup_errors.append(str(exc))
                 logger.exception("New TODO delivery is active but old TODO actions cleanup failed")
+    if carry_delivery:
+        try:
+            if await _deactivate_carry_source_delivery(atom_client, carry_delivery):
+                _remove_old_daily_todo_actions(slack_client, carry_delivery["delivery"])
+        except Exception as exc:
+            cleanup_errors.append(str(exc))
+            logger.exception("New TODO delivery is active but carry-source cleanup failed")
 
     result = {
         "delivery_id": delivery_id,
@@ -159,9 +201,10 @@ async def publish_daily_todo(
         "number_to_todo_id": number_to_id_json(mapping),
         "parts": sent_parts,
         "status": "success",
+        "session_mapping": session_mapping,
     }
-    if actions_cleanup_error:
-        result["old_actions_cleanup_error"] = actions_cleanup_error
+    if cleanup_errors:
+        result["old_actions_cleanup_error"] = "; ".join(cleanup_errors)
     return result
 
 
@@ -187,7 +230,8 @@ async def _save_pending_delivery(
             raise PublishRejected("today's TODO card changed before publishing")
         _reject_successful_resend(parsed.metadata, force=force)
         prior = read_delivery_number_map(parsed.metadata, date=date, source_card_id=card_id)
-        mapping = assign_todo_numbers(parse_todo_items(parsed.content_before_metadata), prior)
+        items = parse_todo_items(parsed.content_before_metadata)
+        mapping = assign_todo_numbers(items, prior)
         delivery = {
             "delivery_id": delivery_id,
             "source_card_id": card_id,
@@ -211,7 +255,12 @@ async def _save_pending_delivery(
         if not isinstance(deliveries, list):
             raise DailyTodoFormatError(f"{DELIVERIES_FIELD} must be a list")
         metadata[DELIVERIES_FIELD] = [*deliveries, delivery]
-        content = replace_daily_todo_metadata(card["content"], metadata)
+        content = card["content"]
+        item_ids = {item.todo_id for item in items}
+        for number, todo_id in mapping.items():
+            if todo_id in item_ids:
+                content = set_task_number(content, todo_id, number)
+        content = replace_daily_todo_metadata(content, metadata)
         try:
             await atom_client.update_card(card_id, content=content, expected_version=card["version"])
         except Exception as exc:
@@ -223,8 +272,127 @@ async def _save_pending_delivery(
         verified_delivery = _find_delivery_by_id(verified_parsed.metadata, delivery_id)
         if not verified_delivery or verified_delivery.get("status") != "pending":
             raise RuntimeError("pending TODO delivery failed Atom readback")
+        verified_items = {
+            item.todo_id: item
+            for item in parse_todo_items(verified_parsed.content_before_metadata)
+        }
+        for number, todo_id in mapping.items():
+            item = verified_items.get(todo_id)
+            if item is not None and item.display_number != number:
+                raise RuntimeError("Atom TODO display numbers failed readback")
         return verified, verified_delivery, mapping
     raise AssertionError("unreachable")
+
+
+async def _get_carry_source_delivery(
+    atom_client,
+    metadata: Mapping[str, Any],
+    *,
+    current_card_id: str,
+    recipient_user_id: str,
+    team_id: str,
+    bot_user_id: str,
+    channel_id: str,
+) -> dict[str, Any] | None:
+    source = metadata.get("carry_source")
+    if source is None:
+        return None
+    if not isinstance(source, Mapping):
+        raise PublishRejected("today's TODO carry_source is invalid")
+    source_card_id = source.get("card_id")
+    if not isinstance(source_card_id, str) or not source_card_id or source_card_id == current_card_id:
+        return None
+
+    previous_card = await atom_client.get_card(source_card_id)
+    previous_parsed = parse_daily_todo_card(previous_card["content"])
+    if previous_parsed.metadata.get("date") != source.get("date"):
+        return None
+    active_id = previous_parsed.metadata.get(ACTIVE_DELIVERY_FIELD)
+    previous_delivery = _find_delivery_by_id(previous_parsed.metadata, active_id) if active_id else None
+    if (
+        not previous_delivery
+        or previous_delivery.get("status") != "success"
+        or previous_delivery.get("source_card_id") != source_card_id
+        or previous_delivery.get("team_id") != team_id
+        or previous_delivery.get("bot_user_id") != bot_user_id
+        or previous_delivery.get("recipient_user_id") != recipient_user_id
+        or previous_delivery.get("channel_id") != channel_id
+    ):
+        return None
+    return {"card_id": source_card_id, "delivery": previous_delivery}
+
+
+async def _deactivate_carry_source_delivery(atom_client, prior: Mapping[str, Any]) -> bool:
+    card_id = prior["card_id"]
+    delivery_id = prior["delivery"]["delivery_id"]
+    for attempt in range(2):
+        card = await atom_client.get_card(card_id)
+        parsed = parse_daily_todo_card(card["content"])
+        if parsed.metadata.get(ACTIVE_DELIVERY_FIELD) != delivery_id:
+            return False
+        metadata = dict(parsed.metadata)
+        metadata.pop(ACTIVE_DELIVERY_FIELD, None)
+        content = replace_daily_todo_metadata(card["content"], metadata)
+        try:
+            await atom_client.update_card(card_id, content=content, expected_version=card["version"])
+        except Exception as exc:
+            if attempt == 0 and _is_version_conflict(exc):
+                continue
+            raise
+        verified = await atom_client.get_card(card_id)
+        verified_metadata = parse_daily_todo_card(verified["content"]).metadata
+        if verified_metadata.get(ACTIVE_DELIVERY_FIELD) == delivery_id:
+            raise RuntimeError("carry-source active delivery failed readback")
+        return True
+    raise AssertionError("unreachable")
+
+
+def _persist_message_sessions(
+    session_manager,
+    parts: list[dict[str, Any]],
+    *,
+    channel_id: str,
+    user_id: str,
+    username: str,
+    role: str,
+    target_session_id: str,
+) -> dict[str, Any]:
+    from pathlib import Path
+
+    from seosoyoung.slackbot.soulstream.session import SessionManager
+
+    failures = []
+    session_dir = getattr(session_manager, "session_dir", None)
+    if session_dir is None:
+        return {"status": "partial", "failures": [{"error": "session storage path is unavailable"}]}
+    for part in parts:
+        message_ts = part["message_ts"]
+        try:
+            created = session_manager.create(
+                thread_ts=message_ts,
+                channel_id=channel_id,
+                user_id=user_id,
+                username=username,
+                role=role,
+            )
+            updated = session_manager.update_session_id(message_ts, target_session_id)
+            if created is None or updated is None:
+                raise RuntimeError("SessionManager did not return the saved thread mapping")
+            persisted = SessionManager(session_dir=Path(session_dir)).get(message_ts)
+            if (
+                persisted is None
+                or persisted.thread_ts != message_ts
+                or persisted.channel_id != channel_id
+                or persisted.user_id != user_id
+                or persisted.username != username
+                or persisted.session_id != target_session_id
+                or persisted.role != role
+            ):
+                raise RuntimeError("persisted thread mapping failed readback")
+        except Exception as exc:
+            failures.append({"message_ts": message_ts, "error": f"{type(exc).__name__}: {exc}"})
+            logger.exception("TODO message sent but SessionManager mapping was not verified")
+    return {"status": "success" if not failures else "partial", "failures": failures}
 
 
 async def _mark_delivery_success(atom_client, *, card_id: str, delivery_id: str, parts: list[dict[str, Any]]):
@@ -348,7 +516,10 @@ def _remove_old_daily_todo_actions(slack_client, delivery: Mapping[str, Any]) ->
             elements = [
                 element
                 for element in block.get("elements", [])
-                if element.get("action_id") != "daily_todo_set_completion"
+                if not (
+                    element.get("action_id") == "daily_todo_set_completion"
+                    or str(element.get("action_id", "")).startswith(ACTION_ID_PREFIX)
+                )
             ]
             if elements:
                 filtered.append({**block, "elements": elements})
@@ -422,6 +593,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from slack_sdk import WebClient
 
+    from seosoyoung.slackbot.auth import get_user_role
     from seosoyoung.slackbot.config import Config
     from seosoyoung.slackbot.soulstream.session import SessionManager
 
@@ -436,6 +608,7 @@ def main(argv: list[str] | None = None) -> int:
             todo_node_id=args.todo_node_id,
             recipient_user_id=args.recipient_user_id,
             target_session_id=args.target_session_id,
+            get_user_role=get_user_role,
             force=args.force,
             reason=args.reason,
         )
