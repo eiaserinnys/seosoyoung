@@ -5,6 +5,7 @@ from seosoyoung.slackbot.handlers.message import register_message_handlers
 from seosoyoung.slackbot.handlers.actions import register_action_handlers
 from seosoyoung.slackbot.handlers.node import register_node_handlers
 from seosoyoung.slackbot.handlers.home import register_home_handlers
+from seosoyoung.slackbot.handlers.daily_todo import register_daily_todo_handlers
 from seosoyoung.slackbot.reflect import reflect
 
 
@@ -34,6 +35,7 @@ def register_all_handlers(app, dependencies: dict):
     register_action_handlers(app, dependencies)
     register_node_handlers(app)
     register_home_handlers(app, dependencies)
+    register_daily_todo_handlers(app, dependencies)
 
 
 __all__ = [
@@ -43,4 +45,5 @@ __all__ = [
     "register_action_handlers",
     "register_node_handlers",
     "register_home_handlers",
+    "register_daily_todo_handlers",
 ]
