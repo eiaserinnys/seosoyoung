@@ -26,6 +26,9 @@ class CompletionRejected(ValueError):
     """The request is outside its recorded delivery or is not actionable."""
 
 
+MISSING_NUMBER_MESSAGE = "이 메시지에 없는 번호입니다. 같은 메시지의 번호를 확인해 다시 보내주세요."
+
+
 @dataclass(frozen=True)
 class CompletionOutcome:
     card: dict[str, Any]
@@ -84,7 +87,7 @@ async def set_completion(
 
         number_to_id = _delivery_number_map(delivery)
         if any(number not in number_to_id for number in selected):
-            raise CompletionRejected("selected number has no saved TODO mapping")
+            raise CompletionRejected(MISSING_NUMBER_MESSAGE)
         if expected_number_to_todo_id is not None:
             expected = {int(number): todo_id for number, todo_id in expected_number_to_todo_id.items()}
             if any(number_to_id[number] != expected.get(number) for number in selected):
@@ -266,7 +269,7 @@ def _validate_delivery(
     except (TypeError, ValueError) as exc:
         raise CompletionRejected("delivery part numbering is invalid") from exc
     if not set(numbers).issubset(part_numbers):
-        raise CompletionRejected("selected number is outside this Slack message")
+        raise CompletionRejected(MISSING_NUMBER_MESSAGE)
 
 
 def _delivery_number_map(delivery: Mapping[str, Any]) -> dict[int, str]:

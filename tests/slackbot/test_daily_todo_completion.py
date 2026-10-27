@@ -154,6 +154,36 @@ async def test_rejects_entire_selection_before_any_update_when_identity_or_numbe
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("number_in_part", [False, True])
+async def test_missing_number_is_reported_in_korean_before_any_update(number_in_part):
+    from seosoyoung.slackbot.daily_todo.parser import parse_daily_todo_card, replace_daily_todo_metadata
+    from seosoyoung.slackbot.handlers.daily_todo import _friendly_error
+
+    atom = FakeAtom()
+    if number_in_part:
+        parsed = parse_daily_todo_card(atom.card["content"])
+        parsed.metadata["slack_todo_deliveries"][0]["parts"][0]["numbers"].append(99)
+        atom.card["content"] = replace_daily_todo_metadata(atom.card["content"], parsed.metadata)
+    with pytest.raises(CompletionRejected) as error:
+        await set_completion(
+            atom,
+            source_card_id="card-1",
+            delivery_id="delivery-1",
+            message_ts="123.456",
+            part_index=1,
+            numbers=[1, 99],
+            target_state="complete",
+            actual_slack_user="user-1",
+            actual_team_id="team-1",
+            actual_channel_id="channel-1",
+            actual_bot_user_id="bot-1",
+            confirmed_at="2026-10-26T15:30:00+00:00",
+        )
+    assert _friendly_error(error.value) == "이 메시지에 없는 번호입니다. 같은 메시지의 번호를 확인해 다시 보내주세요."
+    assert atom.updates == []
+
+
+@pytest.mark.asyncio
 async def test_retries_one_cas_conflict_against_the_fresh_card():
     atom = FakeAtom()
     atom.conflict_once = True

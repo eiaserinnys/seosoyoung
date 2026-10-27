@@ -33,6 +33,32 @@ def _numbered_content(open_count: int) -> str:
     return "\n".join(lines)
 
 
+def test_preamble_deduplicates_only_today_date_and_todo_link():
+    todo_url = "https://atom.example.test/#today-node"
+    content = "\n".join(
+        [
+            f"2026-10-27 [오늘 TODO]({todo_url}) [안내](https://example.test/guide)",
+            "## 회사일",
+            "- 2026-10-27 [작업 링크](https://example.test/work) <!--todo:work-->",
+        ]
+    )
+    part = render_daily_todo_messages(
+        content,
+        metadata={"date": "2026-10-27"},
+        source_card_id="source-card",
+        delivery_id="delivery-1",
+        number_to_todo_id={1: "work"},
+        todo_url=todo_url,
+    )[0]
+
+    assert part.text.count(todo_url) == 1
+    assert part.text.count("10/27 확인") == 1
+    assert part.text.count("오늘 추가하거나 바꿀 일이 있으신가요?") == 1
+    assert part.text.count("2026-10-27") == 1
+    assert "https://example.test/guide" in part.text
+    assert "https://example.test/work" in part.text
+
+
 def test_actions_follow_at_most_ten_work_rows_and_keep_tree_context():
     content = _numbered_content(11)
     items = parse_todo_items(content)

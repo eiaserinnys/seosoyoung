@@ -137,6 +137,43 @@ def test_todo_rows_keep_category_tree_and_stable_ids():
     assert items[1].text == "외부 확인 대기"
 
 
+def test_adjacent_id_comments_remain_attached_to_their_own_rows():
+    from seosoyoung.slackbot.daily_todo.parser import parse_todo_items
+
+    content = "## 회사일\n- 첫 작업\n<!--todo:first-->\n- 둘째 작업\n<!--todo:second-->"
+    items = parse_todo_items(content)
+
+    assert [(item.todo_id, item.text, item.line_index) for item in items] == [
+        ("first", "첫 작업", 1),
+        ("second", "둘째 작업", 3),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        (
+            "## 회사일\n- 작업 <!--todo:first-->\n<!--todo:second-->",
+            "같은 작업 행에 서로 다른 TODO ID가 연결되어 있습니다. 원문을 확인해주세요.",
+        ),
+        (
+            "## 회사일\n<!--todo:orphan-->",
+            "TODO ID에 연결된 작업 행이나 작업명이 없습니다. 원문을 확인해주세요.",
+        ),
+        (
+            "## 회사일\n- [ ] <!--todo:empty-->",
+            "TODO ID에 연결된 작업 행이나 작업명이 없습니다. 원문을 확인해주세요.",
+        ),
+    ],
+)
+def test_ambiguous_or_empty_id_rows_are_rejected(content, message):
+    from seosoyoung.slackbot.daily_todo.parser import DailyTodoFormatError, parse_todo_items
+
+    with pytest.raises(DailyTodoFormatError) as error:
+        parse_todo_items(content)
+    assert str(error.value) == message
+
+
 def test_number_display_is_parsed_and_kept_outside_completion_markup():
     from seosoyoung.slackbot.daily_todo.parser import (
         parse_todo_items,

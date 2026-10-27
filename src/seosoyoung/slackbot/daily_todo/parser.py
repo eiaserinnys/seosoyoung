@@ -12,6 +12,10 @@ class DailyTodoFormatError(ValueError):
     """The card does not contain a readable daily-todo operations comment."""
 
 
+DUPLICATE_TODO_ROW_MESSAGE = "같은 작업 행에 서로 다른 TODO ID가 연결되어 있습니다. 원문을 확인해주세요."
+MISSING_TODO_ROW_MESSAGE = "TODO ID에 연결된 작업 행이나 작업명이 없습니다. 원문을 확인해주세요."
+
+
 @dataclass(frozen=True)
 class ParsedDailyTodoCard:
     content: str
@@ -161,10 +165,16 @@ def parse_todo_items(content: str) -> list[TodoItem]:
     bullet_positions = sorted(list_rows.items())
     items: list[TodoItem] = []
     seen_ids: set[str] = set()
+    seen_rows: set[int] = set()
     for todo_id, row_index, indent, row_text, item_category, display_number in item_rows:
         if todo_id in seen_ids:
             raise DailyTodoFormatError(f"duplicate todo ID: {todo_id}")
+        if not row_text.strip():
+            raise DailyTodoFormatError(MISSING_TODO_ROW_MESSAGE)
+        if row_index in seen_rows:
+            raise DailyTodoFormatError(DUPLICATE_TODO_ROW_MESSAGE)
         seen_ids.add(todo_id)
+        seen_rows.add(row_index)
         next_sibling = next(
             (
                 candidate_index

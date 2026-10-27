@@ -85,6 +85,7 @@ def render_daily_todo_messages(
     ancestors: list[tuple[int, str]] = []
     pending_headings: list[str] = []
     current_has_content = False
+    before_first_category = True
 
     def start_segment() -> None:
         nonlocal current_lines
@@ -107,6 +108,7 @@ def render_daily_todo_messages(
 
         category_match = _CATEGORY_RE.match(original_line)
         if category_match:
+            before_first_category = False
             flush_segment()
             current_category = category_match.group(1).strip().strip("*`")
             if current_category not in category_order:
@@ -114,6 +116,9 @@ def render_daily_todo_messages(
             ancestors = []
             pending_headings = []
             continue
+
+        if before_first_category and not _LIST_RE.match(original_line):
+            original_line = _remove_preamble_duplicates(original_line, date=date, todo_url=todo_url)
 
         heading_match = _HEADING_RE.match(original_line)
         if heading_match:
@@ -240,6 +245,15 @@ def render_daily_todo_messages(
         part_text_chars += unit_text_chars
     parts.append(_make_part(part_blocks, part_numbers))
     return parts
+
+
+def _remove_preamble_duplicates(line: str, *, date: str, todo_url: str) -> str:
+    url = re.escape(todo_url)
+    line = re.sub(r"\[[^\]]*\]\(" + url + r"\)", "", line)
+    line = re.sub(r"<" + url + r"(?:\|[^>]*)?>", "", line)
+    line = re.sub(r"(?<!\S)" + url + r"(?!\S)", "", line)
+    dates = f"{re.escape(date)}|{re.escape(_short_date(date))}"
+    return re.sub(r"(?<![\w/\-])(?:" + dates + r")(?![\w/\-])(?:\s*확인)?", "", line).strip()
 
 
 def _group_line_indices(markdown: str) -> set[int]:

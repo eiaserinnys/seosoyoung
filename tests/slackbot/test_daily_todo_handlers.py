@@ -92,6 +92,41 @@ def test_number_reply_does_not_claim_a_non_bot_thread(mock_config):
     assert handled is False
 
 
+@patch("seosoyoung.slackbot.handlers.daily_todo.Config")
+def test_missing_number_reply_uses_one_korean_failure_message(mock_config):
+    from seosoyoung.slackbot.daily_todo.completion import CompletionRejected
+
+    mock_config.slack.bot_user_id = "bot-1"
+    mock_config.slack.team_id = "team-1"
+    client = MagicMock()
+    client.conversations_replies.return_value = {
+        "messages": [{"user": "bot-1", "ts": "123.456", "blocks": [{
+            "type": "section", "block_id": "daily_todo_header:card-1:delivery-1:1"
+        }]}]
+    }
+    event = {"text": "99 완료", "thread_ts": "123.456", "channel": "channel-1", "user": "user-1", "ts": "1793000000"}
+    say = MagicMock()
+    with patch("seosoyoung.slackbot.handlers.daily_todo._complete", side_effect=CompletionRejected(
+        "이 메시지에 없는 번호입니다. 같은 메시지의 번호를 확인해 다시 보내주세요."
+    )):
+        assert try_handle_number_reply(event, say, client, {})
+    say.assert_called_once_with(
+        text="이 메시지에 없는 번호입니다. 같은 메시지의 번호를 확인해 다시 보내주세요.",
+        thread_ts="123.456",
+    )
+
+
+def test_invalid_row_error_and_internal_debug_have_user_safe_messages():
+    from seosoyoung.slackbot.daily_todo.parser import DailyTodoFormatError
+    from seosoyoung.slackbot.handlers.daily_todo import _friendly_error
+    from seosoyoung.slackbot.soulstream.debug_policy import is_user_facing_debug_message
+
+    message = "같은 작업 행에 서로 다른 TODO ID가 연결되어 있습니다. 원문을 확인해주세요."
+    assert _friendly_error(DailyTodoFormatError(message)) == message
+    assert not is_user_facing_debug_message("selected number is outside this Slack message")
+    assert not is_user_facing_debug_message("selected number has no saved TODO mapping")
+
+
 def test_dm_number_reply_runs_before_session_cache_lookup():
     from seosoyoung.slackbot.handlers.message import _handle_dm_message
 

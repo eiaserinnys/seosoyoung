@@ -138,6 +138,28 @@ def _get_user_role(user_id, client):
     }
 
 
+@pytest.mark.asyncio
+async def test_publish_rejects_multiple_ids_on_one_row_before_writing_or_sending():
+    from seosoyoung.slackbot.daily_todo.parser import DailyTodoFormatError
+
+    atom, slack = FakeAtom(), FakeSlack()
+    atom.card["content"] = atom.card["content"].replace(
+        "  - 첫 작업 <!--todo:2026-10-27:1-->",
+        "  - 첫 작업 <!--todo:2026-10-27:1-->\n<!--todo:other-->",
+    )
+    with pytest.raises(DailyTodoFormatError, match="같은 작업 행"):
+        await publish_daily_todo(
+            atom, slack, MagicMock(),
+            card_id="card-1",
+            todo_node_id="node-1",
+            recipient_user_id=EXPECTED_RECIPIENT_USER_ID,
+            target_session_id="session-1",
+            get_user_role=_get_user_role,
+        )
+    assert atom.updates == []
+    assert slack.posts == []
+
+
 @patch("seosoyoung.slackbot.auth.Config")
 def test_get_user_role_reports_the_users_info_identity(mock_config):
     from seosoyoung.slackbot.auth import get_user_role

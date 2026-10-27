@@ -320,8 +320,18 @@ def _notify_failure(client, *, channel_id: str, user_id: str, thread_ts, say, is
 
 def _friendly_error(exc: Exception) -> str:
     from seosoyoung.slackbot.daily_todo.completion import CompletionRejected
+    from seosoyoung.slackbot.daily_todo.parser import (
+        DUPLICATE_TODO_ROW_MESSAGE,
+        MISSING_TODO_ROW_MESSAGE,
+        DailyTodoFormatError,
+    )
 
     if isinstance(exc, CompletionRejected):
+        return str(exc)
+    if isinstance(exc, DailyTodoFormatError) and str(exc) in {
+        DUPLICATE_TODO_ROW_MESSAGE,
+        MISSING_TODO_ROW_MESSAGE,
+    }:
         return str(exc)
     return "TODO 상태를 확인하지 못했습니다. 잠시 뒤 다시 시도해주세요."
 
