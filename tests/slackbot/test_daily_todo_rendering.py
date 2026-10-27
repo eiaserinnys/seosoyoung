@@ -192,6 +192,38 @@ def test_ten_button_boundary_does_not_emit_empty_followup_segment(ending):
     assert part.numbers == list(range(1, len(mapping) + 1))
 
 
+def test_ten_child_boundary_does_not_repeat_parent_before_top_level_sibling():
+    content = "\n".join(
+        [
+            "## 회사일",
+            "- 프로젝트 묶음 <!--todo:2026-10-27:group-->",
+            *(
+                f"  - 하위 작업 {number} <!--todo:2026-10-27:{number}-->"
+                for number in range(1, 11)
+            ),
+            "- 최상위 후속 작업 <!--todo:2026-10-27:11-->",
+        ]
+    )
+    mapping = assign_todo_numbers(parse_todo_items(content), {})
+    part = render_daily_todo_messages(
+        content,
+        metadata={"date": "2026-10-27"},
+        source_card_id="source-card",
+        delivery_id="delivery-sibling",
+        number_to_todo_id=mapping,
+        todo_url="https://atom.example.test/#today-node",
+    )[0]
+    rendered = "\n".join(
+        block.get("text", {}).get("text", "")
+        for block in part.blocks
+        if block["type"] == "section"
+    )
+
+    assert rendered.count("• 프로젝트 묶음") == 1
+    assert "• *11.* 최상위 후속 작업" in rendered
+    assert part.numbers == list(range(1, 12))
+
+
 def test_long_task_accessibility_labels_keep_number_and_action():
     long_title = "중요한 작업 이름 " * 12
     content = "\n".join(

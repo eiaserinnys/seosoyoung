@@ -83,6 +83,7 @@ def render_daily_todo_messages(
     current_buttons: list[dict[str, Any]] = []
     current_numbers: list[int] = []
     ancestors: list[tuple[int, str]] = []
+    pending_headings: list[str] = []
     current_has_content = False
 
     def start_segment() -> None:
@@ -111,13 +112,16 @@ def render_daily_todo_messages(
             if current_category not in category_order:
                 category_order.append(current_category)
             ancestors = []
-            start_segment()
+            pending_headings = []
             continue
 
         heading_match = _HEADING_RE.match(original_line)
         if heading_match:
-            if current_lines:
-                current_lines.append(f"*{heading_match.group(1).strip()}*")
+            heading = f"*{heading_match.group(1).strip()}*"
+            if current_has_content:
+                current_lines.append(heading)
+            else:
+                pending_headings.append(heading)
             continue
 
         list_match = _LIST_RE.match(original_line)
@@ -138,6 +142,10 @@ def render_daily_todo_messages(
                 continue
             while ancestors and ancestors[-1][0] >= indent:
                 ancestors.pop()
+            if not current_has_content:
+                start_segment()
+                current_lines.extend(pending_headings)
+                pending_headings = []
 
             number = number_by_id.get(item.todo_id) if item else None
             actionable = bool(
@@ -148,7 +156,6 @@ def render_daily_todo_messages(
             )
             if actionable and len(current_buttons) >= MAX_ACTIONS:
                 flush_segment()
-                start_segment()
 
             rendered_line = _render_list_line(
                 original_line,
@@ -175,11 +182,14 @@ def render_daily_todo_messages(
                 ancestors.append((indent, rendered_line))
             if len(current_buttons) == MAX_ACTIONS:
                 flush_segment()
-                start_segment()
             continue
 
         clean_line = _strip_comments(original_line).rstrip()
         if clean_line.strip():
+            if not current_has_content:
+                start_segment()
+                current_lines.extend(pending_headings)
+                pending_headings = []
             current_lines.append(markdown_to_mrkdwn(clean_line))
             current_has_content = True
 
