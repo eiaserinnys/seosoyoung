@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from seosoyoung.slackbot.daily_todo.numbering import assign_todo_numbers
 from seosoyoung.slackbot.daily_todo.parser import parse_todo_items
 from seosoyoung.slackbot.daily_todo.rendering import render_daily_todo_messages
@@ -89,7 +91,7 @@ def test_actions_follow_at_most_ten_work_rows_and_keep_tree_context():
     assert [payload["number"] for payload in payloads] == list(range(13, 24)) + [12]
     assert payloads[-1]["target_state"] == "reopen"
     assert buttons[-1]["text"]["text"] == "↺12"
-    assert buttons[0]["accessibility_label"].startswith("회사 작업 1")
+    assert buttons[0]["accessibility_label"].startswith("13번 회사 작업 1")
     assert parts[0].numbers == list(range(13, 24)) + [12]
     fallback = parts[0].text
     assert fallback.count("오늘 추가하거나 바꿀 일이 있으신가요?") == 1
@@ -150,6 +152,74 @@ def test_renderer_reuses_saved_bold_number_without_duplicate_prefix():
     buttons = [button for block in part.blocks if block["type"] == "actions" for button in block["elements"]]
     assert buttons[0]["text"]["text"] == "↺7"
     assert buttons[0]["action_id"] == "daily_todo_set_completion:7"
+
+
+@pytest.mark.parametrize("ending", ["next_category", "document_end"])
+def test_ten_button_boundary_does_not_emit_empty_followup_segment(ending):
+    lines = [
+        "## 회사일",
+        "- 프로젝트 묶음 <!--todo:2026-10-27:group-->",
+        *(
+            f"  - 회사 작업 {number} <!--todo:2026-10-27:{number}-->"
+            for number in range(1, 11)
+        ),
+    ]
+    if ending == "next_category":
+        lines.extend(
+            [
+                "## 개인개발",
+                "- 개인 작업 <!--todo:2026-10-27:11-->",
+            ]
+        )
+    content = "\n".join(lines)
+    mapping = assign_todo_numbers(parse_todo_items(content), {})
+    part = render_daily_todo_messages(
+        content,
+        metadata={"date": "2026-10-27"},
+        source_card_id="source-card",
+        delivery_id=f"delivery-empty-{ending}",
+        number_to_todo_id=mapping,
+        todo_url="https://atom.example.test/#today-node",
+    )[0]
+    rendered = "\n".join(
+        block.get("text", {}).get("text", "")
+        for block in part.blocks
+        if block["type"] == "section"
+    )
+
+    assert rendered.count("*회사일*") == 1
+    assert rendered.count("• 프로젝트 묶음") == 1
+    assert part.numbers == list(range(1, len(mapping) + 1))
+
+
+def test_long_task_accessibility_labels_keep_number_and_action():
+    long_title = "중요한 작업 이름 " * 12
+    content = "\n".join(
+        [
+            "## 회사일",
+            f"- {long_title}<!--todo:2026-10-27:1-->",
+            f"- ~~{long_title}~~ <!--todo:2026-10-27:2-->",
+        ]
+    )
+    part = render_daily_todo_messages(
+        content,
+        metadata={"date": "2026-10-27"},
+        source_card_id="source-card",
+        delivery_id="delivery-long-label",
+        number_to_todo_id={1: "2026-10-27:1", 2: "2026-10-27:2"},
+        todo_url="https://atom.example.test/#today-node",
+    )[0]
+    buttons = [
+        button
+        for block in part.blocks
+        if block["type"] == "actions"
+        for button in block["elements"]
+    ]
+    labels = [button["accessibility_label"] for button in buttons]
+
+    assert all(len(label) <= 75 for label in labels)
+    assert labels[0].startswith("1번 ") and labels[0].endswith(" 완료 처리")
+    assert labels[1].startswith("2번 ") and labels[1].endswith(" 다시 열기")
 
 
 def test_long_delivery_is_split_at_block_limit_with_unique_numbers():

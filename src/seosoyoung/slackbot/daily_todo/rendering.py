@@ -21,6 +21,7 @@ MAX_BLOCKS = 50
 MAX_SECTION_CHARS = 3000
 MAX_MESSAGE_TEXT_CHARS = 39000
 MAX_ACTIONS = 10
+MAX_ACCESSIBILITY_LABEL_CHARS = 75
 ACTION_ID_PREFIX = "daily_todo_set_completion:"
 _LIST_RE = re.compile(r"^(?P<indent>\s*)[-*+]\s+(?P<body>.*)$")
 _TODO_MARKER_RE = re.compile(r"<!--\s*todo:[^>]+?\s*-->", re.IGNORECASE)
@@ -82,6 +83,7 @@ def render_daily_todo_messages(
     current_buttons: list[dict[str, Any]] = []
     current_numbers: list[int] = []
     ancestors: list[tuple[int, str]] = []
+    current_has_content = False
 
     def start_segment() -> None:
         nonlocal current_lines
@@ -89,12 +91,13 @@ def render_daily_todo_messages(
         current_lines.extend(line for _, line in ancestors)
 
     def flush_segment() -> None:
-        nonlocal current_lines, current_buttons, current_numbers
-        if current_lines or current_buttons:
+        nonlocal current_lines, current_buttons, current_numbers, current_has_content
+        if current_has_content and (current_lines or current_buttons):
             segments.append(_Segment(current_lines, current_buttons, current_numbers))
         current_lines = []
         current_buttons = []
         current_numbers = []
+        current_has_content = False
 
     lines = markdown.splitlines()
     for line_index, original_line in enumerate(lines):
@@ -153,6 +156,7 @@ def render_daily_todo_messages(
                 number=number if actionable else None,
             )
             current_lines.append(rendered_line)
+            current_has_content = True
 
             if actionable and item is not None and number is not None:
                 target_state = "reopen" if item.is_completed else "complete"
@@ -177,6 +181,7 @@ def render_daily_todo_messages(
         clean_line = _strip_comments(original_line).rstrip()
         if clean_line.strip():
             current_lines.append(markdown_to_mrkdwn(clean_line))
+            current_has_content = True
 
     flush_segment()
     archived_completed = [category for category in category_order if completed_rows.get(category)]
@@ -265,7 +270,7 @@ def _button(
     delivery_id: str,
 ) -> dict[str, Any]:
     title = _task_title(item.text)
-    label = f"{title} {'다시 열기' if target_state == 'reopen' else '완료 처리'}"
+    label = _accessibility_label(number, title, target_state)
     payload = {
         "delivery_id": delivery_id,
         "source_card_id": source_card_id,
@@ -277,9 +282,23 @@ def _button(
         "type": "button",
         "action_id": f"{ACTION_ID_PREFIX}{number}",
         "text": {"type": "plain_text", "text": f"↺{number}" if target_state == "reopen" else f"✓{number}"},
-        "accessibility_label": label[:75],
+        "accessibility_label": label,
         "value": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
     }
+
+
+def _accessibility_label(number: int, title: str, target_state: str) -> str:
+    action = "다시 열기" if target_state == "reopen" else "완료 처리"
+    prefix = f"{number}번 "
+    suffix = f" {action}"
+    title_budget = max(0, MAX_ACCESSIBILITY_LABEL_CHARS - len(prefix) - len(suffix))
+    if len(title) <= title_budget:
+        shortened_title = title
+    elif title_budget:
+        shortened_title = f"{title[: title_budget - 1]}…"
+    else:
+        shortened_title = ""
+    return f"{prefix}{shortened_title}{suffix}"
 
 
 def _task_title(text: str) -> str:
