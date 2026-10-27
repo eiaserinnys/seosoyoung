@@ -256,10 +256,13 @@ async def _save_pending_delivery(
             raise DailyTodoFormatError(f"{DELIVERIES_FIELD} must be a list")
         metadata[DELIVERIES_FIELD] = [*deliveries, delivery]
         content = card["content"]
-        item_ids = {item.todo_id for item in items}
-        for number, todo_id in mapping.items():
-            if todo_id in item_ids:
-                content = set_task_number(content, todo_id, number)
+        number_by_todo_id = {todo_id: number for number, todo_id in mapping.items()}
+        for item in items:
+            number = number_by_todo_id.get(item.todo_id)
+            if number is not None:
+                content = set_task_number(content, item.todo_id, number)
+            elif item.display_number is not None:
+                content = set_task_number(content, item.todo_id, None)
         content = replace_daily_todo_metadata(content, metadata)
         try:
             await atom_client.update_card(card_id, content=content, expected_version=card["version"])
@@ -276,9 +279,11 @@ async def _save_pending_delivery(
             item.todo_id: item
             for item in parse_todo_items(verified_parsed.content_before_metadata)
         }
-        for number, todo_id in mapping.items():
-            item = verified_items.get(todo_id)
-            if item is not None and item.display_number != number:
+        for todo_id, item in verified_items.items():
+            expected_number = number_by_todo_id.get(todo_id)
+            if item.display_number != expected_number:
+                if expected_number is None:
+                    raise RuntimeError("Atom TODO display number removal failed readback")
                 raise RuntimeError("Atom TODO display numbers failed readback")
         return verified, verified_delivery, mapping
     raise AssertionError("unreachable")

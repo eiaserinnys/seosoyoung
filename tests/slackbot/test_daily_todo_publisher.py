@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from unittest.mock import MagicMock, patch
 
-from seosoyoung.slackbot.daily_todo.parser import parse_daily_todo_card
+from seosoyoung.slackbot.daily_todo.parser import parse_daily_todo_card, parse_todo_items
 from seosoyoung.slackbot.daily_todo.completion import set_completion
 from seosoyoung.slackbot.daily_todo.publisher import (
     EXPECTED_BOT_ID,
@@ -214,6 +214,95 @@ async def test_publish_persists_mapping_and_activates_only_after_messages_are_se
         "viewer",
     )
     assert sessions.updated == [("123.001", "session-1")]
+
+
+@pytest.mark.asyncio
+async def test_resend_clears_numbers_from_ineligible_rows_and_publishes_only_eligible_numbers():
+    date = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
+    todo_ids = {
+        "completed": f"{date}:1",
+        "active": f"{date}:2",
+        "cancelled": f"{date}:3",
+        "group": f"{date}:4",
+        "completed_child": f"{date}:6",
+        "blocked": f"{date}:5",
+        "deleted": f"{date}:91",
+        "new": f"{date}:92",
+    }
+    prior_delivery = {
+        "delivery_id": "previous-delivery",
+        "source_card_id": "card-1",
+        "date": date,
+        "status": "failed",
+        "number_to_todo_id": {
+            "1": todo_ids["completed"],
+            "2": todo_ids["active"],
+            "3": todo_ids["cancelled"],
+            "4": todo_ids["group"],
+            "5": todo_ids["blocked"],
+            "6": todo_ids["completed_child"],
+            "91": todo_ids["deleted"],
+        },
+        "parts": [],
+    }
+    atom = FakeAtom({"slack_todo_deliveries": [prior_delivery]})
+    metadata = parse_daily_todo_card(atom.card["content"]).metadata
+    body = """# 오늘 TODO
+
+## 회사일
+- **1.** ~~완료한 작업~~ — 완료 메모 (10/27 완료 확인) <!--todo:{completed}-->
+- **2.** 진행 중인 작업 <!--todo:{active}-->
+- **3.** 취소한 작업 (취소) <!--todo:{cancelled}-->
+- **4.** 작업 묶음 <!--todo:{group}-->
+  - **6.** ~~완료된 하위 작업~~ (완료 확인) <!--todo:{completed_child}-->
+- **5.** 보류한 작업 (보류) <!--todo:{blocked}-->
+- 새 작업 <!--todo:{new}-->
+""".format(**todo_ids)
+    atom.card["content"] = (
+        body
+        + "<!-- daily-todo "
+        + json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+        + " -->"
+    )
+    slack, sessions = FakeSlack(), FakeSessions()
+
+    result = await publish_daily_todo(
+        atom,
+        slack,
+        sessions,
+        card_id="card-1",
+        todo_node_id="node-1",
+        recipient_user_id=EXPECTED_RECIPIENT_USER_ID,
+        target_session_id="session-1",
+        get_user_role=_get_user_role,
+    )
+
+    saved = parse_daily_todo_card(atom.card["content"])
+    saved_items = {
+        item.todo_id: item for item in parse_todo_items(saved.content_before_metadata)
+    }
+    deliveries = saved.metadata["slack_todo_deliveries"]
+    new_delivery = deliveries[-1]
+    action_numbers = {
+        int(element["action_id"].rsplit(":", 1)[1])
+        for block in slack.posts[0]["blocks"]
+        if block["type"] == "actions"
+        for element in block["elements"]
+    }
+
+    assert result["number_to_todo_id"] == {"2": todo_ids["active"], "92": todo_ids["new"]}
+    assert new_delivery["number_to_todo_id"] == result["number_to_todo_id"]
+    assert action_numbers == {2, 92}
+    assert deliveries[0]["number_to_todo_id"]["91"] == todo_ids["deleted"]
+    assert saved_items[todo_ids["completed"]].display_number is None
+    assert saved_items[todo_ids["cancelled"]].display_number is None
+    assert saved_items[todo_ids["group"]].display_number is None
+    assert saved_items[todo_ids["completed_child"]].display_number is None
+    assert saved_items[todo_ids["blocked"]].display_number is None
+    assert saved_items[todo_ids["active"]].display_number == 2
+    assert saved_items[todo_ids["new"]].display_number == 92
+    assert "~~완료한 작업~~ — 완료 메모 (10/27 완료 확인)" in saved.content_before_metadata
+    assert "~~완료된 하위 작업~~ (완료 확인)" in saved.content_before_metadata
 
 
 @pytest.mark.asyncio
