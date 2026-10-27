@@ -61,11 +61,10 @@ def test_preamble_deduplicates_only_today_date_and_todo_link():
 
 def test_actions_follow_at_most_ten_work_rows_and_keep_tree_context():
     content = _numbered_content(11)
-    items = parse_todo_items(content)
-    mapping = assign_todo_numbers(
-        items,
-        {"12": "2026-10-26:99"},
-    )
+    mapping = {
+        12: "2026-10-26:99",
+        **{13 + index: f"2026-10-27:{index + 1}" for index in range(11)},
+    }
     from seosoyoung.slackbot.daily_todo.parser import set_task_number
 
     for number, todo_id in mapping.items():
