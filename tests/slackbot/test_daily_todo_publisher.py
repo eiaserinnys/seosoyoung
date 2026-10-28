@@ -63,6 +63,7 @@ class FakeSlack:
     def __init__(self, *, auth=None, user=None):
         self.posts = []
         self.updates = []
+        self.update_requests = []
         self.auth_calls = 0
         self.messages = {}
         self.auth = {
@@ -106,9 +107,10 @@ class FakeSlack:
     def conversations_replies(self, *, channel, ts, limit):
         return {"messages": [self.messages[ts]] if ts in self.messages else []}
 
-    def chat_update(self, *, channel, ts, text, blocks):
+    def chat_update(self, *, channel, ts, **kwargs):
         self.updates.append(ts)
-        self.messages[ts] = {**self.messages[ts], "text": text, "blocks": blocks}
+        self.update_requests.append({"channel": channel, "ts": ts, **kwargs})
+        self.messages[ts] = {**self.messages[ts], **kwargs}
 
 
 class FakeSessions:
@@ -463,7 +465,12 @@ async def test_forced_resend_keeps_old_mapping_and_removes_only_old_todo_actions
     assert metadata["slack_todo_active_delivery_id"] == result["delivery_id"]
     assert metadata["slack_todo_deliveries"][0]["number_to_todo_id"] == old_delivery["number_to_todo_id"]
     assert metadata["slack_todo_deliveries"][-1]["reason"] == "recipient asked for a resend"
+    assert slack.update_requests[0]["channel"] == "channel-1"
+    assert slack.update_requests[0]["ts"] == "old.001"
+    assert "text" not in slack.update_requests[0]
+    assert slack.messages["old.001"]["text"] == "old TODO"
     assert old_blocks[0]["block_id"] == "daily_todo_header:card-1:old-delivery:1"
+    assert old_blocks[0]["text"]["text"] == "TODO"
     assert len(old_blocks) == 2
     assert old_blocks[-1]["elements"][0]["action_id"] == "other_action"
 

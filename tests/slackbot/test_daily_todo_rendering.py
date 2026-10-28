@@ -59,6 +59,86 @@ def test_preamble_deduplicates_only_today_date_and_todo_link():
     assert "https://example.test/work" in part.text
 
 
+def test_long_fallback_is_shortened_without_changing_blocks_or_completion_mapping():
+    date = "2026-10-27"
+    todo_url = "https://atom.example.test/#today-node"
+    content = "\n".join(
+        [
+            f"# {date} TODO",
+            "## 회사일",
+            *(
+                f"- 회사 작업 {number} "
+                + "상세 설명 " * 70
+                + f"<!--todo:{date}:{number}-->"
+                for number in range(1, 12)
+            ),
+            "## 개인개발",
+            "- ~~완료 작업~~ (10/26 완료 확인) <!--todo:2026-10-26:99-->",
+            "## 개인사",
+            "- 개인 일정",
+        ]
+    )
+    mapping = {
+        **{number: f"{date}:{number}" for number in range(1, 12)},
+        12: "2026-10-26:99",
+    }
+
+    part = render_daily_todo_messages(
+        content,
+        metadata={"date": date},
+        source_card_id="source-card",
+        delivery_id="delivery-long",
+        number_to_todo_id=mapping,
+        todo_url=todo_url,
+    )[0]
+
+    blocks_text = "\n".join(
+        block["text"]["text"] for block in part.blocks if block["type"] == "section"
+    )
+    buttons = [
+        button
+        for block in part.blocks
+        if block["type"] == "actions"
+        for button in block["elements"]
+    ]
+    payloads = [json.loads(button["value"]) for button in buttons]
+
+    assert len(blocks_text) > 4000
+    assert len(part.text) <= 4000
+    assert part.text != blocks_text
+    assert "10/27 확인" in part.text
+    assert todo_url in part.text
+    assert "회사일" in part.text
+    assert "개인개발" in part.text
+    assert "개인사" in part.text
+    assert "오늘 추가하거나 바꿀 일이 있으신가요?" in part.text
+    assert [payload["number"] for payload in payloads] == list(range(1, 13))
+    assert [button["action_id"] for button in buttons] == [
+        f"daily_todo_set_completion:{number}" for number in range(1, 13)
+    ]
+    assert buttons[-1]["text"]["text"] == "↺12"
+    assert payloads[-1]["target_state"] == "reopen"
+    assert "상세 설명" in blocks_text
+
+
+def test_fallback_text_under_4000_characters_is_unchanged():
+    todo_url = "https://atom.example.test/#today-node"
+    part = render_daily_todo_messages(
+        "## 회사일\n- 짧은 작업 <!--todo:2026-10-27:1-->",
+        metadata={"date": "2026-10-27"},
+        source_card_id="source-card",
+        delivery_id="delivery-short",
+        number_to_todo_id={1: "2026-10-27:1"},
+        todo_url=todo_url,
+    )[0]
+    original_text = "\n".join(
+        block["text"]["text"] for block in part.blocks if block["type"] == "section"
+    )
+
+    assert len(original_text) <= 4000
+    assert part.text == original_text
+
+
 def test_actions_follow_at_most_ten_work_rows_and_keep_tree_context():
     content = _numbered_content(11)
     mapping = {

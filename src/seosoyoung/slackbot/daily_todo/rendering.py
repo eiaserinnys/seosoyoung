@@ -20,6 +20,7 @@ from seosoyoung.slackbot.formatting import markdown_to_mrkdwn
 MAX_BLOCKS = 50
 MAX_SECTION_CHARS = 3000
 MAX_MESSAGE_TEXT_CHARS = 39000
+MAX_FALLBACK_TEXT_CHARS = 4000
 MAX_ACTIONS = 10
 MAX_ACCESSIBILITY_LABEL_CHARS = 75
 ACTION_ID_PREFIX = "daily_todo_set_completion:"
@@ -209,13 +210,27 @@ def render_daily_todo_messages(
 
     header_text = "*일일 TODO*"
     header_template = {"type": "section", "text": {"type": "mrkdwn", "text": header_text}}
+    footer_date = f"{_short_date(date)} 확인"
+    footer_link = f"<{todo_url}|오늘 TODO>"
+    footer_guidance = "오늘 추가하거나 바꿀 일이 있으신가요?"
+    fallback_text = "\n".join(
+        [
+            header_text,
+            footer_date,
+            footer_link,
+            "회사일",
+            "개인개발",
+            "개인사",
+        ]
+    )
     units = [_segment_units(segment, include_actions=include_actions) for segment in segments]
     flat_units = [unit for group_units in units for unit in group_units]
+    footer_text = "\n".join([footer_date, footer_link, footer_guidance])
     footer = {
         "type": "section",
         "text": {
             "type": "mrkdwn",
-            "text": f"{_short_date(date)} 확인\n<{todo_url}|오늘 TODO>\n오늘 추가하거나 바꿀 일이 있으신가요?",
+            "text": footer_text,
         },
     }
     flat_units.append(([footer], []))
@@ -233,7 +248,15 @@ def render_daily_todo_messages(
             len(part_blocks) + len(unit_blocks) > MAX_BLOCKS
             or part_text_chars + unit_text_chars > MAX_MESSAGE_TEXT_CHARS
         ):
-            parts.append(_make_part(part_blocks, part_numbers))
+            parts.append(
+                _make_part(
+                    part_blocks,
+                    part_numbers,
+                    fallback_text=fallback_text,
+                    footer_text=footer_text,
+                    footer_guidance=footer_guidance,
+                )
+            )
             part_index += 1
             part_blocks = [_header_block(header_template, source_card_id, delivery_id, part_index)]
             part_numbers = []
@@ -243,7 +266,15 @@ def render_daily_todo_messages(
         part_blocks.extend(unit_blocks)
         part_numbers.extend(unit_numbers)
         part_text_chars += unit_text_chars
-    parts.append(_make_part(part_blocks, part_numbers))
+    parts.append(
+        _make_part(
+            part_blocks,
+            part_numbers,
+            fallback_text=fallback_text,
+            footer_text=footer_text,
+            footer_guidance=footer_guidance,
+        )
+    )
     return parts
 
 
@@ -414,12 +445,24 @@ def _header_block(
     return block
 
 
-def _make_part(blocks: list[dict[str, Any]], numbers: Sequence[int]) -> RenderedDailyTodoPart:
+def _make_part(
+    blocks: list[dict[str, Any]],
+    numbers: Sequence[int],
+    *,
+    fallback_text: str,
+    footer_text: str,
+    footer_guidance: str,
+) -> RenderedDailyTodoPart:
     text = "\n".join(
         block.get("text", {}).get("text", "")
         for block in blocks
         if block.get("type") == "section"
     )
+    if len(text) > MAX_FALLBACK_TEXT_CHARS:
+        had_footer = footer_text in text
+        text = fallback_text
+        if had_footer:
+            text = f"{text}\n{footer_guidance}"
     return RenderedDailyTodoPart(text=text, blocks=blocks, numbers=list(numbers))
 
 
