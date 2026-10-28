@@ -47,6 +47,7 @@ class ExecuteResult:
     agent_session_id: Optional[str] = None
     claude_session_id: Optional[str] = None
     error: Optional[str] = None
+    error_code: Optional[str] = None
 
 
 # === 예외 ===
@@ -214,6 +215,7 @@ class SoulServiceClient:
         system_prompt: Optional[str] = None,
         profile: Optional[str] = None,
         model_preset: Optional[str] = None,
+        model_preset_fallbacks: Optional[List[str]] = None,
         persist_listening: bool = False,
         inactivity_timeout: float = SSE_PERSIST_INACTIVITY_TIMEOUT,
         caller_info: Optional[dict] = None,
@@ -265,6 +267,8 @@ class SoulServiceClient:
             data["profile"] = profile  # soul-server ExecuteRequest.profile: Optional[str]
         if not agent_session_id and model_preset:
             data["model_preset"] = model_preset
+        if not agent_session_id and model_preset_fallbacks:
+            data["model_preset_fallbacks"] = model_preset_fallbacks
         if caller_info is not None:
             # soul-server /execute가 body.caller_info가 있으면 HTTP Request 수집을
             # 건너뛰고 이 값을 그대로 사용한다 (Phase 2).
@@ -847,6 +851,7 @@ class SoulServiceClient:
         result_agent_session_id = None
         result_claude_session_id = None
         error_message = None
+        error_code = None
 
         stream = (
             self._parse_sse_stream(response)
@@ -898,6 +903,7 @@ class SoulServiceClient:
 
                 elif event.event == "error":
                     error_message = event.data.get("message", "알 수 없는 오류")
+                    error_code = event.data.get("error_code")
 
                 elif event.event == "assistant_message":
                     content = event.data.get("content", "")
@@ -998,6 +1004,7 @@ class SoulServiceClient:
                 result=error_message,
                 agent_session_id=result_agent_session_id,
                 error=error_message,
+                error_code=error_code,
             )
 
         return ExecuteResult(

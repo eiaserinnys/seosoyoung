@@ -282,6 +282,58 @@ class TestSoulServiceClientExecute:
         assert body["model_preset"] == "codex-5.6-sol"
 
     @pytest.mark.asyncio
+    async def test_execute_includes_model_preset_fallbacks_for_new_session(self, client):
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"new-sess-fallbacks"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response)
+        client._session = session
+
+        await client.execute(
+            "hello", model_preset_fallbacks=["claude-opus", "codex-6.1-sol"]
+        )
+
+        body = session.post.call_args.kwargs["json"]
+        assert body["model_preset_fallbacks"] == ["claude-opus", "codex-6.1-sol"]
+
+    @pytest.mark.asyncio
+    async def test_execute_omits_model_preset_fallbacks_for_resume_and_empty_list(self, client):
+        for session_id, fallbacks in [
+            ("existing-sess", ["claude-opus"]),
+            (None, []),
+        ]:
+            sse_data = (
+                b"event:init\n"
+                b'data:{"agent_session_id":"session"}\n'
+                b"\n"
+                b"event:complete\n"
+                b'data:{"result":"done"}\n'
+                b"\n"
+            )
+            mock_response = MagicMock()
+            mock_response.status = 200
+            mock_response.content = _make_stream_reader(sse_data)
+            session = _mock_session(mock_response)
+            client._session = session
+
+            await client.execute(
+                "hello",
+                agent_session_id=session_id,
+                model_preset_fallbacks=fallbacks,
+            )
+
+            body = session.post.call_args.kwargs["json"]
+            assert "model_preset_fallbacks" not in body
+
+    @pytest.mark.asyncio
     async def test_execute_omits_model_preset_for_resume(self, client):
         sse_data = (
             b"event:init\n"
@@ -859,6 +911,21 @@ class TestHandleSSEEvents:
         result = await client._handle_sse_events(mock_response)
         assert result.success is False
         assert "something went wrong" in result.result
+
+    @pytest.mark.asyncio
+    async def test_error_event_preserves_error_code(self, client):
+        sse_data = (
+            b"event:error\n"
+            b'data:{"type":"error","message":"quota exhausted","error_code":"antigravity_quota_exceeded"}\n'
+            b"\n"
+        )
+        mock_response = AsyncMock()
+        mock_response.content = _make_stream_reader(sse_data)
+
+        result = await client._handle_sse_events(mock_response)
+
+        assert result.success is False
+        assert result.error_code == "antigravity_quota_exceeded"
 
     @pytest.mark.asyncio
     async def test_compact_callback(self, client):
