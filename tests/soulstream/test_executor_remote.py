@@ -223,6 +223,40 @@ class TestExecutorRemoteBranch:
 
         assert captured_kwargs["model_preset"] == expected_preset
 
+    def test_model_preset_fallbacks_are_forwarded_for_explicit_profile(self, tmp_path):
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+
+        executor = _make_executor(
+            tmp_path,
+            agent_id="seosoyoung",
+            model_preset="gemini-4-argon",
+            model_preset_fallbacks=["claude-opus", "codex-6.1-sol"],
+        )
+        captured_kwargs = {}
+
+        async def mock_execute(**kwargs):
+            captured_kwargs.update(kwargs)
+            return ClaudeResult(success=True, output="done", session_id="sess-1")
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = mock_execute
+
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor._execute_remote(
+                "1234.5678", "hello",
+                on_compact=_noop_compact,
+                presentation=_make_pctx(),
+                session_id=None,
+                profile="seosoyoung-intervene",
+                user_message=None,
+                on_result=None,
+            )
+
+        assert captured_kwargs["model_preset"] is None
+        assert captured_kwargs["model_preset_fallbacks"] == [
+            "claude-opus", "codex-6.1-sol"
+        ]
+
     def test_successful_result_starts_persistent_listener(self, tmp_path):
         """성공한 Slack 실행은 complete 후 background session listener를 시작한다."""
         from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult

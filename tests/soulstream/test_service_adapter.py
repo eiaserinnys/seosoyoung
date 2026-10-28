@@ -106,6 +106,72 @@ class TestExecute:
         assert mock_client.execute.call_args.kwargs["model_preset"] == "codex-5.6-sol"
 
     @pytest.mark.asyncio
+    async def test_new_session_rate_limit_retries_once_and_returns_retry_result(
+        self, adapter, mock_client
+    ):
+        mock_client.execute.side_effect = [
+            ExecuteResult(
+                success=False,
+                result="quota exhausted",
+                agent_session_id="sess-first",
+                error_code="antigravity_quota_exceeded",
+            ),
+            ExecuteResult(success=True, result="done", agent_session_id="sess-second"),
+        ]
+
+        result = await adapter.execute(
+            prompt="hello",
+            model_preset_fallbacks=["claude-opus", "codex-6.1-sol"],
+        )
+
+        assert mock_client.execute.await_count == 2
+        assert result.success is True
+        assert result.output == "done"
+        assert result.session_id == "sess-second"
+        assert mock_client.execute.await_args_list[1].kwargs["model_preset_fallbacks"] == [
+            "claude-opus", "codex-6.1-sol"
+        ]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "agent_session_id,error_code,expected_calls",
+        [
+            ("existing-session", "antigravity_quota_exceeded", 1),
+            (None, "other_error", 1),
+            (None, None, 1),
+        ],
+    )
+    async def test_non_retryable_failures_do_not_retry(
+        self, adapter, mock_client, agent_session_id, error_code, expected_calls
+    ):
+        mock_client.execute.return_value = ExecuteResult(
+            success=False,
+            result="failure",
+            agent_session_id=agent_session_id,
+            error_code=error_code,
+        )
+
+        result = await adapter.execute(
+            prompt="hello", agent_session_id=agent_session_id
+        )
+
+        assert result.success is False
+        assert mock_client.execute.await_count == expected_calls
+
+    @pytest.mark.asyncio
+    async def test_second_rate_limit_failure_stops_after_one_retry(self, adapter, mock_client):
+        mock_client.execute.side_effect = [
+            ExecuteResult(success=False, result="first", error_code="codex_usage_limit_exceeded"),
+            ExecuteResult(success=False, result="second", error_code="claude_rate_limit_stop_failure"),
+        ]
+
+        result = await adapter.execute(prompt="hello")
+
+        assert result.success is False
+        assert result.error == "second"
+        assert mock_client.execute.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_success_with_update_marker(self, adapter, mock_client):
         """<!-- UPDATE --> 마커 추출"""
         mock_client.execute.return_value = ExecuteResult(

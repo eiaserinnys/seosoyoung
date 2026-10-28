@@ -21,6 +21,13 @@ from seosoyoung.slackbot.soulstream.service_client import (
 
 logger = logging.getLogger(__name__)
 
+MODEL_PRESET_RETRY_ERROR_CODES = {
+    "claude_rate_limit_stop_failure",
+    "codex_usage_limit_exceeded",
+    "antigravity_quota_exceeded",
+    "opencode_rate_limit_exceeded",
+}
+
 
 class ClaudeServiceAdapter:
     """Soulstream 서버 어댑터
@@ -65,6 +72,7 @@ class ClaudeServiceAdapter:
         system_prompt: Optional[str] = None,
         profile: Optional[str] = None,
         model_preset: Optional[str] = None,
+        model_preset_fallbacks: Optional[list[str]] = None,
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
         caller_info: Optional[dict] = None,
@@ -114,6 +122,7 @@ class ClaudeServiceAdapter:
                 system_prompt=system_prompt,
                 profile=profile,
                 model_preset=model_preset,
+                model_preset_fallbacks=model_preset_fallbacks,
                 persist_listening=persist_listening,
                 caller_info=caller_info,
             )
@@ -121,6 +130,17 @@ class ClaudeServiceAdapter:
                 execute_kwargs["inactivity_timeout"] = inactivity_timeout
 
             result = await self._client.execute(**execute_kwargs)
+            if (
+                not result.success
+                and agent_session_id is None
+                and result.error_code in MODEL_PRESET_RETRY_ERROR_CODES
+            ):
+                logger.warning(
+                    "[Remote] 모델 한도 오류로 새 세션 재시도: error_code=%s session=%s",
+                    result.error_code,
+                    result.agent_session_id,
+                )
+                result = await self._client.execute(**execute_kwargs)
 
             if result.success:
                 output = result.result or ""

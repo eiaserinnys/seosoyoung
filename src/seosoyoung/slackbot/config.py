@@ -152,10 +152,18 @@ class ClaudeConfig:
     model_preset: str | None = (
         (os.getenv("SEOSOYOUNG_MODEL_PRESET") or "").strip() or None
     )
+    model_preset_fallbacks: list[str] = field(
+        default_factory=lambda: [
+            preset.strip()
+            for preset in os.getenv("SEOSOYOUNG_MODEL_PRESET_FALLBACKS", "").split(",")
+            if preset.strip()
+        ]
+    )
     # SEOSOYOUNG_AGENT_ID: soul-server agents.yaml의 에이전트 ID.
     # 설정 시 모든 세션 요청에 해당 프로필을 기본값으로 사용.
     # 미설정(빈 문자열) 시 기존 동작(profile=None) 유지 (하위 호환).
     # SEOSOYOUNG_MODEL_PRESET: 신규 세션에서만 사용할 선택적 모델 preset.
+    # SEOSOYOUNG_MODEL_PRESET_FALLBACKS: 신규 세션 모델 한도 시 사용할 후순위 preset 목록.
 
 
 @dataclass

@@ -83,6 +83,7 @@ class ClaudeExecutor:
         parse_markers_fn: Optional[Callable] = None,
         agent_id: str = "",
         model_preset: Optional[str] = None,
+        model_preset_fallbacks: Optional[list[str]] = None,
         persistent_listener_manager: Any = None,
     ):
         self.session_manager = session_manager
@@ -99,6 +100,7 @@ class ClaudeExecutor:
         self._parse_markers_fn = parse_markers_fn
         self._agent_id = agent_id
         self._model_preset = model_preset
+        self._model_preset_fallbacks = model_preset_fallbacks or []
         self._persistent_listener_manager = persistent_listener_manager
 
         # 하위 호환 프로퍼티 (기존 코드에서 직접 접근하는 경우 대비)
@@ -602,6 +604,7 @@ class ClaudeExecutor:
                     if profile is None or profile == self._agent_id
                     else None
                 ),
+                model_preset_fallbacks=self._model_preset_fallbacks,
                 persist_listening=persist_listening,
                 caller_info=caller_info,
             )

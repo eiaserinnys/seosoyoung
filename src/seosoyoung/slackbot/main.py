@@ -186,6 +186,7 @@ executor = ClaudeExecutor(
     parse_markers_fn=parse_markers,
     agent_id=Config.claude.agent_id,
     model_preset=Config.claude.model_preset,
+    model_preset_fallbacks=Config.claude.model_preset_fallbacks,
     persistent_listener_manager=persistent_listener_manager,
 )
 
