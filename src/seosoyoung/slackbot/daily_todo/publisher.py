@@ -532,7 +532,6 @@ def _remove_old_daily_todo_actions(slack_client, delivery: Mapping[str, Any]) ->
             slack_client.chat_update(
                 channel=channel,
                 ts=part["message_ts"],
-                text=parent.get("text", ""),
                 blocks=filtered,
             )
 
