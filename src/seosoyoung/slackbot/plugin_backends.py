@@ -352,6 +352,93 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         self._update_message_fn = update_message_fn
         self._active_session_lookup = active_session_lookup
 
+    def _get_persistent_service_client(self):
+        """ClaudeExecutor의 실제 서비스 클라이언트를 가져온다."""
+        executor_owner = getattr(self._executor, "__self__", None)
+        if executor_owner is None:
+            raise RuntimeError(
+                "Persistent Session API를 사용하려면 ClaudeExecutor.run이 필요합니다."
+            )
+        adapter = executor_owner._get_service_adapter()
+        return adapter._client
+
+    async def ensure_channel_pas(
+        self,
+        *,
+        channel_id: str,
+        agent_id: str,
+        default_model: dict[str, Any],
+        fallback_models: list[dict[str, Any]],
+        session_id: str | None = None,
+        folder_id: str | None = None,
+        display_name: str | None = None,
+        initial_prompt: str | None = None,
+        caller_info: dict[str, Any] | None = None,
+    ) -> str:
+        """기존 채널 PAS를 재사용하거나 없으면 새 세션을 만든다."""
+        service = self._get_persistent_service_client()
+        try:
+            if session_id:
+                stored = await service.get_persistent_session(session_id)
+                if stored is not None:
+                    session_obj = (
+                        stored.get("session")
+                        if isinstance(stored.get("session"), dict)
+                        else stored
+                    )
+                    settings = (
+                        session_obj.get("settings")
+                        or session_obj.get("persistent_settings")
+                        or stored.get("settings")
+                        or stored.get("persistent_settings")
+                        or session_obj
+                    )
+                    changes: dict[str, Any] = {}
+                    if settings.get("default_model") != default_model:
+                        changes["default_model"] = default_model
+                    if settings.get("fallback_models") != fallback_models:
+                        changes["fallback_models"] = fallback_models
+                    if changes:
+                        await service.update_persistent_session_settings(
+                            session_id, **changes
+                        )
+                    return session_id
+
+            created = await service.create_persistent_session(
+                agent_id=agent_id,
+                prompt=initial_prompt
+                or (
+                    f"[채널 개입 PAS 초기화: {channel_id}] 대기 상태를 시작합니다. "
+                    "이 턴에는 (무발화: 초기 세션 준비)만 출력하십시오."
+                ),
+                default_model=default_model,
+                fallback_models=fallback_models,
+                folder_id=folder_id,
+                display_name=display_name or f"💬 채널개입 PAS: #{channel_id}",
+                system_prompt=None,
+                caller_info=caller_info,
+            )
+            session_obj = (
+                created.get("session")
+                if isinstance(created.get("session"), dict)
+                else created
+            )
+            new_session_id = (
+                session_obj.get("session_id")
+                or session_obj.get("agent_session_id")
+                or created.get("agent_session_id")
+                or created.get("session_id")
+            )
+            if not new_session_id:
+                raise ValueError(
+                    "Persistent Session 생성 응답에 agent_session_id가 없습니다."
+                )
+            return new_session_id
+        finally:
+            close = getattr(service, "close", None)
+            if close is not None:
+                await close()
+
     def _build_presentation(
         self,
         channel: str,
@@ -416,6 +503,8 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         system_prompt: str | None = None,
         agent_id: str | None = None,
         caller_info: dict | None = None,
+        use_persistent_session: bool = False,
+        delivery_id: str | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -431,11 +520,16 @@ class SoulstreamBackendImpl(SoulstreamBackend):
         _folder_id = folder_id
         _agent_id = agent_id
 
+        if use_persistent_session and not session_id:
+            raise ValueError("use_persistent_session=True이면 session_id가 필요합니다.")
+        if use_persistent_session:
+            model = None
+
         try:
             loop = asyncio.get_running_loop()
 
             # Get or use provided session_id
-            if session_id is None:
+            if session_id is None and not use_persistent_session:
                 session = self._session_manager.get(thread_ts)
                 if session:
                     session_id = session.session_id
@@ -555,6 +649,9 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                         system_prompt=_system_prompt,
                         profile=_agent_id,
                         caller_info=caller_info,
+                        use_persistent_session=use_persistent_session,
+                        delivery_id=delivery_id,
+                        ignore_preferred_node=use_persistent_session,
                     ),
                 )
             else:
@@ -596,6 +693,9 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                                 system_prompt=_system_prompt,
                                 profile=_agent_id,
                                 caller_info=caller_info,
+                                use_persistent_session=use_persistent_session,
+                                delivery_id=delivery_id,
+                                ignore_preferred_node=use_persistent_session,
                             ),
                             on_compact_override=on_compact,
                         ),
@@ -618,12 +718,18 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                             system_prompt=_system_prompt,
                             profile=_agent_id,
                             caller_info=caller_info,
+                            use_persistent_session=use_persistent_session,
+                            delivery_id=delivery_id,
+                            ignore_preferred_node=use_persistent_session,
                         ),
                     )
 
             # Get updated session_id
-            session = self._session_manager.get(thread_ts)
-            new_session_id = session.session_id if session else session_id
+            if use_persistent_session:
+                new_session_id = session_id
+            else:
+                session = self._session_manager.get(thread_ts)
+                new_session_id = session.session_id if session else session_id
             output = captured_output[0] if (text_only and captured_output) else ""
 
             if text_only:

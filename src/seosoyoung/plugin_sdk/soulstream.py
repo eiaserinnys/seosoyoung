@@ -124,6 +124,8 @@ class SoulstreamBackend(Protocol):
         system_prompt: str | None = None,
         agent_id: str | None = None,
         caller_info: dict | None = None,
+        use_persistent_session: bool = False,
+        delivery_id: str | None = None,
         **kwargs: Any,
     ) -> RunResult:
         """Execute Claude Code with the given prompt.
@@ -173,6 +175,22 @@ class SoulstreamBackend(Protocol):
         Returns:
             RunResult with status and output
         """
+        ...
+
+    async def ensure_channel_pas(
+        self,
+        *,
+        channel_id: str,
+        agent_id: str,
+        default_model: dict[str, Any],
+        fallback_models: list[dict[str, Any]],
+        session_id: str | None = None,
+        folder_id: str | None = None,
+        display_name: str | None = None,
+        initial_prompt: str | None = None,
+        caller_info: dict[str, Any] | None = None,
+    ) -> str:
+        """채널에 연결할 Persistent Agent Session을 확보한다."""
         ...
 
     async def compact(self, session_id: str) -> CompactResult:
@@ -336,6 +354,33 @@ async def run(
         agent_id=agent_id,
         caller_info=caller_info,
         **kwargs,
+    )
+
+
+async def ensure_channel_pas(
+    *,
+    channel_id: str,
+    agent_id: str,
+    default_model: dict[str, Any],
+    fallback_models: list[dict[str, Any]],
+    session_id: str | None = None,
+    folder_id: str | None = None,
+    display_name: str | None = None,
+    initial_prompt: str | None = None,
+    caller_info: dict[str, Any] | None = None,
+) -> str:
+    """채널 전용 Persistent Agent Session을 확보한다."""
+    backend = _require_backend()
+    return await backend.ensure_channel_pas(
+        channel_id=channel_id,
+        agent_id=agent_id,
+        default_model=default_model,
+        fallback_models=fallback_models,
+        session_id=session_id,
+        folder_id=folder_id,
+        display_name=display_name,
+        initial_prompt=initial_prompt,
+        caller_info=caller_info,
     )
 
 

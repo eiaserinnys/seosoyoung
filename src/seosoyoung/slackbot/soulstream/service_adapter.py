@@ -76,6 +76,8 @@ class ClaudeServiceAdapter:
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
         caller_info: Optional[dict] = None,
+        delivery_id: Optional[str] = None,
+        ignore_preferred_node: bool = False,
     ) -> ClaudeResult:
         """Claude Code를 Soulstream에서 실행하고 ClaudeResult로 반환
 
@@ -125,6 +127,8 @@ class ClaudeServiceAdapter:
                 model_preset_fallbacks=model_preset_fallbacks,
                 persist_listening=persist_listening,
                 caller_info=caller_info,
+                delivery_id=delivery_id,
+                ignore_preferred_node=ignore_preferred_node,
             )
             if inactivity_timeout is not None:
                 execute_kwargs["inactivity_timeout"] = inactivity_timeout

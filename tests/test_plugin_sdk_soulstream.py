@@ -14,6 +14,7 @@ class _RecordingBackend:
 
     def __init__(self):
         self.last_call: dict | None = None
+        self.last_ensure_call: dict | None = None
 
     async def run(self, **kwargs):
         self.last_call = kwargs
@@ -21,6 +22,10 @@ class _RecordingBackend:
 
     async def compact(self, session_id):
         raise NotImplementedError
+
+    async def ensure_channel_pas(self, **kwargs):
+        self.last_ensure_call = kwargs
+        return "pas-1"
 
     def get_session_id(self, thread_ts):
         return None
@@ -93,3 +98,31 @@ class TestRunForwardsCallerInfo:
         }
         assert recording_backend.last_call.get("text_only") is True
         assert recording_backend.last_call.get("model") == "claude-sonnet-4"
+
+
+class TestEnsureChannelPas:
+    @pytest.mark.asyncio
+    async def test_forwards_channel_pas_settings_to_backend(self, recording_backend):
+        default_model = {"model_preset": "gemini-4-argon"}
+        fallback_models = [{"model_preset": "claude-opus"}]
+
+        result = await soulstream.ensure_channel_pas(
+            channel_id="C1",
+            agent_id="seosoyoung-intervene",
+            default_model=default_model,
+            fallback_models=fallback_models,
+            session_id="pas-old",
+        )
+
+        assert result == "pas-1"
+        assert recording_backend.last_ensure_call == {
+            "channel_id": "C1",
+            "agent_id": "seosoyoung-intervene",
+            "default_model": default_model,
+            "fallback_models": fallback_models,
+            "session_id": "pas-old",
+            "folder_id": None,
+            "display_name": None,
+            "initial_prompt": None,
+            "caller_info": None,
+        }
