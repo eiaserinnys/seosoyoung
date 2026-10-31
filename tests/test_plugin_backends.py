@@ -778,9 +778,12 @@ class TestChannelPersistentSessions:
         fallback_models = [{"model_preset": "claude-opus"}]
         service = AsyncMock()
         service.get_persistent_session.return_value = {
-            "persistent_settings": {
-                "default_model": default_model,
-                "fallback_models": fallback_models,
+            "session": {
+                "session_id": "pas-existing",
+                "settings": {
+                    "default_model": default_model,
+                    "fallback_models": fallback_models,
+                },
             }
         }
         backend = _make_backend()
@@ -806,9 +809,12 @@ class TestChannelPersistentSessions:
         fallback_models = [{"model_preset": "codex-6.1-sol"}]
         service = AsyncMock()
         service.get_persistent_session.return_value = {
-            "persistent_settings": {
-                "default_model": old_default,
-                "fallback_models": [],
+            "session": {
+                "session_id": "pas-existing",
+                "settings": {
+                    "default_model": old_default,
+                    "fallback_models": [],
+                },
             }
         }
         backend = _make_backend()
@@ -836,7 +842,15 @@ class TestChannelPersistentSessions:
         service = AsyncMock()
         service.get_persistent_session.return_value = None
         service.create_persistent_session.return_value = {
-            "agent_session_id": "pas-new"
+            "session": {
+                "session_id": "pas-new",
+                "settings": {
+                    "default_model": default_model,
+                    "fallback_models": fallback_models,
+                },
+            },
+            "creation": "started",
+            "warnings": [],
         }
         backend = _make_backend()
         backend._get_persistent_service_client = MagicMock(return_value=service)
@@ -848,7 +862,7 @@ class TestChannelPersistentSessions:
             fallback_models=fallback_models,
             session_id="pas-stale",
             folder_id="folder-1",
-            display_name="채널 개입 PAS · C123",
+            display_name=None,
             caller_info={"source": "channel_observer"},
         )
 
@@ -862,7 +876,7 @@ class TestChannelPersistentSessions:
             default_model=default_model,
             fallback_models=fallback_models,
             folder_id="folder-1",
-            display_name="채널 개입 PAS · C123",
+            display_name="💬 채널개입 PAS: #C123",
             system_prompt=None,
             caller_info={"source": "channel_observer"},
         )

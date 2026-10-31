@@ -206,19 +206,17 @@ class SoulServiceClient:
         caller_info: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """채널 개입용 Persistent Agent Session을 생성한다."""
+        settings: dict[str, Any] = {"default_model": default_model}
+        if fallback_models is not None:
+            settings["fallback_models"] = fallback_models
         data: dict[str, Any] = {
-            "profile": agent_id,
-            "prompt": prompt,
-            "default_model": default_model,
+            "agent_id": agent_id,
+            "display_name": (display_name or f"💬 채널개입 PAS ({agent_id})").strip(),
+            "initial_instruction": prompt,
+            "settings": settings,
         }
-        optional = {
-            "fallback_models": fallback_models,
-            "folder_id": folder_id,
-            "display_name": display_name,
-            "system_prompt": system_prompt,
-            "caller_info": caller_info,
-        }
-        data.update({key: value for key, value in optional.items() if value is not None})
+        if folder_id is not None:
+            data["folder_id"] = folder_id
 
         session = await self._get_session()
         async with session.post(self._persistent_sessions_url(), json=data) as response:
@@ -250,15 +248,19 @@ class SoulServiceClient:
         display_name: str | None = None,
     ) -> dict[str, Any]:
         """Persistent Agent Session 설정을 일부 갱신한다."""
-        data = {
+        settings: dict[str, Any] = {
             key: value
             for key, value in {
                 "default_model": default_model,
                 "fallback_models": fallback_models,
-                "display_name": display_name,
             }.items()
             if value is not None
         }
+        data: dict[str, Any] = {}
+        if display_name is not None:
+            data["display_name"] = display_name
+        if settings:
+            data["settings"] = settings
         session = await self._get_session()
         async with session.patch(
             self._persistent_sessions_url(session_id), json=data

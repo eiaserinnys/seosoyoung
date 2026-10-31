@@ -381,7 +381,18 @@ class SoulstreamBackendImpl(SoulstreamBackend):
             if session_id:
                 stored = await service.get_persistent_session(session_id)
                 if stored is not None:
-                    settings = stored.get("persistent_settings", stored)
+                    session_obj = (
+                        stored.get("session")
+                        if isinstance(stored.get("session"), dict)
+                        else stored
+                    )
+                    settings = (
+                        session_obj.get("settings")
+                        or session_obj.get("persistent_settings")
+                        or stored.get("settings")
+                        or stored.get("persistent_settings")
+                        or session_obj
+                    )
                     changes: dict[str, Any] = {}
                     if settings.get("default_model") != default_model:
                         changes["default_model"] = default_model
@@ -403,11 +414,21 @@ class SoulstreamBackendImpl(SoulstreamBackend):
                 default_model=default_model,
                 fallback_models=fallback_models,
                 folder_id=folder_id,
-                display_name=display_name,
+                display_name=display_name or f"💬 채널개입 PAS: #{channel_id}",
                 system_prompt=None,
                 caller_info=caller_info,
             )
-            new_session_id = created.get("agent_session_id") or created.get("session_id")
+            session_obj = (
+                created.get("session")
+                if isinstance(created.get("session"), dict)
+                else created
+            )
+            new_session_id = (
+                session_obj.get("session_id")
+                or session_obj.get("agent_session_id")
+                or created.get("agent_session_id")
+                or created.get("session_id")
+            )
             if not new_session_id:
                 raise ValueError(
                     "Persistent Session 생성 응답에 agent_session_id가 없습니다."

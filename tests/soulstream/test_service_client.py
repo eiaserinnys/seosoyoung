@@ -477,16 +477,25 @@ class TestSoulServiceClientExecute:
 
     @pytest.mark.asyncio
     async def test_create_persistent_session_posts_profile_and_settings(self):
-        payload = {"agent_session_id": "pas-1"}
+        default_model = {"model_preset": "gemini-4-argon"}
+        fallbacks = [{"model_preset": "claude-opus"}]
+        payload = {
+            "session": {
+                "session_id": "pas-1",
+                "settings": {
+                    "default_model": default_model,
+                    "fallback_models": fallbacks,
+                },
+            },
+            "creation": "started",
+            "warnings": [],
+        }
         response = AsyncMock()
         response.status = 201
         response.json.return_value = payload
         session = _mock_session(response)
         client = SoulServiceClient("http://localhost:4105", token="t")
         client._session = session
-        default_model = {"model_preset": "gemini-4-argon"}
-        fallbacks = [{"model_preset": "claude-opus"}]
-
         result = await client.create_persistent_session(
             agent_id="seosoyoung-intervene",
             prompt="init",
@@ -502,13 +511,14 @@ class TestSoulServiceClientExecute:
         assert url == "http://localhost:4105/api/persistent-sessions"
         body = session.post.call_args.kwargs["json"]
         assert body == {
-            "profile": "seosoyoung-intervene",
-            "prompt": "init",
-            "default_model": default_model,
-            "fallback_models": fallbacks,
+            "agent_id": "seosoyoung-intervene",
+            "initial_instruction": "init",
+            "settings": {
+                "default_model": default_model,
+                "fallback_models": fallbacks,
+            },
             "folder_id": "folder-1",
             "display_name": "channel PAS",
-            "caller_info": {"source": "channel_observer"},
         }
 
     @pytest.mark.asyncio
@@ -543,16 +553,24 @@ class TestSoulServiceClientExecute:
         client = SoulServiceClient("http://localhost:4105")
         client._session = session
         default_model = {"model_preset": "gemini-4-argon"}
+        fallback_models = [{"model_preset": "claude-opus"}]
 
         result = await client.update_persistent_session_settings(
-            "pas-1", default_model=default_model
+            "pas-1",
+            default_model=default_model,
+            fallback_models=fallback_models,
+            display_name="channel PAS",
         )
 
         assert result == payload
         url, = session.patch.call_args.args
         assert url == "http://localhost:4105/api/persistent-sessions/pas-1"
         assert session.patch.call_args.kwargs["json"] == {
-            "default_model": default_model
+            "display_name": "channel PAS",
+            "settings": {
+                "default_model": default_model,
+                "fallback_models": fallback_models,
+            },
         }
 
     @pytest.mark.asyncio
