@@ -87,6 +87,78 @@ class TestExecutorRemoteBranch:
             )
             mock_execute_remote.assert_called_once()
 
+    def test_persistent_run_is_isolated_from_thread_session_state(self, executor):
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+
+        thread_ts = "1234.5678"
+        session = executor.session_manager.create(
+            thread_ts=thread_ts,
+            channel_id="C123",
+        )
+        session.session_id = "ordinary-session"
+        executor.session_manager.update_session_id(thread_ts, "ordinary-session")
+        executor._thread_session_map[thread_ts] = "ordinary-session"
+        captured = {}
+
+        async def mock_execute(**kwargs):
+            captured.update(kwargs)
+            return ClaudeResult(
+                success=True,
+                output="done",
+                session_id="pas-session",
+            )
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = mock_execute
+
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor.run(
+                prompt="delta",
+                thread_ts=thread_ts,
+                msg_ts=thread_ts,
+                on_compact=_noop_compact,
+                presentation=None,
+                session_id="pas-session",
+                role="admin",
+                on_result=None,
+                use_persistent_session=True,
+                delivery_id="batch-1",
+                ignore_preferred_node=True,
+            )
+
+        assert executor._thread_session_map[thread_ts] == "ordinary-session"
+        assert executor.session_manager.get(thread_ts) is session
+        assert session.session_id == "ordinary-session"
+        assert captured["agent_session_id"] == "pas-session"
+        assert captured["delivery_id"] == "batch-1"
+        assert captured["ignore_preferred_node"] is True
+        assert captured["model"] is None
+
+    def test_persistent_run_does_not_add_thread_mapping(self, executor):
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+
+        thread_ts = "1234.5679"
+        async def mock_execute(**_kwargs):
+            return ClaudeResult(success=True, output="done", session_id="pas-session")
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute = mock_execute
+
+        with patch.object(executor, "_get_service_adapter", return_value=mock_adapter):
+            executor.run(
+                prompt="delta",
+                thread_ts=thread_ts,
+                msg_ts=thread_ts,
+                on_compact=_noop_compact,
+                presentation=None,
+                session_id="pas-session",
+                role="admin",
+                on_result=None,
+                use_persistent_session=True,
+            )
+
+        assert thread_ts not in executor._thread_session_map
+
     def test_remote_mode_passes_tool_settings(self, executor, session):
         """role → 도구 해석 후 _execute_remote에 전달"""
         pctx = _make_pctx()

@@ -769,3 +769,154 @@ class TestTextOnlyFailurePropagation:
 
         assert result.ok is True
         assert result.utterances == ["안녕하십니까"]
+
+
+class TestChannelPersistentSessions:
+    @pytest.mark.asyncio
+    async def test_ensure_channel_pas_reuses_session_when_settings_match(self):
+        default_model = {"model_preset": "gemini-4-argon"}
+        fallback_models = [{"model_preset": "claude-opus"}]
+        service = AsyncMock()
+        service.get_persistent_session.return_value = {
+            "persistent_settings": {
+                "default_model": default_model,
+                "fallback_models": fallback_models,
+            }
+        }
+        backend = _make_backend()
+        backend._get_persistent_service_client = MagicMock(return_value=service)
+
+        result = await backend.ensure_channel_pas(
+            channel_id="C123",
+            agent_id="seosoyoung-intervene",
+            default_model=default_model,
+            fallback_models=fallback_models,
+            session_id="pas-existing",
+        )
+
+        assert result == "pas-existing"
+        service.get_persistent_session.assert_awaited_once_with("pas-existing")
+        service.update_persistent_session_settings.assert_not_awaited()
+        service.create_persistent_session.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ensure_channel_pas_syncs_changed_model_settings(self):
+        old_default = {"model_preset": "claude-opus"}
+        default_model = {"model_preset": "gemini-4-argon"}
+        fallback_models = [{"model_preset": "codex-6.1-sol"}]
+        service = AsyncMock()
+        service.get_persistent_session.return_value = {
+            "persistent_settings": {
+                "default_model": old_default,
+                "fallback_models": [],
+            }
+        }
+        backend = _make_backend()
+        backend._get_persistent_service_client = MagicMock(return_value=service)
+
+        result = await backend.ensure_channel_pas(
+            channel_id="C123",
+            agent_id="seosoyoung-intervene",
+            default_model=default_model,
+            fallback_models=fallback_models,
+            session_id="pas-existing",
+        )
+
+        assert result == "pas-existing"
+        service.update_persistent_session_settings.assert_awaited_once_with(
+            "pas-existing",
+            default_model=default_model,
+            fallback_models=fallback_models,
+        )
+
+    @pytest.mark.asyncio
+    async def test_ensure_channel_pas_creates_replacement_after_404(self):
+        default_model = {"model_preset": "gemini-4-argon"}
+        fallback_models = [{"model_preset": "claude-opus"}]
+        service = AsyncMock()
+        service.get_persistent_session.return_value = None
+        service.create_persistent_session.return_value = {
+            "agent_session_id": "pas-new"
+        }
+        backend = _make_backend()
+        backend._get_persistent_service_client = MagicMock(return_value=service)
+
+        result = await backend.ensure_channel_pas(
+            channel_id="C123",
+            agent_id="seosoyoung-intervene",
+            default_model=default_model,
+            fallback_models=fallback_models,
+            session_id="pas-stale",
+            folder_id="folder-1",
+            display_name="채널 개입 PAS · C123",
+            caller_info={"source": "channel_observer"},
+        )
+
+        assert result == "pas-new"
+        service.create_persistent_session.assert_awaited_once_with(
+            agent_id="seosoyoung-intervene",
+            prompt=(
+                "[채널 개입 PAS 초기화: C123] 대기 상태를 시작합니다. "
+                "이 턴에는 (무발화: 초기 세션 준비)만 출력하십시오."
+            ),
+            default_model=default_model,
+            fallback_models=fallback_models,
+            folder_id="folder-1",
+            display_name="채널 개입 PAS · C123",
+            system_prompt=None,
+            caller_info={"source": "channel_observer"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_persistent_run_uses_given_session_and_keeps_utterance_extraction(self):
+        from seosoyoung.slackbot.soulstream.engine_types import ClaudeResult
+
+        captured = {}
+        session_manager = MagicMock()
+
+        def fake_executor(**kwargs):
+            captured.update(kwargs)
+            kwargs["on_result"](
+                ClaudeResult(
+                    success=True,
+                    output="분석\n<utterance>전달 완료</utterance>",
+                    session_id="pas-1",
+                ),
+                kwargs["thread_ts"],
+                kwargs["prompt"],
+            )
+
+        backend = _make_backend(
+            executor=fake_executor,
+            session_manager=session_manager,
+        )
+
+        result = await backend.run(
+            prompt="delta",
+            channel="C123",
+            thread_ts="1234.5678",
+            session_id="pas-1",
+            use_persistent_session=True,
+            delivery_id="batch-1",
+            text_only=True,
+        )
+
+        session_manager.get.assert_not_called()
+        assert captured["session_id"] == "pas-1"
+        assert captured["use_persistent_session"] is True
+        assert captured["delivery_id"] == "batch-1"
+        assert captured["model"] is None
+        assert result.ok is True
+        assert result.utterances == ["전달 완료"]
+
+    @pytest.mark.asyncio
+    async def test_persistent_run_requires_session_id(self):
+        backend = _make_backend()
+
+        with pytest.raises(ValueError, match="session_id"):
+            await backend.run(
+                prompt="delta",
+                channel="C123",
+                thread_ts="1234.5678",
+                use_persistent_session=True,
+            )

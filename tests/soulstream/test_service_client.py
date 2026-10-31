@@ -447,6 +447,115 @@ class TestSoulServiceClientExecute:
         assert body["caller_info"] == caller_info
 
     @pytest.mark.asyncio
+    async def test_execute_forwards_delivery_id_and_can_ignore_preferred_node(self, client):
+        sse_data = (
+            b"event:init\n"
+            b'data:{"agent_session_id":"sess-pas"}\n'
+            b"\n"
+            b"event:complete\n"
+            b'data:{"type":"complete","result":"done"}\n'
+            b"\n"
+        )
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = _make_stream_reader(sse_data)
+        session = _mock_session(mock_response)
+        client._session = session
+        client.preferred_node_id = "eias-linegames-wsl"
+
+        await client.execute(
+            "batch",
+            agent_session_id="pas-1",
+            delivery_id="batch-1",
+            ignore_preferred_node=True,
+        )
+
+        body = session.post.call_args.kwargs["json"]
+        assert body["delivery_id"] == "batch-1"
+        assert "node_id" not in body
+
+
+    @pytest.mark.asyncio
+    async def test_create_persistent_session_posts_profile_and_settings(self):
+        payload = {"agent_session_id": "pas-1"}
+        response = AsyncMock()
+        response.status = 201
+        response.json.return_value = payload
+        session = _mock_session(response)
+        client = SoulServiceClient("http://localhost:4105", token="t")
+        client._session = session
+        default_model = {"model_preset": "gemini-4-argon"}
+        fallbacks = [{"model_preset": "claude-opus"}]
+
+        result = await client.create_persistent_session(
+            agent_id="seosoyoung-intervene",
+            prompt="init",
+            default_model=default_model,
+            fallback_models=fallbacks,
+            folder_id="folder-1",
+            display_name="channel PAS",
+            caller_info={"source": "channel_observer"},
+        )
+
+        assert result == payload
+        url, = session.post.call_args.args
+        assert url == "http://localhost:4105/api/persistent-sessions"
+        body = session.post.call_args.kwargs["json"]
+        assert body == {
+            "profile": "seosoyoung-intervene",
+            "prompt": "init",
+            "default_model": default_model,
+            "fallback_models": fallbacks,
+            "folder_id": "folder-1",
+            "display_name": "channel PAS",
+            "caller_info": {"source": "channel_observer"},
+        }
+
+    @pytest.mark.asyncio
+    async def test_get_persistent_session_returns_none_for_404(self):
+        response = AsyncMock()
+        response.status = 404
+        session = _mock_session(response, method="get")
+        client = SoulServiceClient("http://localhost:4105")
+        client._session = session
+
+        assert await client.get_persistent_session("pas-404") is None
+
+    @pytest.mark.asyncio
+    async def test_get_persistent_session_raises_for_other_http_errors(self):
+        response = AsyncMock()
+        response.status = 500
+        response.json.return_value = {"detail": "broken"}
+        session = _mock_session(response, method="get")
+        client = SoulServiceClient("http://localhost:4105")
+        client._session = session
+
+        with pytest.raises(SoulServiceError, match="broken"):
+            await client.get_persistent_session("pas-error")
+
+    @pytest.mark.asyncio
+    async def test_update_persistent_session_settings_patches_only_given_values(self):
+        payload = {"ok": True}
+        response = AsyncMock()
+        response.status = 200
+        response.json.return_value = payload
+        session = _mock_session(response, method="patch")
+        client = SoulServiceClient("http://localhost:4105")
+        client._session = session
+        default_model = {"model_preset": "gemini-4-argon"}
+
+        result = await client.update_persistent_session_settings(
+            "pas-1", default_model=default_model
+        )
+
+        assert result == payload
+        url, = session.patch.call_args.args
+        assert url == "http://localhost:4105/api/persistent-sessions/pas-1"
+        assert session.patch.call_args.kwargs["json"] == {
+            "default_model": default_model
+        }
+
+    @pytest.mark.asyncio
     async def test_execute_omits_none_caller_info_from_body(self, client):
         """caller_info가 None이면 HTTP body에서 생략 (Phase 4)"""
         sse_data = (

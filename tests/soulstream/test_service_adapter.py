@@ -321,6 +321,21 @@ class TestExecute:
         assert call_kwargs.get("use_mcp") is True
 
     @pytest.mark.asyncio
+    async def test_persistent_delivery_settings_forwarded(self, adapter, mock_client):
+        mock_client.execute.return_value = ExecuteResult(success=True, result="done")
+
+        await adapter.execute(
+            prompt="delta",
+            agent_session_id="pas-1",
+            delivery_id="batch-1",
+            ignore_preferred_node=True,
+        )
+
+        call_kwargs = mock_client.execute.call_args.kwargs
+        assert call_kwargs["delivery_id"] == "batch-1"
+        assert call_kwargs["ignore_preferred_node"] is True
+
+    @pytest.mark.asyncio
     async def test_on_debug_callback_forwarded(self, adapter, mock_client):
         """on_debug 콜백이 SoulServiceClient에 전달되는지 확인"""
         mock_client.execute.return_value = ExecuteResult(success=True, result="done")

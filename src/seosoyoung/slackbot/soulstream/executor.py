@@ -166,6 +166,9 @@ class ClaudeExecutor:
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
         caller_info: Optional[dict] = None,
+        use_persistent_session: bool = False,
+        delivery_id: Optional[str] = None,
+        ignore_preferred_node: bool = False,
     ):
         """세션 내에서 Claude Code 실행 (공통 로직)
 
@@ -188,10 +191,21 @@ class ClaudeExecutor:
         # profile 기본값: 명시적 profile 전달 시 그대로, 없으면 agent_id 사용
         # agent_id가 빈 문자열이면 None으로 처리하여 기존 동작(하위 호환) 유지
         effective_profile = profile if profile is not None else (self._agent_id or None)
+        if use_persistent_session and not session_id:
+            raise ValueError("use_persistent_session=True이면 session_id가 필요합니다.")
 
-        # 스레드별 락으로 동시 실행 방지
-        lock = self.get_session_lock(thread_ts)
+        # PAS는 Slack thread_ts를 일반 세션 상태와 공유하지 않도록 별도 락 키를 쓴다.
+        execution_key = (
+            f"persistent:{session_id}" if use_persistent_session else thread_ts
+        )
+        lock = self.get_session_lock(execution_key)
         if not lock.acquire(blocking=False):
+            if use_persistent_session:
+                logger.warning(
+                    "Persistent Session이 이미 실행 중이어서 중복 호출을 건너뜁니다: %s",
+                    session_id,
+                )
+                return
             # 인터벤션: pending에 저장 후 interrupt
             # 인터벤션은 기존 세션 복구이므로 profile은 초기 세션 생성 시점에만 필요
             # F-9 fix(2026-05-08): caller_info를 _handle_intervention까지 운반하여
@@ -244,6 +258,10 @@ class ClaudeExecutor:
                 persist_listening=persist_listening,
                 inactivity_timeout=inactivity_timeout,
                 caller_info=caller_info,
+                use_persistent_session=use_persistent_session,
+                delivery_id=delivery_id,
+                ignore_preferred_node=ignore_preferred_node,
+                execution_key=execution_key,
             )
         finally:
             lock.release()
@@ -323,10 +341,15 @@ class ClaudeExecutor:
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
         caller_info: Optional[dict] = None,
+        use_persistent_session: bool = False,
+        delivery_id: Optional[str] = None,
+        ignore_preferred_node: bool = False,
+        execution_key: Optional[str] = None,
     ):
         """락을 보유한 상태에서 실행"""
+        state_key = execution_key or thread_ts
         # 실행 중 세션으로 표시
-        self.mark_session_running(thread_ts)
+        self.mark_session_running(state_key)
 
         try:
             self._execute_once(
@@ -354,9 +377,12 @@ class ClaudeExecutor:
                 persist_listening=persist_listening,
                 inactivity_timeout=inactivity_timeout,
                 caller_info=caller_info,
+                use_persistent_session=use_persistent_session,
+                delivery_id=delivery_id,
+                ignore_preferred_node=ignore_preferred_node,
             )
         finally:
-            self.mark_session_stopped(thread_ts)
+            self.mark_session_stopped(state_key)
 
     def _execute_once(
         self,
@@ -388,6 +414,9 @@ class ClaudeExecutor:
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
         caller_info: Optional[dict] = None,
+        use_persistent_session: bool = False,
+        delivery_id: Optional[str] = None,
+        ignore_preferred_node: bool = False,
     ):
         """단일 Claude 실행 -- Soulstream 서버에 위임"""
         effective_role = role or "admin"
@@ -421,6 +450,9 @@ class ClaudeExecutor:
             persist_listening=persist_listening,
             inactivity_timeout=inactivity_timeout,
             caller_info=caller_info,
+            use_persistent_session=use_persistent_session,
+            delivery_id=delivery_id,
+            ignore_preferred_node=ignore_preferred_node,
         )
 
     def _get_role_config(self, role: str) -> dict:
@@ -543,6 +575,9 @@ class ClaudeExecutor:
         persist_listening: bool = False,
         inactivity_timeout: Optional[float] = None,
         caller_info: Optional[dict] = None,
+        use_persistent_session: bool = False,
+        delivery_id: Optional[str] = None,
+        ignore_preferred_node: bool = False,
     ):
         """Remote 모드: Soulstream 서버에 실행을 위임 (per-session)"""
         adapter = self._get_service_adapter()
@@ -572,7 +607,8 @@ class ClaudeExecutor:
 
         # agent_session_id 조기 통지 콜백
         async def on_session_callback(new_session_id: str) -> None:
-            self._register_session_id(thread_ts, new_session_id)
+            if not use_persistent_session:
+                self._register_session_id(thread_ts, new_session_id)
 
         try:
             execute_kwargs: dict = dict(
@@ -595,7 +631,7 @@ class ClaudeExecutor:
                 disallowed_tools=disallowed_tools,
                 use_mcp=use_mcp,
                 context=context,
-                model=model,
+                model=None if use_persistent_session else model,
                 folder_id=folder_id,
                 system_prompt=system_prompt,
                 profile=profile,
@@ -607,6 +643,8 @@ class ClaudeExecutor:
                 model_preset_fallbacks=self._model_preset_fallbacks,
                 persist_listening=persist_listening,
                 caller_info=caller_info,
+                delivery_id=delivery_id,
+                ignore_preferred_node=ignore_preferred_node,
             )
             if inactivity_timeout is not None:
                 execute_kwargs["inactivity_timeout"] = inactivity_timeout
@@ -620,28 +658,42 @@ class ClaudeExecutor:
                 except Exception as cb_err:
                     logger.warning(f"[Remote] on_result 콜백 오류 (무시): {cb_err}")
 
-            self._process_result(presentation, result, thread_ts)
+            self._process_result(
+                presentation,
+                result,
+                thread_ts,
+                update_session_state=not use_persistent_session,
+            )
 
         except Exception as e:
             logger.exception(f"[Remote] Claude 실행 오류: {e}")
             if presentation is not None:
                 self._result_processor.handle_exception(presentation, e)
         finally:
-            self._unregister_session_id(thread_ts)
+            if not use_persistent_session:
+                self._unregister_session_id(thread_ts)
 
-    def _process_result(self, presentation: Any, result, thread_ts: str):
+    def _process_result(
+        self,
+        presentation: Any,
+        result,
+        thread_ts: str,
+        *,
+        update_session_state: bool = True,
+    ):
         """실행 결과 처리
 
         세션 업데이트 후 결과 타입에 따라 핸들러를 호출합니다.
         presentation이 None이면 세션만 갱신하고 슬랙 게시를 건너뜁니다 (text_only 모드).
         """
-        if result.session_id:
+        if update_session_state and result.session_id:
             self.session_manager.update_session_id(thread_ts, result.session_id)
             if presentation is not None:
                 # pctx에도 session_id 반영 (후속 콜백/핸들러에서 사용)
                 presentation.session_id = result.session_id
 
-        self.session_manager.increment_message_count(thread_ts)
+        if update_session_state:
+            self.session_manager.increment_message_count(thread_ts)
 
         if presentation is None:
             # text_only 모드: 출력은 on_result 콜백으로 이미 캡처됨

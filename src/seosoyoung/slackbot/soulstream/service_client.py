@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from typing import AsyncIterator, Awaitable, Callable, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, List, Optional
 
 import aiohttp
 
@@ -185,6 +185,89 @@ class SoulServiceClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
 
+    def _persistent_sessions_url(self, session_id: str | None = None) -> str:
+        """Persistent Session API 경로를 base URL 설정과 무관하게 조립한다."""
+        prefix = "" if self.base_url.endswith("/api") else "/api"
+        path = "/persistent-sessions"
+        if session_id is not None:
+            path += f"/{session_id}"
+        return f"{self.base_url}{prefix}{path}"
+
+    async def create_persistent_session(
+        self,
+        *,
+        agent_id: str,
+        prompt: str,
+        default_model: dict[str, Any],
+        fallback_models: list[dict[str, Any]] | None = None,
+        folder_id: str | None = None,
+        display_name: str | None = None,
+        system_prompt: str | None = None,
+        caller_info: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """채널 개입용 Persistent Agent Session을 생성한다."""
+        data: dict[str, Any] = {
+            "profile": agent_id,
+            "prompt": prompt,
+            "default_model": default_model,
+        }
+        optional = {
+            "fallback_models": fallback_models,
+            "folder_id": folder_id,
+            "display_name": display_name,
+            "system_prompt": system_prompt,
+            "caller_info": caller_info,
+        }
+        data.update({key: value for key, value in optional.items() if value is not None})
+
+        session = await self._get_session()
+        async with session.post(self._persistent_sessions_url(), json=data) as response:
+            if response.status not in (200, 201):
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"Persistent Session 생성 실패: {error}")
+            return await response.json()
+
+    async def get_persistent_session(
+        self,
+        session_id: str,
+    ) -> dict[str, Any] | None:
+        """Persistent Agent Session을 조회한다. 404는 미존재로 돌려준다."""
+        session = await self._get_session()
+        async with session.get(self._persistent_sessions_url(session_id)) as response:
+            if response.status == 404:
+                return None
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"Persistent Session 조회 실패: {error}")
+            return await response.json()
+
+    async def update_persistent_session_settings(
+        self,
+        session_id: str,
+        *,
+        default_model: dict[str, Any] | None = None,
+        fallback_models: list[dict[str, Any]] | None = None,
+        display_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Persistent Agent Session 설정을 일부 갱신한다."""
+        data = {
+            key: value
+            for key, value in {
+                "default_model": default_model,
+                "fallback_models": fallback_models,
+                "display_name": display_name,
+            }.items()
+            if value is not None
+        }
+        session = await self._get_session()
+        async with session.patch(
+            self._persistent_sessions_url(session_id), json=data
+        ) as response:
+            if response.status != 200:
+                error = await self._parse_error(response)
+                raise SoulServiceError(f"Persistent Session 설정 갱신 실패: {error}")
+            return await response.json()
+
     # === Session API ===
 
     async def execute(
@@ -219,6 +302,8 @@ class SoulServiceClient:
         persist_listening: bool = False,
         inactivity_timeout: float = SSE_PERSIST_INACTIVITY_TIMEOUT,
         caller_info: Optional[dict] = None,
+        delivery_id: Optional[str] = None,
+        ignore_preferred_node: bool = False,
     ) -> ExecuteResult:
         """Claude Code 실행 (SSE 스트리밍, 연결 끊김 시 자동 재연결)
 
@@ -273,7 +358,9 @@ class SoulServiceClient:
             # soul-server /execute가 body.caller_info가 있으면 HTTP Request 수집을
             # 건너뛰고 이 값을 그대로 사용한다 (Phase 2).
             data["caller_info"] = caller_info
-        if self.preferred_node_id:
+        if delivery_id is not None:
+            data["delivery_id"] = delivery_id
+        if self.preferred_node_id and not ignore_preferred_node:
             data["node_id"] = self.preferred_node_id
 
         backoff = ExponentialBackoff()
