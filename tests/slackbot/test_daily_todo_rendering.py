@@ -41,3 +41,18 @@ def test_long_text_fallback_limits_and_app_link():
     assert all(len(part.text) <= 4000 for part in parts)
     assert any('<https://example.test/app|할 일 앱>' in str(part.blocks) for part in parts)
     assert any('2026-12-01' in str(part.blocks) and '답변 대기' in str(part.blocks) for part in parts)
+
+
+def test_very_long_memo_keeps_number_row_and_button_in_same_part():
+    items = [{'id': 'a', 'title': '할 일', 'area': '회사일', 'parent': None, 'status': 'open'}]
+    memo = '가' * 200000
+    parts = render_daily_todo_messages(items, areas=['회사일'], memos={'a': memo}, date='2026-11-09',
+                                       delivery_id='d', number_to_todo_id={1: 'a'})
+    row_part = next(part for part in parts if any(entry.get('kind') == 'row' and entry.get('id') == 'a' for entry in part.snapshot))
+    assert row_part.numbers == [1]
+    assert any(block.get('type') == 'actions' for block in row_part.blocks)
+    text = '\n'.join(block['text']['text'] for block in row_part.blocks if block['type'] == 'section')
+    assert '(이어지는 메모는 할 일 앱에서)' in text
+    assert 0 < text.count('가') < len(memo)
+    assert len(row_part.blocks) <= 50
+    assert sum(len(block['text']['text']) for block in row_part.blocks if block['type'] == 'section') < 39000

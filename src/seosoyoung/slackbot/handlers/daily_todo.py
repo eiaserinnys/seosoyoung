@@ -118,10 +118,10 @@ def _complete(dependencies: dict, client, *, channel_id: str, message_ts: str, d
         confirmed_at=confirmed_at, require_active_delivery=is_button,
         expected_number_to_todo_id=expected_number_to_todo_id))
     try:
-        _refresh_delivery_messages(client, outcome.items, outcome.delivery, outcome.todo_ids,
+        _refresh_delivery_messages(client, outcome.items, outcome.delivery, outcome.refresh_ids,
                                    active=outcome.active_delivery_id == delivery_id)
         for related in outcome.related_deliveries:
-            _refresh_delivery_messages(client, outcome.items, related, outcome.todo_ids, active=True)
+            _refresh_delivery_messages(client, outcome.items, related, outcome.refresh_ids, active=True)
     except Exception:
         logger.exception('TODO 저장 뒤 Slack 메시지 갱신 실패')
         _notify_failure(client, channel_id=channel_id, user_id=actual_user_id,
@@ -137,11 +137,12 @@ def _complete(dependencies: dict, client, *, channel_id: str, message_ts: str, d
 
 
 def _refresh_delivery_messages(client, items, delivery, todo_ids, *, active):
+    from seosoyoung.slackbot.daily_todo.completion import part_item_ids
     from seosoyoung.slackbot.daily_todo.rendering import render_snapshot
     by_id = {item['id']: item for item in items}
     wanted = set(todo_ids)
     for index, part in enumerate(delivery['parts'], 1):
-        part_ids = {delivery['number_to_todo_id'].get(str(number)) for number in part.get('numbers', [])}
+        part_ids = part_item_ids(part)
         if not wanted.intersection(part_ids):
             continue
         rendered = render_snapshot(part['snapshot'], by_id, delivery['delivery_id'], index, include_actions=active)

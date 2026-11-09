@@ -15,6 +15,7 @@ MAX_ACTIONS = 10
 MAX_ACCESSIBILITY_LABEL_CHARS = 75
 ACTION_ID_PREFIX = 'daily_todo_set_completion:'
 HEADER_PREFIX = 'daily_todo_v2:'
+MEMO_TRUNCATED = '(이어지는 메모는 할 일 앱에서)'
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,36 @@ def _chunks(text: str, limit: int = 2980) -> list[str]:
 
 def _escape(text: str) -> str:
     return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def _segment_size(entries: list[dict[str, Any]]) -> int:
+    return sum(len(entry.get('text', '')) + 20 for entry in entries)
+
+
+def _fit_segment(segment: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep a segment together, shortening only its Slack memo when necessary."""
+    if len(segment) <= MAX_BLOCKS - 1 and _segment_size(segment) <= 38000:
+        return segment
+    fixed = [entry for entry in segment if entry['kind'] != 'memo']
+    slots = MAX_BLOCKS - 1 - len(fixed) - 1
+    chars = 38000 - _segment_size(fixed) - len(MEMO_TRUNCATED) - 20
+    if slots < 0 or chars < 0:
+        raise ValueError('할 일 제목과 문맥이 너무 길어 Slack 메시지에 담을 수 없습니다.')
+    result = []
+    for entry in segment:
+        if entry['kind'] != 'memo':
+            result.append(entry)
+            continue
+        if slots and chars > 20:
+            text = entry['text'][:chars - 20]
+            if text:
+                result.append({**entry, 'text': text})
+                slots -= 1
+                chars -= len(text) + 20
+    marker = {'kind': 'static', 'text': MEMO_TRUNCATED}
+    action_index = next((i for i, entry in enumerate(result) if entry['kind'] == 'actions'), len(result))
+    result.insert(action_index, marker)
+    return result
 
 
 def _button(item: Mapping[str, Any], number: int, delivery_id: str, status: str) -> dict[str, Any]:
@@ -124,6 +155,13 @@ def render_daily_todo_messages(items: list[dict[str, Any]], *, areas: list[str],
         number = number_by_id.get(item['id'])
         prefix = '  ' * depth + '• ' + (f'*{number}.* ' if number is not None else '')
         pieces = _chunks(prefix + title)
+        prospective = [entry for entry in blocks if entry['kind'] != 'memo']
+        prospective.extend({'kind': 'row', 'text': piece} for piece in pieces)
+        # Reserve one actions block and one memo-continuation line.
+        if len(prospective) + 2 > MAX_BLOCKS - 1 or _segment_size(prospective) + len(MEMO_TRUNCATED) + 40 > 38000:
+            flush()
+            blocks.append({'kind': 'static', 'text': f'*{_escape(area)}*'})
+            blocks.extend(ancestors[:depth])
         first = None
         for piece in pieces:
             row = {'kind': 'row', 'id': item['id'], 'text': piece, 'status': item.get('status', 'open')}
@@ -134,7 +172,7 @@ def render_daily_todo_messages(items: list[dict[str, Any]], *, areas: list[str],
         memo = memos.get(item['id'], '')
         if memo:
             for piece in _chunks(markdown_to_mrkdwn(memo)):
-                blocks.append({'kind': 'static', 'text': piece})
+                blocks.append({'kind': 'memo', 'text': piece})
         if number is not None:
             buttons.append({'id': item['id'], 'number': number, 'title': str(item.get('title', '')),
                             'status': item.get('status', 'open')})
@@ -143,20 +181,7 @@ def render_daily_todo_messages(items: list[dict[str, Any]], *, areas: list[str],
     link_text = f'<{todo_url}|할 일 앱>' if todo_url else '할 일 앱'
     segments.append([{'kind': 'static', 'text': f'{short}\n{link_text}\n오늘 추가하거나 바꿀 일이 있으신가요?'}])
 
-    # A segment can span multiple parts for long memos; its buttons remain together.
-    units = []
-    for segment in segments:
-        unit: list[dict[str, Any]] = []
-        unit_chars = 0
-        for entry in segment:
-            size = len(entry.get('text', '')) + 20
-            if unit and (len(unit) >= MAX_BLOCKS - 1 or unit_chars + size > 38000):
-                units.append(unit)
-                unit, unit_chars = [], 0
-            unit.append(entry)
-            unit_chars += size
-        if unit:
-            units.append(unit)
+    units = [_fit_segment(segment) for segment in segments]
     snapshots: list[list[dict[str, Any]]] = []
     current = []
     char_count = 0

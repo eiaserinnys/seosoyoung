@@ -24,6 +24,7 @@ class CompletionOutcome:
     delivery: dict[str, Any]
     numbers: list[int]
     todo_ids: list[str]
+    refresh_ids: set[str]
     changed: bool
     active_delivery_id: str | None
     related_deliveries: list[dict[str, Any]]
@@ -63,8 +64,10 @@ async def set_completion(storage, store, *, delivery_id: str, message_ts: str, p
     selected_ids = [mapping[number] for number in selected]
     day = datetime.fromisoformat(confirmed_at.replace('Z', '+00:00')).astimezone(ZoneInfo('Asia/Seoul')).date().isoformat()
     checked = target_state == 'complete'
+    changed_ids: set[str] = set()
 
     def operation(items):
+        nonlocal changed_ids
         by_id = {item['id']: item for item in items}
         parents = {item.get('parent') for item in items if item.get('parent')}
         for number, item_id in zip(selected, selected_ids):
@@ -76,6 +79,9 @@ async def set_completion(storage, store, *, delivery_id: str, message_ts: str, p
         result = items
         for item_id in selected_ids:
             result = apply_check(result, item_id, checked, day)
+        changed_ids = {item['id'] for item in result
+                       if (item.get('status'), item.get('done_on')) !=
+                       (by_id[item['id']].get('status'), by_id[item['id']].get('done_on'))}
         return result
 
     _, changed = await update_items(storage, operation)
@@ -93,8 +99,19 @@ async def set_completion(storage, store, *, delivery_id: str, message_ts: str, p
     latest = store.read()
     active = latest.get('active_delivery_id')
     related = []
+    refresh_ids = changed_ids | set(selected_ids)
     if active and active != delivery_id:
         other = latest['deliveries'].get(active)
-        if other and set(selected_ids) & set(other.get('number_to_todo_id', {}).values()):
+        if other and any(refresh_ids & part_item_ids(part) for part in other.get('parts', [])):
             related.append(other)
-    return CompletionOutcome(verified, delivery, selected, selected_ids, changed, active, related)
+    return CompletionOutcome(verified, delivery, selected, selected_ids, refresh_ids, changed, active, related)
+
+
+def part_item_ids(part: Mapping[str, Any]) -> set[str]:
+    ids = set()
+    for entry in part.get('snapshot', []):
+        if entry.get('kind') == 'row':
+            ids.add(entry['id'])
+        elif entry.get('kind') == 'actions':
+            ids.update(button['id'] for button in entry.get('buttons', []))
+    return ids

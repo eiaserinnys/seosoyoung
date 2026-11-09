@@ -77,3 +77,43 @@ def test_button_ack_identity_completion_and_refresh(fake_storage, tmp_path):
     assert fake_storage.items[0]['status'] == 'done'
     client.chat_update.assert_called_once()
     assert '↺1' in str(client.chat_update.call_args.kwargs['blocks'])
+
+
+def test_parent_in_another_part_refreshes_on_complete_and_reopen(fake_storage, tmp_path):
+    from seosoyoung.slackbot.handlers.daily_todo import _complete
+
+    for target in ('complete', 'reopen'):
+        status = 'open' if target == 'complete' else 'done'
+        previous_date = None if status == 'open' else '2026-11-08'
+        fake_storage.items = [
+            {'id': 'p', 'title': '부모', 'area': '회사일', 'parent': None, 'status': status, 'done_on': previous_date},
+            {'id': 'a', 'title': '자식', 'area': '회사일', 'parent': 'p', 'status': status, 'done_on': previous_date},
+        ]
+        store = DeliveryStore(tmp_path / target / 'state.json')
+        parent_row = {'kind': 'row', 'id': 'p', 'text': '• 부모', 'status': status}
+        child_row = {'kind': 'row', 'id': 'a', 'text': '  • *1.* 자식', 'status': status}
+        button = {'id': 'a', 'number': 1, 'title': '자식', 'status': status}
+        delivery = {'delivery_id': 'old', 'app_id': 'todo', 'status': 'success', 'date': '2026-11-09',
+                    'team_id': 'team', 'bot_user_id': 'bot', 'recipient_user_id': 'user', 'channel_id': 'dm',
+                    'number_to_todo_id': {'1': 'a'}, 'parts': [
+                        {'message_ts': 'parent', 'numbers': [], 'snapshot': [parent_row]},
+                        {'message_ts': 'child', 'numbers': [1], 'snapshot': [child_row, {'kind': 'actions', 'buttons': [button]}]},
+                    ]}
+        related = {**delivery, 'delivery_id': 'active', 'number_to_todo_id': {},
+                   'parts': [{'message_ts': 'related-parent', 'numbers': [], 'snapshot': [parent_row]}]}
+        def setup(state):
+            state['active_delivery_id'] = 'active'
+            state['deliveries'].update(old=delivery, active=related)
+        store.update(setup)
+        client = MagicMock()
+        deps = {'daily_todo_delivery_store': store, 'daily_todo_storage_client': fake_storage,
+                'get_user_role': lambda user, _: {'user_id': user, 'is_bot': False}}
+        assert _complete(deps, client, channel_id='dm', message_ts='child', delivery_id='old',
+                         part_index=2, numbers=[1], target_state=target, actual_user_id='user',
+                         actual_team_id='team', actual_bot_user_id='bot',
+                         confirmed_at='2026-11-09T01:00:00+00:00', is_button=False)
+        updated = {call.kwargs['ts']: call.kwargs['blocks'] for call in client.chat_update.call_args_list}
+        assert set(updated) == {'parent', 'child', 'related-parent'}
+        for ts in ('parent', 'related-parent'):
+            text = updated[ts][1]['text']['text']
+            assert text == ('~• 부모~' if target == 'complete' else '• 부모')
