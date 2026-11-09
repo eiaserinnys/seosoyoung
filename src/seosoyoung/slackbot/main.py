@@ -29,7 +29,8 @@ from seosoyoung.slackbot.marker_parser import parse_markers
 from seosoyoung.slackbot.handlers.mention_tracker import MentionTracker
 from seosoyoung.slackbot.plugin_backends import init_plugin_backends
 from seosoyoung.slackbot.reflect import reflect
-from seosoyoung.slackbot.daily_todo.atom_client import AtomMcpClient
+from seosoyoung.slackbot.daily_todo.storage_client import StorageClient
+from seosoyoung.slackbot.daily_todo.delivery_store import DeliveryStore
 
 # 로깅 설정
 logger = setup_logging()
@@ -284,7 +285,8 @@ def _build_dependencies():
         "soul_url": Config.claude.soul_url,
         "dashboard_url": Config.claude.dashboard_url,
         "slack_workspace_url": Config.slack.workspace_url,
-        "daily_todo_atom_client": AtomMcpClient,
+        "daily_todo_storage_client": StorageClient,
+        "daily_todo_delivery_store": lambda: DeliveryStore(Path(Config.get_session_path()) / "daily_todo" / "state.json"),
     }
 
 
