@@ -9,7 +9,7 @@ import os
 import re
 import sys
 import uuid
-from datetime import date as Date, datetime
+from datetime import date as Date, datetime, time as Time, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -27,6 +27,11 @@ EXPECTED_BOT_USER_ID = 'U0A8XJZ6Q5S'
 EXPECTED_BOT_ID = 'B0A8U1860D8'
 EXPECTED_RECIPIENT_USER_ID = 'U08HWT0C6K1'
 LEGACY_HEADER = re.compile(r'^daily_todo_header:[^:]+:[^:]+:\d+$')
+KST = ZoneInfo('Asia/Seoul')
+# Every successful send strips the buttons of earlier sends, so only recent messages can still carry them.
+CLEANUP_LOOKBACK = timedelta(days=7)
+# An unconfirmed send posts its messages after its record is created; allow for clock skew.
+RETRY_LOOKBACK_MARGIN = timedelta(minutes=10)
 
 
 class PublishRejected(ValueError):
@@ -38,11 +43,12 @@ def _safe_url(url: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc.rsplit('@', 1)[-1], parsed.path, '', ''))
 
 
-def _history(client, channel: str) -> list[dict[str, Any]]:
+def _history(client, channel: str, oldest: datetime) -> list[dict[str, Any]]:
+    """Read the DM history back to `oldest` only; the full DM history is large and slow to fetch."""
     messages = []
     cursor = None
     while True:
-        kwargs = {'channel': channel, 'limit': 100}
+        kwargs = {'channel': channel, 'limit': 100, 'oldest': f'{oldest.timestamp():.6f}'}
         if cursor:
             kwargs['cursor'] = cursor
         response = client.conversations_history(**kwargs)
@@ -59,12 +65,19 @@ def _header(message: dict[str, Any]) -> str:
     return ''
 
 
+def _created_at(delivery: dict[str, Any], day: str) -> datetime:
+    try:
+        return datetime.fromisoformat(delivery['created_at'])
+    except (KeyError, TypeError, ValueError):
+        return datetime.combine(Date.fromisoformat(day), Time.min, KST)
+
+
 def _assert_retry_safe(state, slack, channel, day):
     candidates = [value for value in state['deliveries'].values()
                   if value.get('date') == day and value.get('status') in {'pending', 'failed'}]
     if not candidates:
         return
-    messages = _history(slack, channel)
+    messages = _history(slack, channel, min(_created_at(item, day) for item in candidates) - RETRY_LOOKBACK_MARGIN)
     headers = [_header(message) for message in messages if message.get('user') == EXPECTED_BOT_USER_ID]
     if any(any(header.startswith(f"{HEADER_PREFIX}{item['delivery_id']}:") for header in headers)
            for item in candidates):
@@ -205,7 +218,7 @@ async def publish_daily_todo(storage, store, slack_client, session_manager, *, d
     cleanup_error = None
     try:
         # The old Atom message is discovered from the same DM, without reading Atom.
-        history = _history(slack_client, channel)
+        history = _history(slack_client, channel, datetime.now(KST) - CLEANUP_LOOKBACK)
         old_ids = {d['delivery_id'] for d in store.read()['deliveries'].values()
                    if d.get('status') == 'success' and d['delivery_id'] != delivery_id}
         for message in history:

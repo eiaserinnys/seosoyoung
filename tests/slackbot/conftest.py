@@ -45,6 +45,7 @@ class FakeSlack:
         self.updates = []
         self.fail_post_at = None
         self.post_count = 0
+        self.history_calls = []
 
     def auth_test(self):
         return {'team_id': EXPECTED_TEAM_ID, 'user_id': EXPECTED_BOT_USER_ID, 'bot_id': EXPECTED_BOT_ID}
@@ -64,6 +65,7 @@ class FakeSlack:
         return {'messages': [deepcopy(m) for m in self.messages if m['ts'] == ts]}
 
     def conversations_history(self, **kwargs):
+        self.history_calls.append(deepcopy(kwargs))
         return {'messages': deepcopy(self.messages), 'response_metadata': {}}
 
     def chat_update(self, **kwargs):
