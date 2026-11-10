@@ -151,7 +151,7 @@ def render_daily_todo_messages(items: list[dict[str, Any]], *, areas: list[str],
             title = f'<{_escape(str(link))}|{title}>'
         details = [str(item[key]) for key in ('date', 'wait') if item.get(key)]
         if details:
-            title += ' (' + ' · '.join(_escape(value) for value in details) + ')'
+            title += ' (' + ', '.join(_escape(value) for value in details) + ')'
         number = number_by_id.get(item['id'])
         prefix = '  ' * depth + '• ' + (f'*{number}.* ' if number is not None else '')
         pieces = _chunks(prefix + title)
@@ -169,7 +169,8 @@ def render_daily_todo_messages(items: list[dict[str, Any]], *, areas: list[str],
             if first is None:
                 first = row
         ancestors = ancestors[:depth] + ([first] if first else [])
-        memo = memos.get(item['id'], '')
+        # A finished item stays as one struck line; its notes live in the app.
+        memo = '' if item.get('status') == 'done' else memos.get(item['id'], '')
         if memo:
             for piece in _chunks(markdown_to_mrkdwn(memo)):
                 blocks.append({'kind': 'memo', 'text': piece})
@@ -228,5 +229,5 @@ def render_snapshot(snapshot: list[dict[str, Any]], items: Mapping[str, dict[str
         blocks.append({'type': 'section', 'text': {'type': 'mrkdwn', 'text': text}})
     text = '\n'.join(block['text']['text'] for block in blocks if block['type'] == 'section')
     if len(text) > 4000:
-        text = '*일일 TODO*\n할 일 앱'
+        text = text[:3999] + '…'
     return RenderedDailyTodoPart(text, blocks, numbers, snapshot)

@@ -56,3 +56,25 @@ def test_very_long_memo_keeps_number_row_and_button_in_same_part():
     assert 0 < text.count('가') < len(memo)
     assert len(row_part.blocks) <= 50
     assert sum(len(block['text']['text']) for block in row_part.blocks if block['type'] == 'section') < 39000
+
+
+def test_done_items_omit_memo_and_details_read_as_a_sentence():
+    items = [{'id': 'open', 'title': '남은 일', 'area': '회사일', 'parent': None, 'status': 'open', 'order': 0,
+              'date': '2026-11-19', 'wait': '답변 대기'},
+             {'id': 'done', 'title': '끝낸 일', 'area': '회사일', 'parent': None, 'status': 'done',
+              'done_on': '2026-11-09', 'order': 1}]
+    parts = render_daily_todo_messages(items, areas=['회사일'], memos={'open': '남은 메모', 'done': '끝난 메모'},
+                                       date='2026-11-09', delivery_id='d', number_to_todo_id={1: 'open'})
+    blocks = str([part.blocks for part in parts])
+    assert '남은 메모' in blocks
+    assert '끝난 메모' not in blocks
+    assert '(2026-11-19, 답변 대기)' in blocks
+    assert '·' not in blocks
+
+
+def test_long_notification_text_keeps_the_opening_lines():
+    items = [{'id': 'a', 'title': '가' * 5000, 'area': '회사일', 'parent': None, 'status': 'open', 'order': 0}]
+    parts = render_daily_todo_messages(items, areas=['회사일'], memos={}, date='2026-11-09',
+                                       delivery_id='d', number_to_todo_id={1: 'a'})
+    assert parts[0].text.startswith('*일일 TODO*\n*회사일*\n')
+    assert len(parts[0].text) <= 4000
