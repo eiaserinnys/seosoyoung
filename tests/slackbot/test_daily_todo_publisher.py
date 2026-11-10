@@ -1,4 +1,5 @@
 from copy import deepcopy
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -87,3 +88,31 @@ def test_preparation_command_stores_stdin_json(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr('sys.stdin', io.StringIO('{"prepared_at":"아침","evidence_until":"08:00"}'))
     assert main(['prepare', '--date', '2026-11-09']) == 0
     assert DeliveryStore(tmp_path / 'daily_todo' / 'state.json').read()['preparation']['2026-11-09']['prepared_at'] == '아침'
+
+
+@pytest.mark.asyncio
+async def test_old_button_cleanup_reads_only_recent_dm_history(fake_storage, fake_slack, tmp_path):
+    store = DeliveryStore(tmp_path / 'state.json')
+    before = datetime.now().timestamp()
+    await publish(fake_storage, store, fake_slack, SessionManager(tmp_path / 'sessions'))
+    assert fake_slack.history_calls
+    for call in fake_slack.history_calls:
+        oldest = float(call['oldest'])
+        assert before - timedelta(days=7, minutes=1).total_seconds() <= oldest <= before - timedelta(days=6).total_seconds()
+
+
+@pytest.mark.asyncio
+async def test_retry_check_reads_dm_history_only_from_the_unconfirmed_send(fake_storage, fake_slack, tmp_path):
+    fake_storage.items = [{**fake_storage.items[0], 'id': str(i), 'title': '할 일 ' + str(i)} for i in range(80)]
+    fake_slack.fail_post_at = 2
+    store = DeliveryStore(tmp_path / 'state.json')
+    sessions = SessionManager(tmp_path / 'sessions')
+    with pytest.raises(RuntimeError):
+        await publish(fake_storage, store, fake_slack, sessions)
+    created = datetime.fromisoformat(list(store.read()['deliveries'].values())[0]['created_at']).timestamp()
+    fake_slack.history_calls.clear()
+    with pytest.raises(PublishRejected, match='미확정 발송'):
+        await publish(fake_storage, store, fake_slack, sessions)
+    assert fake_slack.history_calls
+    for call in fake_slack.history_calls:
+        assert created - timedelta(minutes=10, seconds=1).total_seconds() <= float(call['oldest']) <= created
