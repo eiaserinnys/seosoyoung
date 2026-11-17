@@ -207,6 +207,8 @@ async def _slack_notifier(message: str) -> None:
 
 
 plugin_manager = PluginManager(notifier=_slack_notifier)
+# 직전 플러그인 로드에서 실패한 항목 이름. 기동 요약 로그에 실패 수로 남긴다.
+_plugin_load_failures: list[str] = []
 
 
 @reflect.capability(
@@ -223,6 +225,7 @@ def _load_plugins() -> None:
     base_dir = Path.cwd()  # bot CWD = services/bot (haniel services.bot.cwd) → config/plugins.yaml ✓
     registry_path = base_dir / "config" / "plugins.yaml"
     registry = load_plugin_registry(registry_path)
+    _plugin_load_failures.clear()
 
     if not registry:
         logger.info("플러그인 레지스트리가 비어있습니다.")
@@ -235,6 +238,7 @@ def _load_plugins() -> None:
             name = entry["name"]
             missing = [f for f in _ENTRY_REQUIRED if f not in entry]
             if missing:
+                _plugin_load_failures.append(name)
                 logger.error(
                     "플러그인 로드 스킵 (%s): plugins.yaml에 필수 필드 누락 %s",
                     name, missing,
@@ -252,6 +256,7 @@ def _load_plugins() -> None:
                     depends_on=entry.get("depends_on", []),
                 )
             except Exception as e:
+                _plugin_load_failures.append(name)
                 logger.error(f"플러그인 로드 실패 ({name}): {e}")
 
 
@@ -348,6 +353,19 @@ def _dispatch_plugin_startup():
                     _channel_refs[key] = result[key]
 
 
+def _log_plugin_startup_summary() -> None:
+    """플러그인 기동 결과를 한 줄로 남긴다.
+
+    하니엘 seosoyoung.yaml의 bot 준비 조건이 `log:Plugin startup summary`이므로
+    이 줄의 형식을 바꾸면 배포 준비 판정이 깨진다.
+    """
+    logger.info(
+        "Plugin startup summary: %d loaded, %d failed",
+        len(plugin_manager.plugins),
+        len(_plugin_load_failures),
+    )
+
+
 def init_bot_user_id():
     """봇 사용자 ID 초기화"""
     try:
@@ -387,6 +405,7 @@ def main(
 
     _load_plugins()
     _dispatch_plugin_startup()  # on_startup hooks (trello watcher, channel observer, etc.)
+    _log_plugin_startup_summary()
     notify_startup()
     handler = SocketModeHandler(app, Config.slack.app_token)
     handler.start()

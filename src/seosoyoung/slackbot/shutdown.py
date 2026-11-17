@@ -222,7 +222,7 @@ def start_management_server(
     port: int,
     host: str = "127.0.0.1",
     *,
-    startup_timeout: float = 10.0,
+    startup_timeout: float = 60.0,
 ) -> ManagementServerHandle:
     """Start Uvicorn and return only after the real /reflect handler answers."""
     if startup_timeout <= 0:

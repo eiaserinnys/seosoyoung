@@ -17,6 +17,12 @@ class FakeStorage:
         self.writes = []
         self.memos = {}
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        pass
+
     async def read(self, entry_id, *, doc=None):
         if entry_id == 'items':
             return {'content': deepcopy(self.items), 'revision': str(self.revision)}

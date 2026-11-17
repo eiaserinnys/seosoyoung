@@ -30,12 +30,19 @@ def run(
 ) -> None:
     """Serve management HTTP, then import and start the Slack runtime."""
     load_dotenv(find_dotenv(usecwd=True))
+    # Config는 임포트 시 환경변수를 평가하므로 .env 로드 뒤에 읽는다.
+    from seosoyoung.slackbot.config import Config
+
     management_port = port if port is not None else int(os.environ["SHUTDOWN_PORT"])
     load_runtime = runtime_loader or _load_runtime
 
     dispatcher = ShutdownDispatcher()
     app = create_management_app(reflect, dispatcher)
-    handle = start_management_server(app, management_port)
+    handle = start_management_server(
+        app,
+        management_port,
+        startup_timeout=Config.management.startup_timeout,
+    )
     management_stopped = False
 
     try:

@@ -24,8 +24,27 @@ class StorageClient:
         self.url = url if url is not None else os.environ['KALEIDOSCOPE_MCP_URL']
         self._token = token if token is not None else os.environ['KALEIDOSCOPE_MCP_TOKEN']
         self.app_id = app_id
+        self._client: Any = None
         if not self.url or not self._token:
             raise StorageError('할 일 저장소 주소와 인증 설정을 확인해 주세요.')
+
+    async def __aenter__(self) -> 'StorageClient':
+        """한 실행 동안 재사용할 MCP Client를 이벤트 루프 안에서 연다."""
+        from fastmcp import Client
+        from fastmcp.client.transports import StreamableHttpTransport
+
+        try:
+            client = Client(StreamableHttpTransport(self.url, headers={'Authorization': f'Bearer {self._token}'}))
+            await client.__aenter__()
+        except Exception:
+            raise StorageError('할 일 저장소에 연결하지 못했습니다.') from None
+        self._client = client
+        return self
+
+    async def __aexit__(self, *exc_info) -> None:
+        client, self._client = self._client, None
+        if client is not None:
+            await client.__aexit__(*exc_info)
 
     async def read(self, entry_id: str, *, doc: str | None = None) -> dict[str, Any]:
         args = {'app_id': self.app_id, 'entry_id': entry_id}
@@ -42,15 +61,13 @@ class StorageClient:
         return await self._call('write_app_storage', args)
 
     async def _call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        from fastmcp import Client
-        from fastmcp.client.transports import StreamableHttpTransport
-
-        try:
-            transport = StreamableHttpTransport(self.url, headers={'Authorization': f'Bearer {self._token}'})
-            async with Client(transport) as client:
-                result = await client.call_tool(name, arguments, raise_on_error=False)
-        except Exception:
-            raise StorageError('할 일 저장소에 연결하지 못했습니다.') from None
+        if self._client is not None:
+            try:
+                result = await self._client.call_tool(name, arguments, raise_on_error=False)
+            except Exception:
+                raise StorageError('할 일 저장소에 연결하지 못했습니다.') from None
+        else:
+            result = await self._call_with_new_client(name, arguments)
         structured = getattr(result, 'structured_content', None) or getattr(result, 'structuredContent', None)
         if structured is None:
             content = getattr(result, 'content', [])
@@ -67,6 +84,18 @@ class StorageClient:
                 raise StorageNotFound('할 일 메모가 없습니다.')
             raise StorageError('할 일 저장소 요청을 처리하지 못했습니다.')
         return dict(structured)
+
+    async def _call_with_new_client(self, name: str, arguments: dict[str, Any]) -> Any:
+        """컨텍스트 밖 호출: 호출마다 Client를 열고 닫는다."""
+        from fastmcp import Client
+        from fastmcp.client.transports import StreamableHttpTransport
+
+        try:
+            transport = StreamableHttpTransport(self.url, headers={'Authorization': f'Bearer {self._token}'})
+            async with Client(transport) as client:
+                return await client.call_tool(name, arguments, raise_on_error=False)
+        except Exception:
+            raise StorageError('할 일 저장소에 연결하지 못했습니다.') from None
 
 
 async def update_items(storage, operation: Callable[[list[dict[str, Any]]], list[dict[str, Any]]]) -> tuple[list[dict[str, Any]], bool]:
