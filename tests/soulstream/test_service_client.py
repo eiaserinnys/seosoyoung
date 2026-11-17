@@ -519,7 +519,25 @@ class TestSoulServiceClientExecute:
             },
             "folder_id": "folder-1",
             "display_name": "channel PAS",
+            "caller_info": {"source": "channel_observer"},
         }
+
+    @pytest.mark.asyncio
+    async def test_create_persistent_session_omits_absent_caller_info(self):
+        response = AsyncMock()
+        response.status = 201
+        response.json.return_value = {"session": {"session_id": "pas-1"}}
+        session = _mock_session(response)
+        client = SoulServiceClient("http://localhost:4105", token="t")
+        client._session = session
+
+        await client.create_persistent_session(
+            agent_id="seosoyoung-intervene",
+            prompt="init",
+            default_model={"model_preset": "gemini-4-argon"},
+        )
+
+        assert "caller_info" not in session.post.call_args.kwargs["json"]
 
     @pytest.mark.asyncio
     async def test_get_persistent_session_returns_none_for_404(self):

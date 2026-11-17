@@ -213,6 +213,15 @@ class BotIdentityConfig:
 
 
 @dataclass
+class ManagementConfig:
+    """관리 서버(cogito /reflect + /shutdown) 설정"""
+
+    startup_timeout: float = field(
+        default_factory=lambda: float(os.getenv("MANAGEMENT_STARTUP_TIMEOUT", "60"))
+    )
+
+
+@dataclass
 class LoreSearchConfig:
     """Optional lore-search mention routing settings."""
 
@@ -239,6 +248,7 @@ class Config:
     emoji = EmojiConfig()
     bot = BotIdentityConfig()
     lore_search = LoreSearchConfig()
+    management = ManagementConfig()
 
     # ========================================
     # 경로 설정 (런타임에 cwd 기준 계산)

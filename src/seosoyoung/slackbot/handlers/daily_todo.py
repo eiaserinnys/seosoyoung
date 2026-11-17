@@ -112,11 +112,17 @@ def _complete(dependencies: dict, client, *, channel_id: str, message_ts: str, d
     storage = factory(app_id=delivery['app_id']) if callable(factory) else factory
     from seosoyoung.slackbot.daily_todo.completion import set_completion
     from seosoyoung.utils.async_bridge import run_in_new_loop
-    outcome = run_in_new_loop(set_completion(storage, store, delivery_id=delivery_id, message_ts=message_ts,
-        part_index=part_index, numbers=numbers, target_state=target_state, actual_slack_user=actual_user_id,
-        actual_team_id=actual_team_id, actual_channel_id=channel_id, actual_bot_user_id=actual_bot_user_id,
-        confirmed_at=confirmed_at, require_active_delivery=is_button,
-        expected_number_to_todo_id=expected_number_to_todo_id))
+
+    async def _complete_once():
+        """완료 처리 한 번 동안 저장소 연결을 하나만 열고 닫는다."""
+        async with storage:
+            return await set_completion(storage, store, delivery_id=delivery_id, message_ts=message_ts,
+                part_index=part_index, numbers=numbers, target_state=target_state, actual_slack_user=actual_user_id,
+                actual_team_id=actual_team_id, actual_channel_id=channel_id, actual_bot_user_id=actual_bot_user_id,
+                confirmed_at=confirmed_at, require_active_delivery=is_button,
+                expected_number_to_todo_id=expected_number_to_todo_id)
+
+    outcome = run_in_new_loop(_complete_once())
     try:
         _refresh_delivery_messages(client, outcome.items, outcome.delivery, outcome.refresh_ids,
                                    active=outcome.active_delivery_id == delivery_id)

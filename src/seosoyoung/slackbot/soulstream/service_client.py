@@ -217,6 +217,8 @@ class SoulServiceClient:
         }
         if folder_id is not None:
             data["folder_id"] = folder_id
+        if caller_info is not None:
+            data["caller_info"] = caller_info
 
         session = await self._get_session()
         async with session.post(self._persistent_sessions_url(), json=data) as response:

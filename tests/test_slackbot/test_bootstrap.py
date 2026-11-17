@@ -257,7 +257,7 @@ def test_bootstrap_shutdown_before_import_never_calls_runtime_loader(monkeypatch
         captured["dispatcher"] = dispatcher
         return object()
 
-    def start_server(_app, _port):
+    def start_server(_app, _port, **kwargs):
         captured["dispatcher"].request_shutdown()
         return handle
 
@@ -292,13 +292,55 @@ def test_bootstrap_shutdown_during_import_never_starts_runtime(monkeypatch):
         )
 
     monkeypatch.setattr(bootstrap, "create_management_app", create_app)
-    monkeypatch.setattr(bootstrap, "start_management_server", lambda _app, _port: handle)
+    monkeypatch.setattr(bootstrap, "start_management_server", lambda _app, _port, **_kwargs: handle)
 
     bootstrap.run(port=3106, runtime_loader=load_runtime)
 
     assert delivered == ["shutdown"]
     runtime_start.assert_not_called()
     handle.stop.assert_called_once_with()
+
+
+def test_management_startup_timeout_defaults_to_60_seconds(monkeypatch):
+    from seosoyoung.slackbot.config import ManagementConfig
+
+    monkeypatch.delenv("MANAGEMENT_STARTUP_TIMEOUT", raising=False)
+
+    assert ManagementConfig().startup_timeout == 60.0
+
+
+def test_management_startup_timeout_reads_environment(monkeypatch):
+    from seosoyoung.slackbot.config import ManagementConfig
+
+    monkeypatch.setenv("MANAGEMENT_STARTUP_TIMEOUT", "120")
+
+    assert ManagementConfig().startup_timeout == 120.0
+
+
+def test_bootstrap_passes_configured_management_timeout(monkeypatch):
+    captured = {}
+    handle = Mock()
+
+    def create_app(_reflector, dispatcher):
+        captured["dispatcher"] = dispatcher
+        return object()
+
+    def start_server(_app, _port, **kwargs):
+        captured["kwargs"] = kwargs
+        captured["dispatcher"].request_shutdown()
+        return handle
+
+    monkeypatch.setattr(bootstrap, "create_management_app", create_app)
+    monkeypatch.setattr(bootstrap, "start_management_server", start_server)
+
+    with pytest.raises(SystemExit):
+        bootstrap.run(port=3106, runtime_loader=Mock())
+
+    from seosoyoung.slackbot.config import Config
+
+    assert captured["kwargs"] == {
+        "startup_timeout": Config.management.startup_timeout,
+    }
 
 
 def test_management_handler_preserves_restart_exit_in_isolated_process():
@@ -333,7 +375,17 @@ runtime._load_plugins = MagicMock()
 runtime._dispatch_plugin_startup = MagicMock()
 runtime.notify_startup = MagicMock()
 handler = runtime.SocketModeHandler.return_value
+import logging
+records = []
+class _Capture(logging.Handler):
+    def emit(self, record):
+        records.append(record.getMessage())
+logging.getLogger().addHandler(_Capture())
+handler.start.side_effect = lambda: records.append("handler.start")
 runtime.main(lambda: None)
+summary = [message for message in records if message.startswith("Plugin startup summary:")]
+assert len(summary) == 1, records
+assert records.index(summary[0]) < records.index("handler.start")
 runtime._dispatch_plugin_startup.assert_called_once_with()
 runtime.notify_startup.assert_called_once_with()
 runtime.SocketModeHandler.assert_called_once_with(runtime.app, runtime.Config.slack.app_token)

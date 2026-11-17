@@ -90,6 +90,19 @@ async def publish_daily_todo(storage, store, slack_client, session_manager, *, d
                              recipient_user_id: str, target_session_id: str, get_user_role,
                              todo_url: str | None = None, force: bool = False,
                              reason: str | None = None) -> dict[str, Any]:
+    """발송 한 번 동안 저장소 연결을 하나만 열고 닫는다."""
+    async with storage:
+        return await _publish_daily_todo(
+            storage, store, slack_client, session_manager, date=date,
+            recipient_user_id=recipient_user_id, target_session_id=target_session_id,
+            get_user_role=get_user_role, todo_url=todo_url, force=force, reason=reason,
+        )
+
+
+async def _publish_daily_todo(storage, store, slack_client, session_manager, *, date: str,
+                              recipient_user_id: str, target_session_id: str, get_user_role,
+                              todo_url: str | None = None, force: bool = False,
+                              reason: str | None = None) -> dict[str, Any]:
     Date.fromisoformat(date)
     if not date or not recipient_user_id or not target_session_id:
         raise PublishRejected('날짜, 수신자와 대상 세션이 필요합니다.')
