@@ -178,8 +178,6 @@ install:
           guide: "https://platform.openai.com/api-keys"
         - key: CLAUDE_EXECUTION_MODE
           default: "remote"
-        - key: SEOSOYOUNG_SOUL_URL
-          default: "http://localhost:4105"
         - key: SESSION_PATH
           default: "{root}/seosoyoung_runtime/sessions"
         - key: LOG_PATH

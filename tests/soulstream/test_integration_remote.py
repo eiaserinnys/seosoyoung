@@ -70,11 +70,7 @@ class TestIntegrationBasicFlow:
 
     @pytest.fixture
     def executor(self, tmp_path):
-        return _make_executor(
-            tmp_path,
-            soul_url="http://localhost:3105",
-            soul_token="test-token",
-        )
+        return _make_executor(tmp_path)
 
     @pytest.fixture
     def session(self, executor):
@@ -146,11 +142,7 @@ class TestIntegrationIntervention:
 
     @pytest.fixture
     def executor(self, tmp_path):
-        return _make_executor(
-            tmp_path,
-            soul_url="http://localhost:3105",
-            soul_token="test-token",
-        )
+        return _make_executor(tmp_path)
 
     @pytest.fixture
     def session(self, executor):
@@ -290,7 +282,6 @@ class TestIntegrationRoleTools:
     def executor(self, tmp_path):
         return _make_executor(
             tmp_path,
-            soul_url="http://localhost:3105",
             role_tools={
                 "admin": None,
                 "viewer": ["Read", "Glob", "Grep"],
@@ -374,11 +365,7 @@ class TestIntegrationDebugEvents:
 
     @pytest.fixture
     def executor(self, tmp_path):
-        return _make_executor(
-            tmp_path,
-            soul_url="http://localhost:3105",
-            soul_token="test-token",
-        )
+        return _make_executor(tmp_path)
 
     @pytest.fixture
     def session(self, executor):
@@ -458,11 +445,7 @@ class TestIntegrationCompaction:
 
     @pytest.fixture
     def executor(self, tmp_path):
-        return _make_executor(
-            tmp_path,
-            soul_url="http://localhost:3105",
-            soul_token="test-token",
-        )
+        return _make_executor(tmp_path)
 
     @pytest.fixture
     def session(self, executor):

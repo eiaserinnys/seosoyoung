@@ -1,80 +1,60 @@
-"""handlers/actions.py 단위 테스트
+"""AskUserQuestion 응답을 오케스트레이터에 전달한다."""
 
-_deliver_input_response_to_soul의 URL 경로 검증.
-"""
-
-from unittest.mock import patch, MagicMock
+import io
+import json
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+from urllib.error import HTTPError
 
 import pytest
 
+from seosoyoung.slackbot.handlers.actions import _deliver_input_response, register_action_handlers
 
-class TestDeliverInputResponseToSoul:
-    """_deliver_input_response_to_soul URL 경로 검증"""
 
-    def test_url_uses_api_prefix(self):
-        """/api/sessions/ 경로를 사용해야 한다 (soulstream-server prefix 준수)."""
-        captured = {}
+def test_deliver_response_to_orchestrator():
+    orchestrator = SimpleNamespace(url="https://orch.example", token="orch-token")
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = b'{}'
+    with patch("urllib.request.urlopen", return_value=response) as urlopen:
+        assert _deliver_input_response(orchestrator, "sess-123", "req-456", "질문", "예") is True
 
-        def fake_urlopen(req, timeout=None):
-            captured["url"] = req.full_url
-            mock_resp = MagicMock()
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            mock_resp.read.return_value = b'{"success": true}'
-            return mock_resp
+    request = urlopen.call_args.args[0]
+    assert request.full_url == "https://orch.example/api/sessions/sess-123/respond"
+    assert request.get_method() == "POST"
+    assert request.get_header("Authorization") == "Bearer orch-token"
+    assert json.loads(request.data) == {"request_id": "req-456", "answers": {"질문": "예"}}
 
-        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            from seosoyoung.slackbot.handlers.actions import (
-                _deliver_input_response_to_soul,
-            )
 
-            _deliver_input_response_to_soul(
-                agent_session_id="sess-123",
-                request_id="req-456",
-                question_text="Do you confirm?",
-                selected_label="Yes",
-            )
+@pytest.mark.parametrize("url,token", [("", "token"), ("https://orch.example", "")])
+def test_missing_config_does_not_request(url, token, caplog):
+    with patch("urllib.request.urlopen") as urlopen:
+        assert _deliver_input_response(SimpleNamespace(url=url, token=token), "s", "r", "q", "a") is False
+    urlopen.assert_not_called()
+    assert caplog.records
 
-        assert "captured" in dir() or captured, "urlopen was not called"
-        assert "/api/sessions/" in captured["url"], (
-            f"Expected '/api/sessions/' in URL but got: {captured['url']}"
-        )
-        assert captured["url"].endswith("/api/sessions/sess-123/respond"), (
-            f"Expected URL to end with '/api/sessions/sess-123/respond' but got: {captured['url']}"
-        )
 
-    def test_url_does_not_use_bare_sessions_prefix(self):
-        """URL이 /sessions/ (api prefix 없음)으로 시작하지 않아야 한다."""
-        captured = {}
+def test_http_error_logs_status_and_body(caplog):
+    error = HTTPError("https://orch.example", 404, "Not Found", {}, io.BytesIO(b'{"code":"SESSION_NOT_FOUND"}'))
+    with patch("urllib.request.urlopen", side_effect=error):
+        assert _deliver_input_response(SimpleNamespace(url="https://orch.example", token="t"), "s", "r", "q", "a") is False
+    assert "404" in caplog.text
+    assert "SESSION_NOT_FOUND" in caplog.text
 
-        def fake_urlopen(req, timeout=None):
-            captured["url"] = req.full_url
-            mock_resp = MagicMock()
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            mock_resp.read.return_value = b'{"success": true}'
-            return mock_resp
 
-        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            from seosoyoung.slackbot.handlers.actions import (
-                _deliver_input_response_to_soul,
-            )
-
-            _deliver_input_response_to_soul(
-                agent_session_id="sess-999",
-                request_id="req-001",
-                question_text="Proceed?",
-                selected_label="OK",
-            )
-
-        url = captured.get("url", "")
-        # soul_url 이후 경로는 반드시 /api/sessions/로 시작해야 함
-        # /sessions/sess-999/respond (bare, api prefix 없음) 는 안 됨
-        # SEOSOYOUNG_SOUL_URL=http://localhost:4105 (conftest에서 설정)
-        import re
-        # 호스트 뒤의 경로 부분만 추출
-        path_match = re.search(r"https?://[^/]+(/.*)$", url)
-        path = path_match.group(1) if path_match else url
-        assert path.startswith("/api/"), (
-            f"URL path must start with /api/ but got: {path} (full url: {url})"
-        )
+def test_button_uses_injected_orchestrator():
+    handlers = {}
+    app = MagicMock()
+    app.action.side_effect = lambda key: lambda fn: handlers.setdefault(key, fn)
+    orchestrator = SimpleNamespace(url="https://orch.example", token="token")
+    register_action_handlers(app, {
+        "orchestrator": orchestrator,
+        "restart_manager": MagicMock(),
+        "get_running_session_count": MagicMock(),
+        "trello_watcher_ref": MagicMock(),
+    })
+    handler = next(fn for key, fn in handlers.items() if hasattr(key, "pattern") and key.pattern == "input_request_.+")
+    body = {"actions": [{"value": json.dumps({"rid": "r", "sid": "s", "q": "q", "a": "a"})}],
+            "channel": {"id": "C"}, "message": {"ts": "1"}}
+    with patch("seosoyoung.slackbot.handlers.actions._deliver_input_response") as deliver:
+        handler(MagicMock(), body, MagicMock())
+    deliver.assert_called_once_with(orchestrator, agent_session_id="s", request_id="r", question_text="q", selected_label="a")

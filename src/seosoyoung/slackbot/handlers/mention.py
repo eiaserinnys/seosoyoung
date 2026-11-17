@@ -23,15 +23,9 @@ from seosoyoung.slackbot.handlers.commands import (
     handle_log,
     handle_translate,
     handle_update_restart,
-    handle_compact,
     handle_plugins,
     handle_resume_list_run,
     handle_session_info,
-    handle_set_token,
-    handle_clear_token,
-)
-from seosoyoung.slackbot.handlers.auth import (
-    handle_setup_token,
 )
 from seosoyoung.slackbot.handlers.node import handle_node
 from seosoyoung.slackbot.handlers.lore_search import try_handle_lore_search
@@ -117,8 +111,8 @@ def _get_user_folder_map() -> dict[str, str]:
 
 
 _ADMIN_COMMANDS = frozenset({
-    "help", "status", "update", "restart", "compact", "cleanup", "log", "plugins",
-    "session-info", "setup-token", "clear-token", "노드",
+    "help", "status", "update", "restart", "cleanup", "log", "plugins",
+    "session-info", "노드",
 })
 
 _COMMAND_DISPATCH = {
@@ -129,11 +123,8 @@ _COMMAND_DISPATCH = {
     "log": handle_log,
     "update": handle_update_restart,
     "restart": handle_update_restart,
-    "compact": handle_compact,
     "plugins": handle_plugins,
     "session-info": handle_session_info,
-    "setup-token": handle_setup_token,
-    "clear-token": handle_clear_token,
     "노드": handle_node,
 }
 
@@ -143,7 +134,6 @@ def _is_admin_command(command: str) -> bool:
     return (
         command in _ADMIN_COMMANDS
         or command.startswith("cleanup")
-        or command.startswith("set-token")
     )
 
 
@@ -226,10 +216,6 @@ def try_handle_command(
 
     if command.startswith("plugins"):
         handle_plugins(**kwargs)
-        return True
-
-    if command.startswith("set-token"):
-        handle_set_token(**kwargs)
         return True
 
     return False

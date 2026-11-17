@@ -4,7 +4,6 @@ mention.py의 try_handle_command에서 분리된 개별 명령어 핸들러들�
 각 핸들러는 keyword-only 인자를 받고, 사용하지 않는 인자는 **_로 흡수합니다.
 """
 
-import asyncio
 import logging
 import re
 from datetime import datetime
@@ -14,7 +13,6 @@ import psutil
 
 from seosoyoung.slackbot.config import Config
 from seosoyoung.slackbot.restart import RestartType, RestartRequest
-from seosoyoung.slackbot.slack.formatting import update_message
 from seosoyoung.slackbot.slack.helpers import resolve_operator_dm
 
 logger = logging.getLogger(__name__)
@@ -171,11 +169,8 @@ def handle_help(*, say, ts, **_):
             "• `@seosoyoung help` - 도움말\n"
             "• `@seosoyoung status` - 상태 확인\n"
             "• `@seosoyoung log` - 오늘자 로그 파일 첨부\n"
-            "• `@seosoyoung compact` - 스레드 세션 컴팩트\n"
             "• `@seosoyoung cleanup` - 고아 프로세스/세션 정리 (관리자)\n"
             "• `@seosoyoung session-info` - 스레드 세션 정보 조회 (관리자)\n"
-            "• `@seosoyoung set-token <토큰>` - Claude OAuth 토큰 설정 (관리자)\n"
-            "• `@seosoyoung clear-token` - Claude OAuth 토큰 삭제 (관리자)\n"
             "• `@seosoyoung update` - 봇 업데이트 (관리자)\n"
             "• `@seosoyoung 노드` - 소울스트림 노드 라우팅 변경 (관리자)\n"
             "• `@seosoyoung restart` - 봇 재시작 (관리자)"
@@ -517,76 +512,6 @@ def handle_update_restart(
     restart_manager.force_restart(restart_type)
 
 
-def _run_soul_api(async_fn):
-    """SoulServiceClient API를 동기적으로 호출
-
-    slack_bolt sync mode에서 핸들러 스레드에는 이벤트 루프가 없으므로
-    asyncio.run()으로 새 루프를 생성하여 호출합니다.
-
-    Args:
-        async_fn: SoulServiceClient 인스턴스를 받아 코루틴을 반환하는 함수
-
-    Returns:
-        API 응답
-    """
-    from seosoyoung.slackbot.soulstream.service_client import SoulServiceClient
-
-    async def _wrapper():
-        soul = SoulServiceClient(
-            base_url=Config.claude.soul_url,
-            token=Config.claude.soul_token,
-        )
-        try:
-            return await async_fn(soul)
-        finally:
-            await soul.close()
-
-    return asyncio.run(_wrapper())
-
-
-def handle_compact(*, say, ts, thread_ts, channel, client, session_manager, **_):
-    """compact 명령어 핸들러 - Soulstream 서비스에 compact 요청"""
-    if not thread_ts:
-        say(text="스레드에서 사용해주세요.", thread_ts=ts)
-        return
-
-    session = session_manager.get(thread_ts)
-    if not session or not session.session_id:
-        say(text="활성 세션이 없습니다.", thread_ts=thread_ts)
-        return
-
-    # 진행 메시지 표시
-    try:
-        progress = client.chat_postMessage(
-            channel=channel,
-            text=":arrows_counterclockwise: *컴팩트를 진행합니다...*",
-            thread_ts=thread_ts,
-        )
-        progress_ts = progress["ts"]
-    except Exception as e:
-        logger.exception(f"compact 진행 메시지 전송 실패: {e}")
-        say(text=f":x: *컴팩트 요청에 실패했습니다:* {e}", thread_ts=thread_ts)
-        return
-
-    try:
-        result = _run_soul_api(
-            lambda soul: soul.execute(
-                prompt="/compact",
-                agent_session_id=session.session_id,
-            )
-        )
-
-        if result.success:
-            if result.agent_session_id:
-                session_manager.update_session_id(thread_ts, result.agent_session_id)
-            update_message(client, channel, progress_ts, ":white_check_mark: *컴팩트가 완료됐습니다.*")
-        else:
-            update_message(client, channel, progress_ts, f":x: *컴팩트에 실패했습니다:* {result.error}")
-    except Exception as e:
-        logger.exception(f"compact 명령어 오류: {e}")
-        update_message(client, channel, progress_ts, f":x: *컴팩트 중 오류가 발생했습니다:* {e}")
-
-
 def handle_plugins(*, command, say, ts, user_id, client, check_permission, plugin_manager=None, **_):
     """plugins 명령어 핸들러 — 플러그인 목록/로드/언로드/리로드"""
     if not check_permission(user_id, client):
@@ -684,86 +609,6 @@ def handle_resume_list_run(*, say, ts, list_runner_ref=None, **_):
         )
     else:
         say(text="정주행 재개에 실패했습니다.", thread_ts=ts)
-
-
-def handle_set_token(
-    *, command, say, ts, thread_ts, client, user_id, check_permission, **_,
-):
-    """set-token 명령어 핸들러 - Claude OAuth 토큰 설정
-
-    사용법: @서소영 set-token sk-ant-oat01-xxx
-    """
-    from seosoyoung.slackbot.soulstream.service_client import SoulServiceError
-
-    if not check_permission(user_id, client):
-        logger.warning(f"set-token 권한 없음: user={user_id}")
-        say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts or ts)
-        return
-
-    parts = command.split(maxsplit=1)
-    if len(parts) < 2:
-        say(
-            text=f"토큰을 입력해주세요.\n예: `{Config.bot.mention_name} set-token sk-ant-oat01-xxx`",
-            thread_ts=thread_ts or ts,
-        )
-        return
-
-    token = parts[1].strip()
-
-    # 토큰 형식 검증
-    if not token.startswith("sk-ant-oat01-"):
-        say(
-            text="유효하지 않은 토큰 형식입니다.\n토큰은 `sk-ant-oat01-`로 시작해야 합니다.",
-            thread_ts=thread_ts or ts,
-        )
-        return
-
-    try:
-        result = _run_soul_api(lambda soul: soul.set_claude_token(token))
-        if result.get("success"):
-            say(
-                text="✅ Claude 토큰이 설정되었습니다. (1년 유효)",
-                thread_ts=thread_ts or ts,
-            )
-        else:
-            error = result.get("error", "알 수 없는 오류")
-            say(
-                text=f"❌ 토큰 설정 실패: {error}",
-                thread_ts=thread_ts or ts,
-            )
-    except SoulServiceError as e:
-        say(text=f"❌ 토큰 설정 실패: {e}", thread_ts=thread_ts or ts)
-    except Exception as e:
-        logger.exception(f"set-token 명령어 오류: {e}")
-        say(text=f"❌ soulstream 연결 실패: {e}", thread_ts=thread_ts or ts)
-
-
-def handle_clear_token(
-    *, say, ts, thread_ts, client, user_id, check_permission, **_,
-):
-    """clear-token 명령어 핸들러 - Claude OAuth 토큰 삭제
-
-    사용법: @서소영 clear-token
-    """
-    from seosoyoung.slackbot.soulstream.service_client import SoulServiceError
-
-    if not check_permission(user_id, client):
-        logger.warning(f"clear-token 권한 없음: user={user_id}")
-        say(text="관리자 권한이 필요합니다.", thread_ts=thread_ts or ts)
-        return
-
-    try:
-        result = _run_soul_api(lambda soul: soul.clear_claude_token())
-        message = result.get("message", "토큰이 삭제되었습니다.")
-        say(
-            text=f"✅ {message}",
-            thread_ts=thread_ts or ts,
-        )
-    except SoulServiceError as e:
-        say(text=f"❌ 토큰 삭제 실패: {e}", thread_ts=thread_ts or ts)
-    except Exception as e:
-        logger.exception(f"clear-token 명령어 오류: {e}")
-        say(text=f"❌ soulstream 연결 실패: {e}", thread_ts=thread_ts or ts)
 
 
 def handle_session_info(

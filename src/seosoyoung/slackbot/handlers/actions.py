@@ -1,4 +1,4 @@
-"""재시작 버튼, AskUserQuestion 응답, 크레덴셜 프로필 관리 액션 핸들러"""
+"""재시작 버튼과 AskUserQuestion 응답 액션 핸들러"""
 
 import json
 import logging
@@ -153,6 +153,7 @@ def register_action_handlers(app, dependencies: dict):
     restart_manager = dependencies["restart_manager"]
     get_running_session_count = dependencies["get_running_session_count"]
     trello_watcher_ref = dependencies["trello_watcher_ref"]
+    orchestrator = dependencies["orchestrator"]
 
     @app.action("restart_yes")
     def handle_restart_yes(ack, body, client):
@@ -322,7 +323,7 @@ def register_action_handlers(app, dependencies: dict):
 
     @app.action(re.compile(r"input_request_.+"))
     def handle_input_request_response(ack, body, client):
-        """AskUserQuestion 버튼 클릭 → 사용자 응답을 soul-server에 전달"""
+        """AskUserQuestion 버튼 클릭 → 사용자 응답을 오케스트레이터에 전달"""
         ack()
 
         action = body["actions"][0]
@@ -375,122 +376,45 @@ def register_action_handlers(app, dependencies: dict):
             except Exception:
                 pass
 
-        # soul-server에 응답 전달
-        _deliver_input_response_to_soul(
+        # 오케스트레이터에 응답 전달
+        _deliver_input_response(
+            orchestrator,
             agent_session_id=agent_session_id,
             request_id=request_id,
             question_text=question_text,
             selected_label=selected_label,
         )
 
-    @app.action("oauth_profile_switch")
-    def handle_oauth_profile_switch(ack, body, client):
-        """OAuth 프로필 버튼 클릭 → 프로필 전환 후 메시지 갱신"""
-        ack()
 
-        action = body["actions"][0]
-        profile_name = action["value"]
-        channel = body["channel"]["id"]
-        message_ts = body["message"]["ts"]
-
-        soul_url = Config.claude.soul_url
-        soul_token = Config.claude.soul_token
-
-        def _http_get_json(url):
-            req = urllib.request.Request(url, method="GET")
-            req.add_header("Authorization", f"Bearer {soul_token}")
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return json.loads(resp.read())
-
-        def _http_post_json(url, payload):
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(url, data=data, method="POST")
-            req.add_header("Authorization", f"Bearer {soul_token}")
-            req.add_header("Content-Type", "application/json")
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return json.loads(resp.read())
-
-        try:
-            # 1. 프로필 전환
-            activate_result = _http_post_json(
-                f"{soul_url}/auth/claude/profiles/activate",
-                {"profile": profile_name},
-            )
-            if not activate_result.get("success"):
-                error = activate_result.get("error", "알 수 없는 오류")
-                client.chat_update(
-                    channel=channel,
-                    ts=message_ts,
-                    blocks=[],
-                    text=f"❌ 프로필 전환 실패: {error}",
-                )
-                return
-
-            # 2. 갱신된 프로필 목록 조회
-            profiles_result = _http_get_json(f"{soul_url}/auth/claude/profiles")
-            node_id = profiles_result.get("node_id", "unknown")
-            profiles = profiles_result.get("profiles", [])
-            current = profiles_result.get("current_profile")
-
-            # 3. 메시지 업데이트
-            from seosoyoung.slackbot.handlers.commands import _build_profile_blocks
-            blocks = _build_profile_blocks(node_id, profiles, current)
-            client.chat_update(
-                channel=channel,
-                ts=message_ts,
-                blocks=blocks,
-                text=f"OAuth 프로필 전환 완료: {current or profile_name}",
-            )
-            logger.info(f"OAuth 프로필 전환: '{profile_name}' → 성공")
-
-        except Exception as e:
-            logger.error(f"OAuth 프로필 전환 오류: profile={profile_name!r}, error={e}")
-            try:
-                client.chat_update(
-                    channel=channel,
-                    ts=message_ts,
-                    blocks=[],
-                    text=f"❌ 프로필 전환 중 오류 발생: {e}",
-                )
-            except Exception:
-                pass
-
-
-def _deliver_input_response_to_soul(
+def _deliver_input_response(
+    orchestrator,
     agent_session_id: str,
     request_id: str,
     question_text: str,
     selected_label: str,
-) -> None:
-    """soul-server에 AskUserQuestion 응답을 HTTP로 전달
+) -> bool:
+    """AskUserQuestion 응답을 오케스트레이터에 전달한다."""
+    if not orchestrator.url or not orchestrator.token:
+        logger.error("input_request 응답 전달 실패: 오케스트레이터 URL 또는 토큰이 없습니다")
+        return False
 
-    POST /sessions/{agent_session_id}/respond
-    Body: {"request_id": "...", "answers": {"question_text": "selected_label"}}
-    """
-    soul_url = Config.claude.soul_url
-    soul_token = Config.claude.soul_token
-
-    url = f"{soul_url}/api/sessions/{agent_session_id}/respond"
+    url = f"{orchestrator.url.rstrip('/')}/api/sessions/{agent_session_id}/respond"
     data = json.dumps({
         "request_id": request_id,
         "answers": {question_text: selected_label},
-    }).encode("utf-8")
-
+    }, ensure_ascii=False).encode("utf-8")
     try:
         req = urllib.request.Request(url, data=data, method="POST")
-        req.add_header("Authorization", f"Bearer {soul_token}")
+        req.add_header("Authorization", f"Bearer {orchestrator.token}")
         req.add_header("Content-Type", "application/json")
-
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = json.loads(resp.read())
-
-        logger.info(
-            f"input_request 응답 전달 성공: request_id={request_id}, "
-            f"session={agent_session_id}, result={result}"
-        )
-    except Exception as e:
-        logger.error(
-            f"input_request 응답 전달 실패: request_id={request_id}, "
-            f"session={agent_session_id}, error={e}"
-        )
-
+        with urllib.request.urlopen(req, timeout=10):
+            pass
+        logger.info("input_request 응답 전달 성공: request_id=%s, session=%s", request_id, agent_session_id)
+        return True
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        logger.error("input_request 응답 전달 실패: status=%s, body=%s", error.code, body)
+        return False
+    except Exception as error:
+        logger.error("input_request 응답 전달 실패: request_id=%s, session=%s, error=%s", request_id, agent_session_id, error)
+        return False

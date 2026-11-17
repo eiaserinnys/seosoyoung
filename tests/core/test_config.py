@@ -13,8 +13,6 @@ import pytest
 _MINIMAL_ENV = {
     "OPERATOR_USER_ID": "U_TEST_OPERATOR",
     "GEMINI_MODEL": "gemini-test",
-    "SEOSOYOUNG_SOUL_URL": "http://localhost:4105",
-    "SEOSOYOUNG_SOUL_TOKEN": "test-token",
     "EXECUTE_EMOJI": "rocket",
     "EMOJI_TRANSLATE_PROGRESS": "hourglass_flowing_sand",
     "EMOJI_TRANSLATE_DONE": "ssy-happy",
