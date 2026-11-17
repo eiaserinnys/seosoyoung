@@ -287,7 +287,7 @@ def _build_dependencies():
         "get_agent_session_id": executor.get_session_id,
         "persistent_listener_manager": persistent_listener_manager,
         # App Home: 소울스트림 세션 현황 표시
-        "soul_url": Config.claude.soul_url,
+        "orchestrator": Config.orchestrator,
         "dashboard_url": Config.claude.dashboard_url,
         "slack_workspace_url": Config.slack.workspace_url,
         "daily_todo_storage_client": StorageClient,

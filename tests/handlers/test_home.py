@@ -5,6 +5,7 @@
 
 import pytest
 from datetime import datetime, timezone, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from seosoyoung.slackbot.handlers.home import (
@@ -343,147 +344,100 @@ class TestBuildHomeView:
 
 
 class TestFetchSessions:
-    """fetch_sessions 네트워크 호출 테스트"""
+    """오케스트레이터 응답과 요청 계약."""
 
     def test_fetch_sessions_success(self):
-        """정상 API 호출 성공: 두 번 호출 후 병합"""
-        resp_running = MagicMock()
-        resp_running.raise_for_status = MagicMock()
-        resp_running.json.return_value = {"sessions": [_make_session(status="running")], "total": 1}
+        running = {
+            "agentSessionId": "run-1", "status": "running", "displayName": "작업",
+            "nodeId": "wsl", "createdAt": "2026-11-17T09:57:33.376Z",
+            "updatedAt": "2026-11-17T10:00:44.665Z",
+            "lastMessage": {"type": "user_message", "preview": "안녕",
+                            "timestamp": "2026-11-17T10:00:44.665Z", "eventId": 81},
+        }
+        finished = {**running, "agentSessionId": "done-1", "status": "completed"}
+        responses = [MagicMock(), MagicMock()]
+        responses[0].json.return_value = {"sessions": [running], "total": 1}
+        responses[1].json.return_value = {"sessions": [finished], "total": 3}
+        with patch("seosoyoung.slackbot.handlers.home.requests.get", side_effect=responses):
+            result = fetch_sessions("https://orch.example", "token")
+        assert result["total"] == 1
+        assert result["sessions"] == [
+            {"agent_session_id": "run-1", "status": "running", "display_name": "작업",
+             "node_id": "wsl", "created_at": "2026-11-17T09:57:33.376Z",
+             "updated_at": "2026-11-17T10:00:44.665Z",
+             "last_message": {"type": "user_message", "preview": "안녕",
+                              "timestamp": "2026-11-17T10:00:44.665Z", "event_id": 81}},
+            {"agent_session_id": "done-1", "status": "completed", "display_name": "작업",
+             "node_id": "wsl", "created_at": "2026-11-17T09:57:33.376Z",
+             "updated_at": "2026-11-17T10:00:44.665Z",
+             "last_message": {"type": "user_message", "preview": "안녕",
+                              "timestamp": "2026-11-17T10:00:44.665Z", "event_id": 81}},
+        ]
 
-        resp_finished = MagicMock()
-        resp_finished.raise_for_status = MagicMock()
-        resp_finished.json.return_value = {"sessions": [_make_session(status="completed")], "total": 3}
-
-        with patch(
-            "seosoyoung.slackbot.handlers.home.requests.get",
-            side_effect=[resp_running, resp_finished],
-        ) as mock_get:
-            result = fetch_sessions("http://localhost:4105")
-
-        assert mock_get.call_count == 2
-        assert len(result["sessions"]) == 2
-        assert result["total"] == 1  # running 세션 수 기준
-
-    def test_fetch_sessions_calls_correct_urls(self):
-        """status 필터 URL로 두 번 호출하는지 검증"""
-        from seosoyoung.slackbot.handlers.home import MAX_COMPLETED_SESSIONS
-
-        resp_running = MagicMock()
-        resp_running.raise_for_status = MagicMock()
-        resp_running.json.return_value = {"sessions": [], "total": 0}
-
-        resp_finished = MagicMock()
-        resp_finished.raise_for_status = MagicMock()
-        resp_finished.json.return_value = {"sessions": [], "total": 0}
-
-        with patch(
-            "seosoyoung.slackbot.handlers.home.requests.get",
-            side_effect=[resp_running, resp_finished],
-        ) as mock_get:
-            fetch_sessions("http://localhost:4105")
-
-        calls = mock_get.call_args_list
-        assert len(calls) == 2
-
-        first_url = calls[0].args[0]
-        second_url = calls[1].args[0]
-
-        assert "status=running" in first_url
-        assert "status=completed,error" in second_url
-        assert f"limit={MAX_COMPLETED_SESSIONS}" in second_url
-
-    def test_fetch_sessions_return_shape(self):
-        """반환 형태 {sessions: list, total: int} 검증"""
-        resp_running = MagicMock()
-        resp_running.raise_for_status = MagicMock()
-        resp_running.json.return_value = {"sessions": [_make_session(status="running")], "total": 5}
-
-        resp_finished = MagicMock()
-        resp_finished.raise_for_status = MagicMock()
-        resp_finished.json.return_value = {"sessions": [_make_session(status="completed")], "total": 10}
-
-        with patch(
-            "seosoyoung.slackbot.handlers.home.requests.get",
-            side_effect=[resp_running, resp_finished],
-        ):
-            result = fetch_sessions("http://localhost:4105")
-
-        assert "sessions" in result
-        assert "total" in result
-        assert isinstance(result["sessions"], list)
-        assert isinstance(result["total"], int)
-        # total은 running 기준 (5), finished total(10)이 아님
-        assert result["total"] == 5
+    @pytest.mark.parametrize("node_id", [None, "eias-linegames-wsl"])
+    def test_fetch_sessions_calls_correct_urls(self, node_id):
+        response = MagicMock()
+        response.json.return_value = {"sessions": [], "total": 0}
+        with patch("seosoyoung.slackbot.handlers.home.requests.get", return_value=response) as get:
+            fetch_sessions("https://orch.example", "token", node_id)
+        node = {"node_id": node_id} if node_id else {}
+        assert get.call_args_list == [
+            (("https://orch.example/api/sessions",), {"headers": {"Authorization": "Bearer token"},
+             "params": {"status": "running", **node}, "timeout": 5}),
+            (("https://orch.example/api/sessions",), {"headers": {"Authorization": "Bearer token"},
+             "params": {"status": "completed,error", "limit": 5, **node}, "timeout": 5}),
+        ]
 
     def test_fetch_sessions_api_failure(self):
-        """API 호출 실패 시 예외 전파"""
-        import requests as req
-
-        with patch(
-            "seosoyoung.slackbot.handlers.home.requests.get",
-            side_effect=req.ConnectionError("Connection refused"),
-        ):
-            with pytest.raises(Exception):
-                fetch_sessions("http://localhost:4105")
+        import requests
+        with patch("seosoyoung.slackbot.handlers.home.requests.get",
+                   side_effect=requests.ConnectionError("Connection refused")):
+            with pytest.raises(requests.ConnectionError):
+                fetch_sessions("https://orch.example", "token")
 
 
 class TestHandleAppHomeOpened:
-    """handle_app_home_opened 통합 테스트
+    """등록된 이벤트 핸들러를 직접 실행한다."""
 
-    register_home_handlers는 @app.event("app_home_opened") 데코레이터를 사용하므로,
-    핸들러를 직접 캡처하는 대신 fetch_sessions를 mock하여 간접 검증한다.
-    """
+    def setup_method(self):
+        app = MagicMock()
+        self.client = MagicMock()
+        self.logger = MagicMock()
+        self.session_manager = MagicMock()
+        self.session_manager.find_all_by_session_id.return_value = {}
+        self.orchestrator = SimpleNamespace(url="https://orch.example", token="token", preferred_node="wsl")
+        register_home_handlers(app, {
+            "orchestrator": self.orchestrator, "dashboard_url": DASHBOARD_BASE,
+            "session_manager": self.session_manager,
+        })
+        self.handle = app.event.return_value.call_args.args[0]
 
     def test_success_publishes_view(self):
-        """정상 동작: fetch_sessions → build_home_view → views_publish"""
-        mock_client = MagicMock()
-
-        mock_data = {
-            "sessions": [_make_session("sess-test-11111111", "running", "테스트")],
-            "total": 1,
-        }
-
-        with patch(
-            "seosoyoung.slackbot.handlers.home.fetch_sessions",
-            return_value=mock_data,
-        ):
-            from seosoyoung.slackbot.handlers.home import fetch_sessions as _fs, build_home_view
-
-            soul_url = "http://localhost:3105"
-
-            data = _fs(soul_url)
-            # running 세션의 node_id에서 노드 이름 추출
-            node_name = "unknown"
-            for s in data["sessions"]:
-                if s.get("status") == "running" and s.get("node_id"):
-                    node_name = s["node_id"]
-                    break
-
-            view = build_home_view(
-                data["sessions"], node_name, total=data["total"],
-                dashboard_base_url=DASHBOARD_BASE,
-            )
-
-            mock_client.views_publish(user_id="U123", view=view)
-
-        mock_client.views_publish.assert_called_once()
-        call_kwargs = mock_client.views_publish.call_args
-        published_view = call_kwargs.kwargs.get("view") or call_kwargs[1].get("view")
-        assert published_view["type"] == "home"
+        data = {"sessions": [_make_session("sess-test-11111111", "running", "테스트")], "total": 1}
+        self.orchestrator.preferred_node = "eias-linegames"
+        with patch("seosoyoung.slackbot.handlers.home.fetch_sessions", return_value=data) as fetch:
+            self.handle({"user": "U123"}, self.client, self.logger)
+        fetch.assert_called_once_with("https://orch.example", "token", "eias-linegames")
+        self.session_manager.find_all_by_session_id.assert_called_once()
+        self.client.views_publish.assert_called_once()
+        assert self.client.views_publish.call_args.kwargs["view"]["type"] == "home"
 
     def test_api_failure_shows_error_view(self):
-        """API 실패 시 에러 view 표시, 예외 전파 없음"""
-        from seosoyoung.slackbot.handlers.home import _build_error_view
+        with patch("seosoyoung.slackbot.handlers.home.fetch_sessions", side_effect=Exception("실패")):
+            self.handle({"user": "U123", "tab": "home"}, self.client, self.logger)
+        view = self.client.views_publish.call_args.kwargs["view"]
+        assert "서버 연결 실패" in str(view)
 
-        error_view = _build_error_view("Connection refused")
+    def test_messages_tab_does_not_fetch_or_publish(self):
+        with patch("seosoyoung.slackbot.handlers.home.fetch_sessions") as fetch:
+            self.handle({"user": "U123", "tab": "messages"}, self.client, self.logger)
+        fetch.assert_not_called()
+        self.client.views_publish.assert_not_called()
 
-        assert error_view["type"] == "home"
-        blocks = error_view["blocks"]
-        section_texts = [
-            b["text"]["text"]
-            for b in blocks
-            if b["type"] == "section"
-        ]
-        assert any("연결할 수 없습니다" in t for t in section_texts)
-        assert any("Connection refused" in t for t in section_texts)
+    @pytest.mark.parametrize("missing", ["url", "token"])
+    def test_missing_orchestrator_settings_shows_error(self, missing):
+        setattr(self.orchestrator, missing, "")
+        with patch("seosoyoung.slackbot.handlers.home.requests.get") as get:
+            self.handle({"user": "U123", "tab": "home"}, self.client, self.logger)
+        get.assert_not_called()
+        assert "서버 연결 실패" in str(self.client.views_publish.call_args.kwargs["view"])
