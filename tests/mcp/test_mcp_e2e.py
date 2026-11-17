@@ -56,15 +56,13 @@ class TestMCPServerStandalone:
             assert result["thread_ts"] == "9999999999.000001"
 
 
+@pytest.mark.usefixtures("file_workspace")
 class TestMCPE2EMentionFlow:
     """멘션 → attach_file MCP 호출 → 슬랙 파일 첨부 E2E"""
 
-    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[3])
-
     def _make_workspace_file(self, suffix=".txt", content=b"E2E test file"):
         """workspace 내부에 테스트 파일 생성"""
-        tmp_dir = Path(self.WORKSPACE_ROOT) / ".local" / "tmp"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp_dir = self.workspace
         tmp = tempfile.NamedTemporaryFile(
             suffix=suffix, dir=str(tmp_dir), delete=False
         )
@@ -146,14 +144,12 @@ class TestMCPE2EMentionFlow:
             os.unlink(tmp_path)
 
 
+@pytest.mark.usefixtures("file_workspace")
 class TestMCPE2ETrelloFlow:
     """트렐로 모드에서 첨부 파일 정상 전달 E2E"""
 
-    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[3])
-
     def _make_workspace_file(self, suffix=".txt", content=b"trello test"):
-        tmp_dir = Path(self.WORKSPACE_ROOT) / ".local" / "tmp"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp_dir = self.workspace
         tmp = tempfile.NamedTemporaryFile(
             suffix=suffix, dir=str(tmp_dir), delete=False
         )
@@ -194,14 +190,12 @@ class TestMCPE2ETrelloFlow:
         assert config["allowed_tools"] is None  # 모든 도구 허용
 
 
+@pytest.mark.usefixtures("file_workspace")
 class TestMCPE2EErrorCases:
     """E2E 에러 케이스 테스트"""
 
-    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[3])
-
     def _make_workspace_file(self, suffix=".txt", content=b"test"):
-        tmp_dir = Path(self.WORKSPACE_ROOT) / ".local" / "tmp"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp_dir = self.workspace
         tmp = tempfile.NamedTemporaryFile(
             suffix=suffix, dir=str(tmp_dir), delete=False
         )
@@ -223,7 +217,7 @@ class TestMCPE2EErrorCases:
 
     def test_workspace_outside_file_rejected(self):
         """workspace 외부 파일 → success=False"""
-        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".txt", dir=self.workspace.parent, delete=False) as tmp:
             tmp.write(b"outside workspace")
             outside_path = tmp.name
 
@@ -281,8 +275,7 @@ class TestMCPE2EErrorCases:
 
     def test_directory_path_rejected(self):
         """디렉토리 경로를 지정하면 거부"""
-        dir_path = Path(self.WORKSPACE_ROOT) / ".local" / "tmp"
-        dir_path.mkdir(parents=True, exist_ok=True)
+        dir_path = self.workspace
 
         from seosoyoung.mcp.tools.attach import attach_file
 

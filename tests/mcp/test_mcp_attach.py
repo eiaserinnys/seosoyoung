@@ -38,15 +38,13 @@ class TestGetSlackContext:
                 assert result["thread_ts"] == ""
 
 
+@pytest.mark.usefixtures("file_workspace")
 class TestAttachFile:
     """attach_file 도구 테스트"""
 
-    WORKSPACE_ROOT = str(Path(__file__).resolve().parents[3])
-
     def _make_temp_file(self, suffix=".txt", content=b"test"):
         """workspace 내부에 임시 파일 생성"""
-        tmp_dir = Path(self.WORKSPACE_ROOT) / ".local" / "tmp"
-        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp_dir = self.workspace
         tmp = tempfile.NamedTemporaryFile(
             suffix=suffix, dir=str(tmp_dir), delete=False
         )
@@ -88,7 +86,7 @@ class TestAttachFile:
 
     def test_file_outside_workspace(self):
         """workspace 외부 파일은 거부"""
-        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".txt", dir=self.workspace.parent, delete=False) as tmp:
             tmp.write(b"test")
             tmp_path = tmp.name
 

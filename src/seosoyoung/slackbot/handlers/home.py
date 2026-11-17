@@ -15,14 +15,16 @@ MAX_COMPLETED_SESSIONS = 5
 FETCH_TIMEOUT_SECONDS = 5
 
 
-def fetch_sessions(soul_url: str) -> dict:
-    """소울스트림에서 홈 탭용 세션을 조회한다.
+def fetch_sessions(orch_url: str, token: str, node_id: str | None = None) -> dict:
+    """오케스트레이터에서 홈 탭용 세션을 조회한다.
 
     running 전체 + 최근 종료 MAX_COMPLETED_SESSIONS개를 별도 쿼리로 받아 병합한다.
     각 쿼리가 소규모 결과를 반환하므로 세션 누적 시에도 타임아웃이 발생하지 않는다.
 
     Args:
-        soul_url: 소울스트림 서버 base URL (예: http://localhost:4105)
+        orch_url: 오케스트레이터 base URL
+        token: 오케스트레이터 인증 토큰
+        node_id: 조회할 노드 (없으면 전체)
 
     Returns:
         {"sessions": [...], "total": int}
@@ -31,9 +33,18 @@ def fetch_sessions(soul_url: str) -> dict:
     Raises:
         requests.RequestException: 네트워크 오류
     """
+    if not orch_url or not token:
+        raise ValueError("오케스트레이터 URL 또는 토큰이 없습니다")
+
+    url = f"{orch_url.rstrip('/')}/api/sessions"
+    headers = {"Authorization": f"Bearer {token}"}
+    node_filter = {"node_id": node_id} if node_id else {}
+
     # 1. running 세션 전체
     resp = requests.get(
-        f"{soul_url}/sessions?status=running",
+        url,
+        headers=headers,
+        params={"status": "running", **node_filter},
         timeout=FETCH_TIMEOUT_SECONDS,
     )
     resp.raise_for_status()
@@ -41,7 +52,9 @@ def fetch_sessions(soul_url: str) -> dict:
 
     # 2. 최근 종료 세션 (completed + error, 최대 MAX_COMPLETED_SESSIONS개)
     resp = requests.get(
-        f"{soul_url}/sessions?status=completed,error&limit={MAX_COMPLETED_SESSIONS}",
+        url,
+        headers=headers,
+        params={"status": "completed,error", "limit": MAX_COMPLETED_SESSIONS, **node_filter},
         timeout=FETCH_TIMEOUT_SECONDS,
     )
     resp.raise_for_status()
@@ -52,8 +65,27 @@ def fetch_sessions(soul_url: str) -> dict:
     total = running_data.get("total", 0)  # 홈 탭 카운터는 running 세션 수 기준
 
     return {
-        "sessions": running_sessions + finished_sessions,
+        "sessions": [_normalize_session(session) for session in running_sessions + finished_sessions],
         "total": total,
+    }
+
+
+def _normalize_session(session: dict) -> dict:
+    """오케스트레이터 응답을 기존 홈 뷰의 필드 이름으로 바꾼다."""
+    message = session.get("lastMessage")
+    return {
+        "agent_session_id": session.get("agentSessionId"),
+        "display_name": session.get("displayName"),
+        "node_id": session.get("nodeId"),
+        "last_message": {
+            "event_id": message.get("eventId"),
+            "preview": message.get("preview"),
+            "timestamp": message.get("timestamp"),
+            "type": message.get("type"),
+        } if message else None,
+        "created_at": session.get("createdAt"),
+        "updated_at": session.get("updatedAt"),
+        "status": session.get("status"),
     }
 
 
@@ -385,23 +417,25 @@ def register_home_handlers(app, dependencies: dict):
     Args:
         app: Slack Bolt App 인스턴스
         dependencies: 핸들러 의존성
-            - soul_url: 소울스트림 서버 URL
+            - orchestrator: URL, 토큰, 선호 노드 설정
             - session_manager: SessionManager 인스턴스 (슬랙 스레드 연결 정보 조회)
             - slack_workspace_url: 슬랙 워크스페이스 URL (예: https://xxx.slack.com)
     """
-    soul_url = dependencies.get("soul_url", "")
+    orchestrator = dependencies.get("orchestrator")
     dashboard_url = dependencies.get("dashboard_url", "")
     session_manager = dependencies.get("session_manager")  # SessionManager — 덕타이핑, import 불필요
     slack_workspace_url = dependencies.get("slack_workspace_url", "")
 
     @app.event("app_home_opened")
     def handle_app_home_opened(event, client, logger):
+        if event.get("tab", "home") != "home":
+            return
         user_id = event.get("user")
         if not user_id:
             return
 
         try:
-            data = fetch_sessions(soul_url)
+            data = fetch_sessions(orchestrator.url, orchestrator.token, orchestrator.preferred_node or None)
             sessions = data.get("sessions", [])
             total = data.get("total", 0)
 
