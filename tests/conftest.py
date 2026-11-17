@@ -17,11 +17,11 @@ os.environ.setdefault("OPERATOR_USER_ID", "U00000000")
 os.environ.setdefault("GEMINI_API_KEY", "")  # slackbot/config.py에서 참조
 os.environ.setdefault("GEMINI_MODEL", "gemini-3-pro-image-preview")  # slackbot/config.py에서 참조
 os.environ.setdefault("OPENAI_API_KEY", "")
-os.environ.setdefault("SEOSOYOUNG_SOUL_URL", "http://localhost:4105")
-os.environ.setdefault("SEOSOYOUNG_SOUL_TOKEN", "test-token")
 os.environ.setdefault("SOUL_DASHBOARD_URL", "https://soul.eiaserinnys.me/#")
 os.environ.setdefault("CREDENTIAL_ALERT_CHANNEL", "")
 os.environ.setdefault("SEOSOYOUNG_AGENT_ID", "")
+os.environ.setdefault("SOULSTREAM_ORCH_URL", "http://localhost:5200")
+os.environ.setdefault("SOULSTREAM_ORCH_TOKEN", "test-token")
 os.environ.setdefault("SOULSTREAM_PREFERRED_NODE", "")
 os.environ.setdefault("SLACK_WORKSPACE_URL", "https://test.slack.com")
 os.environ.setdefault("EXECUTE_EMOJI", "rocket")

@@ -408,11 +408,7 @@ class TestExecutorRemoteDebug:
 
     @pytest.fixture
     def executor(self, tmp_path):
-        return _make_executor(
-            tmp_path,
-            soul_url="http://localhost:3105",
-            soul_token="test-token",
-        )
+        return _make_executor(tmp_path)
 
     @pytest.fixture
     def session(self, executor):
@@ -497,16 +493,15 @@ class TestGetServiceAdapter:
 
     @pytest.fixture
     def executor(self, tmp_path):
-        return _make_executor(
-            tmp_path,
-            soul_url="http://localhost:3105",
-            soul_token="test-token",
-        )
+        return _make_executor(tmp_path)
 
     def test_each_call_returns_new_instance(self, executor):
         """호출마다 새 adapter 인스턴스를 반환 (Event loop 격리를 위해 캐싱하지 않음)"""
-        adapter1 = executor._get_service_adapter()
-        adapter2 = executor._get_service_adapter()
+        from seosoyoung.slackbot.config import Config
+
+        with patch.object(Config.orchestrator, "url", "http://orch:5200"):
+            adapter1 = executor._get_service_adapter()
+            adapter2 = executor._get_service_adapter()
 
         assert adapter1 is not adapter2
         assert adapter1 is not None
@@ -542,8 +537,8 @@ class TestGetServiceAdapterOrchestratorRouting:
             Config.orchestrator.token = original_token
             Config.orchestrator.preferred_node = original_pn
 
-    def test_orchestrator_not_configured_uses_soul_url(self, tmp_path):
-        """Config.orchestrator.url이 비어있으면 soul_url 사용 (기존 동작)"""
+    def test_orchestrator_not_configured_raises(self, tmp_path):
+        """오케스트레이터 URL이 없으면 설정 오류를 알린다."""
         from seosoyoung.slackbot.config import Config
 
         executor = _make_executor(tmp_path)
@@ -552,13 +547,8 @@ class TestGetServiceAdapterOrchestratorRouting:
         try:
             Config.orchestrator.url = ""
 
-            adapter = executor._get_service_adapter()
-            client = adapter._client
-
-            assert client.base_url == Config.claude.soul_url
-            assert client.token == Config.claude.soul_token
-            assert client.preferred_node_id is None
-            assert client._event_stream_path == "/events/{session_id}/stream"
+            with pytest.raises(RuntimeError, match="SOULSTREAM_ORCH_URL"):
+                executor._get_service_adapter()
         finally:
             Config.orchestrator.url = original_url
 
@@ -620,10 +610,3 @@ class TestInterventionDualPath:
                     session_id="sess-001",
                 )
                 mock_run.assert_called_once()
-
-class TestConfigEnvVars:
-    """Config에 추가된 env 변수 테스트"""
-
-    def test_soul_url_default(self):
-        from seosoyoung.slackbot.config import Config
-        assert "localhost" in Config.claude.soul_url or Config.claude.soul_url != ""

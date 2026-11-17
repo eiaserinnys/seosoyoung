@@ -796,113 +796,11 @@ class SoulServiceClient:
 
     # === Claude Auth API ===
 
-    async def set_claude_token(self, token: str) -> dict:
-        """Claude OAuth 토큰 설정 (POST /auth/claude/token)
 
-        Args:
-            token: sk-ant-oat01-xxx 형식의 OAuth 토큰
 
-        Returns:
-            { "success": bool, "message": str } 또는 { "success": bool, "error": str }
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/auth/claude/token"
 
-        async with session.post(url, json={"token": token}) as response:
-            if response.status == 200:
-                return await response.json()
-            error = await self._parse_error(response)
-            raise SoulServiceError(f"토큰 설정 실패: {error}")
 
-    async def start_claude_auth(self) -> dict:
-        """Claude 인증 세션 시작 (POST /auth/claude/start)
 
-        Returns:
-            {"session_id": str, "auth_url": str, "expires_at": str}
-
-        Raises:
-            SoulServiceError: 인증 세션 시작 실패
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/auth/claude/start"
-
-        async with session.post(url) as response:
-            if response.status != 200:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"인증 세션 시작 실패: {error}")
-            return await response.json()
-
-    async def submit_auth_code(self, session_id: str, code: str) -> dict:
-        """인증 코드 제출 (POST /auth/claude/code)
-
-        Args:
-            session_id: start_claude_auth에서 반환된 세션 ID
-            code: 사용자가 브라우저에서 받은 인증 코드
-
-        Returns:
-            {"success": True, "expires_at": str} 또는 에러 정보
-
-        Raises:
-            SoulServiceError: 코드 제출 실패
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/auth/claude/code"
-
-        async with session.post(url, json={"session_id": session_id, "code": code}) as response:
-            if response.status != 200:
-                error = await self._parse_error(response)
-                raise SoulServiceError(f"코드 제출 실패: {error}")
-            return await response.json()
-
-    async def clear_claude_token(self) -> dict:
-        """Claude 토큰 삭제 (DELETE /auth/claude/token)
-
-        Returns:
-            {"success": bool, "message": str}
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/auth/claude/token"
-
-        async with session.delete(url) as response:
-            if response.status == 200:
-                return await response.json()
-            error = await self._parse_error(response)
-            raise SoulServiceError(f"토큰 삭제 실패: {error}")
-
-    async def get_oauth_profiles(self) -> dict:
-        """OAuth 프로필 목록 조회 (GET /auth/claude/profiles)
-
-        Returns:
-            {
-                "node_id": str,
-                "profiles": [str, ...],
-                "current_profile": str | None
-            }
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/auth/claude/profiles"
-        async with session.get(url) as response:
-            if response.status == 200:
-                return await response.json()
-            error = await self._parse_error(response)
-            raise SoulServiceError(f"프로필 목록 조회 실패: {error}")
-
-    async def activate_oauth_profile(self, profile: str) -> dict:
-        """OAuth 프로필 활성화 (POST /auth/claude/profiles/activate)
-
-        Args:
-            profile: 활성화할 프로필명
-
-        Returns:
-            {"success": bool, "message": str} 또는 {"success": bool, "error": str}
-        """
-        session = await self._get_session()
-        url = f"{self.base_url}/auth/claude/profiles/activate"
-        async with session.post(url, json={"profile": profile}) as response:
-            if response.status == 200:
-                return await response.json()
-            error = await self._parse_error(response)
-            raise SoulServiceError(f"프로필 활성화 실패: {error}")
 
     # === 헬퍼 메서드 ===
 
