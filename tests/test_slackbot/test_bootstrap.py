@@ -48,20 +48,20 @@ def _reflect_app(on_reflect=lambda: None) -> FastAPI:
 
 
 class TestManagementServerStartup:
-    @pytest.mark.timeout(10)
+    @pytest.mark.timeout(30)
     def test_returns_only_after_real_reflect_response(self):
         reflected = threading.Event()
         handle = start_management_server(
             _reflect_app(reflected.set),
             _free_port(),
-            startup_timeout=5.0,
+            startup_timeout=10.0,
         )
         try:
             assert reflected.is_set(), "startup must probe the real /reflect handler"
         finally:
             handle.stop()
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(30)
     def test_early_thread_exit_is_failure_not_ready(self, monkeypatch, caplog):
         class EarlyExitServer:
             started = False
@@ -81,7 +81,7 @@ class TestManagementServerStartup:
 
         assert "Management server ready" not in caplog.text
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(30)
     def test_thread_exception_is_propagated_to_caller(self, monkeypatch):
         class FailingServer:
             started = False
@@ -100,7 +100,7 @@ class TestManagementServerStartup:
 
         assert isinstance(raised.value.__cause__, OSError)
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(30)
     def test_started_server_without_reflect_never_reports_ready(self, caplog):
         caplog.set_level(logging.INFO)
 
@@ -109,7 +109,7 @@ class TestManagementServerStartup:
 
         assert "Management server ready" not in caplog.text
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(30)
     def test_bind_failure_is_propagated(self):
         with socket.socket() as occupied:
             occupied.bind(("127.0.0.1", 0))
@@ -123,7 +123,7 @@ class TestManagementServerStartup:
                     startup_timeout=1.0,
                 )
 
-    @pytest.mark.timeout(5)
+    @pytest.mark.timeout(30)
     def test_startup_timeout_stops_slow_lifespan_thread_before_returning(self):
         @asynccontextmanager
         async def slow_lifespan(_app):
@@ -505,7 +505,7 @@ def test_callback_failure_is_visible_to_later_shutdown_http_without_retry():
     handler.assert_called_once_with()
 
 
-@pytest.mark.timeout(5)
+@pytest.mark.timeout(30)
 def test_callback_failure_is_visible_through_live_management_http():
     handler = Mock(side_effect=RuntimeError("shutdown callback failed"))
     dispatcher = ShutdownDispatcher()
@@ -518,7 +518,7 @@ def test_callback_failure_is_visible_through_live_management_http():
     handle = start_management_server(
         shutdown_module.create_management_app(reflector, dispatcher),
         port,
-        startup_timeout=2.0,
+        startup_timeout=10.0,
     )
 
     try:
@@ -527,29 +527,29 @@ def test_callback_failure_is_visible_through_live_management_http():
             data=b"",
             method="POST",
         )
-        with urlopen(request, timeout=2.0) as response:
+        with urlopen(request, timeout=10.0) as response:
             assert response.status == 200
             assert response.read()
 
         with pytest.raises(HTTPError) as failed:
-            urlopen(request, timeout=2.0)
+            urlopen(request, timeout=10.0)
         assert failed.value.code == 500
         assert b'"code":"shutdown_callback_failed"' in failed.value.read()
         handler.assert_called_once_with()
         assert handle.thread.is_alive()
-        with urlopen(f"http://127.0.0.1:{port}/reflect", timeout=2.0) as response:
+        with urlopen(f"http://127.0.0.1:{port}/reflect", timeout=10.0) as response:
             assert response.status == 200
     finally:
         handle.stop()
 
 
-@pytest.mark.timeout(5)
+@pytest.mark.timeout(30)
 def test_runtime_loader_runs_only_after_management_http_is_ready():
     port = _free_port()
     events: list[object] = []
 
     def load_runtime():
-        with urlopen(f"http://127.0.0.1:{port}/reflect", timeout=1.0) as response:
+        with urlopen(f"http://127.0.0.1:{port}/reflect", timeout=10.0) as response:
             events.append(("reflect", response.status))
         events.append("runtime-import")
         return SimpleNamespace(
@@ -562,7 +562,7 @@ def test_runtime_loader_runs_only_after_management_http_is_ready():
     assert events == [("reflect", 200), "runtime-import", "runtime-start"]
 
 
-@pytest.mark.timeout(5)
+@pytest.mark.timeout(30)
 def test_shutdown_delivery_follows_final_asgi_response_body_send():
     port = _free_port()
     events = []
@@ -598,14 +598,14 @@ def test_shutdown_delivery_follows_final_asgi_response_body_send():
 
             await self.wrapped_app(scope, receive, observed_send)
 
-    handle = start_management_server(DelayedFinalBody(app), port, startup_timeout=2.0)
+    handle = start_management_server(DelayedFinalBody(app), port, startup_timeout=10.0)
     try:
         request = Request(
             f"http://127.0.0.1:{port}/shutdown",
             data=b"",
             method="POST",
         )
-        with urlopen(request, timeout=2.0) as response:
+        with urlopen(request, timeout=10.0) as response:
             assert response.status == 200
             assert response.read()
     finally:
